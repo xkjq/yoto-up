@@ -31,7 +31,7 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
     - show_snack_fn: callable(page, message, error=False)
     - enable_tabs_fn: optional callable(page) to enable authenticated tabs
     """
-    print("[auth] poll_device_token: started background poll")
+    logger.debug("[auth] poll_device_token: started background poll")
     start = time.time()
     interval = info.get('interval', 2)
     expires_in = info.get('expires_in', 300)
@@ -48,15 +48,15 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
             }
             token_resp = httpx.post(token_url, data=data, headers=headers)
             try:
-                print(f"[auth] poll_device_token: status={token_resp.status_code}")
+                logger.debug(f"[auth] poll_device_token: status={token_resp.status_code}")
             except Exception as e:
-                safe_log("poll_device_token: failed printing token_resp.status_code", e)
+                logger.debug(f"poll_device_token: failed printing token_resp.status_code: {e}")
 
             if token_resp.status_code == 200:
                 try:
                     tokens = token_resp.json()
                 except Exception as e:
-                    safe_log("poll_device_token: failed to parse token response JSON", e)
+                    logger.debug(f"poll_device_token: failed to parse token response JSON: {e}")
                     tokens = {}
                 access = tokens.get('access_token')
                 refresh = tokens.get('refresh_token')
@@ -64,7 +64,6 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                 if access:
                     try:
                         # Ensure we have an API instance to persist tokens and update state
-                        api = ensure_api(api_ref, client)
 
                         out = {"access_token": access, "refresh_token": refresh}
                         if idt:
@@ -73,32 +72,31 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                         with open(tmp_path, 'w') as f:
                             json.dump(out, f)
                         os.replace(tmp_path, 'tokens.json')
-                    except Exception as e:
-                        safe_log("poll_device_token: failed to write tokens.json", e)
+                        logger.debug("poll_device_token: wrote tokens.json")
                         api = ensure_api(api_ref, client)
-                    try:
-                        api.save_tokens(access, refresh)
-                        if idt:
-                            try:
-                                with open('tokens.json', 'r') as f:
-                                    cur = json.load(f)
-                            except Exception:
-                                cur = {"access_token": access, "refresh_token": refresh}
-                            cur['id_token'] = idt
-                            tmp2 = 'tokens.json.tmp2'
-                            try:
-                                with open(tmp2, 'w') as f:
-                                    json.dump(cur, f)
-                                os.replace(tmp2, 'tokens.json')
-                            except Exception as ex:
-                                print(f"[auth] failed to preserve id_token: {ex}")
                     except Exception as e:
-                        safe_log("poll_device_token: failed while saving tokens or preserving id_token", e)
+                        logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
+                        api = ensure_api(api_ref, client)
+                    #try:
+                    #    api.save_tokens(access, refresh)
+                    #    if idt:
+                    #        try:
+                    #            with open('tokens.json', 'r') as f:
+                    #                cur = json.load(f)
+                    #        except Exception:
+                    #            cur = {"access_token": access, "refresh_token": refresh}
+                    #        cur['id_token'] = idt
+                    #        tmp2 = 'tokens.json.tmp2'
+                    #        try:
+                    #            with open(tmp2, 'w') as f:
+                    #                json.dump(cur, f)
+                    #            os.replace(tmp2, 'tokens.json')
+                    #        except Exception as ex:
+                    #            logger.debug(f"[auth] failed to preserve id_token: {ex}")
+                    #except Exception as e:
+                    #    logger.debug(f"poll_device_token: failed while saving tokens or preserving id_token: {e}")
                     api_ref['api'] = api
-                    try:
-                        show_snack_fn('Authenticated')
-                    except Exception as e:
-                        safe_log("poll_device_token: failed to show 'Authenticated' snackbar", e)
+                    show_snack_fn('Authenticated')
                     # Enable tabs if function provided
                     page.auth_complete()
                     # Update embedded instructions
@@ -110,14 +108,14 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                             )
                             page.update()
                     except Exception as e:
-                        safe_log("poll_device_token: failed updating instr_container controls; attempting fallback auth_status", e)
+                        logger.debug("poll_device_token: failed updating instr_container controls; attempting fallback auth_status", e)
                         try:
                             # fallback: small auth status text
                             if hasattr(page, 'auth_status'):
                                 page.auth_status.value = 'Authentication complete'
                                 page.auth_status.update()
                         except Exception as e2:
-                            safe_log("poll_device_token: failed in fallback auth_status update", e2)
+                            logger.debug(f"poll_device_token: failed in fallback auth_status update: {e2}")
                     return
 
             # handle other responses
@@ -136,27 +134,27 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                     page.update()
                 return
             except Exception as e:
-                safe_log("poll_device_token: non-json response when checking token endpoint", e)
+                logger.debug(f"poll_device_token: non-json response when checking token endpoint: {e}")
                 # non-json response, keep polling
         except Exception as e:
-            safe_log("poll_device_token: unhandled exception during polling", e)
+            logger.debug(f"poll_device_token: unhandled exception during polling: {e}")
             try:
                 show_snack_fn(f"Auth polling error: {e}", error=True)
             except Exception as e2:
-                safe_log("poll_device_token: failed to show auth polling error snackbar", e2)
+                logger.debug(f"poll_device_token: failed to show auth polling error snackbar: {e2}")
             return
 
     # expired
     try:
         show_snack_fn('Device code expired', error=True)
     except Exception as e:
-        safe_log("poll_device_token: failed to show device code expired snackbar", e)
+        logger.debug(f"poll_device_token: failed to show device code expired snackbar: {e}")
     if instr_container is not None and hasattr(instr_container, 'controls'):
         try:
             instr_container.controls.append(__import__('flet').Text('Device code expired'))
             page.update()
         except Exception as e:
-            safe_log("poll_device_token: failed to update instr_container with expired message", e)
+            logger.debug(f"poll_device_token: failed to update instr_container with expired message: {e}")
 
 
 def start_device_auth(page, instr_container=None, api_ref=None, show_snack_fn=None, enable_tabs_fn=None):
@@ -200,14 +198,14 @@ def start_device_auth(page, instr_container=None, api_ref=None, show_snack_fn=No
                 container.controls.append(getattr(page, 'auth_status', __import__('flet').Text('')))
                 page.update()
         except Exception as e:
-            safe_log("start_device_auth: failed to populate auth instructions container", e)
+            logger.debug(f"start_device_auth: failed to populate auth instructions container: {e}")
 
         # Start background poll
         threading.Thread(target=lambda: poll_device_token(info, client, page, instr_container or getattr(page, 'auth_instructions', None), api_ref or {}, show_snack_fn or (lambda p, m, error=False: None)), daemon=True).start()
     except Exception as e:
-        safe_log("start_device_auth: exception when initiating device auth", e)
+        logger.debug(f"start_device_auth: exception when initiating device auth: {e}")
         try:
             if show_snack_fn:
                 show_snack_fn(f'Auth start failed: {e}', error=True)
         except Exception as e2:
-            safe_log("start_device_auth: failed to show auth start failed snackbar", e2)
+            logger.debug(f"start_device_auth: failed to show auth start failed snackbar: {e2}")
