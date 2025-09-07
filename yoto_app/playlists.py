@@ -873,21 +873,23 @@ def build_playlists_panel(
                             else None
                         )
                         tr_img = None
+
+
+                        def _on_tap_tr(
+                            ev, ch_index=ch_index, tr_index=t_idx - 1
+                        ):
+                            try:
+                                replace_individual_icon(
+                                    ev, "track", ch_index, tr_index
+                                )
+                            except Exception:
+                                logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
                         try:
                             api = api_ref.get("api")
                             if api and tr_icon_field:
                                 tp = api.get_icon_cache_path(tr_icon_field)
                                 if tp and Path(tp).exists():
 
-                                    def _on_tap_tr(
-                                        ev, ch_index=ch_index, tr_index=t_idx - 1
-                                    ):
-                                        try:
-                                            replace_individual_icon(
-                                                ev, "track", ch_index, tr_index
-                                            )
-                                        except Exception:
-                                            pass
 
                                     img = ft.Image(src=str(tp), width=20, height=20)
                                     tr_img = ft.GestureDetector(
@@ -932,7 +934,8 @@ def build_playlists_panel(
                                         f=tr_icon_field,
                                         ci=ch_index,
                                         ti=t_idx - 1: threading.Thread(
-                                            target=lambda: fetch_icon_worker(f, ci, ti),
+                                            #target=lambda: fetch_icon_worker(f, ci, ti),
+                                            target=lambda: _on_tap_tr(ev, ci, ti),
                                             daemon=True,
                                         ).start(),
                                     )
@@ -944,7 +947,8 @@ def build_playlists_panel(
                                     f=tr_icon_field,
                                     ci=ch_index,
                                     ti=t_idx - 1: threading.Thread(
-                                        target=lambda: fetch_icon_worker(f, ci, ti),
+                                        #target=lambda: fetch_icon_worker(f, ci, ti),
+                                        target=lambda: _on_tap_tr(ev, ci, ti),
                                         daemon=True,
                                     ).start(),
                                 )
@@ -956,7 +960,8 @@ def build_playlists_panel(
                                 f=tr_icon_field,
                                 ci=ch_index,
                                 ti=t_idx - 1: threading.Thread(
-                                    target=lambda: fetch_icon_worker(f, ci, ti),
+                                    #target=lambda: fetch_icon_worker(f, ci, ti),
+                                    target=lambda: _on_tap_tr(ev, ci, ti),
                                     daemon=True,
                                 ).start(),
                             )
