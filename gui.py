@@ -246,10 +246,16 @@ def main(page):
 
     def update_overall():
         # update overall progress bar when a file completes
-        nonlocal completed_count, total_files
+        nonlocal completed_count
+        # compute total dynamically from the UI rows to avoid relying on a separate counter
+        try:
+            total = len([r for r in getattr(file_rows_column, 'controls', []) if getattr(r, 'filename', None)])
+        except Exception:
+            total = 0
         completed_count += 1
-        overall_bar.value = completed_count / total_files if total_files else 0
-        overall_text.value = f"{completed_count}/{total_files} completed"
+        # guard against divide-by-zero
+        overall_bar.value = (completed_count / total) if total else 0
+        overall_text.value = f"{completed_count}/{total} completed"
         page.update()
 
     def clear_queue(ev=None):
