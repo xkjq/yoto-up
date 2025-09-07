@@ -1,0 +1,293 @@
+from typing import Optional, List, Literal, Union
+from pydantic import BaseModel
+
+class Ambient(BaseModel):
+    defaultTrackDisplay: Optional[str] = None
+
+class TrackDisplay(BaseModel):
+    icon16x16: Optional[str] = None
+
+class Track(BaseModel):
+    """
+    Represents a Yoto track, which can be a local audio file or a streaming track.
+    For streaming tracks:
+        - type: "stream"
+        - trackUrl: URL to the audio stream
+        - format: format of the stream (e.g. "mp3", "aac")
+    Example:
+        Track(
+            key="01",
+            type="stream",
+            format="mp3",
+            title="Test Streaming Playlist",
+            trackUrl="https://yoto.dev/music/autumn-3.mp3",
+            display=TrackDisplay(icon16x16="yoto:#ZuVmuvnoFiI4el6pBPvq0ofcgQ18HjrCmdPEE7GCnP8")
+        )
+    """
+    title: str
+    trackUrl: str
+    key: str
+    format: str
+    uid: Optional[str] = None
+    type: Literal["audio", "stream"]
+    display: Optional[TrackDisplay] = None
+    overlayLabelOverride: Optional[str] = None
+    overlayLabel: Optional[str] = None
+    duration: Optional[float] = None
+    fileSize: Optional[float] = None
+    channels: Optional[Literal["stereo", "mono", 1, 2]] = None
+    ambient: Optional[Ambient] = None
+    hasStreams: Optional[bool] = None
+
+class ChapterDisplay(BaseModel):
+    icon16x16: Optional[str] = None
+
+
+class Chapter(BaseModel):
+    title: str
+    key: Optional[str] = None
+    overlayLabel: Optional[str] = None
+    overlayLabelOverride: Optional[str] = None
+    tracks: List[Track]
+    defaultTrackDisplay: Optional[str] = None
+    defaultTrackAmbient: Optional[str] = None
+    duration: Optional[float] = None
+    fileSize: Optional[float] = None
+    display: Optional[ChapterDisplay] = None
+    hidden: Optional[bool] = None
+    hasStreams: Optional[bool] = None
+    ambient: Optional[Ambient] = None
+    availableFrom: Optional[str] = None
+
+class CardStatus(BaseModel):
+    name: Literal["new", "inprogress", "complete", "live", "archived"]
+    updatedAt: Optional[str] = None
+
+class CardCover(BaseModel):
+    imageL: Optional[str] = None
+
+class CardMedia(BaseModel):
+    duration: Optional[float] = None
+    fileSize: Optional[float] = None
+    hasStreams: Optional[bool] = None
+
+class CardConfig(BaseModel):
+    autoadvance: Optional[str] = None
+    resumeTimeout: Optional[int] = None
+    systemActivity: Optional[bool] = None
+    trackNumberOverlayTimeout: Optional[int] = None
+
+class CardMetadata(BaseModel):
+    accent: Optional[str] = None
+    addToFamilyLibrary: Optional[bool] = None
+    author: Optional[str] = None
+    category: Optional[Literal["", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"]] = None
+    copyright: Optional[str] = None
+    cover: Optional[CardCover] = None
+    description: Optional[str] = None
+    genre: Optional[List[str]] = None
+    languages: Optional[List[str]] = None
+    maxAge: Optional[int] = None
+    media: Optional[CardMedia] = None
+    minAge: Optional[int] = None
+    musicType: Optional[List[str]] = None
+    note: Optional[str] = None
+    order: Optional[str] = None
+    audioPreviewUrl: Optional[str] = None
+    readBy: Optional[str] = None
+    share: Optional[bool] = None
+    status: Optional[CardStatus] = None
+    tags: Optional[List[str]] = None
+    feedUrl: Optional[str] = None
+    numEpisodes: Optional[int] = None
+    playbackDirection: Optional[Literal["DESC", "ASC"]] = None
+    previewAudio: str = ""
+    hidden: bool = False
+
+class CardContent(BaseModel):
+    activity: Optional[str] = None
+    chapters: Optional[List[Chapter]] = None
+    config: Optional[CardConfig] = None
+    playbackType: Optional[Literal["linear", "interactive"]] = None
+    version: Optional[str] = None
+    hidden: bool = False
+
+class Card(BaseModel):
+    cardId: Optional[str] = None
+    title: str
+    metadata: Optional[CardMetadata] = None
+    content: Optional[CardContent] = None
+    tags: Optional[List[str]] = None
+    slug: Optional[str] = None
+    deleted: bool = False
+    createdAt: Optional[str] = None
+    createdByClientId: Optional[str] = None
+    updatedAt: Optional[str] = None
+    userId: Optional[str] = None
+
+    def display_card(self):
+        panel_text = (
+            f"[bold magenta]{self.title}[/bold magenta]\n"
+            f"[cyan]ID:[/] [bold]{self.cardId}[/bold]\n"
+            f"[yellow]Status:[/] [bold]{self.metadata.status.name if self.metadata and self.metadata.status else ''}[/bold]\n"
+            f"[green]Cover:[/] {self.metadata.cover.imageL if self.metadata and self.metadata.cover and self.metadata.cover.imageL else ''}\n"
+            f"[blue]Duration:[/] {self.metadata.media.duration if self.metadata and self.metadata.media and self.metadata.media.duration is not None else ''}\n"
+            f"[blue]File Size:[/] {self.metadata.media.fileSize if self.metadata and self.metadata.media and self.metadata.media.fileSize is not None else ''}\n"
+            f"[blue]Preview Audio:[/] {self.metadata.previewAudio if self.metadata and hasattr(self.metadata, 'previewAudio') else ''}\n"
+            f"[magenta]Playback Type:[/] {self.content.playbackType if self.content and self.content.playbackType else ''}\n"
+            f"[red]Hidden:[/] {self.hidden if hasattr(self, 'hidden') else False}\n"
+            f"[red]Deleted:[/] {self.deleted if hasattr(self, 'deleted') else False}\n"
+            f"[white]Created At:[/] {self.createdAt if hasattr(self, 'createdAt') else ''}\n"
+            f"[white]Client ID:[/] {self.createdByClientId if hasattr(self, 'createdByClientId') else ''}\n"
+        )
+
+        # Add chapter and track details
+        chapters_section = ""
+        if self.content and hasattr(self.content, "chapters") and self.content.chapters:
+            chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
+            for idx, chapter in enumerate(self.content.chapters, 1):
+                chapters_section += (
+                    f"[bold]Chapter {idx}:[/bold] {getattr(chapter, 'title', '')}\n"
+                    f"  [cyan]Track:[/] {getattr(chapter, 'track', '')}\n"
+                    f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
+                )
+        panel_text += chapters_section
+        return panel_text
+
+class Device(BaseModel):
+    deviceId: str
+    name: str
+    description: str
+    online: bool
+    releaseChannel: str
+    deviceType: str
+    deviceFamily: str
+    deviceGroup: str
+
+class DeviceStatus(BaseModel):
+    activeCard: str
+    ambientLightSensorReading: int
+    averageDownloadSpeedBytesSecond: int
+    batteryLevelPercentage: int
+    batteryLevelPercentageRaw: int
+    buzzErrors: int
+    cardInsertionState: int
+    dayMode: int
+    deviceId: str
+    errorsLogged: int
+    firmwareVersion: str
+    freeDiskSpaceBytes: int
+    isAudioDeviceConnected: bool
+    isBackgroundDownloadActive: bool
+    isBluetoothAudioConnected: bool
+    isCharging: bool
+    isNfcLocked: int
+    isOnline: bool
+    latestNfcTestErrorPercentage: int
+    networkSsid: str
+    nightlightMode: str
+    playingSource: int
+    powerCapabilities: str
+    powerSource: int
+    systemVolumePercentage: int
+    taskWatchdogTimeoutCount: int
+    temperatureCelcius: str
+    totalDiskSpaceBytes: int
+    updatedAt: str
+    uptime: int
+    userVolumePercentage: int
+    utcOffsetSeconds: int
+    utcTime: int
+    wifiStrength: int
+
+    def display_device_status(self):
+        status_info = (
+            f"[bold magenta]Device ID:[/] [bold]{self.deviceId}[/bold]\n"
+            f"[cyan]Online:[/] [bold]{self.isOnline}[/bold]\n"
+            f"[yellow]Firmware Version:[/] [bold]{self.firmwareVersion}[/bold]\n"
+            f"[green]Battery Level:[/] [bold]{self.batteryLevelPercentage}%[/bold]\n"
+            f"[blue]Free Disk Space:[/] [bold]{self.freeDiskSpaceBytes / (1024 * 1024):.2f} MB[/bold]\n"
+            f"[blue]Total Disk Space:[/] [bold]{self.totalDiskSpaceBytes / (1024 * 1024):.2f} MB[/bold]\n"
+            f"[blue]System Volume:[/] [bold]{self.systemVolumePercentage}%[/bold]\n"
+            f"[blue]User Volume:[/] [bold]{self.userVolumePercentage}%[/bold]\n"
+            f"[blue]Ambient Light Sensor Reading:[/] [bold]{self.ambientLightSensorReading}[/bold]\n"
+            f"[blue]Temperature (Celsius):[/] [bold]{self.temperatureCelcius}°C[/bold]\n"
+            f"[white]Last Updated At:[/] {self.updatedAt}\n"
+            f"[white]Uptime:[/] {self.uptime} seconds\n"
+        )
+        return status_info
+
+class ShortcutParams(BaseModel):
+    card: Optional[str] = None
+    chapter: Optional[str] = None
+    track: Optional[str] = None
+
+class ShortcutContentItem(BaseModel):
+    cmd: Optional[str] = None
+    params: Optional[ShortcutParams] = None
+
+class ModeContent(BaseModel):
+    content: Optional[List[ShortcutContentItem]] = None
+
+class Shortcuts(BaseModel):
+    modes: Optional[dict[str, ModeContent]] = None
+    versionId: Optional[str] = None
+
+class DeviceConfig(BaseModel):
+    alarms: Optional[List[dict]] = None
+    ambientColour: Optional[str] = None
+    bluetoothEnabled: Optional[str] = None
+    btHeadphonesEnabled: Optional[bool] = None
+    clockFace: Optional[str] = None
+    dayDisplayBrightness: Optional[str] = None
+    dayTime: Optional[str] = None
+    dayYotoDaily: Optional[str] = None
+    dayYotoRadio: Optional[str] = None
+    displayDimBrightness: Optional[str] = None
+    displayDimTimeout: Optional[str] = None
+    headphonesVolumeLimited: Optional[bool] = None
+    hourFormat: Optional[str] = None
+    maxVolumeLimit: Optional[str] = None
+    nightAmbientColour: Optional[str] = None
+    nightDisplayBrightness: Optional[str] = None
+    nightMaxVolumeLimit: Optional[str] = None
+    nightTime: Optional[str] = None
+    nightYotoDaily: Optional[str] = None
+    nightYotoRadio: Optional[str] = None
+    repeatAll: Optional[bool] = None
+    shutdownTimeout: Optional[str] = None
+    volumeLevel: Optional[str] = None
+
+class DeviceObject(BaseModel):
+    config: Optional[DeviceConfig] = None
+    deviceFamily: Optional[str] = None
+    deviceGroup: Optional[str] = None
+    deviceId: Optional[str] = None
+    deviceType: Optional[str] = None
+    errorCode: Optional[str] = None
+    geoTimezone: Optional[str] = None
+    getPosix: Optional[str] = None
+    mac: Optional[str] = None
+    online: Optional[bool] = None
+    registrationCode: Optional[str] = None
+    releaseChannelId: Optional[str] = None
+    releaseChannelVersion: Optional[str] = None
+    shortcuts: Optional[Shortcuts] = None
+
+
+    def display_device_config(self):
+        config_info = (
+            f"[bold magenta]Device ID:[/] [bold]{self.deviceId}[/bold]\n"
+            f"[cyan]Online:[/] [bold]{self.online}[/bold]\n"
+            f"[yellow]Release Channel Version:[/] [bold]{self.releaseChannelVersion}[/bold]\n"
+            f"[green]Bluetooth Enabled:[/] [bold]{self.config.bluetoothEnabled if self.config and self.config.bluetoothEnabled else ''}[/bold]\n"
+            f"[blue]Clock Face:[/] [bold]{self.config.clockFace if self.config and self.config.clockFace else ''}[/bold]\n"
+            f"[blue]Day Display Brightness:[/] [bold]{self.config.dayDisplayBrightness if self.config and self.config.dayDisplayBrightness else ''}[/bold]\n"
+            f"[blue]Day Time:[/] [bold]{self.config.dayTime if self.config and self.config.dayTime else ''}[/bold]\n"
+            f"[blue]Night Display Brightness:[/] [bold]{self.config.nightDisplayBrightness if self.config and self.config.nightDisplayBrightness else ''}[/bold]\n"
+            f"[blue]Night Time:[/] [bold]{self.config.nightTime if self.config and self.config.nightTime else ''}[/bold]\n"
+            f"[blue]Max Volume Limit:[/] [bold]{self.config.maxVolumeLimit if self.config and self.config.maxVolumeLimit else ''}[/bold]\n"
+            f"[blue]Night Max Volume Limit:[/] [bold]{self.config.nightMaxVolumeLimit if self.config and self.config.nightMaxVolumeLimit else ''}[/bold]\n"
+            f"[blue]Volume Level:[/] [bold]{self.config.volumeLevel if self.config and self.config.volumeLevel else ''}[/bold]\n"
+        )
+        return config_info

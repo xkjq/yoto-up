@@ -1,0 +1,75 @@
+
+
+
+#main-scroll {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+#button-row {
+    border-top: solid #444;
+    background: #222;
+    min-height: 4;
+    max-height: 4;
+    padding: 0;
+}
+
+#main-horizontal {
+    height: 1fr;
+    min-height: 80vh;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+#card-content-inner {
+    height: 1fr;
+    min-height: 80vh;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+#card-content {
+    height: 1fr;
+    min-height: 80vh;
+    max-height: 80vh;
+    overflow-y: auto;
+    max-width: 50%;
+}
+
+#json_export_scroll {
+    height: 1fr;
+    overflow-y: auto;
+    border: solid #444;
+    background: #181818;
+    padding: 1;
+}
+
+#json_export {
+    width: 100%;
+    overflow-y: auto;
+}
+#json_modal_container {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+#cancel_icon_select {
+    height: 3;
+}
+#icon_option_list {
+    height: 80%;
+}
+
+.small-btn {
+    width: 10;
+}
+
+#icon_search_input {
+    max-width: 90%;
+    width: auto;
+}
+
+#icon_modal_controls {
+    height: 3;
+    width: 100%;
+}

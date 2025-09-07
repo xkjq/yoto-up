@@ -1,0 +1,16 @@
+typer
+httpx
+requests
+pydantic
+loguru
+rich
+deepdiff
+pillow
+bs4
+rapidfuzz
+nltk
+textual
+pynput
+mutagen
+mkdocs-material
+pymdown-extensions

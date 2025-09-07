@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.manifest
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+htmlcov/
+.coverage
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Token and secrets
+*.json
+
+# Misc
+*.sqlite3
+*.db
+
+# Ignore local config
+local_settings.py
+
+files/*
+
+tokens.json
+
+.yoto_icon_cache/
+.yotoicons_cache/
