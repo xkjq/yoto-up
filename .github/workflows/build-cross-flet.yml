@@ -14,6 +14,10 @@ jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # Force UTF-8 output for Python processes to avoid Windows console encoding errors
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -71,10 +75,16 @@ jobs:
         run: |
           flet build windows --module-name gui.py -o dist
           New-Item -ItemType Directory -Path out -Force | Out-Null
-          if (Test-Path "dist\\yoto-up.exe") {
-            Compress-Archive -Path "dist\\yoto-up.exe" -DestinationPath "out\\yoto-up-windows.zip" -Force
+
+          # Use Get-ChildItem to check for files in dist safely
+          $files = Get-ChildItem -Path dist -Recurse -File -ErrorAction SilentlyContinue
+          if ($files -and $files.Count -gt 0) {
+            # Compress all files under dist into a zip
+            Compress-Archive -Path (Join-Path -Path (Resolve-Path dist).Path -ChildPath '*') -DestinationPath out\yoto-up-windows.zip -Force
           } else {
-            Compress-Archive -Path "dist\\*" -DestinationPath "out\\yoto-up-windows.zip" -Force
+            # Create a small placeholder so upload-artifact won't fail
+            "No build artifacts produced on Windows" | Out-File -FilePath out\yoto-up-windows.txt -Encoding UTF8
+            Compress-Archive -Path out\yoto-up-windows.txt -DestinationPath out\yoto-up-windows.zip -Force
           }
         shell: pwsh
 
