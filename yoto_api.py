@@ -20,7 +20,7 @@ from PIL import Image
 from bs4 import BeautifulSoup
 try: # fails when debugging
     from rapidfuzz import fuzz
-except AssertionError:                                                          
+except (AssertionError, ModuleNotFoundError):
     # fallback: use a simple fuzzy matcher
     class fuzz:
         @staticmethod

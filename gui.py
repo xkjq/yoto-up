@@ -5,9 +5,6 @@ import sys
 import traceback
 import json
 import threading
-import time
-import requests
-import webbrowser
 
 import flet as ft
 from models import Card
