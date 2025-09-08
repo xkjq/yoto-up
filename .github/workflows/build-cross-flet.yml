@@ -1,4 +1,4 @@
-name: Cross-platform build (Windows / macOS / Linux)
+name: Cross-platform flet build (Windows / macOS / Linux)
 
 on:
   push:
@@ -71,12 +71,12 @@ jobs:
         run: |
           flet build windows --module-name gui.py -o dist
           New-Item -ItemType Directory -Path out -Force | Out-Null
-          if (Test-Path dist\yoto-up.exe) {
-            Compress-Archive -Path dist\yoto-up.exe -DestinationPath out\yoto-up-windows.zip -Force
+          if (Test-Path "dist\\yoto-up.exe") {
+            Compress-Archive -Path "dist\\yoto-up.exe" -DestinationPath "out\\yoto-up-windows.zip" -Force
           } else {
-            Compress-Archive -Path dist\* -DestinationPath out\yoto-up-windows.zip -Force
+            Compress-Archive -Path "dist\\*" -DestinationPath "out\\yoto-up-windows.zip" -Force
           }
-        shell: powershell
+        shell: pwsh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
