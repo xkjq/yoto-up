@@ -35,10 +35,22 @@ class IconReplaceDialog:
         max_searches_field = ft.TextField(label='Max extra searches', value='3', width=120)
         top_n_field = ft.TextField(label='Top N results', value='10', width=120)
         results_list = ft.ListView(expand=True, spacing=6, height=420)
+        # Progress indicator and status for searches
+        search_progress = ft.ProgressRing(width=24, visible=False)
+        search_status = ft.Text('', size=12)
 
         def do_search(_ev=None):
             def search_worker():
                 try:
+                    # show progress indicator and status
+                    search_progress.visible = True
+                    search_status.value = 'Searching...'
+                    try:
+                        search_btn.disabled = True
+                    except Exception:
+                        pass
+                    self.page.update()
+
                     q = (search_field.value or '').strip()
                     try:
                         mx = int(max_searches_field.value or '3')
@@ -116,16 +128,28 @@ class IconReplaceDialog:
                 except Exception as e:
                     results_list.controls.append(ft.Text(f'Search failed: {e}'))
                     self.page.update()
+                finally:
+                    # hide progress indicator and re-enable button regardless of outcome
+                    try:
+                        search_progress.visible = False
+                        search_status.value = ''
+                        search_btn.disabled = False
+                    except Exception:
+                        pass
+                    self.page.update()
             threading.Thread(target=search_worker, daemon=True).start()
+    # create a button variable so the worker thread can disable/enable it
+        search_btn = ft.TextButton('Search', on_click=do_search)
 
         def close_replace(_e=None):
-            self.page.open(self.dialog)
+            #self.page.(self.dialog)
+            self.show_card_details(None, self.card)
             self.page.update()
 
         self.dialog = ft.AlertDialog(
             title=ft.Text('Replace icon'),
             content=ft.Column([
-                ft.Row([search_field, ft.TextButton('Search', on_click=do_search)]),
+                ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
                 ft.Row([include_yoto, max_searches_field, top_n_field]),
                 results_list
             ], width=900),
