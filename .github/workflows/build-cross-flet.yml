@@ -1,9 +1,9 @@
 name: Cross-platform build (Windows / macOS / Linux)
 
 on:
-  #push:
-  #  tags:
-  #    - 'v*.*.*'  # Trigger on version tags like v1.2.3
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.2.3
   workflow_dispatch:
 
 permissions:
@@ -33,15 +33,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r yoto_app/requirements.txt
-          pip install pyinstaller
 
       # Adjust ENTRY_SCRIPT below if your GUI entrypoint is different (e.g. yoto.py)
-      - name: Build (Linux / macOS)
-        if: matrix.os != 'windows-latest'
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           # Use a deterministic name so artifacts are predictable
-          ENTRY_SCRIPT=gui.py
-          pyinstaller --noconfirm --onefile --windowed --name yoto-up $ENTRY_SCRIPT
+          flet build linux --module-name gui.py -o dist
+
           # create a tarball for the built executable
           mkdir -p out
           if [ -f dist/yoto-up ]; then
@@ -52,11 +51,25 @@ jobs:
           fi
         shell: bash
 
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Use a deterministic name so artifacts are predictable
+          flet build macos --module-name gui.py -o dist
+          # create a tarball for the built executable
+          mkdir -p out
+          if [ -f dist/yoto-up.app ]; then
+            tar -czf out/yoto-up-${{ runner.os }}.tar.gz -C dist yoto-up.app
+          else
+            # fallback: include whole dist directory
+            tar -czf out/yoto-up-${{ runner.os }}.tar.gz -C dist .
+          fi
+        shell: bash
+
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          $Env:ENTRY_SCRIPT = 'gui.py'
-          pyinstaller --noconfirm --onefile --windowed --name yoto-up $Env:ENTRY_SCRIPT
+          flet build windows --module-name gui.py -o dist
           New-Item -ItemType Directory -Path out -Force | Out-Null
           if (Test-Path dist\yoto-up.exe) {
             Compress-Archive -Path dist\yoto-up.exe -DestinationPath out\yoto-up-windows.zip -Force
