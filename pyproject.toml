@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yoto-up"
+version = "0.1.0"
+description = "Yoto Up - desktop tool for managing Yoto cards and playlists"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [ { name = "xkjq" } ]
+keywords = ["yoto","desktop","flet"]
+license = { text = "MIT" }
+
+# Runtime dependencies used by the GUI app. Adjust versions as required.
+dependencies = [
+  "flet[all]>=0.8.0",
+  "httpx>=0.24.0",
+  "loguru>=0.7.0",
+  "rich>=12.0.0",
+  "requests>=2.28.0",
+  "pydantic>=1.10",
+  "pillow>=9.0.0",
+  "beautifulsoup4>=4.9.0",
+  "rapidfuzz>=2.0.0",
+  "nltk>=3.8.0",
+  "mutagen>=1.45.1",
+  "textual>=0.2.0",
+  "pynput>=1.7.3",
+]
+
+[project.optional-dependencies]
+# additional extras for docs/build or dev
+docs = ["mkdocs-material", "pymdown-extensions"]
+
+authors = [{name = "xkjq"}]
+
