@@ -1,12 +1,13 @@
 name: Cross-platform build (Windows / macOS / Linux)
 
 on:
-  #push:
-  #  branches: [ main ]
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.2.3
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write    # allow creating/releases and attaching assets
   actions: read
 
 jobs:
@@ -69,3 +70,28 @@ jobs:
         with:
           name: yoto-up-${{ matrix.os }}
           path: out
+
+  # A single job to gather the per-platform artifacts and create a GitHub Release
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository (for context)
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: out_artifacts
+
+      - name: List downloaded artifacts (debug)
+        run: |
+          ls -la out_artifacts || true
+
+      - name: Create GitHub Release and upload artifacts
+        uses: softprops/action-gh-release@v1
+        with:
+          files: out_artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
