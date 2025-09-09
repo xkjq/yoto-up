@@ -20,3 +20,6 @@ This section gives a quick tour of the major features in Yoto-UP.
     - Create new cards or append tracks/chapters to existing cards
     - Concurrency and progress reporting
     - CLI and Flet UI workflows
+
+- [Import and export playlist](import_export.md)
+    - Easily import and export playlists/cards for sharing
