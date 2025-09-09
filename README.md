@@ -28,25 +28,59 @@ Features include content organization, device management, and easy integration w
 
    ## 🛠️ Installation
 
-   1. Clone the repository:
+   ### GUI (binary)
+
+   Pre-built binaries are published on the releases page: https://github.com/xkjq/yoto-up/releases
+
+   If there's no binary for your platform, run from source using the steps below.
+
+   ### From source (recommended for advanced users)
+
+   1. Clone the repository and change into it:
 
    ```bash
-   git clone https://github.com/your-repo/yoto-up.git
+   git clone https://github.com/xkjq/yoto-up.git
+   cd yoto-up
    ```
 
-   2. Enter the project folder and create a virtualenv:
+   2. Create and activate a virtual environment
+
+   You can use the standard Python venv workflow, or the bundled `uv` helper if you have it installed.
+
+   Standard (bash / zsh / sh):
 
    ```bash
-   cd yoto-up
    python -m venv .venv
    source .venv/bin/activate
    ```
 
-   3. Install dependencies:
+   Standard (fish):
+
+   ```fish
+   python -m venv .venv
+   source .venv/bin/activate.fish
+   ```
+
+   Using `uv` (recommended if available):
 
    ```bash
-   pip install -r requirements.txt
+   uv venv
+   uv activate
    ```
+
+   (`uv` is a tiny convenience wrapper used in this project to create and activate virtualenvs and run pip; it simply runs the equivalent venv/pip commands.)
+
+   3. Install Python dependencies:
+
+   ```bash
+   (uv) pip install -r requirements.txt
+   ```
+
+   Quick checks and notes:
+
+   - Confirm the venv Python is active: `python --version` and `which python` should point into `.venv/`.
+   - macOS / Linux: use the system `python3` if `python` is not available.
+   - Alternative workflows: `pipx` or `poetry` can be used if preferred.
 
    ## ▶️ Usage
 
@@ -68,6 +102,9 @@ Features include content organization, device management, and easy integration w
    ```bash
    python gui.py
    ```
+
+   ## Want a pip installable package?
+   So do I.
 
    ## 🤝 Contributing
 
