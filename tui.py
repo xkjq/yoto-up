@@ -1,26 +1,21 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Button, Static
+from textual.widgets import Input, Button, Static, OptionList, Label
 from textual.scroll_view import ScrollView
 from textual.containers import Horizontal, Vertical
-from textual.widgets import OptionList, Label
-from textual.widgets.option_list import Option
-from textual.containers import Vertical
 from textual.screen import ModalScreen
+from textual.widgets.option_list import Option
+from textual.logging import TextualHandler
 import asyncio
 import json
 import re
-from icons import render_icon
 from pathlib import Path
 import hashlib
-import json
 import logging
-from textual.logging import TextualHandler
+from models import Card, CardContent
+from icons import render_icon
 
 logging.basicConfig(handlers=[TextualHandler()], level=logging.INFO)
-
 logging.debug("TEST")
-
-from models import Card, CardContent
 
 
 class ChapterIconWidget(Static):
@@ -85,6 +80,58 @@ class ChapterIconWidget(Static):
         self.cache_path = self.get_cache_path()
         self.refresh_icon()
 
+class TrackIconWidget(Static):
+    def __init__(self, api, track, icons_metadata, track_idx, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.api = api
+        self.track = track
+        self.icons_metadata = icons_metadata
+        self.track_idx = track_idx
+        self.cache_path = self.get_cache_path()
+        self.markup = True
+        self.refresh_icon()
+
+    def get_cache_path(self):
+        icon_field = getattr(self.track.display, "icon16x16", None) if hasattr(self.track, "display") and self.track.display else None
+        logging.info(f"Track {self.track_idx} icon field: {icon_field}")
+        cache_path = None
+        try:
+            cache_path = self.api.get_icon_cache_path(icon_field)
+        except Exception:
+            cache_path = None
+        if not cache_path:
+            try:
+                self.api.get_user_icons()
+                cache_path = self.api.get_icon_cache_path(icon_field)
+            except Exception:
+                cache_path = None
+        return cache_path
+
+    def refresh_icon(self, new_icons_metadata=None):
+        logging.info(f"Refreshing icon for track {self.track_idx}")
+        if new_icons_metadata is not None:
+            self.icons_metadata = new_icons_metadata
+        self.cache_path = self.get_cache_path()
+        icon_markup = None
+        if self.cache_path and self.cache_path.exists():
+            try:
+                from icons import render_icon
+                icon_markup = render_icon(self.cache_path)
+            except Exception as e:
+                icon_markup = f"[red]Error rendering icon: {e}[/red]"
+        else:
+            icon_markup = "[red]Icon not found[/red]"
+        self.update(icon_markup)
+
+    def set_icon(self, media_id, icons_metadata=None):
+        logging.info(f"Setting icon for track {self.track_idx}: {media_id}")
+        if icons_metadata is not None:
+            self.icons_metadata = icons_metadata
+        if hasattr(self.track, "display") and self.track.display:
+            self.track.display.icon16x16 = f"yoto:#{media_id}"
+        self.cache_path = self.get_cache_path()
+        self.refresh_icon()
+
 class EditCardContent(Static):
     def __init__(self, api, content: CardContent, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -106,12 +153,12 @@ class EditCardContent(Static):
                 icons_metadata = None
         # Only show editable fields for chapter title and overlayLabel
         if hasattr(self.card_content, "chapters"):
-            for idx, chapter in enumerate(self.card_content.chapters):
-                chapter_id = f"chapter[{idx}]"
+            for chapter_idx, chapter in enumerate(self.card_content.chapters):
+                chapter_id = f"chapter[{chapter_idx}]"
                 safe_chapter_id = sanitize_id(chapter_id)
-                yield Static(f"Chapter {idx+1}", id=f"static_{safe_chapter_id}_header")
+                yield Static(f"Chapter {chapter_idx+1}", id=f"static_{safe_chapter_id}_header")
                 # Use ChapterIconWidget for pixel art rendering
-                yield ChapterIconWidget(self.api, chapter, icons_metadata, idx, id=f"icon_pixelart_{idx}")
+                yield ChapterIconWidget(self.api, chapter, icons_metadata, chapter_idx, id=f"icon_pixelart_{chapter_idx}")
                 # Add icon search button
                 print(f"SAFE CHAPTER ID: {safe_chapter_id}")
                 yield Button("Search Icon", id=f"search_icon_{safe_chapter_id}", classes="small-btn")
@@ -119,6 +166,15 @@ class EditCardContent(Static):
                 yield Input(value=str(getattr(chapter, "title", "")), placeholder="title", id=f"edit_{safe_chapter_id}_title")
                 # Editable overlayLabel
                 yield Input(value=str(getattr(chapter, "overlayLabel", "")), placeholder="overlayLabel", id=f"edit_{safe_chapter_id}_overlayLabel")
+                if hasattr(chapter, "tracks"):
+                    for track_idx, track in enumerate(chapter.tracks):
+                        track_id = f"track[{chapter_idx}][{track_idx}]"
+                        safe_track_id = sanitize_id(track_id)
+                        yield Static(f"  Track {track_idx+1}", id=f"static_{safe_track_id}_header")
+                        yield TrackIconWidget(self.api, track, icons_metadata, track_idx, id=f"icon_pixelart_{safe_track_id}")
+                        yield Button("Search Icon", id=f"search_icon_{safe_track_id}", classes="small-btn")
+                        yield Input(value=str(getattr(track, "title", "")), placeholder="title", id=f"edit_{safe_track_id}_title")
+                        yield Input(value=str(getattr(track, "duration", "")), placeholder="duration", id=f"edit_{safe_track_id}_duration")
 
 # Textual TUI for editing card details
 class EditCardApp(App):
