@@ -28,6 +28,15 @@ logger.remove()  # Remove default handler
 logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}")
 
 
+AUTHENTICATE_TEXT = """Not authenticated.
+
+To authenticate with your Yoto account:
+
+1. Click the "Authenticate" button.
+2. A code and URL will be displayed. Open the URL in your web browser.
+3. Enter the code and complete the authentication process.
+"""
+
 # use utils_mod.find_audio_files when needed
 
 
@@ -131,12 +140,8 @@ def main(page):
         # Switch to Auth tab
         tabs_control.selected_index = 0
         # Update instructions/status
-        try:
-            auth_instructions.controls.clear()
-            auth_instructions.controls.append(ft.Text("Not authenticated", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED))
-        except Exception:
-            pass
-        status.value = "Not authenticated"
+        auth_instructions.controls.clear()
+        auth_instructions.controls.append(ft.Text(AUTHENTICATE_TEXT, size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED))
         page.update()
     def switch_to_auth_tab():
         """Switch to the Auth tab (index 0) and update the page."""
@@ -157,7 +162,7 @@ def main(page):
     #client_id = ft.TextField(label="Client ID", value="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5", width=400, disabled=True)
     auth_btn = ft.ElevatedButton(text="Authenticate")
     status = ft.Text("")
-    auth_instructions = ft.Column([ft.Text("Not authenticated")])
+    auth_instructions = ft.Column([ft.Text(AUTHENTICATE_TEXT)])
 
     def show_snack(message: str, error: bool = False):
         print(f"[gui] show_snack: {message}")
@@ -482,37 +487,86 @@ def main(page):
     # Auth page (separate from uploads) — include embedded instructions area
     # Add reset auth buttons to allow clearing saved tokens and optionally reauthenticating
     def reset_auth_gui(e, reauth: bool = False):
-        try:
-            tokens_path = Path("tokens.json")
-            if tokens_path.exists():
-                try:
-                    tokens_path.unlink()
-                    show_snack("Removed tokens.json; authentication reset.")
-                except Exception as ex:
-                    show_snack(f"Failed to remove tokens.json: {ex}", error=True)
-            else:
-                show_snack("No tokens.json found; authentication already reset.")
-        except Exception as ex:
-            show_snack(f"Error while resetting tokens: {ex}", error=True)
+        """Show confirmation, then perform token reset while disabling the reset buttons.
 
-        # Invalidate in-memory API and update UI
-        try:
-            api_ref["api"] = None
-        except Exception:
-            pass
-        try:
-            invalidate_authentication()
-        except Exception:
-            pass
-
-        if reauth:
-            # Start authentication in background so UI remains responsive
-            def _reauth_bg():
+        Runs the actual work in a background thread so the UI remains responsive.
+        """
+        # Background worker that performs the reset and optionally reauths
+        def _do_reset():
+            try:
+                # Disable both buttons while work is in progress
                 try:
-                    start_device_auth(None, auth_instructions)
+                    reset_btn.disabled = True
+                    reset_and_reauth_btn.disabled = True
+                    page.update()
+                except Exception:
+                    pass
+
+                try:
+                    tokens_path = Path("tokens.json")
+                    if tokens_path.exists():
+                        try:
+                            tokens_path.unlink()
+                            show_snack("Removed tokens.json; authentication reset.")
+                        except Exception as ex:
+                            show_snack(f"Failed to remove tokens.json: {ex}", error=True)
+                    else:
+                        show_snack("No tokens.json found; authentication already reset.")
                 except Exception as ex:
-                    show_snack(f"Re-authentication failed: {ex}", error=True)
-            threading.Thread(target=_reauth_bg, daemon=True).start()
+                    show_snack(f"Error while resetting tokens: {ex}", error=True)
+
+                # Invalidate in-memory API and update UI
+                try:
+                    api_ref["api"] = None
+                except Exception:
+                    pass
+                try:
+                    invalidate_authentication()
+                except Exception:
+                    pass
+
+                if reauth:
+                    try:
+                        start_device_auth(None, auth_instructions)
+                    except Exception as ex:
+                        show_snack(f"Re-authentication failed: {ex}", error=True)
+            finally:
+                # Re-enable buttons when done
+                try:
+                    reset_btn.disabled = False
+                    reset_and_reauth_btn.disabled = False
+                    page.update()
+                except Exception:
+                    pass
+
+        # Confirmation dialog handlers
+        dlg = ft.AlertDialog(
+            title=ft.Text("Confirm Reset Authentication"),
+            content=ft.Text("This will remove saved authentication tokens (tokens.json) and sign out. Continue?"),
+            actions=[],
+        )
+
+        def _cancel(ev):
+            try:
+                page.close(dlg)
+            except Exception:
+                pass
+
+        def _confirm(ev):
+            try:
+                page.close(dlg)
+            except Exception:
+                pass
+            # Start background reset so the UI remains responsive
+            threading.Thread(target=_do_reset, daemon=True).start()
+
+        dlg.actions = [
+            ft.TextButton("Cancel", on_click=_cancel),
+            ft.TextButton("Confirm", on_click=_confirm),
+        ]
+
+        page.open(dlg)
+        page.update()
 
     reset_btn = ft.TextButton("Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False))
     reset_and_reauth_btn = ft.TextButton("Reset & Reauth", on_click=lambda e: reset_auth_gui(e, reauth=True))
