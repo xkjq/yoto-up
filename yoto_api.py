@@ -1239,6 +1239,14 @@ class YotoAPI:
         transcoded_audio = self.poll_for_transcoding(upload_id, loudnorm, poll_interval, max_attempts, show_progress)
         return transcoded_audio
 
+    def refresh_public_and_user_icons(self, show_in_console: bool = False, refresh_cache: bool = True):
+        """
+        Fetches and caches both public and user icons, optionally displaying them in the console.
+        """
+        self.get_public_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
+        self.get_user_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
+
+
     def get_public_icons(self, show_in_console: bool = True, refresh_cache: bool = False):
         """
         Fetches public 16x16 icons, downloads and caches them, and displays pixel art in the console.
@@ -1951,6 +1959,7 @@ class YotoAPI:
         Returns None if no cache path can be determined.
         """
         if not icon_field:
+            logger.debug("No icon_field provided")
             return None
         try:
             # Accept values like 'yoto:#<mediaId>' or just '<mediaId>'
@@ -2013,6 +2022,7 @@ class YotoAPI:
                     except Exception:
                         return p if p.exists() else None
         except Exception:
+            logger.error("Error getting icon cache path", exc_info=True)
             return None
         return None
 

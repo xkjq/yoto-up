@@ -11,11 +11,11 @@ from typing import Any, Dict
 import flet as ft
 from yoto_app.icon_replace_dialog import IconReplaceDialog
 from yoto_app.edit_card_dialog import show_edit_card_dialog
+from yoto_app.replace_icons import show_replace_icons_dialog
 from types import SimpleNamespace
 
 try:
     from pynput import keyboard
-
     _PYNPUT_AVAILABLE = True
 except ImportError:
     _PYNPUT_AVAILABLE = False
@@ -874,6 +874,10 @@ def build_playlists_panel(
 
     # show_card_details and its nested helpers
     def show_card_details(e, card):
+        def refresh_icon_cache(ev=None):
+            api: YotoAPI = api_ref.get("api")
+            api.refresh_public_and_user_icons()
+
         def fmt_sec(s):
             try:
                 s = float(s)
@@ -1410,7 +1414,7 @@ def build_playlists_panel(
                         replace_individual_icon(ev, "chapter", ch_index)
 
                     try:
-                        api = api_ref.get("api")
+                        api: YotoAPI = api_ref.get("api")
                         if api and icon_field:
                             p = api.get_icon_cache_path(icon_field)
                             if p and Path(p).exists():
@@ -1424,14 +1428,11 @@ def build_playlists_panel(
                             else:
                                 # Add a blank placeholder that is clickable
                                 img_control = ft.IconButton(
-                                    icon=ft.Icons.IMAGE,
-                                    tooltip="Fetch icon",
-                                    on_click=_on_tap_ch,
+                                    icon=ft.Icons.ERROR,
+                                    tooltip="Click to refresh icon cache",
+                                    on_click=refresh_icon_cache,
                                 )
-                                print(
-                                    "No cached icon path for chapter icon field",
-                                    icon_field,
-                                )
+                                logger.debug(f"No cached icon path for chapter icon field {icon_field}")
                         else:
                             # Add a blank placeholder that is clickable
                             img_control = ft.IconButton(
@@ -1728,281 +1729,295 @@ def build_playlists_panel(
                 Card,
                 CLIENT_ID
             )
-
         def replace_icons(ev):
-            try:
-                warn = ft.Text(
-                    """Replacing default icons may take a long time. 
-The more icons missing, the longer it takes.
 
-Continue?"""
-                )
-                include_yoto = ft.Checkbox(label="Include YotoIcons search", value=True)
-                max_searches_field = ft.TextField(
-                    label="Max extra searches (per track/chapter)", value="2", width=120
-                )
+            show_replace_icons_dialog(
+                page,
+                api_ref,
+                c,
+                fetch_playlists_sync,
+                ensure_api,
+                CLIENT_ID,
+                show_snack,
+                playlists_list,
+                make_playlist_row,
+                show_card_details,
+            )
 
-                def start_replace(_e=None):
-                    try:
-                        try:
-                            max_searches = int(max_searches_field.value or "3")
-                        except Exception:
-                            max_searches = 3
-                        include_yotoicons = bool(include_yoto.value)
+        ##def replace_icons(ev):
+        #    try:
+        #        warn = ft.Text(
+        #            """Replacing default icons may take a long time. 
+        #    The more icons missing, the longer it takes.
 
-                        # Worker containing the original start logic
-                        def _start_worker():
-                            try:
-                                # close the confirm dialog and prepare UI
-                                try:
-                                    confirm_dialog.open = False
-                                    page.update()
-                                except Exception:
-                                    pass
+        #    Continue?"""
+        #        )
+        #        include_yoto = ft.Checkbox(label="Include YotoIcons search", value=True)
+        #        max_searches_field = ft.TextField(
+        #            label="Max extra searches (per track/chapter)", value="2", width=120
+        #        )
 
-                                prog = ft.ProgressBar(width=400)
-                                prog_text = ft.Text("Preparing...")
-                                prog_col = ft.Column([prog_text, prog])
-                                cancel_event = threading.Event()
+        #        def start_replace(_e=None):
+        #            try:
+        #                try:
+        #                    max_searches = int(max_searches_field.value or "3")
+        #                except Exception:
+        #                    max_searches = 3
+        #                include_yotoicons = bool(include_yoto.value)
 
-                                def do_cancel(_e=None):
-                                    try:
-                                        cancel_event.set()
-                                        prog_text.value = "Cancelling..."
-                                        page.update()
-                                    except Exception:
-                                        pass
+        #                # Worker containing the original start logic
+        #                def _start_worker():
+        #                    try:
+        #                        # close the confirm dialog and prepare UI
+        #                        try:
+        #                            confirm_dialog.open = False
+        #                            page.update()
+        #                        except Exception:
+        #                            pass
 
-                                replace_dialog = ft.AlertDialog(
-                                    title=ft.Text("Replace Default Icons"),
-                                    content=prog_col,
-                                    actions=[ft.TextButton("Cancel", on_click=do_cancel)],
-                                )
-                                page.open(replace_dialog)
+        #                        prog = ft.ProgressBar(width=400)
+        #                        prog_text = ft.Text("Preparing...")
+        #                        prog_col = ft.Column([prog_text, prog])
+        #                        cancel_event = threading.Event()
 
-                                def work():
-                                    try:
-                                        prog_text.value = "Fetching card..."
-                                        prog.value = 0.0
-                                        page.update()
-                                        api = ensure_api(api_ref, CLIENT_ID)
-                                        card_id = (
-                                            c.get("cardId") or c.get("id") or c.get("contentId")
-                                        )
-                                        if not card_id:
-                                            raise RuntimeError("Unable to determine card id")
-                                        full = api.get_card(card_id)
-                                        prog_text.value = "Analyzing icons..."
-                                        page.update()
+        #                        def do_cancel(_e=None):
+        #                            try:
+        #                                cancel_event.set()
+        #                                prog_text.value = "Cancelling..."
+        #                                page.update()
+        #                            except Exception:
+        #                                pass
 
-                                        def icon_progress(msg, frac):
-                                            try:
-                                                if msg:
-                                                    prog_text.value = msg
-                                                if frac is not None:
-                                                    prog.value = frac
-                                                page.update()
-                                            except Exception:
-                                                pass
+        #                        replace_dialog = ft.AlertDialog(
+        #                            title=ft.Text("Replace Default Icons"),
+        #                            content=prog_col,
+        #                            actions=[ft.TextButton("Cancel", on_click=do_cancel)],
+        #                        )
+        #                        page.open(replace_dialog)
 
-                                        new_card = api.replace_card_default_icons(
-                                            full,
-                                            progress_callback=icon_progress,
-                                            cancel_event=cancel_event,
-                                            include_yotoicons=include_yotoicons,
-                                            max_searches=max_searches,
-                                        )
-                                        prog_text.value = "Saving updated card..."
-                                        page.update()
-                                        api.update_card(new_card, return_card_model=False)
-                                        prog_text.value = "Done"
-                                        prog.value = 1.0
+        #                        def work():
+        #                            try:
+        #                                prog_text.value = "Fetching card..."
+        #                                prog.value = 0.0
+        #                                page.update()
+        #                                api = ensure_api(api_ref, CLIENT_ID)
+        #                                card_id = (
+        #                                    c.get("cardId") or c.get("id") or c.get("contentId")
+        #                                )
+        #                                if not card_id:
+        #                                    raise RuntimeError("Unable to determine card id")
+        #                                full = api.get_card(card_id)
+        #                                prog_text.value = "Analyzing icons..."
+        #                                page.update()
 
-                                        # Schedule a UI-thread update to refresh the affected playlist row
-                                        def run_on_ui(fn, *a, **kw):
-                                            try:
-                                                loop = asyncio.get_event_loop()
-                                                loop.call_soon_threadsafe(lambda: fn(*a, **kw))
-                                            except Exception:
-                                                try:
-                                                    fn(*a, **kw)
-                                                except Exception:
-                                                    pass
+        #                                def icon_progress(msg, frac):
+        #                                    try:
+        #                                        if msg:
+        #                                            prog_text.value = msg
+        #                                        if frac is not None:
+        #                                            prog.value = frac
+        #                                        page.update()
+        #                                    except Exception:
+        #                                        pass
 
-                                        def get_card_id(card_obj):
-                                            try:
-                                                if isinstance(card_obj, dict):
-                                                    return (
-                                                        card_obj.get("id")
-                                                        or card_obj.get("contentId")
-                                                        or card_obj.get("cardId")
-                                                    )
-                                                return (
-                                                    getattr(card_obj, "id", None)
-                                                    or getattr(card_obj, "contentId", None)
-                                                    or getattr(card_obj, "cardId", None)
-                                                )
-                                            except Exception:
-                                                return None
+        #                                new_card = api.replace_card_default_icons(
+        #                                    full,
+        #                                    progress_callback=icon_progress,
+        #                                    cancel_event=cancel_event,
+        #                                    include_yotoicons=include_yotoicons,
+        #                                    max_searches=max_searches,
+        #                                )
+        #                                prog_text.value = "Saving updated card..."
+        #                                page.update()
+        #                                api.update_card(new_card, return_card_model=False)
+        #                                prog_text.value = "Done"
+        #                                prog.value = 1.0
 
-                                        def refresh_ui(card_model):
-                                            try:
-                                                updated_id = get_card_id(card_model)
-                                            except Exception:
-                                                updated_id = None
-                                            if not updated_id:
-                                                try:
-                                                    page.update()
-                                                except Exception:
-                                                    pass
-                                                return
-                                            try:
-                                                # Try to find the playlist row with a checkbox tagged with _is_playlist_checkbox and matching _cid
-                                                for i, ctrl in enumerate(
-                                                    list(playlists_list.controls)
-                                                ):
-                                                    cb = None
-                                                    # controls may be a Row with controls attribute
-                                                    children = (
-                                                        getattr(ctrl, "controls", None)
-                                                        or getattr(
-                                                            getattr(ctrl, "content", None),
-                                                            "controls",
-                                                            None,
-                                                        )
-                                                        or []
-                                                    )
-                                                    for ch in children or []:
-                                                        if getattr(
-                                                            ch, "_is_playlist_checkbox", False
-                                                        ):
-                                                            cb = ch
-                                                            break
-                                                    if not cb:
-                                                        continue
-                                                    if getattr(cb, "_cid", None) == updated_id:
-                                                        try:
-                                                            playlists_list.controls[i] = (
-                                                                make_playlist_row(
-                                                                    card_model, idx=i
-                                                                )
-                                                            )
-                                                            page.update()
-                                                            try:
-                                                                show_snack(
-                                                                    "Playlist icons updated"
-                                                                )
-                                                            except Exception:
-                                                                pass
-                                                        except Exception:
-                                                            pass
-                                                        return
-                                                # if not found, refresh full list
-                                                threading.Thread(
-                                                    target=lambda: fetch_playlists_sync(None),
-                                                    daemon=True,
-                                                ).start()
-                                            except Exception:
-                                                pass
+        #                                # Schedule a UI-thread update to refresh the affected playlist row
+        #                                def run_on_ui(fn, *a, **kw):
+        #                                    try:
+        #                                        loop = asyncio.get_event_loop()
+        #                                        loop.call_soon_threadsafe(lambda: fn(*a, **kw))
+        #                                    except Exception:
+        #                                        try:
+        #                                            fn(*a, **kw)
+        #                                        except Exception:
+        #                                            pass
 
-                                        # run the UI refresh on the main thread
-                                        run_on_ui(refresh_ui, new_card)
-                                    except Exception as ex:
-                                        try:
-                                            show_snack(
-                                                f"Replace icons failed: {ex}", error=True
-                                            )
-                                        except Exception:
-                                            pass
-                                        print("replace_icons error:", ex)
-                                    # Schedule show_card_details to run in the main thread after 5 seconds
-                                    time.sleep(1)
-                                    show_card_details(None, new_card)
+        #                                def get_card_id(card_obj):
+        #                                    try:
+        #                                        if isinstance(card_obj, dict):
+        #                                            return (
+        #                                                card_obj.get("id")
+        #                                                or card_obj.get("contentId")
+        #                                                or card_obj.get("cardId")
+        #                                            )
+        #                                        return (
+        #                                            getattr(card_obj, "id", None)
+        #                                            or getattr(card_obj, "contentId", None)
+        #                                            or getattr(card_obj, "cardId", None)
+        #                                        )
+        #                                    except Exception:
+        #                                        return None
 
-                                threading.Thread(target=work, daemon=True).start()
-                            except Exception as ee:
-                                try:
-                                    show_snack(f"Failed to start replace: {ee}", error=True)
-                                except Exception:
-                                    pass
+        #                                def refresh_ui(card_model):
+        #                                    try:
+        #                                        updated_id = get_card_id(card_model)
+        #                                    except Exception:
+        #                                        updated_id = None
+        #                                    if not updated_id:
+        #                                        try:
+        #                                            page.update()
+        #                                        except Exception:
+        #                                            pass
+        #                                        return
+        #                                    try:
+        #                                        # Try to find the playlist row with a checkbox tagged with _is_playlist_checkbox and matching _cid
+        #                                        for i, ctrl in enumerate(
+        #                                            list(playlists_list.controls)
+        #                                        ):
+        #                                            cb = None
+        #                                            # controls may be a Row with controls attribute
+        #                                            children = (
+        #                                                getattr(ctrl, "controls", None)
+        #                                                or getattr(
+        #                                                    getattr(ctrl, "content", None),
+        #                                                    "controls",
+        #                                                    None,
+        #                                                )
+        #                                                or []
+        #                                            )
+        #                                            for ch in children or []:
+        #                                                if getattr(
+        #                                                    ch, "_is_playlist_checkbox", False
+        #                                                ):
+        #                                                    cb = ch
+        #                                                    break
+        #                                            if not cb:
+        #                                                continue
+        #                                            if getattr(cb, "_cid", None) == updated_id:
+        #                                                try:
+        #                                                    playlists_list.controls[i] = (
+        #                                                        make_playlist_row(
+        #                                                            card_model, idx=i
+        #                                                        )
+        #                                                    )
+        #                                                    page.update()
+        #                                                    try:
+        #                                                        show_snack(
+        #                                                            "Playlist icons updated"
+        #                                                        )
+        #                                                    except Exception:
+        #                                                        pass
+        #                                                except Exception:
+        #                                                    pass
+        #                                                return
+        #                                        # if not found, refresh full list
+        #                                        threading.Thread(
+        #                                            target=lambda: fetch_playlists_sync(None),
+        #                                            daemon=True,
+        #                                        ).start()
+        #                                    except Exception:
+        #                                        pass
 
-                        # If user selected a value larger than 2, show a confirmation before starting
-                        if max_searches > 2:
-                            try:
-                                warn_txt = ft.Text(
-                                    "You have chosen a max extra searches value > 2. This may significantly increase runtime and API usage. Continue?"
-                                )
-                                secondary = ft.AlertDialog(
-                                    title=ft.Text("Confirm large search count"),
-                                    content=warn_txt,
-                                    actions=[
-                                        ft.TextButton(
-                                            "Start",
-                                            on_click=lambda e: (
-                                                (setattr(secondary, "open", False) if hasattr(secondary, "open") else None),
-                                                page.update(),
-                                                threading.Thread(target=_start_worker, daemon=True).start(),
-                                            ),
-                                        ),
-                                        ft.TextButton("Cancel", on_click=lambda e: (setattr(secondary, "open", False), page.update())),
-                                    ],
-                                )
-                                page.open(secondary)
-                            except Exception:
-                                # If we can't show a dialog, just start
-                                threading.Thread(target=_start_worker, daemon=True).start()
-                        else:
-                            threading.Thread(target=_start_worker, daemon=True).start()
-                    except Exception as ee:
-                        try:
-                            show_snack(f"Failed to start replace: {ee}", error=True)
-                        except Exception:
-                            pass
+        #                                # run the UI refresh on the main thread
+        #                                run_on_ui(refresh_ui, new_card)
+        #                            except Exception as ex:
+        #                                try:
+        #                                    show_snack(
+        #                                        f"Replace icons failed: {ex}", error=True
+        #                                    )
+        #                                except Exception:
+        #                                    pass
+        #                                print("replace_icons error:", ex)
+        #                            # Schedule show_card_details to run in the main thread after 5 seconds
+        #                            time.sleep(1)
+        #                            show_card_details(None, new_card)
 
-                def cancel_confirm(_e=None):
-                    try:
-                        confirm_dialog.open = False
-                    except Exception:
-                        pass
-                    page.update()
+        #                        threading.Thread(target=work, daemon=True).start()
+        #                    except Exception as ee:
+        #                        try:
+        #                            show_snack(f"Failed to start replace: {ee}", error=True)
+        #                        except Exception:
+        #                            pass
 
-                confirm_dialog = ft.AlertDialog(
-                    title=ft.Text("Confirm replace default icons"),
-                    content=ft.Column(
-                        [
-                            warn,
-                            include_yoto,
-                            ft.Row(
-                                [
-                                    max_searches_field,
-                                    ft.Text(" "),
-                                    ft.Text(
-                                        "(larger values = more searches, longer runtime)"
-                                    ),
-                                ]
-                            ),
-                        ]
-                    ),
-                    actions=[
-                        ft.TextButton("Start", on_click=start_replace),
-                        ft.TextButton("Cancel", on_click=cancel_confirm),
-                    ],
-                )
+        #                # If user selected a value larger than 2, show a confirmation before starting
+        #                if max_searches > 2:
+        #                    try:
+        #                        warn_txt = ft.Text(
+        #                            "You have chosen a max extra searches value > 2. This may significantly increase runtime and API usage. Continue?"
+        #                        )
+        #                        secondary = ft.AlertDialog(
+        #                            title=ft.Text("Confirm large search count"),
+        #                            content=warn_txt,
+        #                            actions=[
+        #                                ft.TextButton(
+        #                                    "Start",
+        #                                    on_click=lambda e: (
+        #                                        (setattr(secondary, "open", False) if hasattr(secondary, "open") else None),
+        #                                        page.update(),
+        #                                        threading.Thread(target=_start_worker, daemon=True).start(),
+        #                                    ),
+        #                                ),
+        #                                ft.TextButton("Cancel", on_click=lambda e: (setattr(secondary, "open", False), page.update())),
+        #                            ],
+        #                        )
+        #                        page.open(secondary)
+        #                    except Exception:
+        #                        # If we can't show a dialog, just start
+        #                        threading.Thread(target=_start_worker, daemon=True).start()
+        #                else:
+        #                    threading.Thread(target=_start_worker, daemon=True).start()
+        #            except Exception as ee:
+        #                try:
+        #                    show_snack(f"Failed to start replace: {ee}", error=True)
+        #                except Exception:
+        #                    pass
 
-                try:
-                    page.open(confirm_dialog)
-                except Exception:
-                    try:
-                        page.dialog = confirm_dialog
-                        page.update()
-                    except Exception:
-                        print("Unable to show confirmation dialog")
-            except Exception as e:
-                try:
-                    show_snack(f"Replace icons failed to start: {e}", error=True)
-                except Exception:
-                    pass
-                print("replace_icons start error:", e)
+        #        def cancel_confirm(_e=None):
+        #            try:
+        #                confirm_dialog.open = False
+        #            except Exception:
+        #                pass
+        #            page.update()
+
+        #        confirm_dialog = ft.AlertDialog(
+        #            title=ft.Text("Confirm replace default icons"),
+        #            content=ft.Column(
+        #                [
+        #                    warn,
+        #                    include_yoto,
+        #                    ft.Row(
+        #                        [
+        #                            max_searches_field,
+        #                            ft.Text(" "),
+        #                            ft.Text(
+        #                                "(larger values = more searches, longer runtime)"
+        #                            ),
+        #                        ]
+        #                    ),
+        #                ]
+        #            ),
+        #            actions=[
+        #                ft.TextButton("Start", on_click=start_replace),
+        #                ft.TextButton("Cancel", on_click=cancel_confirm),
+        #            ],
+        #        )
+
+        #        try:
+        #            page.open(confirm_dialog)
+        #        except Exception:
+        #            try:
+        #                page.dialog = confirm_dialog
+        #                page.update()
+        #            except Exception:
+        #                print("Unable to show confirmation dialog")
+        #    except Exception as e:
+        #        try:
+        #            show_snack(f"Replace icons failed to start: {e}", error=True)
+        #        except Exception:
+        #            pass
+        #        print("replace_icons start error:", e)
 
         # Size the details dialog to take advantage of the app window where possible.
         try:
