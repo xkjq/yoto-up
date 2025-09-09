@@ -419,23 +419,7 @@ def reset_auth(
 ):
     """Reset stored authentication tokens (delete local token file) and optionally start authentication."""
     API = get_api()
-    token_path = Path(API.TOKEN_FILE)
-    if token_path.exists():
-        try:
-            token_path.unlink()
-            typer.echo(f"Removed token file: {token_path}")
-        except Exception as e:
-            typer.echo(f"Failed to remove token file: {e}")
-            raise typer.Exit(code=1)
-    else:
-        typer.echo("No token file found; tokens already reset.")
-
-    # Clear in-memory tokens in the API instance
-    try:
-        API.access_token = None
-        API.refresh_token = None
-    except Exception:
-        pass
+    API.reset_auth()
 
     if reauth:
         typer.echo("Starting authentication...")

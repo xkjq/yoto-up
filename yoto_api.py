@@ -2231,3 +2231,20 @@ class YotoAPI:
             logger.error(f"Failed to update device config: {response.status_code} {response.text}")
             response.raise_for_status()
         return response.json()
+
+    def reset_auth(self):
+        """
+        Resets the authentication state by clearing stored tokens and cached data.
+        """
+        self.access_token = None
+        self.refresh_token = None
+        self.token_expiry = None
+        # Remove token cache file
+        if self.TOKEN_CACHE_PATH.exists():
+            try:
+                self.TOKEN_CACHE_PATH.unlink()
+            except Exception:
+                pass
+        # Optionally clear other caches if needed
+        # For now, we just clear tokens
+        logger.info("Authentication state has been reset.")
