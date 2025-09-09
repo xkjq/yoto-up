@@ -412,5 +412,41 @@ def get_device_config(device_id: str):
         config.display_device_config()
     ))
 
+
+@app.command(name="reset-auth")
+def reset_auth(
+    reauth: bool = typer.Option(False, "--reauth", "-r", help="Start authentication immediately after reset")
+):
+    """Reset stored authentication tokens (delete local token file) and optionally start authentication."""
+    API = get_api()
+    token_path = Path(API.TOKEN_FILE)
+    if token_path.exists():
+        try:
+            token_path.unlink()
+            typer.echo(f"Removed token file: {token_path}")
+        except Exception as e:
+            typer.echo(f"Failed to remove token file: {e}")
+            raise typer.Exit(code=1)
+    else:
+        typer.echo("No token file found; tokens already reset.")
+
+    # Clear in-memory tokens in the API instance
+    try:
+        API.access_token = None
+        API.refresh_token = None
+    except Exception:
+        pass
+
+    if reauth:
+        typer.echo("Starting authentication...")
+        try:
+            API.authenticate()
+            typer.echo("Authentication complete.")
+        except Exception as e:
+            typer.echo(f"Authentication failed: {e}")
+            raise typer.Exit(code=1)
+    else:
+        typer.echo("Authentication reset. Run any command to trigger authentication or run 'yoto.py reset-auth --reauth' to authenticate now.")
+
 if __name__ == "__main__":
     app()

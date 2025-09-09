@@ -480,8 +480,45 @@ def main(page):
     auth_btn.on_click = _auth_click
 
     # Auth page (separate from uploads) — include embedded instructions area
+    # Add reset auth buttons to allow clearing saved tokens and optionally reauthenticating
+    def reset_auth_gui(e, reauth: bool = False):
+        try:
+            tokens_path = Path("tokens.json")
+            if tokens_path.exists():
+                try:
+                    tokens_path.unlink()
+                    show_snack("Removed tokens.json; authentication reset.")
+                except Exception as ex:
+                    show_snack(f"Failed to remove tokens.json: {ex}", error=True)
+            else:
+                show_snack("No tokens.json found; authentication already reset.")
+        except Exception as ex:
+            show_snack(f"Error while resetting tokens: {ex}", error=True)
+
+        # Invalidate in-memory API and update UI
+        try:
+            api_ref["api"] = None
+        except Exception:
+            pass
+        try:
+            invalidate_authentication()
+        except Exception:
+            pass
+
+        if reauth:
+            # Start authentication in background so UI remains responsive
+            def _reauth_bg():
+                try:
+                    start_device_auth(None, auth_instructions)
+                except Exception as ex:
+                    show_snack(f"Re-authentication failed: {ex}", error=True)
+            threading.Thread(target=_reauth_bg, daemon=True).start()
+
+    reset_btn = ft.TextButton("Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False))
+    reset_and_reauth_btn = ft.TextButton("Reset & Reauth", on_click=lambda e: reset_auth_gui(e, reauth=True))
+
     auth_column = ft.Column([
-        ft.Row([auth_btn]),
+        ft.Row([auth_btn, reset_btn, reset_and_reauth_btn]),
         ft.Divider(),
         ft.Text("Instructions:"),
         auth_instructions,
