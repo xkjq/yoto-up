@@ -1,5 +1,8 @@
 # Yoto-UP
 
+<img src="art.jpeg" alt="Artwork preview" style="max-width:100%;height:auto;">
+
+
 A multipurpose set of command-line, terminal UI, and graphical tools for managing your Yoto content.  
 
 Features include content organization, device management, and easy integration with Yoto services.
