@@ -46,6 +46,77 @@ from rich.progress import track as RichTrack
 
 from datetime import datetime, timezone
 
+# Helper: recursively detect unexpected (extra) fields in input data against a Pydantic model
+from typing import Any, List, Type, get_origin, get_args
+from pydantic import BaseModel
+
+def find_extra_fields(model: Type[BaseModel], data: Any, path: str = '', warn_extra=True) -> List[str]:
+    """
+    Recursively find keys in `data` that are not declared on the provided Pydantic `model`.
+
+    - model: a Pydantic BaseModel class (not an instance)
+    - data: the input data (typically a dict parsed from JSON)
+    - path: used internally to build dotted paths for nested keys
+
+    Returns a list of dotted paths to unexpected keys, e.g. ['chapters[0].foo', 'meta.extra']
+    """
+    extras: List[str] = []
+    if not isinstance(data, dict):
+        return extras
+    # model must be a Pydantic model class
+    try:
+        model_fields = set(model.model_fields.keys())
+    except Exception:
+        return extras
+
+    for key, val in data.items():
+        full_path = f"{path}.{key}" if path else key
+        if key not in model_fields:
+            extras.append(full_path)
+            # still continue into nested dicts to report deeper extras if useful
+            if isinstance(val, dict):
+                # nothing to compare against here, stop deeper recursion
+                continue
+            else:
+                continue
+
+        # field exists on model; attempt to inspect its declared type for nested checks
+        field_info = model.model_fields.get(key)
+        if not field_info:
+            continue
+        field_type = getattr(field_info, 'annotation', None) or getattr(field_info, 'outer_type_', None)
+        origin = get_origin(field_type)
+        args = get_args(field_type)
+
+        # If value is a dict and the model field is a (subclass of) BaseModel, recurse
+        if isinstance(val, dict):
+            candidate = None
+            if origin in (list, tuple) and args:
+                candidate = args[0]
+            else:
+                candidate = field_type
+            if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+                extras.extend(find_extra_fields(candidate, val, full_path))
+
+        # If value is a list and the model field is a sequence of models, recurse into elements
+        if isinstance(val, list) and origin in (list, tuple) and args:
+            inner = args[0]
+            if isinstance(inner, type) and issubclass(inner, BaseModel):
+                for i, item in enumerate(val):
+                    if isinstance(item, dict):
+                        extras.extend(find_extra_fields(inner, item, f"{full_path}[{i}]") )
+
+    if warn_extra and extras:
+        logger.warning(f"Found unexpected fields in data for model {model.__name__}: {extras}")
+    elif warn_extra and not extras:
+        logger.debug(f"No unexpected fields found in data for model {model.__name__}")
+
+    return extras
+
+def has_extra_fields(model: Type[BaseModel], data: Any) -> bool:
+    """Convenience wrapper returning True if any unexpected fields are present."""
+    return bool(find_extra_fields(model, data))
+
 class YotoAPI:
 
     SERVER_URL = "https://api.yotoplay.com"
@@ -332,6 +403,7 @@ class YotoAPI:
         response.raise_for_status()
         self.response_history.append(response)
         data = response.json()["card"]
+        find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
     def create_or_update_content(self, card, return_card=False, add_update_at=True):
