@@ -156,7 +156,27 @@ class Card(BaseModel):
             for idx, chapter in enumerate(self.content.chapters, 1):
                 chapter_title = trunc(getattr(chapter, 'title', ''))
                 # Chapter header
-                chapters_section += f"[bold]Chapter {idx}:[/bold] {chapter_title}\n"
+                # Attempt to render a compact inline icon for the chapter (single-line)
+                chapter_icon_inline = ""
+                if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                    if icon_field:
+                        try:
+                            method = getattr(api, 'get_icon_cache_path', None)
+                            cache_path = method(icon_field) if callable(method) else None
+                            if cache_path and cache_path.exists():
+                                if render_method == 'braille':
+                                    # Render full braille icon (all lines)
+                                    ci = render_icon(cache_path, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
+                                else:
+                                    ci = render_icon(cache_path, size=2, small=True, method='blocks')
+                                # Use the full icon (multi-line), indented for alignment
+                                if ci:
+                                    chapter_icon_inline = "\n" + "\n".join("    " + line for line in ci.splitlines())
+                        except Exception:
+                            chapter_icon_inline = ""
+
+                chapters_section += f"[bold]Chapter {idx}:[/bold] {chapter_title} {chapter_icon_inline}\n"
                 chapters_section += f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
                 # Optionally render chapter icon
                 if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
@@ -177,9 +197,8 @@ class Card(BaseModel):
                 if hasattr(chapter, 'tracks') and chapter.tracks:
                     for t_idx, track in enumerate(chapter.tracks, 1):
                         track_title = trunc(getattr(track, 'title', str(track)))
-                        chapters_section += f"  [cyan]Track {t_idx}:[/] {track_title}\n"
-                        chapters_section += f"    [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
-                        # Optionally render track icon directly under the track
+                        # prepare inline track icon
+                        track_icon_inline = ""
                         if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
                             t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
                             if t_icon_field:
@@ -187,14 +206,21 @@ class Card(BaseModel):
                                     t_method = getattr(api, 'get_icon_cache_path', None)
                                     t_cache = t_method(t_icon_field) if callable(t_method) else None
                                     if t_cache and t_cache.exists():
-                                        t_art = render_icon(t_cache, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
-                                        # indent each line of the art to align under the track
-                                        indented = '\n'.join('      ' + line for line in t_art.splitlines())
-                                        chapters_section += indented + "\n"
+                                            if render_method == 'braille':
+                                                # Render track braille icons at 8x4
+                                                ti = render_icon(t_cache, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
+                                            else:
+                                                ti = render_icon(t_cache, method='blocks')
+                                            track_icon_inline = ti if ti else ""
                                     else:
-                                        chapters_section += f"    [red]Track {t_idx} Icon: not available[/red]\n"
+                                        track_icon_inline = "[red]Icon not available[/red]"
                                 except Exception:
-                                    chapters_section += f"    [red]Track {t_idx} Icon: error resolving[/red]\n"
+                                    track_icon_inline = "[red]Icon error[/red]"
+
+                        chapters_section += f"  [cyan]Track {t_idx}:[/] {track_title}\n"
+                        if track_icon_inline:
+                            chapters_section += f"{track_icon_inline}\n"
+                        chapters_section += f"    [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
         panel_text += chapters_section
         return panel_text
 
