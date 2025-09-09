@@ -305,13 +305,24 @@ class EditCardApp(App):
                     yield Vertical(
                         Label("Select an icon for this chapter:", id="icon_select_label"),
                         Horizontal(
-                            Input(value=self.query_string, placeholder="Search icons...", id="icon_search_input"),
+                            Input(
+                                value=self.query_string,
+                                placeholder="Search icons...",
+                                id="icon_search_input"
+                            ),
                             Button("Search", id="search_icon_query", classes="small-btn"),
                             Button("Cancel", id="cancel_icon_select", classes="small-btn"),
                             id="icon_modal_controls"
                         ),
                         OptionList(*opts, id="icon_option_list"),
                     )
+
+                async def on_input_submitted(self, event):
+                    # If the submitted input is the search box, trigger the search
+                    if event.input.id == "icon_search_input":
+                        new_query = event.value.strip()
+                        if new_query:
+                            self.dismiss({"search_query": new_query})
                 async def on_button_pressed(self, event):
                     if event.button.id == "cancel_icon_select":
                         self.dismiss(None)
