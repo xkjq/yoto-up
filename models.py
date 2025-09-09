@@ -1,3 +1,4 @@
+from asyncio.log import logger
 from typing import Optional, List, Literal
 from pydantic import BaseModel
 from icons import render_icon
@@ -169,15 +170,27 @@ class Card(BaseModel):
                                     # Render full braille icon (all lines)
                                     ci = render_icon(cache_path, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
                                 else:
-                                    ci = render_icon(cache_path, size=2, small=True, method='blocks')
+                                    ci = render_icon(cache_path, method='blocks')
                                 # Use the full icon (multi-line), indented for alignment
-                                if ci:
-                                    chapter_icon_inline = "\n" + "\n".join("    " + line for line in ci.splitlines())
+                                chapter_icon_inline = "\n".join(line for line in ci.splitlines())
                         except Exception:
                             chapter_icon_inline = ""
 
-                chapters_section += f"[bold]Chapter {idx}:[/bold] {chapter_title} {chapter_icon_inline}\n"
-                chapters_section += f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
+                chapter_icon_lines = chapter_icon_inline.splitlines() if chapter_icon_inline else []
+                chapter_details = [
+                    f"[bold]Chapter {idx}:[/bold] {chapter_title}",
+                    f"[blue]Duration:[/] {getattr(chapter, 'duration', '')}",
+                    f"[magenta]Key:[/] {getattr(chapter, 'key', '')}",
+                    f"[yellow]Overlay Label:[/] {getattr(chapter, 'overlayLabel', '')}",
+                ]
+                # Pad chapter_details if needed so its length >= chapter_icon_lines
+                if len(chapter_details) < len(chapter_icon_lines):
+                    chapter_details += [""] * (len(chapter_icon_lines) - len(chapter_details))
+
+                for line_idx, chapter_detail in enumerate(chapter_details):
+                    logger.debug(f"Chapter line {line_idx}: '{chapter_detail}' with icon line '{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}'")
+                    chapters_section += f"{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}  {chapter_detail}\n"
+                chapters_section += "\n"
                 ## Optionally render chapter icon
                 #if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
                 #    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
@@ -224,6 +237,11 @@ class Card(BaseModel):
                             f"[yellow]Type:[/] {getattr(track, 'type', '')}"
                         ]
                         icon_lines = track_icon_inline.splitlines() if track_icon_inline else []
+
+                        # Pad track_details if needed so its length >= icon_lines
+                        if len(track_details) < len(icon_lines):
+                            track_details += [""] * (len(icon_lines) - len(track_details))
+
                         for line_idx, track_detail in enumerate(track_details):
                             chapters_section += f"    {icon_lines[line_idx] if line_idx < len(icon_lines) else ''}  {track_detail}\n"
                         chapters_section += "\n"
