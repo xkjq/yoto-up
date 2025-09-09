@@ -88,7 +88,7 @@ class ChapterIconWidget(Static):
 class EditCardContent(Static):
     def __init__(self, api, content: CardContent, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.content = content
+        self.card_content = content
         self.api = api
 
     def compose(self):
@@ -105,8 +105,8 @@ class EditCardContent(Static):
             except Exception:
                 icons_metadata = None
         # Only show editable fields for chapter title and overlayLabel
-        if hasattr(self.content, "chapters"):
-            for idx, chapter in enumerate(self.content.chapters):
+        if hasattr(self.card_content, "chapters"):
+            for idx, chapter in enumerate(self.card_content.chapters):
                 chapter_id = f"chapter[{idx}]"
                 safe_chapter_id = sanitize_id(chapter_id)
                 yield Static(f"Chapter {idx+1}", id=f"static_{safe_chapter_id}_header")
