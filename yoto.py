@@ -67,6 +67,11 @@ def list_cards(
     truncate: Optional[int] = typer.Option(50, help="Truncate fields to this many characters")
 ):
     cards = get_cards(name, ignore_case, regex)
+
+    if not cards:
+        rprint("[bold red]No cards found.[/bold red]")
+        return
+
     for card in cards:
         rprint(Panel.fit(card.display_card(truncate_fields_limit=truncate), title=f"[bold green]Card[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
 
