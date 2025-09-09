@@ -63,35 +63,12 @@ def get_cards(name, ignore_case, regex):
 def list_cards(
     name: str = typer.Option(None, help="Name of the card to filter (optional)"),
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
-    regex: bool = typer.Option(False, help="Use regex for name filtering")
+    regex: bool = typer.Option(False, help="Use regex for name filtering"),
+    truncate: Optional[int] = typer.Option(50, help="Truncate fields to this many characters")
 ):
     cards = get_cards(name, ignore_case, regex)
     for card in cards:
-        status = card.metadata.status.name if card.metadata and card.metadata.status else ""
-        cover = card.metadata.cover.imageL if card.metadata and card.metadata.cover and card.metadata.cover.imageL else ""
-        duration = card.metadata.media.duration if card.metadata and card.metadata.media and card.metadata.media.duration is not None else ""
-        file_size = card.metadata.media.fileSize if card.metadata and card.metadata.media and card.metadata.media.fileSize is not None else ""
-        preview_audio = card.metadata.previewAudio if card.metadata and hasattr(card.metadata, "previewAudio") else ""
-        playback_type = card.content.playbackType if card.content and card.content.playbackType else ""
-        hidden = card.hidden if hasattr(card, "hidden") else False
-        deleted = card.deleted if hasattr(card, "deleted") else False
-        created_at = card.createdAt if hasattr(card, "createdAt") else ""
-        client_id = card.createdByClientId if hasattr(card, "createdByClientId") else ""
-        panel_text = (
-            f"[bold magenta]{card.title}[/bold magenta]\n"
-            f"[cyan]ID:[/] [bold]{card.cardId}[/bold]\n"
-            f"[yellow]Status:[/] [bold]{status}[/bold]\n"
-            f"[green]Cover:[/] {cover}\n"
-            f"[blue]Duration:[/] {duration}\n"
-            f"[blue]File Size:[/] {file_size}\n"
-            f"[blue]Preview Audio:[/] {preview_audio}\n"
-            f"[magenta]Playback Type:[/] {playback_type}\n"
-            f"[red]Hidden:[/] {hidden}\n"
-            f"[red]Deleted:[/] {deleted}\n"
-            f"[white]Created At:[/] {created_at}\n"
-            f"[white]Client ID:[/] {client_id}"
-        )
-        rprint(Panel.fit(panel_text, title=f"[bold green]Card[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+        rprint(Panel.fit(card.display_card(truncate_fields_limit=truncate), title=f"[bold green]Card[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
 
 @app.command()
 def delete_card(id: str):

@@ -125,20 +125,27 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
-    def display_card(self):
+    def display_card(self, truncate_fields_limit: int | None = 50):
+        def trunc(val):
+            if truncate_fields_limit is None or truncate_fields_limit <= 0:
+                return val
+            if isinstance(val, str) and len(val) > truncate_fields_limit:
+                return val[:truncate_fields_limit-1] + '…'
+            return val
+
         panel_text = (
-            f"[bold magenta]{self.title}[/bold magenta]\n"
-            f"[cyan]ID:[/] [bold]{self.cardId}[/bold]\n"
-            f"[yellow]Status:[/] [bold]{self.metadata.status.name if self.metadata and self.metadata.status else ''}[/bold]\n"
-            f"[green]Cover:[/] {self.metadata.cover.imageL if self.metadata and self.metadata.cover and self.metadata.cover.imageL else ''}\n"
+            f"[bold magenta]{trunc(self.title)}[/bold magenta]\n"
+            f"[cyan]ID:[/] [bold]{trunc(self.cardId) if self.cardId else ''}[/bold]\n"
+            f"[yellow]Status:[/] [bold]{trunc(self.metadata.status.name) if self.metadata and self.metadata.status else ''}[/bold]\n"
+            f"[green]Cover:[/] {trunc(self.metadata.cover.imageL) if self.metadata and self.metadata.cover and self.metadata.cover.imageL else ''}\n"
             f"[blue]Duration:[/] {self.metadata.media.duration if self.metadata and self.metadata.media and self.metadata.media.duration is not None else ''}\n"
             f"[blue]File Size:[/] {self.metadata.media.fileSize if self.metadata and self.metadata.media and self.metadata.media.fileSize is not None else ''}\n"
-            f"[blue]Preview Audio:[/] {self.metadata.previewAudio if self.metadata and hasattr(self.metadata, 'previewAudio') else ''}\n"
-            f"[magenta]Playback Type:[/] {self.content.playbackType if self.content and self.content.playbackType else ''}\n"
+            f"[blue]Preview Audio:[/] {trunc(self.metadata.previewAudio) if self.metadata and hasattr(self.metadata, 'previewAudio') else ''}\n"
+            f"[magenta]Playback Type:[/] {trunc(self.content.playbackType) if self.content and self.content.playbackType else ''}\n"
             f"[red]Hidden:[/] {self.hidden if hasattr(self, 'hidden') else False}\n"
             f"[red]Deleted:[/] {self.deleted if hasattr(self, 'deleted') else False}\n"
-            f"[white]Created At:[/] {self.createdAt if hasattr(self, 'createdAt') else ''}\n"
-            f"[white]Client ID:[/] {self.createdByClientId if hasattr(self, 'createdByClientId') else ''}\n"
+            f"[white]Created At:[/] {trunc(self.createdAt) if hasattr(self, 'createdAt') and self.createdAt else ''}\n"
+            f"[white]Client ID:[/] {trunc(self.createdByClientId) if hasattr(self, 'createdByClientId') and self.createdByClientId else ''}\n"
         )
 
         # Add chapter and track details
@@ -146,9 +153,20 @@ class Card(BaseModel):
         if self.content and hasattr(self.content, "chapters") and self.content.chapters:
             chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
             for idx, chapter in enumerate(self.content.chapters, 1):
+                chapter_title = trunc(getattr(chapter, 'title', ''))
+                # Track field may be a list or object; handle common cases
+                track_val = getattr(chapter, 'track', '')
+                if isinstance(track_val, str):
+                    track_str = trunc(track_val)
+                elif hasattr(track_val, 'title'):
+                    track_str = trunc(getattr(track_val, 'title', ''))
+                elif isinstance(track_val, list):
+                    track_str = ', '.join(trunc(getattr(t, 'title', str(t))) for t in track_val)
+                else:
+                    track_str = trunc(str(track_val)) if track_val else ''
                 chapters_section += (
-                    f"[bold]Chapter {idx}:[/bold] {getattr(chapter, 'title', '')}\n"
-                    f"  [cyan]Track:[/] {getattr(chapter, 'track', '')}\n"
+                    f"[bold]Chapter {idx}:[/bold] {chapter_title}\n"
+                    f"  [cyan]Track:[/] {track_str}\n"
                     f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
                 )
         panel_text += chapters_section
