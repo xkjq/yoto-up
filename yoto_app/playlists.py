@@ -40,7 +40,7 @@ def build_playlists_panel(
     overall_bar=None,
     overall_text=None,
     file_rows_column=None,
-) -> YotoAPI:
+) -> Dict[str, Any]:
     """Build full playlists UI including rows, selection, dialogs and fetch helpers.
 
     This function mirrors the original behaviour from `gui.py` but keeps
@@ -79,6 +79,8 @@ def build_playlists_panel(
     multi_select_mode = False
     delete_selected_btn = ft.ElevatedButton(text="Delete Selected", disabled=True)
     delete_selected_btn.visible = False
+    export_selected_btn = ft.ElevatedButton(text="Export Selected", disabled=True)
+    export_selected_btn.visible = False
     multi_select_btn = ft.ElevatedButton(text="Select Multiple")
     add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
@@ -239,8 +241,55 @@ def build_playlists_panel(
                 print(f"[delete] Failed to delete {cid}: {e}")
         selected_playlist_ids.clear()
         delete_selected_btn.disabled = True
+        export_selected_btn.disabled = True
         playlists_list.controls.clear()
         fetch_playlists_sync(None)
+        page.update()
+
+
+    def _do_export_selected():
+        to_export = list(selected_playlist_ids)
+        if not to_export:
+            return
+        client = CLIENT_ID
+        api = ensure_api(api_ref, client)
+        out_dir = Path("cards")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        exported = 0
+        for cid in to_export:
+            try:
+                card = api.get_card(cid)
+                try:
+                    data = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else dict(card)
+                except Exception:
+                    try:
+                        data = dict(card)
+                    except Exception:
+                        data = str(card)
+                title = (data.get('title') or '') if isinstance(data, dict) else ''
+                import re
+                def _safe_filename(s: str) -> str:
+                    if not s:
+                        return cid
+                    s = s.strip()
+                    s = re.sub(r"[^0-9A-Za-z._-]+", "_", s)
+                    return s[:100]
+                name = _safe_filename(title)
+                fname = out_dir / f"{name or cid}_{cid}.json"
+                with open(fname, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                exported += 1
+            except Exception as e:
+                print(f"[export] Failed to export {cid}: {e}")
+        selected_playlist_ids.clear()
+        export_selected_btn.disabled = True
+        delete_selected_btn.disabled = True
+        playlists_list.controls.clear()
+        fetch_playlists_sync(None)
+        try:
+            show_snack(f"Exported {exported} cards to ./cards/")
+        except Exception:
+            pass
         page.update()
 
     def _on_delete_selected(ev):
@@ -269,16 +318,38 @@ def build_playlists_panel(
                 ft.TextButton("No", on_click=confirm_no),
             ],
         )
-        try:
-            page.open(confirm_dialog)
-        except Exception:
+        page.open(confirm_dialog)
+
+    def _on_export_selected(ev):
+        def confirm_yes(_e=None):
             try:
-                page.dialog = confirm_dialog
-                page.update()
-            except Exception as e:
-                safe_log("_on_delete_selected: failed to set page.dialog fallback", e)
+                confirm_dialog.open = False
+            except Exception:
+                pass
+            page.update()
+            threading.Thread(target=_do_export_selected, daemon=True).start()
+
+        def confirm_no(_e=None):
+            try:
+                confirm_dialog.open = False
+            except Exception:
+                pass
+            page.update()
+
+        confirm_dialog = ft.AlertDialog(
+            title=ft.Text("Export selected playlists?"),
+            content=ft.Text(
+                f"Export {len(selected_playlist_ids)} selected playlists to ./cards/?"
+            ),
+            actions=[
+                ft.TextButton("Yes", on_click=confirm_yes),
+                ft.TextButton("No", on_click=confirm_no),
+            ],
+        )
+        page.open(confirm_dialog)
 
     delete_selected_btn.on_click = _on_delete_selected
+    export_selected_btn.on_click = _on_export_selected
 
     def toggle_multi_select(ev=None):
         nonlocal multi_select_mode
@@ -286,10 +357,12 @@ def build_playlists_panel(
             multi_select_mode = not multi_select_mode
             multi_select_btn.text = "Done" if multi_select_mode else "Select"
             delete_selected_btn.visible = multi_select_mode
+            export_selected_btn.visible = multi_select_mode
             add_tags_btn.visible = multi_select_mode
             if not multi_select_mode:
                 selected_playlist_ids.clear()
                 delete_selected_btn.disabled = True
+                export_selected_btn.disabled = True
                 add_tags_btn.disabled = True
             try:
                 for row in playlists_list.controls:
@@ -525,6 +598,7 @@ def build_playlists_panel(
                 nonlocal last_selected_index
                 last_selected_index = idx
                 delete_selected_btn.disabled = len(selected_playlist_ids) == 0
+                export_selected_btn.disabled = len(selected_playlist_ids) == 0
                 add_tags_btn.disabled = len(selected_playlist_ids) == 0
                 page.update()
             except Exception:
@@ -635,6 +709,7 @@ def build_playlists_panel(
                         except Exception:
                             pass
                     delete_selected_btn.disabled = len(selected_playlist_ids) == 0
+                    export_selected_btn.disabled = len(selected_playlist_ids) == 0
                     add_tags_btn.disabled = len(selected_playlist_ids) == 0
                     page.update()
                     last_selected_index = this_idx
@@ -653,6 +728,7 @@ def build_playlists_panel(
                         selected_playlist_ids.discard(cid)
                     last_selected_index = this_idx
                     delete_selected_btn.disabled = len(selected_playlist_ids) == 0
+                    export_selected_btn.disabled = len(selected_playlist_ids) == 0
                     add_tags_btn.disabled = len(selected_playlist_ids) == 0
                     page.update()
                 return
@@ -689,6 +765,7 @@ def build_playlists_panel(
                     except Exception:
                         pass
                 delete_selected_btn.disabled = len(selected_playlist_ids) == 0
+                export_selected_btn.disabled = len(selected_playlist_ids) == 0
                 page.update()
                 last_selected_index = this_idx
                 return
@@ -1922,6 +1999,25 @@ def build_playlists_panel(
                 ft.TextButton(
                     "Replace Default Icons", on_click=lambda ev: replace_icons(ev)
                 ),
+                ft.TextButton(
+                    "Export",
+                    on_click=lambda ev: (
+                        threading.Thread(
+                            target=lambda: (
+                                (lambda:
+                                    (lambda data, fname: (
+                                        (open(fname, 'w', encoding='utf-8').write(json.dumps(data, indent=2, ensure_ascii=False)))
+                                    ))(
+                                        (c if isinstance(c, dict) else (c.model_dump(exclude_none=True) if hasattr(c, 'model_dump') else c)),
+                                        Path('cards') / f"{( (c.get('title') or '') if isinstance(c, dict) else '' )}_{(c.get('cardId') or c.get('id') or c.get('contentId') or 'card')}.json"
+                                    )
+                                )()
+                            ),
+                            daemon=True,
+                        ).start(),
+                        show_snack("Export started..."),
+                    ),
+                ),
                 ft.TextButton("Close", on_click=close_dialog),
             ],
         )
@@ -2191,6 +2287,7 @@ def build_playlists_panel(
                     fetch_btn,
                     multi_select_btn,
                     delete_selected_btn,
+                    export_selected_btn,
                     add_tags_btn,
                     sort_dropdown,
                 ]
@@ -2214,6 +2311,7 @@ def build_playlists_panel(
         "delete_selected_btn": delete_selected_btn,
         "multi_select_btn": multi_select_btn,
         "add_tags_btn": add_tags_btn,
+        "export_selected_btn": export_selected_btn,
         "fetch_btn": fetch_btn,
         "sort_dropdown": sort_dropdown,
         "current_sort": current_sort,

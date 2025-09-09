@@ -245,6 +245,7 @@ def main(page):
     fetch_btn = ft.ElevatedButton('Fetch Playlists')
     multi_select_btn = ft.ElevatedButton('Select Multiple')
     delete_selected_btn = ft.ElevatedButton('Delete Selected', disabled=True)
+    export_selected_btn = ft.ElevatedButton('Export Selected', disabled=True)
 
     def update_overall():
         # update overall progress bar when a file completes
@@ -407,6 +408,7 @@ def main(page):
     playlist_fetch_btn = playlists_ui['fetch_btn']
     playlist_multi_select_btn = playlists_ui['multi_select_btn']
     playlist_delete_selected_btn = playlists_ui['delete_selected_btn']
+    playlist_export_selected_btn = playlists_ui['export_selected_btn']
     sort_dropdown = playlists_ui['sort_dropdown']
     # Save playlist sort order on change
     if sort_dropdown:
@@ -597,7 +599,7 @@ def main(page):
                 if 'Fetch Playlists' not in existing_texts:
                     insert_at = 1
                     # prefer buttons returned from playlists module
-                    hdr[insert_at:insert_at] = [playlist_fetch_btn or fetch_btn, playlist_multi_select_btn or multi_select_btn, playlist_delete_selected_btn or delete_selected_btn]
+                    hdr[insert_at:insert_at] = [playlist_fetch_btn or fetch_btn, playlist_multi_select_btn or multi_select_btn, playlist_delete_selected_btn or delete_selected_btn, playlist_export_selected_btn or export_selected_btn]
                     header.controls = hdr
             except Exception as e:
                 safe_log("failed to merge header buttons into playlists header", e)
