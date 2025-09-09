@@ -8,9 +8,11 @@ Features include content organization, device management, and easy integration w
 
 - **Integration with Yoto Services**: Simplified access to Yoto's API and services.
 - **Content Organization**: Easily manage and organize your Yoto cards and files.
-    - Chapter and track management
-    - Icon management
-        - Autoselect icons or manually choose (via search)
+   - Chapter and track management
+   - Icon management
+      - Autoselect icons or manually choose (via search)
+   - Card export / import
+   
 - **Graphical and Terminal Interfaces**: Choose between a graphical interface or a terminal-based UI.
 
 ## Installation
@@ -25,12 +27,12 @@ Features include content organization, device management, and easy integration w
    ```
 3. Set up a virtual environment:
    ```bash
-   python3 -m venv .venv
+   uv venv
    source .venv/bin/activate
    ```
 4. Install the required dependencies:
    ```bash
-   pip install -r requirements.txt
+   uv pip install -r requirements.txt
    ```
 
 ## Usage
@@ -66,5 +68,5 @@ python gui.py
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See the LICENSE file for details.
+This project is licensed under the MIT license.
 
