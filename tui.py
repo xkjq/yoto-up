@@ -156,15 +156,20 @@ class EditCardContent(Static):
             for chapter_idx, chapter in enumerate(self.card_content.chapters):
                 chapter_id = f"chapter[{chapter_idx}]"
                 safe_chapter_id = sanitize_id(chapter_id)
-                yield Static(f"Chapter {chapter_idx+1}", id=f"static_{safe_chapter_id}_header")
+                yield Static(
+                    f"Chapter {chapter_idx+1}",
+                    id=f"static_{safe_chapter_id}_header",
+                    classes="centered-header colored-header"
+                )
                 # Use ChapterIconWidget for pixel art rendering
                 yield ChapterIconWidget(self.api, chapter, icons_metadata, chapter_idx, id=f"icon_pixelart_{chapter_idx}")
                 # Add icon search button
-                print(f"SAFE CHAPTER ID: {safe_chapter_id}")
                 yield Button("Search Icon", id=f"search_icon_{safe_chapter_id}", classes="small-btn")
                 # Editable title
+                yield Static("Title:", id=f"label_{safe_chapter_id}_title")
                 yield Input(value=str(getattr(chapter, "title", "")), placeholder="title", id=f"edit_{safe_chapter_id}_title")
                 # Editable overlayLabel
+                yield Static("Overlay Label:", id=f"label_{safe_chapter_id}_overlayLabel")
                 yield Input(value=str(getattr(chapter, "overlayLabel", "")), placeholder="overlayLabel", id=f"edit_{safe_chapter_id}_overlayLabel")
                 if hasattr(chapter, "tracks"):
                     for track_idx, track in enumerate(chapter.tracks):
@@ -173,8 +178,13 @@ class EditCardContent(Static):
                         yield Static(f"  Track {track_idx+1}", id=f"static_{safe_track_id}_header")
                         yield TrackIconWidget(self.api, track, icons_metadata, track_idx, id=f"icon_pixelart_{safe_track_id}")
                         yield Button("Search Icon", id=f"search_icon_{safe_track_id}", classes="small-btn")
+                        yield Static("Title:", id=f"label_{safe_track_id}_title")
                         yield Input(value=str(getattr(track, "title", "")), placeholder="title", id=f"edit_{safe_track_id}_title")
-                        yield Input(value=str(getattr(track, "duration", "")), placeholder="duration", id=f"edit_{safe_track_id}_duration")
+                        yield Static("Overlay Label:", id=f"label_{safe_track_id}_overlayLabel")
+                        yield Input(value=str(getattr(track, "overlayLabel", "")), placeholder="overlayLabel", id=f"edit_{safe_track_id}_overlayLabel")
+                        yield Static("Key:", id=f"label_{safe_track_id}_key")
+                        yield Input(value=str(getattr(track, "key", "")), placeholder="key", id=f"edit_{safe_track_id}_key")
+                        yield Static(f"Duration: {getattr(track, 'duration', '')}", id=f"static_{safe_track_id}_duration")
 
 # Textual TUI for editing card details
 class EditCardApp(App):
@@ -197,15 +207,19 @@ class EditCardApp(App):
         details = []
         details.append(Static(f"Editing Card: {card.cardId}", id="header"))
         # Editable title
+        details.append(Static("Title:", id="label_title"))
         details.append(Input(value=str(card.title), placeholder="title", id="edit_title"))
         # Editable metadata.description
         desc_val = str(metadata.description) if metadata and getattr(metadata, "description", None) else ""
+        details.append(Static("Description:", id="label_metadata_description"))
         details.append(Input(value=desc_val, placeholder="description", id="edit_metadata_description"))
         # Editable metadata.genre (list of strings)
         genre_val = ", ".join(metadata.genre) if metadata and getattr(metadata, "genre", None) else ""
+        details.append(Static("Genre:", id="label_metadata_genre"))
         details.append(Input(value=genre_val, placeholder="genre (comma separated)", id="edit_metadata_genre"))
         # Editable metadata.tags (list of strings)
         tags_val = ", ".join(metadata.tags) if metadata and getattr(metadata, "tags", None) else ""
+        details.append(Static("Tags:", id="label_metadata_tags"))
         details.append(Input(value=tags_val, placeholder="tags (comma separated)", id="edit_metadata_tags"))
         # Display other card details as Static widgets
         details.append(Static(f"Card ID: {card.cardId}", id="static_cardid"))
