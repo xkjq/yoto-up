@@ -178,21 +178,21 @@ class Card(BaseModel):
 
                 chapters_section += f"[bold]Chapter {idx}:[/bold] {chapter_title} {chapter_icon_inline}\n"
                 chapters_section += f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
-                # Optionally render chapter icon
-                if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
-                    if icon_field:
-                        try:
-                            method = getattr(api, 'get_icon_cache_path', None)
-                            cache_path = method(icon_field) if callable(method) else None
-                            if cache_path and cache_path.exists():
-                                # render chapter icon using requested method/scale
-                                art = render_icon(cache_path, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
-                                chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
-                            else:
-                                chapters_section += "  [red]Chapter Icon: not available[/red]\n"
-                        except Exception:
-                            chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
+                ## Optionally render chapter icon
+                #if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                #    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                #    if icon_field:
+                #        try:
+                #            method = getattr(api, 'get_icon_cache_path', None)
+                #            cache_path = method(icon_field) if callable(method) else None
+                #            if cache_path and cache_path.exists():
+                #                # render chapter icon using requested method/scale
+                #                art = render_icon(cache_path, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
+                #                chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
+                #            else:
+                #                chapters_section += "  [red]Chapter Icon: not available[/red]\n"
+                #        except Exception:
+                #            chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
                 # List tracks individually and attach per-track icons immediately beneath each track
                 if hasattr(chapter, 'tracks') and chapter.tracks:
                     for t_idx, track in enumerate(chapter.tracks, 1):
@@ -217,10 +217,19 @@ class Card(BaseModel):
                                 except Exception:
                                     track_icon_inline = "[red]Icon error[/red]"
 
-                        chapters_section += f"  [cyan]Track {t_idx}:[/] {track_title}\n"
-                        if track_icon_inline:
-                            chapters_section += f"{track_icon_inline}\n"
-                        chapters_section += f"    [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
+                        track_details = [
+                            f"[cyan]Track {t_idx}:[/] [bold]{track_title}[/bold]",
+                            f"[blue]Duration:[/] {getattr(track, 'duration', '')}",
+                            f"[magenta]Format:[/] {getattr(track, 'format', '')}",
+                            f"[yellow]Type:[/] {getattr(track, 'type', '')}"
+                        ]
+                        icon_lines = track_icon_inline.splitlines() if track_icon_inline else []
+                        for line_idx, track_detail in enumerate(track_details):
+                            chapters_section += f"    {icon_lines[line_idx] if line_idx < len(icon_lines) else ''}  {track_detail}\n"
+                        chapters_section += "\n"
+
+                        # Render icon to the left of the track details
+                        #chapters_section += f"{track_icon_inline} [cyan]Track {t_idx}:[/] {track_title} [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
         panel_text += chapters_section
         return panel_text
 
