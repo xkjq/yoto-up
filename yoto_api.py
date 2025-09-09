@@ -50,6 +50,8 @@ from datetime import datetime, timezone
 from typing import Any, List, Type, get_origin, get_args
 from pydantic import BaseModel
 
+DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
+
 def find_extra_fields(model: Type[BaseModel], data: Any, path: str = '', warn_extra=True) -> List[str]:
     """
     Recursively find keys in `data` that are not declared on the provided Pydantic `model`.
@@ -380,6 +382,25 @@ class YotoAPI:
             device_info.get("expires_in", 300)
         )
         self.save_tokens(self.access_token, self.refresh_token)
+
+    def generate_card_chapter_and_track_icon_fields(self, card: Card):
+        """
+        Ensure all chapters and tracks in the card have display and icon fields initialized.
+        """
+        if not card.content or not card.content.chapters:
+            return
+        for ch in card.content.chapters:
+            if not ch.display:
+                ch.display = ChapterDisplay()
+            if not hasattr(ch.display, 'icon16x16') or ch.display.icon16x16 is None:
+                ch.display.icon16x16 = DEFAULT_MEDIA_ID
+            if ch.tracks:
+                for tr in ch.tracks:
+                    if not tr.display:
+                        tr.display = TrackDisplay()
+                    if not hasattr(tr.display, 'icon16x16') or tr.display.icon16x16 is None:
+                        tr.display.icon16x16 = DEFAULT_MEDIA_ID
+        return card
 
     def get_myo_content(self):
         headers = {"Authorization": f"Bearer {self.access_token}"}
@@ -2055,7 +2076,6 @@ class YotoAPI:
         Replace default placeholder icons on a Card's chapters and tracks.
         Optionally accepts a progress_callback(msg, frac) for UI updates.
         """
-        DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
 
         def _cb(msg: str | None = None, frac: float | None = None):
             try:

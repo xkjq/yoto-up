@@ -125,8 +125,9 @@ class EditCardApp(App):
     CSS_PATH = "tui.css"
     def __init__(self, card, api, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.card: Card = card
         self.api = api
+        # Icon will fail if the card's chapters/tracks don't have display.icon16x16 fields populated
+        self.card: Card = self.api.generate_card_chapter_and_track_icon_fields(card)
         self.result = None
 
     def compose(self) -> ComposeResult:
