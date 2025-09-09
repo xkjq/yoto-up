@@ -1,11 +1,10 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Button, Static, OptionList, Label
+from textual.widgets import Input, Button, Static, OptionList, Label, ProgressBar
 from textual.scroll_view import ScrollView
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets.option_list import Option
 from textual.logging import TextualHandler
-from rich.align import Align
 from rich.text import Text
 import asyncio
 import json
@@ -347,7 +346,27 @@ class EditCardApp(App):
 
         async def show_icon_modal(query_string):
             logging.info(f"Icon search initiated for chapter {chapter_idx} with query: '{query_string}'")
+            # Add a progress bar to indicate search progress
+            class IconSearchModal(ModalScreen):
+                def compose(self):
+                    yield Vertical(
+                        Label("Searching for icons...", id="search_label"),
+                        ProgressBar(total=100, id="search_progress"),
+                        id="search_modal_container"
+                    )
+
+            search_modal = IconSearchModal()
+            await self.push_screen(search_modal)
+
+            # Simulate search progress
+            progress_bar = search_modal.query_one("#search_progress", ProgressBar)
+            for i in range(1, 101):
+                progress_bar.advance(1)
+                await asyncio.sleep(0.05)  # Simulate search delay
+
             icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+            search_modal.dismiss()
+
             class IconSelectModal(ModalScreen):
                 AUTO_FOCUS = None
                 def __init__(self, icons, chapter_idx, query_string):
