@@ -81,6 +81,15 @@ def build_playlists_panel(
     delete_selected_btn.visible = False
     export_selected_btn = ft.ElevatedButton(text="Export Selected", disabled=True)
     export_selected_btn.visible = False
+    # Import card controls
+    import_picker = ft.FilePicker()
+    # append picker to page overlay if page supports overlay (gui.py appends similar pickers)
+    try:
+        page.overlay.append(import_picker)
+    except Exception:
+        # page may be a SimpleNamespace in some tests; ignore if overlay isn't available
+        pass
+    import_card_btn = ft.ElevatedButton(text="Import Card(s)")
     multi_select_btn = ft.ElevatedButton(text="Select Multiple")
     add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
@@ -2288,6 +2297,7 @@ def build_playlists_panel(
                     multi_select_btn,
                     delete_selected_btn,
                     export_selected_btn,
+                    import_card_btn,
                     add_tags_btn,
                     sort_dropdown,
                 ]
@@ -2299,6 +2309,76 @@ def build_playlists_panel(
         scroll=ft.ScrollMode.AUTO,
         expand=True,
     )
+
+    # Import picker result handling
+    def _on_import_pick_result(e: ft.FilePickerResultEvent):
+        try:
+            if not e.files:
+                show_snack("No file selected for import", error=True)
+                return
+            # use first selected file
+            for f in e.files:
+                path = getattr(f, "path", None)
+                if not path:
+                    show_snack("Selected file has no path (web picker unsupported)", error=True)
+                    return
+                # Read file and parse JSON
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        data = json.load(fh)
+                except Exception as ex:
+                    logger.error(f"Failed to read card file {path}: {ex}")
+                    show_snack(f"Failed to read card file: {ex}", error=True)
+                    continue
+
+                # Validate/construct Card
+                try:
+                    card_obj = Card.model_validate(data)
+                except Exception:
+                    # fallback: try to construct from dict
+                    try:
+                        card_obj = Card(**data)
+                    except Exception as ex:
+                        logger.error("import_card: failed to validate to Card", ex)
+                        show_snack(f"Invalid card format: {ex}", error=True)
+                        continue
+
+                # Ensure new card (unset id)
+                # Do we want to do this?
+                try:
+                    if hasattr(card_obj, "cardId"):
+                        setattr(card_obj, "cardId", None)
+                except Exception:
+                    pass
+
+                # Call API to create
+                try:
+                    api = ensure_api(api_ref, CLIENT_ID)
+                    new_card = api.create_or_update_content(card_obj, return_card=True)
+                    show_snack(f"Card imported: {getattr(new_card, 'cardId', getattr(new_card, 'id', 'unknown'))}")
+                    # refresh playlists list
+                    try:
+                        threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    logger.error(f"Failed to import card via API: {ex}")
+                    show_snack(f"Failed to import card: {ex}", error=True)
+
+        except Exception as exc:
+            logger.error(f"_on_import_pick_result unexpected error: {exc}")
+            show_snack("Unexpected error during import", error=True)
+
+    import_picker.on_result = _on_import_pick_result
+
+    def _on_import_card_click(e=None):
+        try:
+            import_picker.pick_files(dialog_title="Select Card JSON file(s) to import", allow_multiple=True)
+        except Exception as ex:
+            logger.error(f"import_card click failed: {ex}")
+            show_snack("Failed to open file picker", error=True)
+
+    import_card_btn.on_click = _on_import_card_click
 
     return {
         "playlists_column": playlists_column,
@@ -2312,6 +2392,7 @@ def build_playlists_panel(
         "multi_select_btn": multi_select_btn,
         "add_tags_btn": add_tags_btn,
         "export_selected_btn": export_selected_btn,
+    "import_card_btn": import_card_btn,
         "fetch_btn": fetch_btn,
         "sort_dropdown": sort_dropdown,
         "current_sort": current_sort,
