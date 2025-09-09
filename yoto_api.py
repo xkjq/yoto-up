@@ -403,7 +403,8 @@ class YotoAPI:
         response.raise_for_status()
         self.response_history.append(response)
         data = response.json()["card"]
-        find_extra_fields(Card, data, warn_extra=True)
+        if self.debug:
+            find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
     def create_or_update_content(self, card, return_card=False, add_update_at=True):
@@ -2172,6 +2173,8 @@ class YotoAPI:
         if response.status_code != 200:
             logger.error(f"Failed to retrieve device status: {response.status_code} {response.text}")
             response.raise_for_status()
+        if self.debug:
+            find_extra_fields(DeviceStatus, response.json(), warn_extra=True)
         return DeviceStatus.model_validate(response.json())
 
     def get_device_config(self, device_id: str) -> dict:
@@ -2193,7 +2196,11 @@ class YotoAPI:
         if response.status_code != 200:
             logger.error(f"Failed to retrieve device config: {response.status_code} {response.text}")
             response.raise_for_status()
-        return DeviceObject.model_validate(response.json()["device"])
+
+        device_json = response.json().get("device", {})
+        if self.debug:
+            find_extra_fields(DeviceObject, device_json, warn_extra=True)
+        return DeviceObject.model_validate(device_json)
 
     def update_device_config(self, device_id: str, name: str, config: dict | DeviceConfig) -> dict:
         """
