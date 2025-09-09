@@ -1732,11 +1732,14 @@ def build_playlists_panel(
         def replace_icons(ev):
             try:
                 warn = ft.Text(
-                    "Replacing default icons may take a long time (network calls + uploads). Continue?"
+                    """Replacing default icons may take a long time. 
+The more icons missing, the longer it takes.
+
+Continue?"""
                 )
                 include_yoto = ft.Checkbox(label="Include YotoIcons search", value=True)
                 max_searches_field = ft.TextField(
-                    label="Max extra searches (max_searches)", value="3", width=120
+                    label="Max extra searches (per track/chapter)", value="2", width=120
                 )
 
                 def start_replace(_e=None):
