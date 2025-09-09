@@ -103,12 +103,12 @@ def delete_cards(
         rprint(f"[bold red]Deleted card ID {card.cardId}:[/bold red] {response}")
 
 @app.command()
-def get_card(card_id: str):
+def get_card(card_id: str, icons: bool = typer.Option(True, help="Render icons in card display")):
     """Get details of a Yoto card by its ID."""
     API = get_api()
     card = API.get_card(card_id)
     if card:
-        rprint(Panel.fit(card.display_card(), title=f"[bold green]Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+        rprint(Panel.fit(card.display_card(render_icons=icons, api=API), title=f"[bold green]Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
     else:
         typer.echo(f"Card with ID '{card_id}' not found.")
 

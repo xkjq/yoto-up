@@ -1,5 +1,6 @@
 from typing import Optional, List, Literal, Union
 from pydantic import BaseModel
+from icons import render_icon
 
 class Ambient(BaseModel):
     defaultTrackDisplay: Optional[str] = None
@@ -125,7 +126,7 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
-    def display_card(self, truncate_fields_limit: int | None = 50):
+    def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None):
         def trunc(val):
             if truncate_fields_limit is None or truncate_fields_limit <= 0:
                 return val
@@ -169,6 +170,35 @@ class Card(BaseModel):
                     f"  [cyan]Track:[/] {track_str}\n"
                     f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
                 )
+                # Optionally render chapter icon
+                if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                    if icon_field:
+                        try:
+                            method = getattr(api, 'get_icon_cache_path', None)
+                            cache_path = method(icon_field) if callable(method) else None
+                            if cache_path and cache_path.exists():
+                                art = render_icon(cache_path)
+                                chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
+                            else:
+                                chapters_section += "  [red]Chapter Icon: not available[/red]\n"
+                        except Exception:
+                            chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
+                # Render each track's icon if available
+                if render_icons and api is not None and getattr(chapter, 'tracks', None) and hasattr(api, 'get_icon_cache_path'):
+                    for t_idx, track in enumerate(chapter.tracks, 1):
+                        t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
+                        if t_icon_field:
+                            try:
+                                t_method = getattr(api, 'get_icon_cache_path', None)
+                                t_cache = t_method(t_icon_field) if callable(t_method) else None
+                                if t_cache and t_cache.exists():
+                                    t_art = render_icon(t_cache)
+                                    chapters_section += "    [green]Track " + str(t_idx) + " Icon:[/]\n" + t_art + "\n"
+                                else:
+                                    chapters_section += "    [red]Track " + str(t_idx) + " Icon: not available[/red]\n"
+                            except Exception:
+                                chapters_section += "    [red]Track " + str(t_idx) + " Icon: error resolving[/red]\n"
         panel_text += chapters_section
         return panel_text
 
