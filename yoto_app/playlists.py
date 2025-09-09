@@ -1749,169 +1749,210 @@ Continue?"""
                         except Exception:
                             max_searches = 3
                         include_yotoicons = bool(include_yoto.value)
-                        confirm_dialog.open = False
-                        page.update()
 
-                        prog = ft.ProgressBar(width=400)
-                        prog_text = ft.Text("Preparing...")
-                        prog_col = ft.Column([prog_text, prog])
-                        cancel_event = threading.Event()
-
-                        def do_cancel(_e=None):
+                        # Worker containing the original start logic
+                        def _start_worker():
                             try:
-                                cancel_event.set()
-                                prog_text.value = "Cancelling..."
-                                page.update()
-                            except Exception:
-                                pass
+                                # close the confirm dialog and prepare UI
+                                try:
+                                    confirm_dialog.open = False
+                                    page.update()
+                                except Exception:
+                                    pass
 
-                        replace_dialog = ft.AlertDialog(
-                            title=ft.Text("Replace Default Icons"),
-                            content=prog_col,
-                            actions=[ft.TextButton("Cancel", on_click=do_cancel)],
-                        )
-                        page.open(replace_dialog)
+                                prog = ft.ProgressBar(width=400)
+                                prog_text = ft.Text("Preparing...")
+                                prog_col = ft.Column([prog_text, prog])
+                                cancel_event = threading.Event()
 
-                        def work():
-                            try:
-                                prog_text.value = "Fetching card..."
-                                prog.value = 0.0
-                                page.update()
-                                api = ensure_api(api_ref, CLIENT_ID)
-                                card_id = (
-                                    c.get("cardId") or c.get("id") or c.get("contentId")
-                                )
-                                if not card_id:
-                                    raise RuntimeError("Unable to determine card id")
-                                full = api.get_card(card_id)
-                                prog_text.value = "Analyzing icons..."
-                                page.update()
-
-                                def icon_progress(msg, frac):
+                                def do_cancel(_e=None):
                                     try:
-                                        if msg:
-                                            prog_text.value = msg
-                                        if frac is not None:
-                                            prog.value = frac
+                                        cancel_event.set()
+                                        prog_text.value = "Cancelling..."
                                         page.update()
                                     except Exception:
                                         pass
 
-                                new_card = api.replace_card_default_icons(
-                                    full,
-                                    progress_callback=icon_progress,
-                                    cancel_event=cancel_event,
-                                    include_yotoicons=include_yotoicons,
-                                    max_searches=max_searches,
+                                replace_dialog = ft.AlertDialog(
+                                    title=ft.Text("Replace Default Icons"),
+                                    content=prog_col,
+                                    actions=[ft.TextButton("Cancel", on_click=do_cancel)],
                                 )
-                                prog_text.value = "Saving updated card..."
-                                page.update()
-                                api.update_card(new_card, return_card_model=False)
-                                prog_text.value = "Done"
-                                prog.value = 1.0
+                                page.open(replace_dialog)
 
-                                # Schedule a UI-thread update to refresh the affected playlist row
-                                def run_on_ui(fn, *a, **kw):
+                                def work():
                                     try:
-                                        loop = asyncio.get_event_loop()
-                                        loop.call_soon_threadsafe(lambda: fn(*a, **kw))
-                                    except Exception:
-                                        try:
-                                            fn(*a, **kw)
-                                        except Exception:
-                                            pass
-
-                                def get_card_id(card_obj):
-                                    try:
-                                        if isinstance(card_obj, dict):
-                                            return (
-                                                card_obj.get("id")
-                                                or card_obj.get("contentId")
-                                                or card_obj.get("cardId")
-                                            )
-                                        return (
-                                            getattr(card_obj, "id", None)
-                                            or getattr(card_obj, "contentId", None)
-                                            or getattr(card_obj, "cardId", None)
+                                        prog_text.value = "Fetching card..."
+                                        prog.value = 0.0
+                                        page.update()
+                                        api = ensure_api(api_ref, CLIENT_ID)
+                                        card_id = (
+                                            c.get("cardId") or c.get("id") or c.get("contentId")
                                         )
-                                    except Exception:
-                                        return None
+                                        if not card_id:
+                                            raise RuntimeError("Unable to determine card id")
+                                        full = api.get_card(card_id)
+                                        prog_text.value = "Analyzing icons..."
+                                        page.update()
 
-                                def refresh_ui(card_model):
-                                    try:
-                                        updated_id = get_card_id(card_model)
-                                    except Exception:
-                                        updated_id = None
-                                    if not updated_id:
-                                        try:
-                                            page.update()
-                                        except Exception:
-                                            pass
-                                        return
-                                    try:
-                                        # Try to find the playlist row with a checkbox tagged with _is_playlist_checkbox and matching _cid
-                                        for i, ctrl in enumerate(
-                                            list(playlists_list.controls)
-                                        ):
-                                            cb = None
-                                            # controls may be a Row with controls attribute
-                                            children = (
-                                                getattr(ctrl, "controls", None)
-                                                or getattr(
-                                                    getattr(ctrl, "content", None),
-                                                    "controls",
-                                                    None,
-                                                )
-                                                or []
-                                            )
-                                            for ch in children or []:
-                                                if getattr(
-                                                    ch, "_is_playlist_checkbox", False
-                                                ):
-                                                    cb = ch
-                                                    break
-                                            if not cb:
-                                                continue
-                                            if getattr(cb, "_cid", None) == updated_id:
+                                        def icon_progress(msg, frac):
+                                            try:
+                                                if msg:
+                                                    prog_text.value = msg
+                                                if frac is not None:
+                                                    prog.value = frac
+                                                page.update()
+                                            except Exception:
+                                                pass
+
+                                        new_card = api.replace_card_default_icons(
+                                            full,
+                                            progress_callback=icon_progress,
+                                            cancel_event=cancel_event,
+                                            include_yotoicons=include_yotoicons,
+                                            max_searches=max_searches,
+                                        )
+                                        prog_text.value = "Saving updated card..."
+                                        page.update()
+                                        api.update_card(new_card, return_card_model=False)
+                                        prog_text.value = "Done"
+                                        prog.value = 1.0
+
+                                        # Schedule a UI-thread update to refresh the affected playlist row
+                                        def run_on_ui(fn, *a, **kw):
+                                            try:
+                                                loop = asyncio.get_event_loop()
+                                                loop.call_soon_threadsafe(lambda: fn(*a, **kw))
+                                            except Exception:
                                                 try:
-                                                    playlists_list.controls[i] = (
-                                                        make_playlist_row(
-                                                            card_model, idx=i
-                                                        )
+                                                    fn(*a, **kw)
+                                                except Exception:
+                                                    pass
+
+                                        def get_card_id(card_obj):
+                                            try:
+                                                if isinstance(card_obj, dict):
+                                                    return (
+                                                        card_obj.get("id")
+                                                        or card_obj.get("contentId")
+                                                        or card_obj.get("cardId")
                                                     )
+                                                return (
+                                                    getattr(card_obj, "id", None)
+                                                    or getattr(card_obj, "contentId", None)
+                                                    or getattr(card_obj, "cardId", None)
+                                                )
+                                            except Exception:
+                                                return None
+
+                                        def refresh_ui(card_model):
+                                            try:
+                                                updated_id = get_card_id(card_model)
+                                            except Exception:
+                                                updated_id = None
+                                            if not updated_id:
+                                                try:
                                                     page.update()
-                                                    try:
-                                                        show_snack(
-                                                            "Playlist icons updated"
-                                                        )
-                                                    except Exception:
-                                                        pass
                                                 except Exception:
                                                     pass
                                                 return
-                                        # if not found, refresh full list
-                                        threading.Thread(
-                                            target=lambda: fetch_playlists_sync(None),
-                                            daemon=True,
-                                        ).start()
-                                    except Exception:
-                                        pass
+                                            try:
+                                                # Try to find the playlist row with a checkbox tagged with _is_playlist_checkbox and matching _cid
+                                                for i, ctrl in enumerate(
+                                                    list(playlists_list.controls)
+                                                ):
+                                                    cb = None
+                                                    # controls may be a Row with controls attribute
+                                                    children = (
+                                                        getattr(ctrl, "controls", None)
+                                                        or getattr(
+                                                            getattr(ctrl, "content", None),
+                                                            "controls",
+                                                            None,
+                                                        )
+                                                        or []
+                                                    )
+                                                    for ch in children or []:
+                                                        if getattr(
+                                                            ch, "_is_playlist_checkbox", False
+                                                        ):
+                                                            cb = ch
+                                                            break
+                                                    if not cb:
+                                                        continue
+                                                    if getattr(cb, "_cid", None) == updated_id:
+                                                        try:
+                                                            playlists_list.controls[i] = (
+                                                                make_playlist_row(
+                                                                    card_model, idx=i
+                                                                )
+                                                            )
+                                                            page.update()
+                                                            try:
+                                                                show_snack(
+                                                                    "Playlist icons updated"
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                        except Exception:
+                                                            pass
+                                                        return
+                                                # if not found, refresh full list
+                                                threading.Thread(
+                                                    target=lambda: fetch_playlists_sync(None),
+                                                    daemon=True,
+                                                ).start()
+                                            except Exception:
+                                                pass
 
-                                # run the UI refresh on the main thread
-                                run_on_ui(refresh_ui, new_card)
-                            except Exception as ex:
+                                        # run the UI refresh on the main thread
+                                        run_on_ui(refresh_ui, new_card)
+                                    except Exception as ex:
+                                        try:
+                                            show_snack(
+                                                f"Replace icons failed: {ex}", error=True
+                                            )
+                                        except Exception:
+                                            pass
+                                        print("replace_icons error:", ex)
+                                    # Schedule show_card_details to run in the main thread after 5 seconds
+                                    time.sleep(1)
+                                    show_card_details(None, new_card)
+
+                                threading.Thread(target=work, daemon=True).start()
+                            except Exception as ee:
                                 try:
-                                    show_snack(
-                                        f"Replace icons failed: {ex}", error=True
-                                    )
+                                    show_snack(f"Failed to start replace: {ee}", error=True)
                                 except Exception:
                                     pass
-                                print("replace_icons error:", ex)
-                            # Schedule show_card_details to run in the main thread after 5 seconds
-                            time.sleep(1)
-                            show_card_details(None, new_card)
 
-                        threading.Thread(target=work, daemon=True).start()
+                        # If user selected a value larger than 2, show a confirmation before starting
+                        if max_searches > 2:
+                            try:
+                                warn_txt = ft.Text(
+                                    "You have chosen a max extra searches value > 2. This may significantly increase runtime and API usage. Continue?"
+                                )
+                                secondary = ft.AlertDialog(
+                                    title=ft.Text("Confirm large search count"),
+                                    content=warn_txt,
+                                    actions=[
+                                        ft.TextButton(
+                                            "Start",
+                                            on_click=lambda e: (
+                                                (setattr(secondary, "open", False) if hasattr(secondary, "open") else None),
+                                                page.update(),
+                                                threading.Thread(target=_start_worker, daemon=True).start(),
+                                            ),
+                                        ),
+                                        ft.TextButton("Cancel", on_click=lambda e: (setattr(secondary, "open", False), page.update())),
+                                    ],
+                                )
+                                page.open(secondary)
+                            except Exception:
+                                # If we can't show a dialog, just start
+                                threading.Thread(target=_start_worker, daemon=True).start()
+                        else:
+                            threading.Thread(target=_start_worker, daemon=True).start()
                     except Exception as ee:
                         try:
                             show_snack(f"Failed to start replace: {ee}", error=True)
