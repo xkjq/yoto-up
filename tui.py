@@ -5,6 +5,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets.option_list import Option
 from textual.logging import TextualHandler
+from rich.align import Align
+from rich.text import Text
 import asyncio
 import json
 import re
@@ -157,7 +159,7 @@ class EditCardContent(Static):
                 chapter_id = f"chapter[{chapter_idx}]"
                 safe_chapter_id = sanitize_id(chapter_id)
                 yield Static(
-                    f"Chapter {chapter_idx+1}",
+                    Text(f"Chapter {chapter_idx+1}", style="bold yellow"),
                     id=f"static_{safe_chapter_id}_header",
                     classes="centered-header colored-header"
                 )
