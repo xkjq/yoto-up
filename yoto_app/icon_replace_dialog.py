@@ -32,7 +32,7 @@ class IconReplaceDialog:
 
         search_field = ft.TextField(label='Search text for icons', value=default_text, width=400)
         include_yoto = ft.Checkbox(label='Include YotoIcons', value=True)
-        max_searches_field = ft.TextField(label='Max extra searches', value='3', width=120)
+        max_searches_field = ft.TextField(label='Max extra searches', value='2', width=120)
         top_n_field = ft.TextField(label='Top N results', value='10', width=120)
         results_list = ft.ListView(expand=True, spacing=6, height=420)
         # Progress indicator and status for searches
@@ -53,7 +53,7 @@ class IconReplaceDialog:
 
                     q = (search_field.value or '').strip()
                     try:
-                        mx = int(max_searches_field.value or '3')
+                        mx = int(max_searches_field.value or '2')
                     except Exception:
                         mx = 3
                     try:
