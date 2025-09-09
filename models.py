@@ -155,15 +155,9 @@ class Card(BaseModel):
             chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
             for idx, chapter in enumerate(self.content.chapters, 1):
                 chapter_title = trunc(getattr(chapter, 'title', ''))
-                # Display all track titles in the chapter
-                track_titles = ""
-                if hasattr(chapter, 'tracks') and chapter.tracks:
-                    track_titles = ', '.join(trunc(getattr(track, 'title', str(track))) for track in chapter.tracks)
-                chapters_section += (
-                    f"[bold]Chapter {idx}:[/bold] {chapter_title}\n"
-                    f"  [cyan]Tracks:[/] {track_titles}\n"
-                    f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
-                )
+                # Chapter header
+                chapters_section += f"[bold]Chapter {idx}:[/bold] {chapter_title}\n"
+                chapters_section += f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
                 # Optionally render chapter icon
                 if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
                     icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
@@ -179,22 +173,28 @@ class Card(BaseModel):
                                 chapters_section += "  [red]Chapter Icon: not available[/red]\n"
                         except Exception:
                             chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
-                # Render each track's icon if available
-                if render_icons and api is not None and getattr(chapter, 'tracks', None) and hasattr(api, 'get_icon_cache_path'):
+                # List tracks individually and attach per-track icons immediately beneath each track
+                if hasattr(chapter, 'tracks') and chapter.tracks:
                     for t_idx, track in enumerate(chapter.tracks, 1):
-                        t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
-                        if t_icon_field:
-                            try:
-                                t_method = getattr(api, 'get_icon_cache_path', None)
-                                t_cache = t_method(t_icon_field) if callable(t_method) else None
-                                if t_cache and t_cache.exists():
-                                    # render track icons using requested method/scale
-                                    t_art = render_icon(t_cache, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
-                                    chapters_section += "    [green]Track " + str(t_idx) + " Icon:[/]\n" + t_art + "\n"
-                                else:
-                                    chapters_section += "    [red]Track " + str(t_idx) + " Icon: not available[/red]\n"
-                            except Exception:
-                                chapters_section += "    [red]Track " + str(t_idx) + " Icon: error resolving[/red]\n"
+                        track_title = trunc(getattr(track, 'title', str(track)))
+                        chapters_section += f"  [cyan]Track {t_idx}:[/] {track_title}\n"
+                        chapters_section += f"    [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
+                        # Optionally render track icon directly under the track
+                        if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                            t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
+                            if t_icon_field:
+                                try:
+                                    t_method = getattr(api, 'get_icon_cache_path', None)
+                                    t_cache = t_method(t_icon_field) if callable(t_method) else None
+                                    if t_cache and t_cache.exists():
+                                        t_art = render_icon(t_cache, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
+                                        # indent each line of the art to align under the track
+                                        indented = '\n'.join('      ' + line for line in t_art.splitlines())
+                                        chapters_section += indented + "\n"
+                                    else:
+                                        chapters_section += f"    [red]Track {t_idx} Icon: not available[/red]\n"
+                                except Exception:
+                                    chapters_section += f"    [red]Track {t_idx} Icon: error resolving[/red]\n"
         panel_text += chapters_section
         return panel_text
 
