@@ -425,5 +425,42 @@ def reset_auth(
     else:
         typer.echo("Authentication reset. Run any command to trigger authentication or run 'yoto.py reset-auth --reauth' to authenticate now.")
 
+@app.command()
+def fix_card(card_id: str, ensure_chapter_titles: bool = True, ensure_sequential_overlay_labels: bool = True, ensure_sequential_track_keys: bool = True) -> Card:
+    """
+    Fix common issues in a Yoto card.
+    """
+    API = get_api()
+    card = API.get_card(card_id)
+    if not card:
+        raise ValueError(f"Card not found: {card_id}")
+
+    # Example fix: Ensure all chapters have titles
+    if ensure_chapter_titles:
+        for idx, chapter in enumerate(card.content.chapters, 1):
+            if not chapter.title:
+                chapter.title = f"Chapter {idx}"
+
+    if ensure_sequential_overlay_labels:
+        card = API.rewrite_track_fields(card, "overlayLabel", sequential=True, reset_every_chapter=True)
+
+    if ensure_sequential_track_keys:
+        card = API.rewrite_track_fields(card, "key", sequential=True)
+
+    # Update the card on the server
+    card = API.create_or_update_content(card, return_card=True)
+    rprint(Panel.fit(card.display_card(), title="[bold green]Fixed Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+
+@app.command()
+def merge_chapters(card_id: str, reset_overlay_labels: bool = True, sequential_labels: bool = True) -> Card:
+    """
+    Merges chapters in a card into a single chapter.
+    """
+    API = get_api()
+    card = API.get_card(card_id)
+    card = API.merge_chapters(card, reset_overlay_labels=reset_overlay_labels)
+    card = API.create_or_update_content(card, return_card=True)
+    rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+
 if __name__ == "__main__":
     app()

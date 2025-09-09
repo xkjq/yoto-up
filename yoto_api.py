@@ -2278,3 +2278,105 @@ class YotoAPI:
         # Optionally clear other caches if needed
         # For now, we just clear tokens
         logger.info("Authentication state has been reset.")
+
+    def rewrite_track_fields(self, card: Card, field: str, value: str = "", sequential: bool=True, reset_every_chapter: bool = False) -> Card:
+
+        """
+        Rewrites the specified field for all tracks in a card to a new label.
+        Args:
+            card (Card): The card object containing chapters and tracks.
+            field (str): The field to set for all tracks (e.g., "key", "overlayLabel").
+            label (str): The new label to set for all track overlays.
+            sequential (bool): If True, appends a sequential number to each label (e.g., "Label 1", "Label 2", ...).
+
+        Returns:
+            Card: The updated card object with modified track overlay labels.
+        """
+        logger.info(f"Rewriting track {field} to '{value}' (sequential={sequential})")
+        if not hasattr(card, "content") or not hasattr(card.content, "chapters"):
+            logger.warning("Card has no content or chapters to update.")
+            return card
+
+        if card.content.chapters is None:
+            logger.warning("Card content chapters is None.")
+            return card
+
+        def rewrite_field(track, new_value):
+            match field:
+                case "key":
+                    track.key = new_value
+                case "overlayLabel":
+                    track.overlayLabel = new_value
+                case _:
+                    logger.warning(f"Unsupported field '{field}' for rewriting.")
+                    raise ValueError(f"Unsupported field '{field}' for rewriting.")
+
+        if reset_every_chapter:
+            for chapter in card.content.chapters:
+                if hasattr(chapter, "tracks") and chapter.tracks:
+                    for index, track in enumerate(chapter.tracks):
+                        new_value = value
+                        if sequential:
+                            new_value = f"{value} {index + 1}".strip()
+                        rewrite_field(track, new_value)
+                        logger.debug(f"Updated track '{track.title}' {field} to '{new_value}'.")
+        else:
+            index = 1
+            for chapter in card.content.chapters:
+                if hasattr(chapter, "tracks") and chapter.tracks:
+                    for track in chapter.tracks:
+                        new_value = value
+                        if sequential:
+                            new_value = f"{value} {index}".strip()
+                        rewrite_field(track, new_value)
+                        logger.debug(f"Updated track '{track.title}' {field} to '{new_value}'.")
+                        index += 1
+
+        return card
+
+    def merge_chapters(self, card: Card, chapter_title: str = "Chapter 1", reset_overlay_labels: bool = True, reset_track_keys: bool = True) -> Card:
+        """
+        Merges all chapters in a card into a single chapter.
+        The new chapter's title is taken from the first chapter, and its duration is the sum of all chapters' durations.
+
+        Args:
+            card (Card): The card object containing chapters to merge.
+
+        Returns:
+            Card: The updated card object with chapters merged into one.
+        """
+        logger.info("Merging chapters into a single chapter")
+        if not hasattr(card, "content") or not hasattr(card.content, "chapters"):
+            logger.warning("Card has no content or chapters to merge.")
+            return card
+
+        if card.content.chapters is None or len(card.content.chapters) == 0:
+            logger.warning("Card content chapters is None or empty.")
+            return card
+
+        total_duration = 0
+        all_tracks = []
+
+        for chapter in card.content.chapters:
+            if chapter.duration:
+                total_duration += chapter.duration
+            if hasattr(chapter, "tracks") and chapter.tracks:
+                    all_tracks.extend(chapter.tracks)
+
+        new_chapter = Chapter(
+            key="1",
+            title=chapter_title,
+            duration=total_duration,
+            tracks=all_tracks,
+            display=None,
+            overlayLabel=None
+        )
+
+        card.content.chapters = [new_chapter]
+
+        if reset_overlay_labels:
+            card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
+        if reset_track_keys:
+            card = self.rewrite_track_fields(card, field="key", sequential=True)
+        logger.debug(f"Merged {len(card.content.chapters)} chapters into one with title '{chapter_title}' and duration {total_duration} seconds.")
+        return card

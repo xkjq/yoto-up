@@ -234,7 +234,9 @@ class Card(BaseModel):
                             f"[cyan]Track {t_idx}:[/] [bold]{track_title}[/bold]",
                             f"[blue]Duration:[/] {getattr(track, 'duration', '')}",
                             f"[magenta]Format:[/] {getattr(track, 'format', '')}",
-                            f"[yellow]Type:[/] {getattr(track, 'type', '')}"
+                            f"[yellow]Type:[/] {getattr(track, 'type', '')}",
+                            f"[green]Key:[/] {getattr(track, 'key', '')}",
+                            f"[yellow]Overlay Label:[/] {getattr(track, 'overlayLabel', '')}"
                         ]
                         icon_lines = track_icon_inline.splitlines() if track_icon_inline else []
 
