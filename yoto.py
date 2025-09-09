@@ -143,7 +143,12 @@ def export_card(
 ):
     """Export a Yoto card by its ID to a JSON file."""
     API = get_api()
-    card = API.get_card(card_id)
+    try:
+        card = API.get_card(card_id)
+    except Exception as e:
+        typer.echo(f"Error retrieving card with ID '{card_id}': {e}")
+        typer.echo("Please check the card ID is correct.")
+        raise typer.Exit(code=1)
     export_dir = Path(path)
     export_dir.mkdir(parents=True, exist_ok=True)
     if card:
