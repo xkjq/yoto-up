@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal, Union
+from typing import Optional, List, Literal
 from pydantic import BaseModel
 from icons import render_icon
 
@@ -178,7 +178,8 @@ class Card(BaseModel):
                             method = getattr(api, 'get_icon_cache_path', None)
                             cache_path = method(icon_field) if callable(method) else None
                             if cache_path and cache_path.exists():
-                                art = render_icon(cache_path)
+                                # use braille renderer with horizontal scaling to correct terminal aspect
+                                art = render_icon(cache_path, method='braille', braille_dims=(8, 4))
                                 chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
                             else:
                                 chapters_section += "  [red]Chapter Icon: not available[/red]\n"
@@ -193,7 +194,8 @@ class Card(BaseModel):
                                 t_method = getattr(api, 'get_icon_cache_path', None)
                                 t_cache = t_method(t_icon_field) if callable(t_method) else None
                                 if t_cache and t_cache.exists():
-                                    t_art = render_icon(t_cache)
+                                    # render track icons using braille for higher detail
+                                    t_art = render_icon(t_cache, method='braille', braille_dims=(8, 4))
                                     chapters_section += "    [green]Track " + str(t_idx) + " Icon:[/]\n" + t_art + "\n"
                                 else:
                                     chapters_section += "    [red]Track " + str(t_idx) + " Icon: not available[/red]\n"
