@@ -103,12 +103,23 @@ def delete_cards(
         rprint(f"[bold red]Deleted card ID {card.cardId}:[/bold red] {response}")
 
 @app.command()
-def get_card(card_id: str, icons: bool = typer.Option(True, help="Render icons in card display")):
+def get_card(
+    card_id: str,
+    icons: bool = typer.Option(True, help="Render icons in card display"),
+    icons_method: str = typer.Option("braille", help="Icon rendering method: 'braille' or 'blocks'"),
+    braille_scale: int = typer.Option(None, help="Horizontal scale for braille rendering (integer)"),
+    braille_dims: str = typer.Option("8x4", help="Braille character grid dims as WxH, e.g. 8x4")
+):
     """Get details of a Yoto card by its ID."""
     API = get_api()
     card = API.get_card(card_id)
     if card:
-        rprint(Panel.fit(card.display_card(render_icons=icons, api=API), title=f"[bold green]Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+        # parse braille_dims
+        try:
+            w, h = (int(x) for x in braille_dims.split("x"))
+        except Exception:
+            w, h = 8, 4
+        rprint(Panel.fit(card.display_card(render_icons=icons, api=API, render_method=icons_method, braille_dims=(w, h), braille_x_scale=braille_scale), title="[bold green]Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
     else:
         typer.echo(f"Card with ID '{card_id}' not found.")
 

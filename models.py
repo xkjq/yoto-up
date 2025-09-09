@@ -126,7 +126,7 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
-    def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None):
+    def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None, render_method: str = "braille", braille_dims: tuple[int, int] = (8, 4), braille_x_scale: int | None = None):
         def trunc(val):
             if truncate_fields_limit is None or truncate_fields_limit <= 0:
                 return val
@@ -155,19 +155,13 @@ class Card(BaseModel):
             chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
             for idx, chapter in enumerate(self.content.chapters, 1):
                 chapter_title = trunc(getattr(chapter, 'title', ''))
-                # Track field may be a list or object; handle common cases
-                track_val = getattr(chapter, 'track', '')
-                if isinstance(track_val, str):
-                    track_str = trunc(track_val)
-                elif hasattr(track_val, 'title'):
-                    track_str = trunc(getattr(track_val, 'title', ''))
-                elif isinstance(track_val, list):
-                    track_str = ', '.join(trunc(getattr(t, 'title', str(t))) for t in track_val)
-                else:
-                    track_str = trunc(str(track_val)) if track_val else ''
+                # Display all track titles in the chapter
+                track_titles = ""
+                if hasattr(chapter, 'tracks') and chapter.tracks:
+                    track_titles = ', '.join(trunc(getattr(track, 'title', str(track))) for track in chapter.tracks)
                 chapters_section += (
                     f"[bold]Chapter {idx}:[/bold] {chapter_title}\n"
-                    f"  [cyan]Track:[/] {track_str}\n"
+                    f"  [cyan]Tracks:[/] {track_titles}\n"
                     f"  [blue]Duration:[/] {getattr(chapter, 'duration', '')}\n"
                 )
                 # Optionally render chapter icon
@@ -178,8 +172,8 @@ class Card(BaseModel):
                             method = getattr(api, 'get_icon_cache_path', None)
                             cache_path = method(icon_field) if callable(method) else None
                             if cache_path and cache_path.exists():
-                                # use braille renderer with horizontal scaling to correct terminal aspect
-                                art = render_icon(cache_path, method='braille', braille_dims=(8, 4))
+                                # render chapter icon using requested method/scale
+                                art = render_icon(cache_path, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
                                 chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
                             else:
                                 chapters_section += "  [red]Chapter Icon: not available[/red]\n"
@@ -194,8 +188,8 @@ class Card(BaseModel):
                                 t_method = getattr(api, 'get_icon_cache_path', None)
                                 t_cache = t_method(t_icon_field) if callable(t_method) else None
                                 if t_cache and t_cache.exists():
-                                    # render track icons using braille for higher detail
-                                    t_art = render_icon(t_cache, method='braille', braille_dims=(8, 4))
+                                    # render track icons using requested method/scale
+                                    t_art = render_icon(t_cache, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
                                     chapters_section += "    [green]Track " + str(t_idx) + " Icon:[/]\n" + t_art + "\n"
                                 else:
                                     chapters_section += "    [red]Track " + str(t_idx) + " Icon: not available[/red]\n"
