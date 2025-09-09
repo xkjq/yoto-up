@@ -941,6 +941,73 @@ def build_playlists_panel(
                 except Exception as ex:
                     show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
 
+            def clear_chapter_icon(ev, ch_i=None):
+                try:
+                    api = ensure_api(api_ref, CLIENT_ID)
+                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    if not card_id:
+                        show_snack("Unable to determine card id", error=True)
+                        return
+
+                    def worker():
+                        try:
+                            full = api.get_card(card_id)
+                            ch = full.content.chapters[ch_i]
+                            if getattr(ch, 'display', None):
+                                try:
+                                    # unset the icon field
+                                    setattr(ch.display, 'icon16x16', None)
+                                except Exception:
+                                    try:
+                                        delattr(ch.display, 'icon16x16')
+                                    except Exception:
+                                        pass
+                            else:
+                                show_snack('Chapter has no icon to clear', error=True)
+                                return
+                            api.update_card(full, return_card_model=False)
+                            show_snack('Chapter icon cleared')
+                            show_card_details(None, full)
+                        except Exception as ee:
+                            show_snack(f'Failed to clear chapter icon: {ee}', error=True)
+
+                    threading.Thread(target=worker, daemon=True).start()
+                except Exception:
+                    show_snack('Failed to start clear chapter icon operation', error=True)
+
+            def clear_track_icon(ev, ch_i=None, tr_i=None):
+                try:
+                    api = ensure_api(api_ref, CLIENT_ID)
+                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    if not card_id:
+                        show_snack("Unable to determine card id", error=True)
+                        return
+
+                    def worker():
+                        try:
+                            full = api.get_card(card_id)
+                            tr = full.content.chapters[ch_i].tracks[tr_i]
+                            if getattr(tr, 'display', None):
+                                try:
+                                    setattr(tr.display, 'icon16x16', None)
+                                except Exception:
+                                    try:
+                                        delattr(tr.display, 'icon16x16')
+                                    except Exception:
+                                        pass
+                            else:
+                                show_snack('Track has no icon to clear', error=True)
+                                return
+                            api.update_card(full, return_card_model=False)
+                            show_snack('Track icon cleared')
+                            show_card_details(None, full)
+                        except Exception as ee:
+                            show_snack(f'Failed to clear track icon: {ee}', error=True)
+
+                    threading.Thread(target=worker, daemon=True).start()
+                except Exception:
+                    show_snack('Failed to start clear track icon operation', error=True)
+
             # Helper: build track UI items for a chapter. If for_reorder is True
             # return simplified rows suitable for ReorderableListView; otherwise
             # return full controls that include icon, 'Use chapter icon' and URL rows.
@@ -1062,7 +1129,7 @@ def build_playlists_panel(
                             [
                                 ft.Row(
                                     [
-                                        tr_img if tr_img else ft.Container(width=20),
+                                        tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
                                         ft.Text(f"Track {t_idx}. {tr_title}", size=12),
                                     ],
                                     alignment=ft.MainAxisAlignment.START,
@@ -1091,9 +1158,19 @@ def build_playlists_panel(
                                     icon=ft.Icons.IMAGE,
                                     tooltip="Use chapter icon for this track",
                                     opacity=0.1,  # Reduce opacity to 50%
+                                    icon_size=16,  # Make icon smaller
                                     on_click=lambda ev,
                                     ch_i=ch_index,
                                     tr_i=t_idx - 1: use_chapter_icon(ev, ch_i, tr_i),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.CLOSE,
+                                    tooltip="Clear track icon",
+                                    opacity=0.1,  # Reduce opacity to 50%
+                                    icon_size=16,  # Make icon smaller
+                                    on_click=lambda ev,
+                                    ch_i=ch_index,
+                                    tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
                                 ),
                             ]
                         )
@@ -1511,6 +1588,13 @@ def build_playlists_panel(
                                             meta_line, size=12, color=ft.Colors.BLACK45
                                         ),
                                     ]
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.CLOSE,
+                                    opacity=0.2,
+                                    hover_color=ft.Colors.RED_ACCENT_100,
+                                    tooltip="Clear chapter icon",
+                                    on_click=lambda ev, ci=ch_idx: clear_chapter_icon(ev, ci),
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.START,
