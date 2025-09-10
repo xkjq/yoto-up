@@ -790,6 +790,58 @@ def make_show_card_details(
                 CLIENT_ID,
             )
 
+        def relabel_keys(ev=None):
+            try:
+                api = ensure_api(api_ref, CLIENT_ID)
+                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                if not card_id:
+                    show_snack("Unable to determine card id", error=True)
+                    return
+
+                def worker():
+                    try:
+                        full = api.get_card(card_id)
+                        # rewrite 'key' sequentially across tracks
+                        updated = api.rewrite_track_fields(full, field="key", sequential=True)
+                        api.update_card(updated, return_card_model=False)
+                        show_snack("Track keys relabelled")
+                        try:
+                            show_card_details(None, updated)
+                        except Exception:
+                            pass
+                    except Exception as ex:
+                        show_snack(f"Failed to relabel keys: {ex}", error=True)
+
+                threading.Thread(target=worker, daemon=True).start()
+            except Exception:
+                show_snack("Failed to start relabel keys operation", error=True)
+
+        def relabel_overlays(ev=None):
+            try:
+                api = ensure_api(api_ref, CLIENT_ID)
+                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                if not card_id:
+                    show_snack("Unable to determine card id", error=True)
+                    return
+
+                def worker():
+                    try:
+                        full = api.get_card(card_id)
+                        # rewrite 'overlayLabel' sequentially and reset every chapter
+                        updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True, reset_every_chapter=True)
+                        api.update_card(updated, return_card_model=False)
+                        show_snack("Overlay labels relabelled")
+                        try:
+                            show_card_details(None, updated)
+                        except Exception:
+                            pass
+                    except Exception as ex:
+                        show_snack(f"Failed to relabel overlays: {ex}", error=True)
+
+                threading.Thread(target=worker, daemon=True).start()
+            except Exception:
+                show_snack("Failed to start relabel overlays operation", error=True)
+
         def replace_icons(ev):
             show_replace_icons_dialog(
                 page,
@@ -825,6 +877,8 @@ def make_show_card_details(
             actions=[
                 ft.ElevatedButton("Save Order", on_click=save_order_click),
                 ft.TextButton("Raw JSON", on_click=show_json),
+                ft.TextButton("Renumber keys", on_click=lambda ev: relabel_keys(ev)),
+                ft.TextButton("Renumber overlays", on_click=lambda ev: relabel_overlays(ev)),
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (

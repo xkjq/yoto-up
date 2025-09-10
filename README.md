@@ -20,7 +20,7 @@ Features include content organization, device management, and easy integration w
    ## ✨ Highlights
 
    - 🔗 Integration with Yoto Services — simplified access to the Yoto API and helper utilities
-   - 🗂️ Content organization — chapters, tracks and metadata management
+   - 🗂️ Playlist/Card organization — chapters, tracks and metadata management
       - 🎵 Track titles, keys and durations
       - 🖼️ Icon management — autoselect or pick icons via search
       - 🖌️ Cover management — set, import, or auto-search cover art; embed into card metadata
@@ -48,7 +48,7 @@ Features include content organization, device management, and easy integration w
 
    2. Create and activate a virtual environment
 
-   You can use the standard Python venv workflow, or the bundled `uv` helper if you have it installed.
+   You can use the standard Python venv workflow, but uv is recommended
 
    Standard (bash / zsh / sh):
 
@@ -68,10 +68,8 @@ Features include content organization, device management, and easy integration w
 
    ```bash
    uv venv
-   uv activate
+   source .venv/bin/activate
    ```
-
-   (`uv` is a tiny convenience wrapper used in this project to create and activate virtualenvs and run pip; it simply runs the equivalent venv/pip commands.)
 
    3. Install Python dependencies:
 
