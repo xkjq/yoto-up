@@ -29,6 +29,14 @@ Features include content organization, device management, and easy integration w
 
    For full docs and examples see the project site: https://xkjq.github.io/yoto-up/
 
+   ### Command Line First
+
+    Leveraging Python libraries like Typer, Rich, and Textual for a vibrant, user-friendly command-line experience. Creating and managing cards with text has never been easier or more colorful 🌈.
+
+   ### Graphical Interface Included
+
+   For tasks better suited to a visual workflow, Yoto-UP also provides a GUI built with Flet, making advanced operations accessible and sometimes even intuitive.
+
    ## 🛠️ Installation
 
    ### GUI (binary)
@@ -105,7 +113,7 @@ Features include content organization, device management, and easy integration w
    ```
 
    ## Want a pip installable package?
-   So do I.
+   So do I, fancy creating one? 😉
 
    ## 🤝 Contributing
 
