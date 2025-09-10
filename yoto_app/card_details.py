@@ -943,13 +943,77 @@ def make_show_card_details(
                     body.append(ft.Row([cover_img, ft.Column([ft.Text(title_text, weight=ft.FontWeight.BOLD)])], alignment=ft.MainAxisAlignment.START, spacing=12))
                 else:
                     body.append(ft.Text(title_text, weight=ft.FontWeight.BOLD))
-                body.append(ft.Divider())
-                body.append(ft.ElevatedButton("Renumber keys", on_click=lambda ev: (setattr(tracks_dialog, 'open', False), relabel_keys(ev), page.update())))
-                body.append(ft.ElevatedButton("Renumber overlayLabels", on_click=lambda ev: (setattr(tracks_dialog, 'open', False), relabel_overlays(ev), page.update())))
 
-                tracks_dialog = ft.AlertDialog(title=ft.Text("Track actions"), content=ft.Column(body, spacing=8), actions=[ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))])
+                body.append(ft.Divider())
+
+                # Add description about the buttons
+                body.append(
+                    ft.Text(
+                        """Below you can renumber all overlayLabels or keys for tracks in this card.
+Renumbering overlayLabels will assign sequential overlay labels to tracks, resetting at each chapter. 
+Renumbering keys will assign sequential keys to all tracks.
+                        """,
+                        size=12,
+                        color=ft.Colors.BLACK54,
+                        italic=True,
+                    )
+                )
+
+                # build chapters + tracks view (showing track title, key and overlayLabel)
+                try:
+                    chapters = (c.get("content") or {}).get("chapters") or []
+                    chapter_rows = []
+                    for ch_idx, ch in enumerate(chapters):
+                        ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
+                        header = ft.Text(f"Chapter {ch_idx + 1}. {ch_title}", weight=ft.FontWeight.BOLD)
+                        track_items = []
+                        tracks = ch.get("tracks") if isinstance(ch, dict) else None
+                        if tracks:
+                            for t_idx, t in enumerate(tracks, 1):
+                                if isinstance(t, dict):
+                                    t_title = t.get("title", "")
+                                    t_key = t.get("key", "")
+                                    t_overlay = t.get("overlayLabel", "")
+                                    track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
+                                else:
+                                    track_items.append(ft.Text(f"• {str(t)}", size=12))
+                        else:
+                            track_items.append(ft.Text("(no tracks)", size=12))
+
+                        chapter_rows.append(ft.Column([header, ft.Column(track_items, spacing=4)], spacing=6))
+
+                    if chapter_rows:
+                        chapters_view = ft.ListView(chapter_rows, spacing=6, padding=6, height=300)
+                        body.append(chapters_view)
+                    else:
+                        body.append(ft.Text("No chapters available", size=12))
+                except Exception:
+                    body.append(ft.Text("Unable to render chapters", size=12))
+
+                body.append(ft.Divider())
+
+                tracks_dialog = ft.AlertDialog(
+                    title=ft.Text("Track actions"),
+                    content=ft.Column(body, spacing=8),
+                    actions=[
+                        ft.ElevatedButton(
+                            "Renumber overlayLabels",
+                            on_click=lambda ev: (
+                                relabel_overlays(ev),
+                            ),
+                        ),
+                        ft.ElevatedButton(
+                            "Renumber keys",
+                            on_click=lambda ev: (
+                                relabel_keys(ev),
+                            ),
+                        ),
+                        ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
+                    ],
+                )
                 try:
                     page.open(tracks_dialog)
+                    page.update()
                 except Exception:
                     try:
                         page.dialog = tracks_dialog
