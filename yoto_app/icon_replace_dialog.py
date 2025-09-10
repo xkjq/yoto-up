@@ -2,6 +2,8 @@ import flet as ft
 import threading
 from pathlib import Path
 
+from models import TrackDisplay, ChapterDisplay
+
 class IconReplaceDialog:
     def __init__(self, api, card, page, show_snack, show_card_details, kind='chapter', ch_i=None, tr_i=None):
         self.api = api
@@ -97,13 +99,13 @@ class IconReplaceDialog:
                                     if self.kind == 'chapter':
                                         target_ch = full.content.chapters[self.ch_i]
                                         if not getattr(target_ch, 'display', False):
-                                            target_ch.display = type(target_ch.display)() if hasattr(target_ch, 'display') else None
+                                            target_ch.display = ChapterDisplay()
                                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
                                     else:
                                         target_ch = full.content.chapters[self.ch_i]
                                         target_tr = target_ch.tracks[self.tr_i]
                                         if not getattr(target_tr, 'display', False):
-                                            target_tr.display = type(target_tr.display)() if hasattr(target_tr, 'display') else None
+                                            target_tr.display = TrackDisplay()
                                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
                                     self.api.update_card(full, return_card_model=False)
                                     self.show_card_details(None, full)

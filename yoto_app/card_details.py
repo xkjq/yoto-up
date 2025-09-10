@@ -177,6 +177,8 @@ def make_show_card_details(
                         tr_duration = fmt_sec(tr.get("duration"))
                         tr_size = tr.get("fileSize", "")
                         tr_url = tr.get("trackUrl", "")
+                        tr_key = tr.get("key", "")
+                        tr_overlay = tr.get("overlayLabel", "")
                         display = tr.get("display") or {}
                         tr_icon_field = (
                             display.get("icon16x16")
@@ -285,6 +287,17 @@ def make_show_card_details(
                                         ft.Container(width=20),
                                         ft.Text(
                                             f"{tr_format}  • {tr_duration}  • size={tr_size}",
+                                            size=11,
+                                            color=ft.Colors.BLACK45,
+                                        ),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.START,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Container(width=20),
+                                        ft.Text(
+                                            f"key={tr_key}  overlay={tr_overlay}",
                                             size=11,
                                             color=ft.Colors.BLACK45,
                                         ),
@@ -842,6 +855,42 @@ def make_show_card_details(
             except Exception:
                 show_snack("Failed to start relabel overlays operation", error=True)
 
+        def merge_chapters(ev=None):
+            try:
+                def do_merge(_e=None):
+                    try:
+                        confirm_dialog.open = False
+                    except Exception:
+                        pass
+                    try:
+                        api = ensure_api(api_ref, CLIENT_ID)
+                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                        if not card_id:
+                            show_snack("Unable to determine card id", error=True)
+                            return
+                        full = api.get_card(card_id)
+                        updated = api.merge_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
+                        api.update_card(updated, return_card_model=False)
+                        show_snack("Chapters merged")
+                        try:
+                            show_card_details(None, updated)
+                        except Exception:
+                            logger.debug("merge_chapters: failed to refresh details view after merge")
+                    except Exception as ex:
+                        show_snack(f"Failed to merge chapters: {ex}", error=True)
+
+                confirm_dialog = ft.AlertDialog(
+                    title=ft.Text("Merge chapters"),
+                    content=ft.Text("Merge all chapters into one chapter? This cannot be undone."),
+                    actions=[
+                        ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=do_merge, daemon=True).start()),
+                        ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
+                    ],
+                )
+                page.open(confirm_dialog)
+            except Exception:
+                show_snack("Failed to start merge chapters operation", error=True)
+
         def replace_icons(ev):
             show_replace_icons_dialog(
                 page,
@@ -879,6 +928,7 @@ def make_show_card_details(
                 ft.TextButton("Raw JSON", on_click=show_json),
                 ft.TextButton("Renumber keys", on_click=lambda ev: relabel_keys(ev)),
                 ft.TextButton("Renumber overlays", on_click=lambda ev: relabel_overlays(ev)),
+                ft.TextButton("Merge chapters", on_click=lambda ev: merge_chapters(ev)),
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
