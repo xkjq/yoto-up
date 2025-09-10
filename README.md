@@ -13,7 +13,7 @@ Features include content organization, device management, and easy integration w
 - **Content Organization**: Easily manage and organize your Yoto cards and files.
    # 🚀 Yoto-UP
 
-   A friendly toolbox for managing Yoto content from the command line, a terminal UI, or a small GUI.
+   A toolbox for managing Yoto content from the command line, a terminal UI, or a GUI.
 
    Yoto-UP helps with content organization, device management, icon handling, and easy integration with Yoto services.
 
