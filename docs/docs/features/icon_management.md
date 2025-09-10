@@ -2,12 +2,9 @@
 
 Yoto-UP includes tools to find, render, cache and upload small 16×16 icons used as card/chapter artwork.
 
-> **See a sample of it working in the terminal**
->
-> <script src="https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB.js" id="asciicast-ebXKat85slfP1ayc76wWJycsB" async="true"></script>
-> 
-
-What you can do
+??? example "See a sample of it working in the terminal"
+    This example shows editing a newly created playlist and letting the icon be automatically selected.
+    <script src="https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB.js" id="asciicast-ebXKat85slfP1ayc76wWJycsB" async="true"></script>
 
 - Search Official Yoto icons and YotoIcons (scrapes / caches results).
 - Download and cache official Yoto icons to `.yoto_icon_cache/`.

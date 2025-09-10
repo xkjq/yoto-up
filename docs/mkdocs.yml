@@ -9,6 +9,8 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.superfences
   - pymdownx.inlinehilite
+  - admonition
+  - pymdownx.details
 
 site_url: "https://xkjq.github.io/yoto-up/"
 repo_url: "https://github.com/xkjq/yoto-up"
