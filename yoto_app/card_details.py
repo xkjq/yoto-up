@@ -905,6 +905,60 @@ def make_show_card_details(
                 show_card_details,
             )
 
+        # popup dialog for track-related actions (shows title + cover image)
+        tracks_dialog = None
+
+        def show_tracks_popup(_ev=None):
+            nonlocal tracks_dialog
+            try:
+                title_text = c.get("title", "") if isinstance(c, dict) else str(c)
+                cover_img = None
+                try:
+                    cover = (c.get("metadata") or {}).get("cover") or {}
+                    for key in ("imageL", "imageM", "imageS", "image"):
+                        url_or_field = cover.get(key)
+                        if not url_or_field:
+                            continue
+                        # remote URL
+                        try:
+                            if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
+                                cover_img = ft.Image(src=url_or_field, width=160, height=160)
+                                break
+                        except Exception:
+                            pass
+                        # try cached icon path
+                        try:
+                            api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
+                            tp = api_local.get_icon_cache_path(url_or_field)
+                            if tp and Path(tp).exists():
+                                cover_img = ft.Image(src=str(tp), width=160, height=160)
+                                break
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                body = []
+                if cover_img:
+                    body.append(ft.Row([cover_img, ft.Column([ft.Text(title_text, weight=ft.FontWeight.BOLD)])], alignment=ft.MainAxisAlignment.START, spacing=12))
+                else:
+                    body.append(ft.Text(title_text, weight=ft.FontWeight.BOLD))
+                body.append(ft.Divider())
+                body.append(ft.ElevatedButton("Renumber keys", on_click=lambda ev: (setattr(tracks_dialog, 'open', False), relabel_keys(ev), page.update())))
+                body.append(ft.ElevatedButton("Renumber overlayLabels", on_click=lambda ev: (setattr(tracks_dialog, 'open', False), relabel_overlays(ev), page.update())))
+
+                tracks_dialog = ft.AlertDialog(title=ft.Text("Track actions"), content=ft.Column(body, spacing=8), actions=[ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))])
+                try:
+                    page.open(tracks_dialog)
+                except Exception:
+                    try:
+                        page.dialog = tracks_dialog
+                        page.update()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
         try:
             win_h = getattr(page, "window_height", None) or getattr(page, "height", None)
             win_w = getattr(page, "window_width", None) or getattr(page, "width", None)
@@ -926,8 +980,7 @@ def make_show_card_details(
             actions=[
                 ft.ElevatedButton("Save Order", on_click=save_order_click),
                 ft.TextButton("Raw JSON", on_click=show_json),
-                ft.TextButton("Renumber keys", on_click=lambda ev: relabel_keys(ev)),
-                ft.TextButton("Renumber overlays", on_click=lambda ev: relabel_overlays(ev)),
+                ft.TextButton("Tracks", on_click=lambda ev: show_tracks_popup(ev)),
                 ft.TextButton("Merge chapters", on_click=lambda ev: merge_chapters(ev)),
                 ft.TextButton(
                     "Edit",
