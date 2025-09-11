@@ -467,5 +467,16 @@ def merge_chapters(card_id: str, reset_overlay_labels: bool = True, sequential_l
     card = API.create_or_update_content(card, return_card=True)
     rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
 
+@app.command()
+def expand_all_tracks(card_id: str):
+    """
+    Expands all tracks in a card into individual chapters.
+    """
+    API = get_api()
+    card = API.get_card(card_id)
+    card = API.expand_all_tracks_to_chapters(card)
+    card = API.create_or_update_content(card, return_card=True)
+    rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+
 if __name__ == "__main__":
     app()

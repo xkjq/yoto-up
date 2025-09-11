@@ -2380,3 +2380,79 @@ class YotoAPI:
             card = self.rewrite_track_fields(card, field="key", sequential=True)
         logger.debug(f"Merged {len(card.content.chapters)} chapters into one with title '{chapter_title}' and duration {total_duration} seconds.")
         return card
+
+    def split_chapters(self, card: Card, max_tracks_per_chapter: int = 5, reset_overlay_labels: bool = True, reset_track_keys: bool = True, include_part_in_title: bool = True) -> Card:
+        """
+        Splits chapters in a card into smaller chapters, each containing a maximum number of tracks.
+        """
+        logger.info("Splitting chapters into smaller chapters")
+        if not hasattr(card, "content") or not hasattr(card.content, "chapters"):
+            logger.warning("Card has no content or chapters to split.")
+            return card
+
+        if card.content.chapters is None or len(card.content.chapters) == 0:
+            logger.warning("Card content chapters is None or empty.")
+            return card
+
+        new_chapters = []
+        for chapter in card.content.chapters:
+            if hasattr(chapter, "tracks") and chapter.tracks:
+                for i in range(0, len(chapter.tracks), max_tracks_per_chapter):
+                    if not include_part_in_title:
+                        chapter_title = chapter.title
+                    else:
+                        chapter_title = f"{chapter.title} (Part {i // max_tracks_per_chapter + 1})"
+                    new_chapter = Chapter(
+                        key=str(len(new_chapters) + 1),
+                        title=chapter_title,
+                        duration=sum(track.duration for track in chapter.tracks[i:i + max_tracks_per_chapter]),
+                        tracks=chapter.tracks[i:i + max_tracks_per_chapter],
+                        display=None,
+                        overlayLabel=None
+                    )
+                    new_chapters.append(new_chapter)
+
+        card.content.chapters = new_chapters
+
+        if reset_overlay_labels:
+            card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
+        if reset_track_keys:
+            card = self.rewrite_track_fields(card, field="key", sequential=True)
+        logger.debug(f"Split {len(card.content.chapters)} chapters into smaller chapters.")
+        return card
+
+    def expand_all_tracks_into_chapters(self, card: Card, reset_overlay_labels: bool = True, reset_track_keys: bool = True) -> Card:
+        """
+        Expands all tracks in a card so that each track becomes its own chapter.
+        """
+        logger.info("Expanding all tracks into individual chapters")
+        if not hasattr(card, "content") or not hasattr(card.content, "chapters"):
+            logger.warning("Card has no content or chapters to expand.")
+            return card
+
+        if card.content.chapters is None or len(card.content.chapters) == 0:
+            logger.warning("Card content chapters is None or empty.")
+            return card
+
+        new_chapters = []
+        for chapter in card.content.chapters:
+            if hasattr(chapter, "tracks") and chapter.tracks:
+                for track in chapter.tracks:
+                    new_chapter = Chapter(
+                        key=str(len(new_chapters) + 1),
+                        title=track.title,
+                        duration=track.duration,
+                        tracks=[track],
+                        display=None,
+                        overlayLabel=None
+                    )
+                    new_chapters.append(new_chapter)
+
+        card.content.chapters = new_chapters
+
+        if reset_overlay_labels:
+            card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
+        if reset_track_keys:
+            card = self.rewrite_track_fields(card, field="key", sequential=True)
+        logger.debug(f"Expanded all tracks into {len(card.content.chapters)} individual chapters.")
+        return card
