@@ -2521,6 +2521,7 @@ class YotoAPI:
         for chapter in card.content.chapters:
             if hasattr(chapter, "tracks") and chapter.tracks:
                 for track in chapter.tracks:
+                    # create a new chapter for this track and copy display/icon information
                     new_chapter = Chapter(
                         key=str(len(new_chapters) + 1),
                         title=track.title,
@@ -2529,6 +2530,23 @@ class YotoAPI:
                         display=None,
                         overlayLabel=None
                     )
+                    try:
+                        # if the track has a display with an icon, propagate it to the new chapter display
+                        track_display = getattr(track, 'display', None)
+                        if track_display is not None:
+                            icon = getattr(track_display, 'icon16x16', None)
+                            if icon:
+                                # ensure chapter has a display object and set its icon
+                                if not getattr(new_chapter, 'display', None):
+                                    # import here to avoid circular import issues if any
+                                    new_chapter.display = ChapterDisplay()
+                                try:
+                                    setattr(new_chapter.display, 'icon16x16', icon)
+                                except Exception:
+                                    # best-effort: ignore failures to set attribute
+                                    pass
+                    except Exception:
+                        pass
                     new_chapters.append(new_chapter)
 
         card.content.chapters = new_chapters

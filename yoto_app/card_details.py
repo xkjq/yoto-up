@@ -1351,8 +1351,7 @@ For example, if you have 3 chapters with 2 tracks each, such as:
                                     
 Merging will result in:
     Chapter 1: Track 1, Track 2, Track 3, Track 4, Track 5, Track 6
-
-This cannot be undone."""),
+"""),
                     actions=[
                         ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=do_merge, daemon=True).start()),
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
@@ -1376,13 +1375,13 @@ This cannot be undone."""),
                             api = ensure_api(api_ref, CLIENT_ID)
                             card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                             if not card_id:
-                                dialog_show_snack("Unable to determine card id", error=True)
+                                show_snack("Unable to determine card id", error=True)
                                 return
                             full = api.get_card(card_id)
                             updated = api.expand_all_tracks_into_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
                             api.update_card(updated, return_card_model=False)
                             try:
-                                dialog_show_snack("Expanded all tracks into individual chapters")
+                                show_snack("Expanded all tracks into individual chapters")
                             except Exception:
                                 pass
                             try:
@@ -1392,7 +1391,7 @@ This cannot be undone."""),
                             page.update()
                         except Exception as ex:
                             try:
-                                dialog_show_snack(f"Failed to expand tracks: {ex}", error=True)
+                                show_snack(f"Failed to expand tracks: {ex}", error=True)
                             except Exception:
                                 pass
 
@@ -1400,7 +1399,7 @@ This cannot be undone."""),
 
                 confirm_expand = ft.AlertDialog(
                     title=ft.Text("Expand all tracks"),
-                    content=ft.Text("Expand every track into its own chapter? This will create one chapter per track and relabel overlays/keys. This cannot be undone."),
+                    content=ft.Text("Expand every track into its own chapter? This will create one chapter per track and relabel overlays/keys."),
                     actions=[
                         ft.TextButton("Yes", on_click=do_expand),
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_expand, 'open', False), page.update())),
