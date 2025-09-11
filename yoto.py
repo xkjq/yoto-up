@@ -218,6 +218,138 @@ def import_card(path: str):
     typer.echo(f"Card imported from {path}: {card.cardId}")
 
 @app.command()
+def versions(
+    verb: str = typer.Argument(..., help="Action: list|show|preview|restore|delete|delete-all"),
+    target: Optional[str] = typer.Argument(None, help="Card id or path to version file (positional)") ,
+    path: str = typer.Option(None, help="Path to a specific version file (for show/restore/delete)")
+):
+    """Manage local card versions saved by the application.
+
+    The command accepts a verb and either a card id (for `list` and `delete-all`) or a
+    path to a saved version file (for `show`, `preview`, `restore`, `delete`).
+
+    Examples:
+        # list versions for a card id
+        python yoto.py versions list 28LBG
+
+        # show a saved version JSON (positional path)
+        python yoto.py versions show .card_versions/28LBG/20250911T204616Z.json
+
+        # preview a saved version
+        python yoto.py versions preview .card_versions/28LBG/20250911T204616Z.json
+
+        # restore a saved version to the server (will ask for confirmation)
+        python yoto.py versions restore .card_versions/28LBG/20250911T204616Z.json
+
+    Actions:
+        list: list version files for a card id
+        show: print the JSON for a specific version file (positional path or --path)
+        preview: render a brief preview of a saved card version
+        restore: POST the version back to the API to restore content (positional path or --path)
+        delete: delete a specific version file (positional path or --path)
+        delete-all: remove all saved versions for the given card id
+        """
+    """
+    API = get_api()
+    verb_l = (verb or '').lower()
+    try:
+        # If the user passed a path as the positional target, prefer it for show/preview/restore/delete
+        effective_path = None
+        if path:
+            effective_path = Path(path)
+        elif target:
+            t = Path(target)
+            if t.exists() or '/' in target or target.startswith('.') or target.endswith('.json'):
+                effective_path = t
+
+        if verb_l == 'list':
+            card_id = target
+            if not card_id:
+                typer.echo('Please provide a card id (or title-derived id) to list versions')
+                raise typer.Exit(code=1)
+            files = API.list_versions(card_id)
+            if not files:
+                typer.echo('No versions found')
+                return
+            for p in files:
+                typer.echo(str(p))
+            return
+
+        if verb_l == 'show':
+            if not effective_path:
+                typer.echo('Please provide --path to a version file or pass the file path as the positional target')
+                raise typer.Exit(code=1)
+            data = API.load_version(effective_path)
+            typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
+            return
+
+        if verb_l == 'preview':
+            if not effective_path:
+                typer.echo('Please provide --path to a version file or pass the file path as the positional target')
+                raise typer.Exit(code=1)
+            card = Card.model_validate(API.load_version(effective_path))
+            # If this looks like a full card, try to pretty print key fields
+            if card:
+                rprint(Panel.fit(card.display_card(truncate_fields_limit=100), title=f"[bold green]Card Preview[/bold green]", subtitle=f"[bold cyan]{getattr(card, 'cardId', getattr(card, 'id', 'unknown'))}[/bold cyan]"))
+            
+            return
+
+        if verb_l == 'restore':
+            if not effective_path:
+                typer.echo('Please provide --path to a version file to restore or pass it as the positional target')
+                raise typer.Exit(code=1)
+            p = effective_path
+            if not p.exists():
+                typer.echo(f'File not found: {p}')
+                raise typer.Exit(code=1)
+            if not Confirm.ask(f"Are you sure you want to restore version {p.name}? This will POST to the server.", default=False):
+                typer.echo('Cancelled')
+                return
+            restored = API.restore_version(p, return_card=True)
+            typer.echo(f"Restored card: {getattr(restored, 'cardId', getattr(restored, 'id', 'unknown'))}")
+            return
+
+        if verb_l == 'delete':
+            if not effective_path:
+                typer.echo('Please provide --path to a version file to delete or pass it as the positional target')
+                raise typer.Exit(code=1)
+            p = effective_path
+            if not p.exists():
+                typer.echo(f'File not found: {p}')
+                raise typer.Exit(code=1)
+            if not Confirm.ask(f"Delete version file {p}?", default=False):
+                typer.echo('Cancelled')
+                return
+            p.unlink()
+            typer.echo(f'Deleted {p}')
+            return
+
+        if verb_l == 'delete-all':
+            if not card_id:
+                typer.echo('Please provide a card id to delete all versions for')
+                raise typer.Exit(code=1)
+            files = API.list_versions(card_id)
+            if not files:
+                typer.echo('No versions to delete')
+                return
+            if not Confirm.ask(f"Are you sure you want to delete ALL {len(files)} version files for '{card_id}'?", default=False):
+                typer.echo('Cancelled')
+                return
+            for p in files:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+            typer.echo(f'Deleted {len(files)} files for {card_id}')
+            return
+
+        typer.echo(f'Unknown verb: {verb}')
+        raise typer.Exit(code=2)
+    except Exception as e:
+        typer.echo(f'Error: {e}')
+        raise typer.Exit(code=1)
+
+@app.command()
 def create_card_from_folder(
     folder: str = typer.Argument(..., help="Path to folder containing media files"),
     title: str = typer.Option(None, help="Title for the new card, if not provided, folder name is used"),
