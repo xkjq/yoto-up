@@ -39,6 +39,7 @@ def show_edit_card_dialog(
         show_edit_card_dialog._state = SimpleNamespace(flat_items=None, last_card_id=None)
     state = show_edit_card_dialog._state
 
+
     chapter_fields = []
     track_fields = []
     chapters_local = c.get("content", {}).get("chapters") or []
@@ -90,6 +91,11 @@ def show_edit_card_dialog(
             else (meta.get("tags") or "")
         ),
     )
+    # Add authors field for editing
+    author_field = ft.TextField(
+        label="Author",
+        value=meta.get("author") or "",
+    )
 
     edit_controls = [
         title_field,
@@ -100,6 +106,7 @@ def show_edit_card_dialog(
         genre_field,
         languages_field,
         tags_field,
+        author_field,
         ft.Divider(),
         ft.Text("Chapters & Tracks", weight=ft.FontWeight.BOLD),
     ]
@@ -365,6 +372,7 @@ def show_edit_card_dialog(
             c["metadata"]["genre"] = split_list(genre_field.value)
             c["metadata"]["languages"] = split_list(languages_field.value)
             c["metadata"]["tags"] = split_list(tags_field.value)
+            c["metadata"]["author"] = author_field.value or None
         except Exception:
             pass
 

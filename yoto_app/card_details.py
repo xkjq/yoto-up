@@ -1595,12 +1595,27 @@ Renumbering keys will assign sequential keys to all tracks.
 
         # If preview_path is provided, we're showing a saved version preview and
         # expose a Restore button in the dialog actions.
+        # Place the JSON and Versions buttons in the dialog title (top-right)
         dialog_actions = [
             ft.ElevatedButton("Save Order", on_click=save_order_click),
-            ft.TextButton("Raw JSON", on_click=show_json),
             ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
-            ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
         ]
+
+        # Title row with buttons on the top-right
+        title_row = ft.Row(
+            [
+                ft.Text("Playlist details"),
+                ft.Row(
+                    [
+                        ft.TextButton("JSON", on_click=show_json),
+                        ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
+                    ],
+                    spacing=6,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
 
         # Add Edit/Add/Replace/Export/Close actions later; include restore if preview
         if preview_path is not None:
@@ -1639,7 +1654,7 @@ Renumbering keys will assign sequential keys to all tracks.
             dialog_actions.append(ft.TextButton("Restore this version", on_click=make_restore_from_preview()))
 
         dialog = ft.AlertDialog(
-            title=ft.Text("Playlist details"),
+            title=title_row,
             content=dialog_content,
             actions=dialog_actions + [
                 ft.TextButton(
