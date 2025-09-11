@@ -35,7 +35,7 @@ def make_show_card_details(
     nested function.
     """
 
-    def show_card_details(e, card):
+    def show_card_details(e, card, preview_path: Path | None = None):
         def refresh_icon_cache(ev=None):
             api = api_ref.get("api")
             try:
@@ -1022,7 +1022,8 @@ def make_show_card_details(
                             def _preview(ev2=None):
                                 try:
                                     payload = api.load_version(pp)
-                                    show_version_json(payload, title=f"Version: {pp.name}", path=pp)
+                                    # show the full card details for the saved version
+                                    show_card_details(None, payload, preview_path=pp)
                                 except Exception as ex:
                                     show_snack(f"Failed to load version: {ex}", error=True)
                             return _preview
@@ -1427,14 +1428,55 @@ Renumbering keys will assign sequential keys to all tracks.
                 except Exception:
                     pass
 
+        # If preview_path is provided, we're showing a saved version preview and
+        # expose a Restore button in the dialog actions.
+        dialog_actions = [
+            ft.ElevatedButton("Save Order", on_click=save_order_click),
+            ft.TextButton("Raw JSON", on_click=show_json),
+            ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
+            ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
+        ]
+
+        # Add Edit/Add/Replace/Export/Close actions later; include restore if preview
+        if preview_path is not None:
+            def make_restore_from_preview(ppath=preview_path):
+                def _restore(ev2=None):
+                    try:
+                        # close this dialog
+                        try:
+                            dialog.open = False
+                        except Exception:
+                            pass
+                        page.update()
+
+                        def worker():
+                            try:
+                                api_local = ensure_api(api_ref, CLIENT_ID)
+                                updated = api_local.restore_version(ppath, return_card=True)
+                                try:
+                                    show_snack("Version restored")
+                                except Exception:
+                                    pass
+                                try:
+                                    show_card_details(None, updated)
+                                except Exception:
+                                    pass
+                                page.update()
+                            except Exception as ex:
+                                show_snack(f"Failed to restore version: {ex}", error=True)
+
+                        threading.Thread(target=worker, daemon=True).start()
+                    except Exception:
+                        show_snack("Failed to start restore", error=True)
+
+                return _restore
+
+            dialog_actions.append(ft.TextButton("Restore this version", on_click=make_restore_from_preview()))
+
         dialog = ft.AlertDialog(
             title=ft.Text("Playlist details"),
             content=dialog_content,
-            actions=[
-                ft.ElevatedButton("Save Order", on_click=save_order_click),
-                ft.TextButton("Raw JSON", on_click=show_json),
-                ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
-                ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
+            actions=dialog_actions + [
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
