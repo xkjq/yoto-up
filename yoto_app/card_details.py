@@ -1067,11 +1067,48 @@ def make_show_card_details(
                                     show_snack("Failed to show restore confirmation", error=True)
                             return _restore
 
+                        def make_delete(pp=p):
+                            def _delete(ev2=None):
+                                try:
+                                    # ask for confirmation
+                                    def do_yes(_e=None):
+                                        try:
+                                            confirm_del.open = False
+                                        except Exception:
+                                            pass
+                                        page.update()
+                                        def worker_del():
+                                            try:
+                                                pp.unlink()
+                                                show_snack(f"Deleted version {pp.name}")
+                                                versions_dialog.open = False
+                                                page.update()
+                                                show_versions(None)
+                                            except Exception as ex:
+                                                show_snack(f"Failed to delete version: {ex}", error=True)
+                                                logger.debug(f"delete version error: {ex}")
+                                        threading.Thread(target=worker_del, daemon=True).start()
+
+                                    confirm_del = ft.AlertDialog(
+                                        title=ft.Text("Delete version"),
+                                        content=ft.Text(f"Delete version {pp.name}? This cannot be undone."),
+                                        actions=[
+                                            ft.TextButton("Yes", on_click=do_yes),
+                                            ft.TextButton("No", on_click=lambda e: (setattr(confirm_del, 'open', False), page.update())),
+                                        ],
+                                    )
+                                    page.open(confirm_del)
+                                    page.update()
+                                except Exception:
+                                    show_snack("Failed to show delete confirmation", error=True)
+                            return _delete
+
                         rows.append(
                             ft.Row([
                                 ft.Text(label, selectable=True),
                                 ft.TextButton("Preview", on_click=make_preview(p)),
                                 ft.TextButton("Restore", on_click=make_restore(p)),
+                                ft.TextButton("Delete", on_click=make_delete(p)),
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                         )
                     except Exception:
