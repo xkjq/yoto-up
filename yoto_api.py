@@ -131,6 +131,7 @@ class YotoAPI:
     UPLOAD_ICON_CACHE_FILE = ".yoto_icon_upload_cache.json"
     OFFICIAL_ICON_CACHE_DIR = Path(".yoto_icon_cache")
     YOTOICONS_CACHE_DIR: Path = Path(".yotoicons_cache")
+    VERSIONS_DIR: Path = Path(".card_versions")
 
     def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True):
         self.client_id = client_id
@@ -202,6 +203,80 @@ class YotoAPI:
             with open(self.CACHE_FILE, "w") as f:
                 json.dump(self._request_cache, f)
 
+    def _ensure_versions_dir(self):
+        try:
+            self.VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+    def _version_path_for(self, payload: dict) -> Path:
+        # Determine an id for the card to store versions under
+        card_id = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+        if not card_id:
+            # fallback to slugified title + timestamp
+            title = (payload.get("title") or "untitled").strip()[:100]
+            # sanitize title to filesystem-safe
+            safe_title = re.sub(r"[^0-9A-Za-z._-]", "-", title)
+            card_id = f"{safe_title}"
+        dir_path = self.VERSIONS_DIR / str(card_id)
+        dir_path.mkdir(parents=True, exist_ok=True)
+        return dir_path
+
+    def save_version(self, payload: dict) -> Optional[Path]:
+        """Save a local version (JSON file) for the provided payload and return the path."""
+        try:
+            self._ensure_versions_dir()
+            dir_path = self._version_path_for(payload)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            fname = f"{ts}.json"
+            p = dir_path / fname
+            with p.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+            return p
+        except Exception:
+            return None
+
+    def list_versions(self, card_id: str):
+        """Return list of version files for a card id (or title-derived id)."""
+        try:
+            dir_path = self.VERSIONS_DIR / str(card_id)
+            if not dir_path.exists():
+                return []
+            files = sorted([p for p in dir_path.iterdir() if p.suffix == ".json"], reverse=True)
+            return files
+        except Exception:
+            return []
+
+    def load_version(self, path: Path) -> dict:
+        try:
+            with Path(path).open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def restore_version(self, path: Path, return_card=True):
+        """Restore a saved version by posting it to the API.
+        Returns the created/updated card (model) if return_card True.
+        """
+        payload = self.load_version(path)
+        if not payload:
+            raise Exception("Version payload empty or unreadable")
+        # If payload contains card id fields, they will be used by the API
+        # Validate using Card model if available
+        try:
+            card_model = Card.model_validate(payload) if 'Card' in globals() else None
+        except Exception:
+            card_model = None
+        if card_model is not None:
+            return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
+        else:
+            # Fallback: post raw payload
+            headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+            response = httpx.post(self.CONTENT_URL, headers=headers, json=payload)
+            response.raise_for_status()
+            if return_card:
+                return Card.model_validate(response.json().get("card") or response.json())
+            return response.json()
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {
             "method": method,
@@ -428,7 +503,7 @@ class YotoAPI:
             find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
-    def create_or_update_content(self, card, return_card=False, add_update_at=True):
+    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True):
         """
         Accepts a Card model instance and sends it to the API.
 
@@ -455,6 +530,14 @@ class YotoAPI:
         response = self._cached_request("POST", self.CONTENT_URL, headers=headers, json_data=payload)
         logger.debug(f"Create/Update response: {response.status_code} {response.text}")
         response.raise_for_status()
+        # Persist a local version of the resulting card JSON (if present).
+        if create_version:
+            try:
+                resp_json = response.json()
+                card_json = resp_json.get("card") or resp_json
+                self.save_version(card_json)
+            except Exception:
+                logger.debug("Failed to save local version after create/update")
         if return_card:
             return Card.model_validate(response.json()["card"])
         return response.json()

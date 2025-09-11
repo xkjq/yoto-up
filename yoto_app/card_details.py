@@ -863,6 +863,171 @@ def make_show_card_details(
                 except Exception:
                     print("Unable to display JSON dialog in this Flet environment")
 
+        def show_version_json(payload: dict, title: str = "Version JSON"):
+            try:
+                try:
+                    raw = json.dumps(payload, indent=2)
+                except Exception:
+                    raw = str(payload)
+            except Exception:
+                raw = "<unable to render JSON>"
+
+            def close_vjson(ev2=None):
+                try:
+                    vjson_dialog.open = False
+                except Exception:
+                    pass
+                page.update()
+
+            try:
+                lines = raw.splitlines()
+                json_lines = []
+                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
+                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
+                for line in lines:
+                    m = key_value_re.match(line)
+                    if m:
+                        indent = m.group(1)
+                        key = m.group('key')
+                        val = m.group('val')
+                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
+                        v = val.strip()
+                        if v.startswith('"') and v.endswith('"'):
+                            val_color = ft.Colors.GREEN
+                        elif v in ('true', 'false', 'null'):
+                            val_color = ft.Colors.ORANGE
+                        elif number_re.match(v):
+                            val_color = ft.Colors.PURPLE
+                        else:
+                            val_color = ft.Colors.BLACK
+                        space_width = 8
+                        spacer = ft.Container(width=len(indent) * space_width)
+                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
+                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
+                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        json_lines.append(row)
+                    else:
+                        stripped = line.strip()
+                        leading = len(line) - len(line.lstrip(' '))
+                        space_width = 8
+                        spacer = ft.Container(width=leading * space_width)
+                        if stripped in ('{', '}', '[', ']', '},', '],'):
+                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
+                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                            json_lines.append(row)
+                        else:
+                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
+                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                            json_lines.append(row)
+
+                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
+            except Exception:
+                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
+
+            def do_copy(_e=None):
+                try:
+                    try:
+                        page.set_clipboard(raw)
+                        show_snack("JSON copied to clipboard")
+                    except Exception:
+                        try:
+                            page.clipboard = raw
+                            show_snack("JSON copied to clipboard")
+                        except Exception as ex:
+                            show_snack(f"Failed to copy JSON: {ex}", error=True)
+                except Exception as ex:
+                    show_snack(f"Clipboard error: {ex}", error=True)
+
+            vjson_dialog = ft.AlertDialog(
+                title=ft.Text(title),
+                content=json_content,
+                actions=[ft.TextButton("Copy JSON", on_click=do_copy), ft.TextButton("Close", on_click=close_vjson)],
+            )
+            try:
+                page.open(vjson_dialog)
+            except Exception:
+                try:
+                    page.dialog = vjson_dialog
+                    page.update()
+                except Exception:
+                    print("Unable to display version JSON dialog in this Flet environment")
+
+
+        def show_versions(ev=None):
+            try:
+                api = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
+                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                if not card_id:
+                    show_snack("Unable to determine card id", error=True)
+                    return
+                files = api.list_versions(card_id)
+                if not files:
+                    show_snack("No saved versions found for this card")
+                    return
+
+                rows = []
+                for p in files:
+                    try:
+                        label = p.name
+                        def make_preview(pp=p):
+                            def _preview(ev2=None):
+                                try:
+                                    payload = api.load_version(pp)
+                                    show_version_json(payload, title=f"Version: {pp.name}")
+                                except Exception as ex:
+                                    show_snack(f"Failed to load version: {ex}", error=True)
+                            return _preview
+
+                        def make_restore(pp=p):
+                            def _restore(ev2=None):
+                                try:
+                                    versions_dialog.open = False
+                                except Exception:
+                                    pass
+                                page.update()
+                                def worker():
+                                    try:
+                                        updated = api.restore_version(pp, return_card=True)
+                                        show_snack("Version restored")
+                                        try:
+                                            show_card_details(None, updated)
+                                        except Exception:
+                                            pass
+                                        page.update()
+                                    except Exception as ex:
+                                        show_snack(f"Failed to restore version: {ex}", error=True)
+                                threading.Thread(target=worker, daemon=True).start()
+                            return _restore
+
+                        rows.append(
+                            ft.Row([
+                                ft.Text(label, selectable=True),
+                                ft.TextButton("Preview", on_click=make_preview(p)),
+                                ft.TextButton("Restore", on_click=make_restore(p)),
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                        )
+                    except Exception:
+                        continue
+
+                versions_list = ft.ListView(rows, spacing=6, padding=6, height=350, width=700)
+                versions_dialog = ft.AlertDialog(
+                    title=ft.Text("Saved Versions"),
+                    content=versions_list,
+                    actions=[ft.TextButton("Close", on_click=lambda e: (setattr(versions_dialog, 'open', False), page.update()))],
+                )
+                try:
+                    page.open(versions_dialog)
+                    page.update()
+                except Exception:
+                    try:
+                        page.dialog = versions_dialog
+                        page.update()
+                    except Exception:
+                        pass
+            except Exception as ex:
+                show_snack(f"Failed to list versions: {ex}", error=True)
+
         def show_add_cover(ev):
             from yoto_app.add_cover_dialog import add_cover_dialog
 
@@ -1131,6 +1296,7 @@ Renumbering keys will assign sequential keys to all tracks.
                 ft.ElevatedButton("Save Order", on_click=save_order_click),
                 ft.TextButton("Raw JSON", on_click=show_json),
                 ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
+                ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
