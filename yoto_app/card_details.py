@@ -953,7 +953,20 @@ def make_show_card_details(
 
                 confirm_dialog = ft.AlertDialog(
                     title=ft.Text("Merge chapters"),
-                    content=ft.Text("Merge all chapters into one chapter? This cannot be undone."),
+                    content=ft.Text("""Merge all chapters into one chapter? 
+
+This will concatenate all tracks into a single chapter and
+relabel all overlayLabels and keys sequentially.                                    
+
+For example, if you have 3 chapters with 2 tracks each, such as:
+    Chapter 1: Track 1, Track 2
+    Chapter 2: Track 3, Track 4
+    Chapter 3: Track 5, Track 6
+                                    
+Merging will result in:
+    Chapter 1: Track 1, Track 2, Track 3, Track 4, Track 5, Track 6
+
+This cannot be undone."""),
                     actions=[
                         ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=do_merge, daemon=True).start()),
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
@@ -1080,6 +1093,7 @@ Renumbering keys will assign sequential keys to all tracks.
                                 relabel_keys(ev),
                             ),
                         ),
+                        ft.TextButton("Merge chapters", on_click=lambda ev: merge_chapters(ev)),
                         ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
                     ],
                 )
@@ -1116,8 +1130,7 @@ Renumbering keys will assign sequential keys to all tracks.
             actions=[
                 ft.ElevatedButton("Save Order", on_click=save_order_click),
                 ft.TextButton("Raw JSON", on_click=show_json),
-                ft.TextButton("Tracks", on_click=lambda ev: show_tracks_popup(ev)),
-                ft.TextButton("Merge chapters", on_click=lambda ev: merge_chapters(ev)),
+                ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
