@@ -863,7 +863,7 @@ def make_show_card_details(
                 except Exception:
                     print("Unable to display JSON dialog in this Flet environment")
 
-        def show_version_json(payload: dict, title: str = "Version JSON"):
+        def show_version_json(payload: dict, title: str = "Version JSON", path: Path | None = None):
             try:
                 try:
                     raw = json.dumps(payload, indent=2)
@@ -939,10 +939,58 @@ def make_show_card_details(
                 except Exception as ex:
                     show_snack(f"Clipboard error: {ex}", error=True)
 
+            # If a Path is provided, expose a Restore button which asks for confirmation
+            actions = [ft.TextButton("Copy JSON", on_click=do_copy)]
+            if path is not None:
+                def confirm_restore(_ev=None):
+                    try:
+                        # close preview dialog first
+                        try:
+                            vjson_dialog.open = False
+                        except Exception:
+                            pass
+                        page.update()
+
+                        confirm = ft.AlertDialog(
+                            title=ft.Text("Restore version"),
+                            content=ft.Text(f"Restore version {path.name}? This will post the saved card to the server and cannot be undone."),
+                            actions=[
+                                ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=lambda: do_restore_worker(path), daemon=True).start()),
+                                ft.TextButton("No", on_click=lambda e: (setattr(confirm, 'open', False), page.update())),
+                            ],
+                        )
+                        page.open(confirm)
+                        page.update()
+                    except Exception:
+                        show_snack("Failed to start restore confirmation", error=True)
+
+                def do_restore_worker(ppath: Path):
+                    try:
+                        api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
+                        updated = api_local.restore_version(ppath, return_card=True)
+                        try:
+                            show_snack("Version restored")
+                        except Exception:
+                            pass
+                        try:
+                            show_card_details(None, updated)
+                        except Exception:
+                            pass
+                        page.update()
+                    except Exception as ex:
+                        try:
+                            show_snack(f"Failed to restore version: {ex}", error=True)
+                        except Exception:
+                            pass
+
+                actions.append(ft.TextButton("Restore", on_click=confirm_restore))
+
+            actions.append(ft.TextButton("Close", on_click=close_vjson))
+
             vjson_dialog = ft.AlertDialog(
                 title=ft.Text(title),
                 content=json_content,
-                actions=[ft.TextButton("Copy JSON", on_click=do_copy), ft.TextButton("Close", on_click=close_vjson)],
+                actions=actions,
             )
             try:
                 page.open(vjson_dialog)
@@ -974,7 +1022,7 @@ def make_show_card_details(
                             def _preview(ev2=None):
                                 try:
                                     payload = api.load_version(pp)
-                                    show_version_json(payload, title=f"Version: {pp.name}")
+                                    show_version_json(payload, title=f"Version: {pp.name}", path=pp)
                                 except Exception as ex:
                                     show_snack(f"Failed to load version: {ex}", error=True)
                             return _preview
@@ -982,22 +1030,41 @@ def make_show_card_details(
                         def make_restore(pp=p):
                             def _restore(ev2=None):
                                 try:
-                                    versions_dialog.open = False
-                                except Exception:
-                                    pass
-                                page.update()
-                                def worker():
-                                    try:
-                                        updated = api.restore_version(pp, return_card=True)
-                                        show_snack("Version restored")
+                                    # ask for confirmation
+                                    def do_confirm_yes(_e=None):
                                         try:
-                                            show_card_details(None, updated)
+                                            confirm_dialog.open = False
                                         except Exception:
                                             pass
                                         page.update()
-                                    except Exception as ex:
-                                        show_snack(f"Failed to restore version: {ex}", error=True)
-                                threading.Thread(target=worker, daemon=True).start()
+                                        def worker():
+                                            try:
+                                                updated = api.restore_version(pp, return_card=True)
+                                                try:
+                                                    show_snack("Version restored")
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    show_card_details(None, updated)
+                                                except Exception:
+                                                    pass
+                                                page.update()
+                                            except Exception as ex:
+                                                show_snack(f"Failed to restore version: {ex}", error=True)
+                                        threading.Thread(target=worker, daemon=True).start()
+
+                                    confirm_dialog = ft.AlertDialog(
+                                        title=ft.Text("Restore version"),
+                                        content=ft.Text(f"Restore version {pp.name}? This will post the saved card to the server and cannot be undone."),
+                                        actions=[
+                                            ft.TextButton("Yes", on_click=do_confirm_yes),
+                                            ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
+                                        ],
+                                    )
+                                    page.open(confirm_dialog)
+                                    page.update()
+                                except Exception:
+                                    show_snack("Failed to show restore confirmation", error=True)
                             return _restore
 
                         rows.append(
