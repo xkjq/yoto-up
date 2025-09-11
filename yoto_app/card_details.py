@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import flet as ft
+import re
 from loguru import logger
 from yoto_app.logging_helpers import safe_log
 
@@ -776,11 +777,82 @@ def make_show_card_details(
                     pass
                 page.update()
 
-            json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
+            # Render JSON line-by-line into monospace ft.Text controls with
+            # simple per-token colouring (keys, strings, numbers, booleans/null).
+            try:
+                lines = raw.splitlines()
+                json_lines = []
+                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
+                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
+                for line in lines:
+                    m = key_value_re.match(line)
+                    if m:
+                        indent = m.group(1)
+                        key = m.group('key')
+                        val = m.group('val')
+                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
+                        # Determine value type for colouring
+                        v = val.strip()
+                        if v.startswith('"') and v.endswith('"'):
+                            val_color = ft.Colors.GREEN
+                        elif v in ('true', 'false', 'null'):
+                            val_color = ft.Colors.ORANGE
+                        elif number_re.match(v):
+                            val_color = ft.Colors.PURPLE
+                        else:
+                            val_color = ft.Colors.BLACK
+
+                        # spacer for indentation (approx char width)
+                        space_width = 8
+                        spacer = ft.Container(width=len(indent) * space_width)
+                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
+                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
+                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        json_lines.append(row)
+                    else:
+                        # Braces, brackets, or other lines — preserve leading indentation
+                        stripped = line.strip()
+                        # compute leading space count
+                        leading = len(line) - len(line.lstrip(' '))
+                        space_width = 8
+                        spacer = ft.Container(width=leading * space_width)
+                        if stripped in ('{', '}', '[', ']', '},', '],'):
+                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
+                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                            json_lines.append(row)
+                        else:
+                            # keep the original line but apply monospace
+                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
+                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                            json_lines.append(row)
+
+                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
+            except Exception:
+                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
+            def do_copy(_e=None):
+                try:
+                    # copy raw JSON to clipboard
+                    try:
+                        page.set_clipboard(raw)
+                        show_snack("JSON copied to clipboard")
+                    except Exception:
+                        # fallback: try assigning to page.clipboard
+                        try:
+                            page.clipboard = raw
+                            show_snack("JSON copied to clipboard")
+                        except Exception as ex:
+                            show_snack(f"Failed to copy JSON: {ex}", error=True)
+                except Exception as ex:
+                    show_snack(f"Clipboard error: {ex}", error=True)
+
             json_dialog = ft.AlertDialog(
                 title=ft.Text("Raw card JSON"),
                 content=json_content,
-                actions=[ft.TextButton("Close", on_click=close_json)],
+                actions=[
+                    ft.TextButton("Copy JSON", on_click=do_copy),
+                    ft.TextButton("Close", on_click=close_json),
+                ],
             )
             try:
                 page.open(json_dialog)
