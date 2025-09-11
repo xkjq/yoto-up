@@ -1289,6 +1289,40 @@ Renumbering keys will assign sequential keys to all tracks.
             dlg_h, dlg_w = 500, 800
 
         dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
+        def export_card(_ev=None):
+            try:
+                def worker():
+                    try:
+                        Path("cards").mkdir(exist_ok=True)
+                        if isinstance(c, dict):
+                            data = c
+                        else:
+                            try:
+                                data = c.model_dump(exclude_none=True)
+                            except Exception:
+                                data = c
+                        title_part = (c.get('title') or '') if isinstance(c, dict) else ''
+                        id_part = (c.get('cardId') or c.get('id') or c.get('contentId') or 'card') if isinstance(c, dict) else 'card'
+                        safe_title = re.sub(r"[^0-9A-Za-z._-]", "-", str(title_part))[:80]
+                        fname = Path('cards') / f"{safe_title}_{id_part}.json"
+                        with fname.open('w', encoding='utf-8') as f:
+                            f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                    except Exception as e:
+                        try:
+                            show_snack(f"Export failed: {e}", error=True)
+                        except Exception:
+                            pass
+                threading.Thread(target=worker, daemon=True).start()
+                try:
+                    show_snack("Export started...")
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    show_snack("Failed to start export", error=True)
+                except Exception:
+                    pass
+
         dialog = ft.AlertDialog(
             title=ft.Text("Playlist details"),
             content=dialog_content,
@@ -1315,25 +1349,7 @@ Renumbering keys will assign sequential keys to all tracks.
                 ),
                 ft.TextButton("Add Cover", on_click=lambda ev: show_add_cover(ev)),
                 ft.TextButton("Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
-                ft.TextButton(
-                    "Export",
-                    on_click=lambda ev: (
-                        threading.Thread(
-                            target=lambda: (
-                                (lambda:
-                                    (lambda data, fname: (
-                                        (open(fname, 'w', encoding='utf-8').write(json.dumps(data, indent=2, ensure_ascii=False)))
-                                    ))(
-                                        (c if isinstance(c, dict) else (c.model_dump(exclude_none=True) if hasattr(c, 'model_dump') else c)),
-                                        Path('cards') / f"{( (c.get('title') or '') if isinstance(c, dict) else '' )}_{(c.get('cardId') or c.get('id') or c.get('contentId') or 'card')}.json"
-                                    )
-                                )()
-                            ),
-                            daemon=True,
-                        ).start(),
-                        show_snack("Export started..."),
-                    ),
-                ),
+                ft.TextButton("Export", on_click=export_card),
                 ft.TextButton("Close", on_click=close_dialog),
             ],
         )
