@@ -10,6 +10,7 @@ import flet as ft
 import re
 from loguru import logger
 from yoto_app.logging_helpers import safe_log
+from datetime import datetime, timezone
 
 
 def make_show_card_details(
@@ -1017,7 +1018,55 @@ def make_show_card_details(
                 rows = []
                 for p in files:
                     try:
+                        # Build a human-readable label: timestamp, title, card id, size
                         label = p.name
+                        try:
+                            readable_parts = []
+                            # Try parse timestamp from filename stem (YYYYmmddTHHMMSSZ)
+                            ts = None
+                            try:
+                                ts = datetime.strptime(p.stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+                            except Exception:
+                                try:
+                                    ts = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+                                except Exception:
+                                    ts = None
+                            if ts:
+                                readable_parts.append(ts.strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+                            # Try to read minimal payload metadata (title, card id)
+                            title = None
+                            cardid = None
+                            try:
+                                payload = api.load_version(p)
+                                if isinstance(payload, dict):
+                                    title = payload.get("title") or (payload.get("metadata") or {}).get("title")
+                                    cardid = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+                            except Exception:
+                                title = None
+                                cardid = None
+                            if title:
+                                readable_parts.append(f"'{title}'")
+                            if cardid:
+                                readable_parts.append(f"({cardid})")
+
+                            # File size human readable
+                            try:
+                                size = p.stat().st_size
+                                def _hr(n: int) -> str:
+                                    for u in ['B', 'KB', 'MB', 'GB']:
+                                        if n < 1024:
+                                            return f"{n:.0f}{u}" if u == 'B' else f"{n/1024:.1f}{u}"
+                                        n = n / 1024
+                                    return f"{n:.1f}TB"
+                                readable_parts.append(_hr(size))
+                            except Exception:
+                                pass
+
+                            if readable_parts:
+                                label = " — ".join(readable_parts)
+                        except Exception:
+                            label = p.name
                         def make_preview(pp=p):
                             def _preview(ev2=None):
                                 try:
