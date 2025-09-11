@@ -1165,10 +1165,77 @@ def make_show_card_details(
                         continue
 
                 versions_list = ft.ListView(rows, spacing=6, padding=6, height=350, width=700)
+
+                def make_delete_all(dir_path=(files[0].parent if files else None)):
+                    def _delete_all(ev=None):
+                        try:
+                            if dir_path is None:
+                                show_snack("No versions directory found", error=True)
+                                return
+
+                            def do_yes(_e=None):
+                                try:
+                                    confirm_all.open = False
+                                except Exception:
+                                    pass
+                                page.update()
+
+                                def worker_all():
+                                    try:
+                                        for fpath in list(dir_path.iterdir()):
+                                            try:
+                                                if fpath.is_file():
+                                                    fpath.unlink()
+                                            except Exception:
+                                                pass
+                                        try:
+                                            # attempt to remove dir if empty
+                                            dir_path.rmdir()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            show_snack("All versions deleted")
+                                        except Exception:
+                                            pass
+                                        try:
+                                            versions_dialog.open = False
+                                        except Exception:
+                                            pass
+                                        page.update()
+                                        try:
+                                            show_versions(None)
+                                        except Exception:
+                                            pass
+                                    except Exception as ex:
+                                        try:
+                                            show_snack(f"Failed to delete all versions: {ex}", error=True)
+                                        except Exception:
+                                            pass
+
+                                threading.Thread(target=worker_all, daemon=True).start()
+
+                            confirm_all = ft.AlertDialog(
+                                title=ft.Text("Delete all versions"),
+                                content=ft.Text("Delete ALL saved versions for this card? This cannot be undone."),
+                                actions=[
+                                    ft.TextButton("Yes", on_click=do_yes),
+                                    ft.TextButton("No", on_click=lambda e: (setattr(confirm_all, 'open', False), page.update())),
+                                ],
+                            )
+                            page.open(confirm_all)
+                            page.update()
+                        except Exception:
+                            show_snack("Failed to show delete-all confirmation", error=True)
+
+                    return _delete_all
+
                 versions_dialog = ft.AlertDialog(
                     title=ft.Text("Saved Versions"),
                     content=versions_list,
-                    actions=[ft.TextButton("Close", on_click=lambda e: (setattr(versions_dialog, 'open', False), page.update()))],
+                    actions=[
+                        ft.TextButton("Delete all", on_click=make_delete_all()),
+                        ft.TextButton("Close", on_click=lambda e: (setattr(versions_dialog, 'open', False), page.update())),
+                    ],
                 )
                 try:
                     page.open(versions_dialog)
