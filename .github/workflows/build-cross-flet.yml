@@ -40,6 +40,14 @@ jobs:
           pip install -r requirements.txt
           pip install -r yoto_app/requirements.txt
 
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Check Flutter version
+        run: flutter --version
+
       # Adjust ENTRY_SCRIPT below if your GUI entrypoint is different (e.g. yoto.py)
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
