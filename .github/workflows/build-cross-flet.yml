@@ -54,8 +54,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y libgtk-3-dev
           # Use a deterministic name so artifacts are predictable
-            source .venv/bin/activate
-            flet build linux --module-name gui.py -o dist --verbose
+            uv run flet build linux --module-name gui.py -o dist --verbose
 
           # create a tarball for the built executable
           mkdir -p out
@@ -85,7 +84,6 @@ jobs:
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          .\.venv\Scripts\Activate.ps1
           uv run flet build windows --module-name gui.py -o dist --verbose
           New-Item -ItemType Directory -Path out -Force | Out-Null
 
