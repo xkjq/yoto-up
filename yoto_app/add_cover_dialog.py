@@ -1,5 +1,6 @@
 import flet as ft
 from loguru import logger
+import httpx
 
 from yoto_app.api_manager import ensure_api
 
@@ -185,7 +186,6 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
             logger.error("Failed to close dialog in close_add")
         page.update()
 
-    import requests
     def do_search_cover(_e=None):
         try:
             default_query = c.get("title") or c.get("name") or ""
@@ -196,7 +196,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
                 logger.info(f"Searching for cover art with query: {query}")
                 results_column.controls.clear()
                 try:
-                    resp = requests.get(
+                    resp = httpx.get(
                         "https://itunes.apple.com/search",
                         params={"term": query, "media": "music", "entity": "album", "limit": 12},
                         timeout=10
@@ -234,8 +234,8 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
                             page.update()
                             api = ensure_api(api_ref)
                             # Download the image to a temporary file
-                            import tempfile, requests, os
-                            resp = requests.get(img_url, timeout=15)
+                            import tempfile, httpx, os
+                            resp = httpx.get(img_url, timeout=15)
                             resp.raise_for_status()
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmpf:
                                 tmpf.write(resp.content)

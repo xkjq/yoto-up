@@ -1,6 +1,5 @@
 import threading
 import httpx
-import requests
 import json
 import os
 import time
@@ -180,7 +179,7 @@ def start_device_auth(page, instr_container=None, api_ref=None, show_snack_fn=No
     try:
         data = {'client_id': client, 'scope': 'profile offline_access', 'audience': 'https://api.yotoplay.com'}
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        resp = requests.post('https://login.yotoplay.com/oauth/device/code', data=data, headers=headers)
+        resp = httpx.post('https://login.yotoplay.com/oauth/device/code', data=data, headers=headers)
         resp.raise_for_status()
         info = resp.json()
         verification_uri = info.get('verification_uri') or ''
