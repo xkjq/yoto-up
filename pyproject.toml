@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yoto-up"
-version = "0.1.7"
+version = "0.1.8"
 description = "Yoto Up - desktop tool for managing Yoto cards and playlists"
 readme = "README.md"
 requires-python = ">=3.12"
