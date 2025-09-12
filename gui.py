@@ -37,18 +37,27 @@ To authenticate with your Yoto account:
 # use utils_mod.find_audio_files when needed
 
 
-class FileRow(ft.Row):
-    def __init__(self, filename: str):
-        super().__init__()
-        self.filename = filename
-        # create a row matching ft_row_for_file shape: name, hidden progress bar, status
-        pr = ft.ProgressBar(width=300, visible=False)
-        status = ft.Text("Queued")
-        self.controls = [ft.Text(filename, width=300), pr, status]
-        try:
-            setattr(self, 'filename', filename)
-        except Exception:
-            pass
+#class FileRow(ft.Row):
+#    def __init__(self, filename: str):
+#        super().__init__()
+#        self.filename = filename
+#        pr = ft.ProgressBar(width=300, visible=False)
+#        status = ft.Text("Queued")
+#        def on_preview_click(e=None):
+#            import webbrowser
+#            # Use file:// URI for local files
+#            path = os.path.abspath(filename)
+#            url = f"file://{path}"
+#            try:
+#                webbrowser.open(url)
+#            except Exception as ex:
+#                print(f"[Preview] Failed to open {url}: {ex}")
+#        preview_btn = ft.TextButton("Preview", on_click=on_preview_click, tooltip="Play this audio file before upload")
+#        self.controls = [ft.Text(filename, width=300), preview_btn, pr, status]
+#        try:
+#            setattr(self, 'filename', filename)
+#        except Exception:
+#            pass
 
 
 def main(page):
