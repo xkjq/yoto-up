@@ -7,9 +7,6 @@ import json
 import threading
 
 import flet as ft
-from models import Card
-
-from yoto_api import YotoAPI
 from yoto_app import utils as utils_mod
 from yoto_app import ui_helpers as ui_helpers
 from yoto_app import auth as auth_mod
@@ -87,6 +84,7 @@ def main(page):
         state = {
             "concurrency": concurrency.value,
             "strip_leading": strip_leading_checkbox.value,
+            "normalize": normalize_checkbox.value,
             "upload_mode": upload_mode_dropdown.value,
             "playlist_sort": sort_dropdown.value if sort_dropdown else None,
         }
@@ -102,6 +100,7 @@ def main(page):
                 state = json.load(f)
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
+            normalize_checkbox.value = state.get("normalize", normalize_checkbox.value)
             upload_mode_dropdown.value = state.get("upload_mode", upload_mode_dropdown.value)
             sort_dropdown = playlists_ui['sort_dropdown'] if isinstance(playlists_ui, dict) else None
             if sort_dropdown and state.get("playlist_sort"):
@@ -189,6 +188,12 @@ def main(page):
         label='Strip leading track numbers',
         value=True,
         tooltip="Remove common leading track number prefixes from filenames (e.g. '01 - ', '1. ', '01)', '001_')",
+        on_change=lambda e: save_ui_state(),
+    )
+    normalize_checkbox = ft.Checkbox(
+        label='Normalize audio (loudness)',
+        value=False,
+        tooltip="Apply loudness normalization (server-side if supported).",
         on_change=lambda e: save_ui_state(),
     )
     upload_target_dropdown = ft.Dropdown(
@@ -444,6 +449,7 @@ def main(page):
         'existing_card_map': existing_card_map,
         # store the control so the upload task can read current value at start
         'strip_leading_track_numbers_control': strip_leading_checkbox,
+        'normalize_audio_control': normalize_checkbox,
         'start_btn': start_btn,
         'stop_btn': stop_btn,
     }
@@ -457,6 +463,10 @@ def main(page):
             ctx['strip_leading_track_numbers'] = bool(strip_leading_checkbox.value)
         except Exception:
             ctx['strip_leading_track_numbers'] = True
+        try:
+            ctx['normalize_audio'] = bool(normalize_checkbox.value)
+        except Exception:
+            ctx['normalize_audio'] = False
         run_coro_in_thread(upload_start, e, ctx)
 
     start_btn.on_click = _start_click
@@ -632,6 +642,7 @@ def main(page):
         ft.Row([
             concurrency,
             strip_leading_checkbox,
+            normalize_checkbox,
             upload_mode_dropdown  # Add the new dropdown here
         ]),
         ft.Row([

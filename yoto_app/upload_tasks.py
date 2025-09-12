@@ -45,6 +45,8 @@ async def start_uploads(event, ctx):
 
     # Option: strip leading track numbers from filenames when used as titles
     strip_leading = bool(ctx.get('strip_leading_track_numbers', True))
+    # Option: normalize audio loudness prior to upload (maps to API loudnorm flag)
+    normalize_audio = bool(ctx.get('normalize_audio', False))
 
     def clean_title_from_filename(fp: str, strip_leading_nums: bool = True) -> str:
         # Use the filename without extension
@@ -163,7 +165,7 @@ async def start_uploads(event, ctx):
                         tr = await api.upload_and_transcode_audio_async(
                             audio_path=f,
                             filename=fname,
-                            loudnorm=False,
+                            loudnorm=normalize_audio,
                             show_progress=True,
                             progress=None,
                             upload_task_id=None,
@@ -302,7 +304,7 @@ async def start_uploads(event, ctx):
                 tr = await api.upload_and_transcode_audio_async(
                     audio_path=fpath,
                     filename=os.path.basename(fpath),
-                    loudnorm=False,
+                    loudnorm=normalize_audio,
                     show_progress=False,
                 )
                 transcoded_results[idx] = tr
