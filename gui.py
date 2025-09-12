@@ -5,6 +5,9 @@ import sys
 import traceback
 import json
 import threading
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
+import os
 
 import flet as ft
 from yoto_app import utils as utils_mod
@@ -70,100 +73,104 @@ def main(page):
     import contextlib
     import struct
 
-    def plot_waveform(filepath):
-        logger.debug(f"[plot_waveform] Generating waveform for {filepath}")
-        ext = os.path.splitext(filepath)[1].lower()
-        try:
-            if ext == '.wav':
-                with contextlib.closing(wave.open(filepath, 'rb')) as wf:
-                    n_frames = wf.getnframes()
-                    framerate = wf.getframerate()
-                    frames = wf.readframes(n_frames)
-                    if wf.getsampwidth() == 2:
-                        dtype = np.int16
-                    else:
-                        dtype = np.uint8
-                    audio = np.frombuffer(frames, dtype=dtype)
-                    if wf.getnchannels() > 1:
-                        # Average all channels
-                        audio = audio.reshape(-1, wf.getnchannels()).mean(axis=1)
-                    times = np.linspace(0, n_frames / framerate, num=n_frames)
-            elif ext == '.mp3':
-                try:
-                    from pydub import AudioSegment
-                    audio_seg = AudioSegment.from_file(filepath, format='mp3')
-                    samples = np.array(audio_seg.get_array_of_samples())
-                    if audio_seg.channels > 1:
-                        samples = samples.reshape((-1, audio_seg.channels)).mean(axis=1)
-                    audio = samples.astype(np.float32)
-                    framerate = audio_seg.frame_rate
-                    n_frames = len(audio)
-                    times = np.linspace(0, n_frames / framerate, num=n_frames)
-                except Exception as e1:
-                    logger.error(f"[plot_waveform] pydub failed for {filepath}: {e1}")
-                    try:
-                        import librosa
-                        audio, framerate = librosa.load(filepath, sr=None, mono=True)
-                        n_frames = len(audio)
-                        times = np.linspace(0, n_frames / framerate, num=n_frames)
-                    except Exception as e2:
-                        print(f"[plot_waveform] Failed for {filepath}: {e1}; librosa fallback also failed: {e2}")
-                        return None, None, None
-            else:
-                return None, None, None
-            # Downsample for plotting if too long
-            max_points = 2000
-            if len(audio) > max_points:
-                idx = np.linspace(0, len(audio) - 1, max_points).astype(int)
-                audio = audio[idx]
-                times = times[idx]
-            max_amp = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
-            avg_amp = float(np.mean(np.abs(audio))) if len(audio) > 0 else 0.0
-            # LUFS calculation
-            try:
-                import pyloudnorm as pyln
-                meter = pyln.Meter(framerate)
-                lufs = float(meter.integrated_loudness(audio))
-            except Exception as e:
-                lufs = None
-                print(f"[plot_waveform] LUFS calculation failed for {filepath}: {e}")
-            fig, ax = plt.subplots(figsize=(4, 1.2))
-            ax.plot(times, audio, color='blue')
-            ax.set_title(os.path.basename(filepath), fontsize=8)
-            ax.set_xlabel('Time (s)', fontsize=7)
-            ax.set_ylabel('Amplitude', fontsize=7)
-            ax.tick_params(axis='both', which='major', labelsize=6)
-            plt.tight_layout()
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png')
-            plt.close(fig)
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            return img_b64, max_amp, avg_amp, lufs
-        except Exception as e:
-            print(f"[plot_waveform] Failed for {filepath}: {e}")
-            return None, None, None
-
     def show_waveforms_popup(e=None):
+        logger.debug("[show_waveforms_popup] Generating waveforms popup")
         # Get all files in the upload queue
         files = [getattr(row, 'filename', None) for row in file_rows_column.controls if getattr(row, 'filename', None)]
         if not files:
             show_snack("No files in upload queue.", error=True)
             return
-        import tempfile
-        from concurrent.futures import ThreadPoolExecutor
-        import os
         images = []
         n_images = 0
-        # Parallelize only the waveform/loudness calculation
+        logger.debug(f"[show_waveforms_popup] Found {len(files)} files in upload queue")
+        # Parallelize only the audio/loudness calculation, not plotting
+        def audio_stats(filepath):
+            logger.debug(f"[audio_stats] Processing file: {filepath}")
+            ext = os.path.splitext(filepath)[1].lower()
+            try:
+                if ext == '.wav':
+                    with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+                        n_frames = wf.getnframes()
+                        framerate = wf.getframerate()
+                        frames = wf.readframes(n_frames)
+                        if wf.getsampwidth() == 2:
+                            dtype = np.int16
+                        else:
+                            dtype = np.uint8
+                        audio = np.frombuffer(frames, dtype=dtype)
+                        if wf.getnchannels() > 1:
+                            audio = audio.reshape(-1, wf.getnchannels()).mean(axis=1)
+                elif ext == '.mp3':
+                    try:
+                        from pydub import AudioSegment
+                        audio_seg = AudioSegment.from_file(filepath, format='mp3')
+                        samples = np.array(audio_seg.get_array_of_samples())
+                        if audio_seg.channels > 1:
+                            samples = samples.reshape((-1, audio_seg.channels)).mean(axis=1)
+                        audio = samples.astype(np.float32)
+                    except Exception:
+                        logger.debug(f"[audio_stats] pydub failed for {filepath}, trying librosa")
+                        try:
+                            import librosa
+                            audio, _ = librosa.load(filepath, sr=None, mono=True)
+                        except Exception:
+                            logger.debug(f"[audio_stats] librosa failed for {filepath}")
+                            return None, None, None, None, None, None
+                else:
+                    return None, None, None, None, None, None
+                max_amp = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
+                avg_amp = float(np.mean(np.abs(audio))) if len(audio) > 0 else 0.0
+                try:
+                    import pyloudnorm as pyln
+                    framerate = 44100 if ext != '.wav' else wf.getframerate()
+                    meter = pyln.Meter(framerate)
+                    lufs = float(meter.integrated_loudness(audio))
+                except Exception:
+                    lufs = None
+                return audio, max_amp, avg_amp, lufs, ext, filepath
+            except Exception:
+                return None, None, None, None, None, None
+
         with ThreadPoolExecutor() as executor:
-            results = list(executor.map(plot_waveform, files))
-        # Write images and build UI sequentially
-        for f, result in zip(files, results):
-            img_b64, max_amp, avg_amp, lufs = result if result is not None else (None, None, None, None)
-            if img_b64:
-                logger.debug(f"[show_waveforms_popup] Got waveform image for {f} (len={len(img_b64)})")
-                # Write to temp file in main thread
+            stats_results = list(executor.map(audio_stats, files))
+
+        # Now do plotting and file writing sequentially
+        for stat in stats_results:
+            audio, max_amp, avg_amp, lufs, ext, filepath = stat
+            if audio is not None:
+                # Downsample for plotting if too long
+                max_points = 2000
+                n = len(audio)
+                if n > max_points:
+                    idx = np.linspace(0, n - 1, max_points).astype(int)
+                    audio_plot = audio[idx]
+                else:
+                    audio_plot = audio
+                # Time axis
+                if ext == '.wav':
+                    with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+                        framerate = wf.getframerate()
+                        n_frames = wf.getnframes()
+                        times = np.linspace(0, n_frames / framerate, num=n)
+                else:
+                    framerate = 44100
+                    times = np.linspace(0, n / framerate, num=n)
+                if n > max_points:
+                    times = times[idx]
+                # Plot
+                fig, ax = plt.subplots(figsize=(4, 1.2))
+                ax.plot(times, audio_plot, color='blue')
+                ax.set_title(os.path.basename(filepath), fontsize=8)
+                ax.set_xlabel('Time (s)', fontsize=7)
+                ax.set_ylabel('Amplitude', fontsize=7)
+                ax.tick_params(axis='both', which='major', labelsize=6)
+                plt.tight_layout()
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png')
+                plt.close(fig)
+                buf.seek(0)
+                img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+                # Write to temp file
                 fd, tmp_path = tempfile.mkstemp(suffix='.png')
                 os.close(fd)
                 with open(tmp_path, 'wb') as tmpfile:
@@ -176,8 +183,7 @@ def main(page):
                 ]))
                 n_images += 1
             else:
-                logger.debug(f"[show_waveforms_popup] No waveform for {f}")
-                images.append(ft.Text(f"(No waveform for {os.path.basename(f)})", size=10, color=ft.Colors.RED))
+                images.append(ft.Text("(No waveform for file)", size=10, color=ft.Colors.RED))
         if n_images == 0:
             images = [ft.Text("No waveforms could be generated for the files in the queue.", color=ft.Colors.RED)]
         else:
@@ -642,52 +648,59 @@ def main(page):
         Runs the actual work in a background thread so the UI remains responsive.
         """
         # Background worker that performs the reset and optionally reauths
-        def _do_reset():
+        def audio_stats(filepath):
+            ext = os.path.splitext(filepath)[1].lower()
             try:
-                # Disable both buttons while work is in progress
-                try:
-                    reset_btn.disabled = True
-                    reset_and_reauth_btn.disabled = True
-                    page.update()
-                except Exception:
-                    pass
-
-                try:
-                    tokens_path = Path("tokens.json")
-                    if tokens_path.exists():
-                        try:
-                            tokens_path.unlink()
-                            show_snack("Removed tokens.json; authentication reset.")
-                        except Exception as ex:
-                            show_snack(f"Failed to remove tokens.json: {ex}", error=True)
-                    else:
-                        show_snack("No tokens.json found; authentication already reset.")
-                except Exception as ex:
-                    show_snack(f"Error while resetting tokens: {ex}", error=True)
-
-                # Invalidate in-memory API and update UI
-                try:
-                    api_ref["api"] = None
-                except Exception:
-                    pass
-                try:
-                    invalidate_authentication()
-                except Exception:
-                    pass
-
-                if reauth:
+                if ext == '.wav':
+                    with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+                        n_frames = wf.getnframes()
+                        framerate = wf.getframerate()
+                        frames = wf.readframes(n_frames)
+                        if wf.getsampwidth() == 2:
+                            dtype = np.int16
+                        else:
+                            dtype = np.uint8
+                        audio = np.frombuffer(frames, dtype=dtype)
+                        if wf.getnchannels() > 1:
+                            audio = audio.reshape(-1, wf.getnchannels()).mean(axis=1)
+                        # Normalize int16/uint8 to float32 -1.0 to 1.0
+                        if dtype == np.int16:
+                            audio = audio.astype(np.float32) / 32768.0
+                        elif dtype == np.uint8:
+                            audio = (audio.astype(np.float32) - 128) / 128.0
+                elif ext == '.mp3':
                     try:
-                        start_device_auth(None, auth_instructions)
-                    except Exception as ex:
-                        show_snack(f"Re-authentication failed: {ex}", error=True)
-            finally:
-                # Re-enable buttons when done
+                        from pydub import AudioSegment
+                        audio_seg = AudioSegment.from_file(filepath, format='mp3')
+                        samples = np.array(audio_seg.get_array_of_samples())
+                        if audio_seg.channels > 1:
+                            samples = samples.reshape((-1, audio_seg.channels)).mean(axis=1)
+                        audio = samples.astype(np.float32)
+                        # Normalize pydub samples to -1.0 to 1.0
+                        if audio_seg.sample_width == 2:
+                            audio = audio / 32768.0
+                        elif audio_seg.sample_width == 1:
+                            audio = (audio - 128) / 128.0
+                    except Exception:
+                        try:
+                            import librosa
+                            audio, _ = librosa.load(filepath, sr=None, mono=True)
+                        except Exception:
+                            return None, None, None, None, None, None
+                else:
+                    return None, None, None, None, None, None
+                max_amp = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
+                avg_amp = float(np.mean(np.abs(audio))) if len(audio) > 0 else 0.0
                 try:
-                    reset_btn.disabled = False
-                    reset_and_reauth_btn.disabled = False
-                    page.update()
+                    import pyloudnorm as pyln
+                    framerate = 44100 if ext != '.wav' else framerate
+                    meter = pyln.Meter(framerate)
+                    lufs = float(meter.integrated_loudness(audio))
                 except Exception:
-                    pass
+                    lufs = None
+                return audio, max_amp, avg_amp, lufs, ext, filepath
+            except Exception:
+                return None, None, None, None, None, None
 
         # Confirmation dialog handlers
         dlg = ft.AlertDialog(
