@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yoto-up"
-version = "0.1.1"
+version = "0.1.2c"
 description = "Yoto Up - desktop tool for managing Yoto cards and playlists"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,7 +14,7 @@ license = { text = "MIT" }
 
 # Runtime dependencies used by the GUI app. Adjust versions as required.
 dependencies = [
-  "flet>=0.20.0",
+  "flet[desktop]>=0.27.0",
   "httpx>=0.24.0",
   "loguru>=0.7.0",
   "rich>=12.0.0",
