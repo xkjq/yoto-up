@@ -163,10 +163,10 @@ def main(page):
     status = ft.Text("")
     auth_instructions = ft.Column([ft.Text(AUTHENTICATE_TEXT)])
 
-    def show_snack(message: str, error: bool = False):
+    def show_snack(message: str, error: bool = False, duration: int | None = None):
         print(f"[gui] show_snack: {message}")
         bg = ft.Colors.RED if error else None
-        page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg)
+        page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg, duration=duration)
         page.open(page.snack_bar)
         page.update()
 
@@ -654,8 +654,10 @@ def main(page):
                 icon=ft.Icons.HELP_OUTLINE,
                 tooltip="Help: Select a folder or specific files to upload.",
                 on_click=lambda e: show_snack(
-                    "Select the folder containing your audio files, or add specific files. 'Browse Folder...' lets you pick a folder (you may have to select a file within the folder), or paste the path directly. 'Add Files...' lets you pick individual files.\n\nChoose 'Chapters' to upload files as chapters, or 'Tracks' to upload as tracks.",
-                    error=False
+                    "Select the folder containing your audio files, or add specific files. 'Browse Folder...' lets you pick a folder (you may have to select a file within the folder), or paste the path directly. 'Add Files...' lets you pick individual files.\n\nChoose 'Chapters' to upload files as chapters, or 'Tracks' to upload as tracks. Once uploaded it is possible to convert between Chapters and tracks",
+                    error=False,
+                    duration=10000
+
                 )
             )
         ]),
