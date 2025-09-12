@@ -12,4 +12,4 @@ pynput
 mutagen
 mkdocs-material
 pymdown-extensions
-flet[desktop]
+flet[desktop]==0.28.3
