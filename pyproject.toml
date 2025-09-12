@@ -33,5 +33,3 @@ dependencies = [
 # additional extras for docs/build or dev
 docs = ["mkdocs-material", "pymdown-extensions"]
 
-authors = [{name = "xkjq"}]
-
