@@ -1,4 +1,4 @@
-flet[all]
+flet[desktop]
 httpx
 loguru
 rich
