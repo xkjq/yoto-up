@@ -86,7 +86,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           .\.venv\Scripts\Activate.ps1
-          flet build windows --module-name gui.py -o dist --verbose
+          uv run flet build windows --module-name gui.py -o dist --verbose
           New-Item -ItemType Directory -Path out -Force | Out-Null
 
           # Use Get-ChildItem to check for files in dist safely
