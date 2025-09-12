@@ -64,6 +64,8 @@ To authenticate with your Yoto account:
 
 
 def main(page):
+    # In-memory cache for waveform/loudness data: {filepath: (audio, max_amp, avg_amp, lufs, ext, filepath)}
+    waveform_cache = {}
     import io
     import base64
     import matplotlib.pyplot as plt
@@ -99,6 +101,9 @@ def main(page):
         page.open(progress_dlg)
         page.update()
         def audio_stats(filepath):
+            if filepath in waveform_cache:
+                logger.debug(f"[audio_stats] Using cached data for {filepath}")
+                return waveform_cache[filepath]
             logger.debug(f"[audio_stats] Processing file: {filepath}")
             ext = os.path.splitext(filepath)[1].lower()
             try:
@@ -150,7 +155,9 @@ def main(page):
                 else:
                     return None, None, None, None, None, None
                 if audio is None or len(audio) == 0:
-                    return None, None, None, None, ext, filepath
+                    result = (None, None, None, None, ext, filepath)
+                    waveform_cache[filepath] = result
+                    return result
                 # Remove DC offset and check for silence
                 audio = audio - np.mean(audio)
                 if np.allclose(audio, 0):
@@ -164,9 +171,13 @@ def main(page):
                         lufs = None
                 max_amp = float(np.max(np.abs(audio)))
                 avg_amp = float(np.mean(np.abs(audio)))
-                return audio, max_amp, avg_amp, lufs, ext, filepath
+                result = (audio, max_amp, avg_amp, lufs, ext, filepath)
+                waveform_cache[filepath] = result
+                return result
             except Exception:
-                return None, None, None, None, None, None
+                result = (None, None, None, None, None, None)
+                waveform_cache[filepath] = result
+                return result
 
         # Use ThreadPoolExecutor but update progress in main thread
         from concurrent.futures import as_completed
@@ -228,8 +239,15 @@ def main(page):
                     tmpfile.write(base64.b64decode(img_b64))
                 lufs_str = f"LUFS: {lufs:.2f} dB" if lufs is not None else "LUFS: (unavailable)"
                 label = ft.Text(f"Max amplitude: {max_amp:.2f}   Average amplitude: {avg_amp:.2f}   {lufs_str}", size=10, color=ft.Colors.BLUE)
+                warning = None
+                if lufs is not None:
+                    if lufs > -9:
+                        warning = ft.Text("Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)", size=10, color=ft.Colors.RED)
+                    elif lufs > -16:
+                        warning = ft.Text("Warning: LUFS is moderately high (-16 dB to -9 dB)", size=10, color=ft.Colors.YELLOW_900)
                 images.append(ft.Column([
                     label,
+                    warning if warning else ft.Container(),
                     ft.Image(src=tmp_path, width=320, height=100)
                 ]))
                 n_images += 1
