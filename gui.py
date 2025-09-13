@@ -97,7 +97,10 @@ def main(page):
         images = []
         n_images = 0
         per_track = []  # Store (audio, framerate, ext, filepath, gain_slider, col, gain_val) for each track
-        global_gain = {'value': 0.0}
+        # Use previous gain values if available
+        if not hasattr(page, '_track_gains'):
+            page._track_gains = {}
+        global_gain = {'value': getattr(page, '_global_gain', 0.0)}
         logger.debug(f"[show_waveforms_popup] Found {len(files)} files in upload queue")
         progress_text = ft.Text(f"Calculating waveform data... 0/{len(files)}", size=14)
         progress_bar = ft.ProgressBar(width=300, value=0)
@@ -203,15 +206,18 @@ def main(page):
                         framerate = wf.getframerate()
                 else:
                     framerate = 44100
-                gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=0.0, label="Gain: {value} dB", width=320)
-                label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=0.0)
+                # Use last gain value for this file if available
+                last_gain = page._track_gains.get(filepath, 0.0)
+                gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=last_gain, label="Gain: {value} dB", width=320)
+                label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=last_gain)
                 img = ft.Image(src=tmp_path, width=320, height=100)
                 col = ft.Column([])
-                gain_val = {'value': 0.0}
+                gain_val = {'value': last_gain}
                 def on_gain_change(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, col=col, gain_val=gain_val):
                     logger.debug(f"[on_gain_change] Gain changed for {os.path.basename(filepath)} to {e.control.value} dB")
                     gain_db = e.control.value
                     gain_val['value'] = gain_db
+                    page._track_gains[filepath] = gain_db
                     label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
                     col.controls.clear()
                     col.controls.append(label)
@@ -240,7 +246,7 @@ def main(page):
                             page.close(progress_dlg)
                             page.update()
                     page.update()
-                gain_slider.on_change = on_gain_change
+                gain_slider.on_change_end = on_gain_change
                 def on_save_adjusted_audio_click(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, gain_val=gain_val):
                     if audio_adjust_utils is None:
                         show_snack("audio_adjust_utils could not be loaded", error=True)
@@ -274,6 +280,7 @@ def main(page):
         def on_global_gain_change(e):
             logger.debug(f"[on_global_gain_change] Global gain changed to {e.control.value} dB")
             global_gain['value'] = e.control.value
+            page._global_gain = e.control.value
             progress_text = ft.Text("Applying global gain to all tracks...", size=14)
             progress_bar = ft.ProgressBar(width=300, value=0)
             progress_dlg = ft.AlertDialog(title=ft.Text("Applying Global Gain..."), content=ft.Column([progress_text, progress_bar]), modal=True)
@@ -285,12 +292,7 @@ def main(page):
                 if gain_slider is not None and audio is not None:
                     gain_slider.value = global_gain['value']
                     gain_val['value'] = global_gain['value']
-                    label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=global_gain['value'])
-                    col.controls.clear()
-                    col.controls.append(label)
-                    if warning:
-                        col.controls.append(warning)
-                    col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
+                    page._track_gains[filepath] = global_gain['value']
                     # Save gain-adjusted audio with progress (if needed)
                     if abs(global_gain['value']) > 0.01 and audio_adjust_utils is not None:
                         try:
@@ -306,9 +308,11 @@ def main(page):
                 page.update()
             page.close(progress_dlg)
             page.update()
+            # Reopen the waveform popup after applying global gain, so waveforms are regenerated
+            show_waveforms_popup()
 
         global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=0.0, label="Global Gain: {value} dB", width=320)
-        global_gain_slider.on_change = on_global_gain_change
+        global_gain_slider.on_change_end = on_global_gain_change
 
         save_btn = None
         if n_images > 0:

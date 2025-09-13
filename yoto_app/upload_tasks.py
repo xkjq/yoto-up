@@ -155,10 +155,11 @@ async def start_uploads(event, ctx):
                     # row.controls[1] is ProgressBar, row.controls[2] is status Text
                     if len(row.controls) > 2:
                         # Set status message
-                        if hasattr(row.controls[2], 'value'):
-                            row.controls[2].value = msg or ''
-                        elif hasattr(row.controls[2], 'text'):
+                        # Only assign numeric values to ProgressBar.value, assign status to .text
+                        if hasattr(row.controls[2], 'text'):
                             row.controls[2].text = msg or ''
+                        elif hasattr(row.controls[2], 'label'):
+                            row.controls[2].label = msg or ''
                     if len(row.controls) > 1 and hasattr(row.controls[1], 'visible'):
                         row.controls[1].visible = True
                     # If frac is a number, update progress bar
@@ -197,10 +198,10 @@ async def start_uploads(event, ctx):
                             if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
                                 row.controls[1].value = 1.0
                             if len(row.controls) > 2:
-                                if hasattr(row.controls[2], 'value'):
-                                    row.controls[2].value = 'Done (100%)'
-                                elif hasattr(row.controls[2], 'text'):
+                                if hasattr(row.controls[2], 'text'):
                                     row.controls[2].text = 'Done (100%)'
+                                elif hasattr(row.controls[2], 'label'):
+                                    row.controls[2].label = 'Done (100%)'
                             already_updated = True
                         else:
                             # Defensive: treat skipped as success, set UI
@@ -209,18 +210,18 @@ async def start_uploads(event, ctx):
                             if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
                                 row.controls[1].value = 1.0
                             if len(row.controls) > 2:
-                                if hasattr(row.controls[2], 'value'):
-                                    row.controls[2].value = 'Skipped (already exists)'
-                                elif hasattr(row.controls[2], 'text'):
+                                if hasattr(row.controls[2], 'text'):
                                     row.controls[2].text = 'Skipped (already exists)'
+                                elif hasattr(row.controls[2], 'label'):
+                                    row.controls[2].label = 'Skipped (already exists)'
                             already_updated = True
                     except Exception as e:
                         row = file_rows_column.controls[idx]
                         if len(row.controls) > 2:
-                            if hasattr(row.controls[2], 'value'):
-                                row.controls[2].value = f'Error: {e}'
-                            elif hasattr(row.controls[2], 'text'):
+                            if hasattr(row.controls[2], 'text'):
                                 row.controls[2].text = f'Error: {e}'
+                            elif hasattr(row.controls[2], 'label'):
+                                row.controls[2].label = f'Error: {e}'
                         already_updated = True
                     finally:
                         if already_updated:
@@ -324,7 +325,10 @@ async def start_uploads(event, ctx):
                     except Exception:
                         pass
                     try:
-                        row_widget.controls[2].value = 'Uploading 0%'
+                        if hasattr(row_widget.controls[2], 'text'):
+                            row_widget.controls[2].text = 'Uploading 0%'
+                        elif hasattr(row_widget.controls[2], 'label'):
+                            row_widget.controls[2].label = 'Uploading 0%'
                     except Exception:
                         pass
                 except Exception:
@@ -350,7 +354,10 @@ async def start_uploads(event, ctx):
                     except Exception:
                         pass
                     try:
-                        row_widget.controls[2].value = 'Transcoded 70%'
+                        if hasattr(row_widget.controls[2], 'text'):
+                            row_widget.controls[2].text = 'Transcoded 70%'
+                        elif hasattr(row_widget.controls[2], 'label'):
+                            row_widget.controls[2].label = 'Transcoded 70%'
                     except Exception:
                         pass
                 except Exception:
@@ -358,7 +365,10 @@ async def start_uploads(event, ctx):
                 already_updated = True
             except Exception as e:
                 try:
-                    row_widget.controls[2].value = "Error"
+                    if hasattr(row_widget.controls[2], 'text'):
+                        row_widget.controls[2].text = "Error"
+                    elif hasattr(row_widget.controls[2], 'label'):
+                        row_widget.controls[2].label = "Error"
                     already_updated = True
                     page.update()
                 except Exception:
