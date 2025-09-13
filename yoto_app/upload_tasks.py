@@ -199,13 +199,17 @@ async def start_uploads(event, ctx):
     _LAST_PAGE = page
 
 
-    # Gather all unique files from file_rows_column (from folder and individual selection)
+
+    # Gather all unique FileUploadRow objects from file_rows_column.controls
+    fileuploadrows = []
+    orig_files = []
     files = []
-    orig_files = []  # Always the original file path for each upload
     seen = set()
     for row in getattr(file_rows_column, 'controls', []):
+        fileuploadrow = getattr(row, '_fileuploadrow', None)
         path = getattr(row, 'filename', None)
-        if path and path not in seen:
+        if fileuploadrow is not None and path and path not in seen:
+            fileuploadrows.append(fileuploadrow)
             temp_info = gain_adjusted_files.get(path)
             if temp_info and temp_info.get('temp_path'):
                 files.append(temp_info['temp_path'])
@@ -238,10 +242,6 @@ async def start_uploads(event, ctx):
     maxc = int(getattr(concurrency_widget, 'value', 2))
     sem = asyncio.Semaphore(maxc)
 
-    # Reset UI columns
-    file_rows_column.controls.clear()
-    page.update()
-
     total_files = len(files)
     overall_bar.value = 0
     overall_text.value = f"0/{total_files} completed"
@@ -252,15 +252,10 @@ async def start_uploads(event, ctx):
         safe_log("start_uploads: failed to set overall bar visibility", e)
     logger.debug(f"[start_uploads] Total files to upload: {total_files}")
 
-    # Create rows
-    for f in files:
-        logger.debug(f"[start_uploads] Creating UI row for file: {f}")
-        r = FileUploadRow(f, maybe_page=page, maybe_column=file_rows_column)
-        if r:
-            file_rows_column.controls.append(r.row)
+    # No row creation here! Only use existing FileUploadRow objects.
     page.update()
     try:
-        logger.debug('[start_uploads] Rows after creation:')
+        logger.debug('[start_uploads] Rows present:')
         for i, r in enumerate(getattr(file_rows_column, 'controls', [])):
             try:
                 types = [type(c).__name__ for c in getattr(r, 'controls', [])]
@@ -311,15 +306,11 @@ async def start_uploads(event, ctx):
                 page.update()
             return progress_cb
 
-        for idx, row in enumerate(file_rows_column.controls):
+        for idx, fileuploadrow in enumerate(fileuploadrows):
             f = files[idx]
             fname = filename_list[idx]
             def make_upload_task(idx, f, fname):
                 async def upload_new_card_one():
-                    row = file_rows_column.controls[idx]
-                    fileuploadrow = getattr(row, '_fileuploadrow', None)
-                    if fileuploadrow is None:
-                        raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
                     fileuploadrow.set_status('Uploading...')
                     page.update()
                     already_updated = False
@@ -338,20 +329,12 @@ async def start_uploads(event, ctx):
                         )
                         if tr is not None:
                             transcoded_results[idx] = tr
-                            row = file_rows_column.controls[idx]
-                            fileuploadrow = getattr(row, '_fileuploadrow', None)
-                            if fileuploadrow is None:
-                                raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
                             fileuploadrow.set_progress(1.0)
                             fileuploadrow.set_status('Done (100%)')
                             fileuploadrow.on_upload_complete()
                             already_updated = True
                         else:
                             transcoded_results[idx] = True
-                            row = file_rows_column.controls[idx]
-                            fileuploadrow = getattr(row, '_fileuploadrow', None)
-                            if fileuploadrow is None:
-                                raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
                             fileuploadrow.set_progress(1.0)
                             fileuploadrow.set_status('Skipped (already exists)')
                             fileuploadrow.on_upload_complete()
