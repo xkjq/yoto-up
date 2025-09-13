@@ -31,19 +31,22 @@ class FileUploadRow:
         setattr(self.row, 'filename', filepath)
         self.maybe_page = maybe_page
         self.maybe_column = maybe_column
+        self.uploaded = False  # Track if this file has been uploaded
 
     def set_status(self, value):
         self.status_text.value = value
-        # Mark as uploaded if status indicates completion
-        done_statuses = {'Done (100%)', 'Done (appended)', 'Uploaded', 'All chapters appended'}
-        if isinstance(value, str) and any(s in value for s in done_statuses):
-            self.uploaded = True
-        if self.maybe_page:
-            self.maybe_page.update()
 
     def set_progress(self, frac):
         self.progress.visible = True
         self.progress.value = frac
+        if self.maybe_page:
+            self.maybe_page.update()
+
+    def on_upload_complete(self):
+        logger.debug(f"[FileUploadRow] on_upload_complete called for {self.name}")
+        self.uploaded = True
+        # Change the row background color for visual indication
+        self.row.bgcolor = "#71fb91"  # light green
         if self.maybe_page:
             self.maybe_page.update()
 
@@ -369,17 +372,7 @@ async def start_uploads(event, ctx):
                                 status_control.value = 'Skipped (already exists)'
                             already_updated = True
                     except Exception as e:
-                        row = file_rows_column.controls[idx]
-                        # Robustly update status
-                        status_control = None
-                        known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
-                        for ctrl in row.controls:
-                            if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
-                                status_control = ctrl
-                                break
-                        if status_control is not None:
-                            status_control.value = f'Error: {e}'
-                        already_updated = True
+                        logger.error(f"start_uploads: upload error for {f}: {e}")
                     finally:
                         if already_updated:
                             update_overall()
@@ -666,10 +659,8 @@ async def start_uploads(event, ctx):
                 status.value = 'All chapters appended'
                 show_snack(status.value)
                 for r in file_rows_column.controls:
-                    try:
-                        r.set_status('Done (appended)')
-                    except Exception:
-                        logger.exception(f"Failed to set row status to Done (appended) {r=}")
+                    r.set_status('Done (appended)')
+                    r.on_upload_complete()
                 page.update()
 
         append_task = asyncio.create_task(append_all_after_uploads(upload_tasks))

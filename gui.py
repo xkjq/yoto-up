@@ -601,11 +601,11 @@ def main(page):
     export_selected_btn = ft.ElevatedButton('Export Selected', disabled=True)
     remove_uploaded_btn = ft.ElevatedButton('Remove Uploaded', on_click=remove_uploaded_files)
 
-    # Add Remove Uploaded button to the UI after the action buttons
-    action_buttons_row = ft.Row([
-        start_btn, stop_btn, fetch_btn, multi_select_btn, delete_selected_btn, export_selected_btn, remove_uploaded_btn
-    ])
-    page.add(action_buttons_row)
+    ## Add Remove Uploaded button to the UI after the action buttons
+    #action_buttons_row = ft.Row([
+    #    start_btn, stop_btn, fetch_btn, multi_select_btn, delete_selected_btn, export_selected_btn, remove_uploaded_btn
+    #])
+    #page.add(action_buttons_row)
 
     def update_overall():
         # update overall progress bar when a file completes
@@ -804,6 +804,7 @@ def main(page):
     'gain_adjusted_files': gain_adjusted_files,
         'start_btn': start_btn,
         'stop_btn': stop_btn,
+        'remove_uploaded_btn': remove_uploaded_btn,
     }
 
     # Also add the control to the page so user can toggle it
@@ -969,7 +970,7 @@ def main(page):
                 )
             )
         ]),
-        ft.Row([start_btn, stop_btn]),
+        ft.Row([start_btn, stop_btn, remove_uploaded_btn]),
         ft.Divider(),
         overall_text,
         overall_bar,
