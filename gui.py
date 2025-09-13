@@ -641,15 +641,14 @@ def main(page):
             # Add only files not already present
             existing = set(getattr(row, "filename", None) for row in file_rows_column.controls)
             added = 0
+            from yoto_app.upload_tasks import FileUploadRow
             for f in files:
                 if f not in existing:
-                    # create a UI row using upload_tasks.ft_row_for_file so the details button is present
                     try:
-                        from yoto_app.upload_tasks import ft_row_for_file
-                        file_row = ft_row_for_file(f, page, file_rows_column)
-                    except Exception:
-                        file_row = ft.Row([ft.Text(f)])
-                    file_rows_column.controls.append(file_row)
+                        file_row = FileUploadRow(f, maybe_page=page, maybe_column=file_rows_column)
+                        file_rows_column.controls.append(file_row.row)
+                    except Exception as e:
+                        file_rows_column.controls.append(ft.Row([ft.Text(os.path.basename(f))]))
                     added += 1
             if added == 0 and files:
                 print("[populate_file_rows] All files from folder already present in upload list.")

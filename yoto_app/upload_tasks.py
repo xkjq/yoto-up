@@ -15,7 +15,7 @@ _LAST_PAGE = None
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
         import os
-        from flet import Row, Text, ProgressBar, ElevatedButton
+        from flet import Row, Text, ProgressBar, ElevatedButton, AlertDialog, Column
         self.filepath = filepath
         self.name = os.path.basename(filepath)
         self.status_text = Text('Queued')
@@ -45,12 +45,10 @@ class FileUploadRow:
 
     def on_view_details(self, ev=None):
         try:
-            page = self.maybe_page or globals().get('_LAST_PAGE')
+            page = self.maybe_page
             if not page:
-                print('[ft_row_for_file] No page available to show dialog')
+                print('[FileUploadRow] No page available to show dialog')
                 return
-
-            # Try to import mutagen for robust tag parsing
             tags = {}
             try:
                 from mutagen import File as MutagenFile
@@ -96,14 +94,12 @@ class FileUploadRow:
                         tags['info'] = 'Unsupported or non-mp3 file for fallback parsing'
                 except Exception as fe:
                     tags['error'] = f'Fallback tag read failed: {fe}'
-
             lines = []
             if not tags:
                 lines = [Text('No tags found')]
             else:
                 for k, v in tags.items():
                     lines.append(Text(f"{k}: {v}"))
-
             dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[ElevatedButton('OK', on_click=lambda e: page.close(dlg))])
             page.open(dlg)
             page.update()
@@ -119,28 +115,25 @@ class FileUploadRow:
             print(f"[Preview] Failed to open {url}: {ex}")
 
     def on_remove(self, ev=None):
+        col = self.maybe_column
+        if not col:
+            print('[FileUploadRow] No column available to remove row')
+            return
         try:
-            col = self.maybe_column or globals().get('_LAST_COLUMN')
-            if not col:
-                print('[ft_row_for_file] No column available to remove row')
-                return
-            try:
-                col.controls.remove(r)
-            except Exception:
-                for existing in list(col.controls):
-                    if getattr(existing, 'filename', None) == self.filepath:
-                        try:
-                            col.controls.remove(existing)
-                        except Exception:
-                            pass
-            try:
-                page = self.maybe_page or globals().get('_LAST_PAGE')
-                if page:
-                    page.update()
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[on_remove] error: {e}")
+            col.controls.remove(self)
+        except Exception:
+            for existing in list(col.controls):
+                if getattr(existing, 'filename', None) == self.filepath:
+                    try:
+                        col.controls.remove(existing)
+                    except Exception:
+                        pass
+        try:
+            page = self.maybe_page
+            if page:
+                page.update()
+        except Exception:
+            pass
 
 # --- End FileUploadRow class ---
 
