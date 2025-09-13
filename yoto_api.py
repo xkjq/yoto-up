@@ -645,7 +645,7 @@ class YotoAPI:
     async def poll_for_transcoding_async(
         self,
         upload_id: str,
-        loudnorm: bool = False,
+        loudnorm: bool = False, # This doesn't actually do anything here
         poll_interval: float = 2,
         max_attempts: int = 120,
         show_progress: bool = False,

@@ -193,7 +193,7 @@ def main(page):
                 progress_text.value = f"Calculating waveform data... {completed}/{total}"
                 progress_bar.value = completed / total if total else 0
                 page.update()
-        page.close(progress_dlg)
+        #page.close(progress_dlg)
         page.update()
 
         # Now do plotting and file writing sequentially

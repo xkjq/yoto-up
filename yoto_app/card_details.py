@@ -198,6 +198,36 @@ def make_show_card_details(
                                 )
                             except Exception:
                                 logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
+
+                        def _on_download_click(ev=None, url=tr_url, title=tr_title):
+                            import httpx
+                            import os
+                            from pathlib import Path
+                            try:
+                                api = api_ref.get("api")
+                                resolved_url = None
+                                if url and url.startswith("http"):
+                                    resolved_url = url
+                                if not resolved_url or not resolved_url.startswith("http"):
+                                    show_snack("No valid URL for this track", error=True)
+                                    return
+                                downloads_dir = Path("downloads")
+                                downloads_dir.mkdir(exist_ok=True)
+                                # Use title or fallback to last part of URL
+                                filename = title or resolved_url.split("/")[-1]
+                                # Ensure safe filename
+                                filename = "_".join(filename.split())
+                                if not filename.lower().endswith(f".{tr_format}"):
+                                    filename += f".{tr_format}"
+                                dest = downloads_dir / filename
+                                with httpx.stream("GET", resolved_url, timeout=60.0) as r:
+                                    r.raise_for_status()
+                                    with open(dest, "wb") as f:
+                                        for chunk in r.iter_bytes():
+                                            f.write(chunk)
+                                show_snack(f"Downloaded to {dest}")
+                            except Exception as ex:
+                                show_snack(f"Download failed: {ex}", error=True)
                         try:
                             api = api_ref.get("api")
                             if api and tr_icon_field:
@@ -331,6 +361,13 @@ def make_show_card_details(
                                     on_click=lambda ev,
                                     ch_i=ch_index,
                                     tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.DOWNLOAD,
+                                    tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
+                                    icon_size=18,
+                                    on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
+                                    disabled=not tr_url or not tr_url.startswith("http"),
                                 ),
                             ]
                         )
