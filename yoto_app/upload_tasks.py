@@ -168,14 +168,15 @@ async def start_uploads(event, ctx):
                 try:
                     logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
                     row = file_rows_column.controls[idx]
-                    # row.controls[1] is ProgressBar, row.controls[2] is status Text
-                    if len(row.controls) > 2:
-                        # Set status message
-                        # Only assign numeric values to ProgressBar.value, assign status to .text
-                        if hasattr(row.controls[2], 'text'):
-                            row.controls[2].text = msg or ''
-                        elif hasattr(row.controls[2], 'label'):
-                            row.controls[2].label = msg or ''
+                    # Only update the status Text control, not the filename
+                    status_control = None
+                    known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
+                    for ctrl in row.controls:
+                        if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
+                            status_control = ctrl
+                            break
+                    if status_control is not None:
+                        status_control.value = msg or ''
                     if len(row.controls) > 1 and hasattr(row.controls[1], 'visible'):
                         row.controls[1].visible = True
                     # If frac is a number, update progress bar
@@ -190,9 +191,23 @@ async def start_uploads(event, ctx):
                     logger.error(f"[progress_cb] Exception for idx={idx}: {e}")
             return progress_cb
 
-        for idx, (f, fname) in enumerate(zip(files, filename_list)):
+        for idx, row in enumerate(file_rows_column.controls):
+            f = files[idx]
+            fname = filename_list[idx]
             def make_upload_task(idx, f, fname):
                 async def upload_new_card_one():
+                    # Set status to Uploading... before starting
+                    row = file_rows_column.controls[idx]
+                    # Find the status Text control (robust to row layout changes)
+                    status_control = None
+                    known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
+                    for ctrl in row.controls:
+                        if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
+                            status_control = ctrl
+                            break
+                    if status_control is not None:
+                        status_control.value = 'Uploading...'
+                    page.update()
                     already_updated = False
                     try:
                         tr = await api.upload_and_transcode_audio_async(
@@ -213,11 +228,15 @@ async def start_uploads(event, ctx):
                             row = file_rows_column.controls[idx]
                             if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
                                 row.controls[1].value = 1.0
-                            if len(row.controls) > 2:
-                                if hasattr(row.controls[2], 'text'):
-                                    row.controls[2].text = 'Done (100%)'
-                                elif hasattr(row.controls[2], 'label'):
-                                    row.controls[2].label = 'Done (100%)'
+                            # Robustly update status
+                            status_control = None
+                            known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
+                            for ctrl in row.controls:
+                                if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
+                                    status_control = ctrl
+                                    break
+                            if status_control is not None:
+                                status_control.value = 'Done (100%)'
                             already_updated = True
                         else:
                             # Defensive: treat skipped as success, set UI
@@ -225,19 +244,27 @@ async def start_uploads(event, ctx):
                             row = file_rows_column.controls[idx]
                             if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
                                 row.controls[1].value = 1.0
-                            if len(row.controls) > 2:
-                                if hasattr(row.controls[2], 'text'):
-                                    row.controls[2].text = 'Skipped (already exists)'
-                                elif hasattr(row.controls[2], 'label'):
-                                    row.controls[2].label = 'Skipped (already exists)'
+                            # Robustly update status
+                            status_control = None
+                            known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
+                            for ctrl in row.controls:
+                                if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
+                                    status_control = ctrl
+                                    break
+                            if status_control is not None:
+                                status_control.value = 'Skipped (already exists)'
                             already_updated = True
                     except Exception as e:
                         row = file_rows_column.controls[idx]
-                        if len(row.controls) > 2:
-                            if hasattr(row.controls[2], 'text'):
-                                row.controls[2].text = f'Error: {e}'
-                            elif hasattr(row.controls[2], 'label'):
-                                row.controls[2].label = f'Error: {e}'
+                        # Robustly update status
+                        status_control = None
+                        known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
+                        for ctrl in row.controls:
+                            if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
+                                status_control = ctrl
+                                break
+                        if status_control is not None:
+                            status_control.value = f'Error: {e}'
                         already_updated = True
                     finally:
                         if already_updated:
