@@ -152,12 +152,22 @@ async def start_uploads(event, ctx):
                 try:
                     logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
                     row = file_rows_column.controls[idx]
-                    # Only show status message, not fractional progress
-                    if msg:
-                        row.controls[2].value = msg
-                    else:
-                        row.controls[2].value = ''
-                    row.controls[1].visible = True
+                    # row.controls[1] is ProgressBar, row.controls[2] is status Text
+                    if len(row.controls) > 2:
+                        # Set status message
+                        if hasattr(row.controls[2], 'value'):
+                            row.controls[2].value = msg or ''
+                        elif hasattr(row.controls[2], 'text'):
+                            row.controls[2].text = msg or ''
+                    if len(row.controls) > 1 and hasattr(row.controls[1], 'visible'):
+                        row.controls[1].visible = True
+                    # If frac is a number, update progress bar
+                    if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
+                        if frac is not None:
+                            try:
+                                row.controls[1].value = float(frac)
+                            except Exception:
+                                pass
                     page.update()
                 except Exception as e:
                     logger.error(f"[progress_cb] Exception for idx={idx}: {e}")
@@ -184,19 +194,33 @@ async def start_uploads(event, ctx):
                         if tr is not None:
                             transcoded_results[idx] = tr
                             row = file_rows_column.controls[idx]
-                            row.controls[1].value = 1.0
-                            row.controls[2].value = 'Done (100%)'
+                            if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
+                                row.controls[1].value = 1.0
+                            if len(row.controls) > 2:
+                                if hasattr(row.controls[2], 'value'):
+                                    row.controls[2].value = 'Done (100%)'
+                                elif hasattr(row.controls[2], 'text'):
+                                    row.controls[2].text = 'Done (100%)'
                             already_updated = True
                         else:
                             # Defensive: treat skipped as success, set UI
                             transcoded_results[idx] = True
                             row = file_rows_column.controls[idx]
-                            row.controls[1].value = 1.0
-                            row.controls[2].value = 'Skipped (already exists)'
+                            if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
+                                row.controls[1].value = 1.0
+                            if len(row.controls) > 2:
+                                if hasattr(row.controls[2], 'value'):
+                                    row.controls[2].value = 'Skipped (already exists)'
+                                elif hasattr(row.controls[2], 'text'):
+                                    row.controls[2].text = 'Skipped (already exists)'
                             already_updated = True
                     except Exception as e:
                         row = file_rows_column.controls[idx]
-                        row.controls[2].value = f'Error: {e}'
+                        if len(row.controls) > 2:
+                            if hasattr(row.controls[2], 'value'):
+                                row.controls[2].value = f'Error: {e}'
+                            elif hasattr(row.controls[2], 'text'):
+                                row.controls[2].text = f'Error: {e}'
                         already_updated = True
                     finally:
                         if already_updated:

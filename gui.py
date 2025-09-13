@@ -209,6 +209,7 @@ def main(page):
                 col = ft.Column([])
                 gain_val = {'value': 0.0}
                 def on_gain_change(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, col=col, gain_val=gain_val):
+                    logger.debug(f"[on_gain_change] Gain changed for {os.path.basename(filepath)} to {e.control.value} dB")
                     gain_db = e.control.value
                     gain_val['value'] = gain_db
                     label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
@@ -217,10 +218,13 @@ def main(page):
                     if warning:
                         col.controls.append(warning)
                     col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
-                    # Show progress dialog while saving adjusted audio
-                    progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
-                    page.open(progress_dlg)
-                    page.update()
+                    # Show progress dialog only if saving gain-adjusted file (not for zero gain)
+                    show_progress = abs(gain_db) > 0.01
+                    progress_dlg = None
+                    if show_progress:
+                        progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
+                        page.open(progress_dlg)
+                        page.update()
                     try:
                         if abs(gain_db) > 0.01:
                             if audio_adjust_utils is not None:
@@ -232,8 +236,9 @@ def main(page):
                         else:
                             gain_adjusted_files.pop(filepath, None)
                     finally:
-                        page.close(progress_dlg)
-                        page.update()
+                        if progress_dlg:
+                            page.close(progress_dlg)
+                            page.update()
                     page.update()
                 gain_slider.on_change = on_gain_change
                 def on_save_adjusted_audio_click(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, gain_val=gain_val):
@@ -267,6 +272,7 @@ def main(page):
                 per_track.append((None, None, None, None, None, ft.Text("(No waveform for file)", size=10, color=ft.Colors.RED), None))
 
         def on_global_gain_change(e):
+            logger.debug(f"[on_global_gain_change] Global gain changed to {e.control.value} dB")
             global_gain['value'] = e.control.value
             for i, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track):
                 if gain_slider is not None and audio is not None:
