@@ -344,10 +344,32 @@ def main(page):
                     page.update()
                 page.close(progress_dlg)
                 page.update()
+                # Fully refresh the upload queue rows to reflect new temp files and details
+                try:
+                    from yoto_app.upload_tasks import ft_row_for_file
+                except Exception:
+                    ft_row_for_file = None
+                new_rows = []
+                for row in list(getattr(file_rows_column, 'controls', [])):
+                    path = getattr(row, 'filename', None)
+                    temp_info = gain_adjusted_files.get(path)
+                    new_path = temp_info['temp_path'] if temp_info and temp_info.get('temp_path') else path
+                    if ft_row_for_file:
+                        try:
+                            new_row = ft_row_for_file(new_path, page, file_rows_column)
+                        except Exception:
+                            new_row = ft.Row([ft.Text(os.path.basename(new_path) if new_path else "")])
+                    else:
+                        new_row = ft.Row([ft.Text(os.path.basename(new_path) if new_path else "")])
+                    setattr(new_row, 'filename', new_path)
+                    new_rows.append(new_row)
+                file_rows_column.controls.clear()
+                file_rows_column.controls.extend(new_rows)
+                page.update()
                 if errors:
                     show_snack(f"Some files failed: {'; '.join(errors)}", error=True)
                 else:
-                    show_snack("All gain-adjusted audio files saved.")
+                    show_snack("All gain-adjusted audio files saved and upload queue updated.")
             save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_all_click, tooltip="Save gain-adjusted audio for all tracks in the dialog")
 
         if n_images == 0:
