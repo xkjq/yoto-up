@@ -706,16 +706,16 @@ def main(page):
 
     def on_pick_files_result(e: ft.FilePickerResultEvent):
         if e.files:
+            from yoto_app.upload_tasks import FileUploadRow
             for f in e.files:
                 # Add each selected file to the file_rows_column if not already present
                 path = getattr(f, "path", None)
                 if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
                     try:
-                        from yoto_app.upload_tasks import ft_row_for_file
-                        file_row = ft_row_for_file(path, page, file_rows_column)
+                        file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
+                        file_rows_column.controls.append(file_row.row)
                     except Exception:
-                        file_row = ft.Row([ft.Text(path)])
-                    file_rows_column.controls.append(file_row)
+                        file_rows_column.controls.append(ft.Row([ft.Text(os.path.basename(path) if path else "")]))
             page.update()
 
     browse.on_result = on_pick_result
