@@ -652,8 +652,8 @@ def main(page):
                     try:
                         file_row = FileUploadRow(f, maybe_page=page, maybe_column=file_rows_column)
                         file_rows_column.controls.append(file_row.row)
-                    except Exception:
-                        file_rows_column.controls.append(ft.Row([ft.Text(os.path.basename(f))]))
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to create FileUploadRow for {f}: {e}")
                     added += 1
             if added == 0 and files:
                 print("[populate_file_rows] All files from folder already present in upload list.")
@@ -726,8 +726,8 @@ def main(page):
                     try:
                         file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
                         file_rows_column.controls.append(file_row.row)
-                    except Exception:
-                        file_rows_column.controls.append(ft.Row([ft.Text(os.path.basename(path) if path else "")]))
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to create FileUploadRow for {path}: {e}")
             page.update()
 
     browse.on_result = on_pick_result

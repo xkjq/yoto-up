@@ -29,6 +29,7 @@ class FileUploadRow:
             ElevatedButton('Remove', on_click=self.on_remove)
         ])
         setattr(self.row, 'filename', filepath)
+        setattr(self.row, '_fileuploadrow', self)
         self.maybe_page = maybe_page
         self.maybe_column = maybe_column
         self.uploaded = False  # Track if this file has been uploaded
@@ -114,7 +115,8 @@ class FileUploadRow:
             print(f"[on_view_details] error: {e}")
 
     def on_preview(self, ev=None):
-        import webbrowser, os
+        import webbrowser
+        import os
         url = f"file://{os.path.abspath(self.filepath)}"
         try:
             webbrowser.open(url)
@@ -300,11 +302,12 @@ async def start_uploads(event, ctx):
             def progress_cb(msg, frac):
                 logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
                 row = file_rows_column.controls[idx]
-                if not hasattr(row, 'set_status') or not hasattr(row, 'set_progress'):
-                    raise RuntimeError(f"Row at idx={idx} does not support FileUploadRow interface: {type(row)}")
-                row.set_status(msg or '')
+                fileuploadrow = getattr(row, '_fileuploadrow', None)
+                if fileuploadrow is None:
+                    raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                fileuploadrow.set_status(msg or '')
                 if frac is not None:
-                    row.set_progress(float(frac))
+                    fileuploadrow.set_progress(float(frac))
                 page.update()
             return progress_cb
 
@@ -313,17 +316,11 @@ async def start_uploads(event, ctx):
             fname = filename_list[idx]
             def make_upload_task(idx, f, fname):
                 async def upload_new_card_one():
-                    # Set status to Uploading... before starting
                     row = file_rows_column.controls[idx]
-                    # Find the status Text control (robust to row layout changes)
-                    status_control = None
-                    known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
-                    for ctrl in row.controls:
-                        if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
-                            status_control = ctrl
-                            break
-                    if status_control is not None:
-                        status_control.value = 'Uploading...'
+                    fileuploadrow = getattr(row, '_fileuploadrow', None)
+                    if fileuploadrow is None:
+                        raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                    fileuploadrow.set_status('Uploading...')
                     page.update()
                     already_updated = False
                     try:
@@ -339,37 +336,25 @@ async def start_uploads(event, ctx):
                             max_attempts=60,
                             progress_callback=make_progress_cb(idx),
                         )
-                        # If tr is None, treat as skipped (file exists)
                         if tr is not None:
                             transcoded_results[idx] = tr
                             row = file_rows_column.controls[idx]
-                            if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
-                                row.controls[1].value = 1.0
-                            # Robustly update status
-                            status_control = None
-                            known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
-                            for ctrl in row.controls:
-                                if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
-                                    status_control = ctrl
-                                    break
-                            if status_control is not None:
-                                status_control.value = 'Done (100%)'
+                            fileuploadrow = getattr(row, '_fileuploadrow', None)
+                            if fileuploadrow is None:
+                                raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                            fileuploadrow.set_progress(1.0)
+                            fileuploadrow.set_status('Done (100%)')
+                            fileuploadrow.on_upload_complete()
                             already_updated = True
                         else:
-                            # Defensive: treat skipped as success, set UI
                             transcoded_results[idx] = True
                             row = file_rows_column.controls[idx]
-                            if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
-                                row.controls[1].value = 1.0
-                            # Robustly update status
-                            status_control = None
-                            known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
-                            for ctrl in row.controls:
-                                if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
-                                    status_control = ctrl
-                                    break
-                            if status_control is not None:
-                                status_control.value = 'Skipped (already exists)'
+                            fileuploadrow = getattr(row, '_fileuploadrow', None)
+                            if fileuploadrow is None:
+                                raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                            fileuploadrow.set_progress(1.0)
+                            fileuploadrow.set_status('Skipped (already exists)')
+                            fileuploadrow.on_upload_complete()
                             already_updated = True
                     except Exception as e:
                         logger.error(f"start_uploads: upload error for {f}: {e}")
@@ -459,7 +444,10 @@ async def start_uploads(event, ctx):
                 prev_note = getattr(card.metadata, 'note', '') if card.metadata else ''
                 if prev_note and not prev_note.endswith('\n'):
                     prev_note += '\n'
-                card.metadata.note = (prev_note or '') + '\n'.join(gain_note_lines)
+                # Ensure note is always a string
+                note_val = (prev_note or '') + '\n'.join(gain_note_lines)
+                if card.metadata:
+                    card.metadata.note = str(note_val)
             created = api.create_or_update_content(card)
             cid = None
             try:
@@ -659,8 +647,11 @@ async def start_uploads(event, ctx):
                 status.value = 'All chapters appended'
                 show_snack(status.value)
                 for r in file_rows_column.controls:
-                    r.set_status('Done (appended)')
-                    r.on_upload_complete()
+                    fileuploadrow = getattr(r, '_fileuploadrow', None)
+                    if fileuploadrow is None:
+                        raise RuntimeError(f"Row is missing _fileuploadrow reference: {type(r)}")
+                    fileuploadrow.set_status('Done (appended)')
+                    fileuploadrow.on_upload_complete()
                 page.update()
 
         append_task = asyncio.create_task(append_all_after_uploads(upload_tasks))
