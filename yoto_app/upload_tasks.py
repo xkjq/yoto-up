@@ -66,16 +66,18 @@ async def start_uploads(event, ctx):
 
     # Gather all unique files from file_rows_column (from folder and individual selection)
     files = []
+    orig_files = []  # Always the original file path for each upload
     seen = set()
     for row in getattr(file_rows_column, 'controls', []):
         path = getattr(row, 'filename', None)
         if path and path not in seen:
-            # If gain-adjusted temp file exists, use it for upload
             temp_info = gain_adjusted_files.get(path)
             if temp_info and temp_info.get('temp_path'):
                 files.append(temp_info['temp_path'])
+                orig_files.append(path)
             else:
                 files.append(path)
+                orig_files.append(path)
             seen.add(path)
     logger.debug(f"[start_uploads] Files to upload (from UI): {files}")
     if not files:
@@ -144,7 +146,7 @@ async def start_uploads(event, ctx):
     target = getattr(upload_target_dropdown, 'value', 'Create new card')
     if target == 'Create new card':
         title = (getattr(new_card_title, 'value', '') or '').strip() or 'New Yoto Card'
-        filename_list = [clean_title_from_filename(f, strip_leading) for f in files]
+        filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
         transcoded_results = [None] * len(files)
         upload_tasks = []
         # Map from upload file path to gain adjustment (if any)
@@ -159,7 +161,8 @@ async def start_uploads(event, ctx):
         for i, f in enumerate(files):
             gain = gain_notes.get(f)
             if gain is not None:
-                gain_note_lines.append(f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(f)}")
+                gain_note_lines.append(f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(orig_files[i])}")
+
         def make_progress_cb(idx):
             def progress_cb(msg, frac):
                 try:
