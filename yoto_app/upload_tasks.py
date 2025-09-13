@@ -457,24 +457,14 @@ async def start_uploads(event, ctx):
 
         async def upload_one(idx, fpath):
             already_updated = False
+            fileuploadrow = None
             try:
-                row_widget = file_rows_column.controls[idx]
-                try:
-                    row_widget.controls[1].visible = True
-                    # set initial upload progress to 0%
-                    try:
-                        row_widget.controls[1].value = 0.0
-                    except Exception:
-                        pass
-                    try:
-                        if hasattr(row_widget.controls[2], 'text'):
-                            row_widget.controls[2].text = 'Uploading 0%'
-                        elif hasattr(row_widget.controls[2], 'label'):
-                            row_widget.controls[2].label = 'Uploading 0%'
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                row = file_rows_column.controls[idx]
+                fileuploadrow = getattr(row, '_fileuploadrow', None)
+                if fileuploadrow is None:
+                    raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                fileuploadrow.set_status('Uploading 0%')
+                fileuploadrow.set_progress(0.0)
                 page.update()
 
                 tr = await api.upload_and_transcode_audio_async(
@@ -485,36 +475,14 @@ async def start_uploads(event, ctx):
                 )
                 transcoded_results[idx] = tr
 
-                try:
-                    # set transcode completion to ~70%
-                    try:
-                        row_widget.controls[1].visible = True
-                    except Exception:
-                        pass
-                    try:
-                        row_widget.controls[1].value = 0.7
-                    except Exception:
-                        pass
-                    try:
-                        if hasattr(row_widget.controls[2], 'text'):
-                            row_widget.controls[2].text = 'Transcoded 70%'
-                        elif hasattr(row_widget.controls[2], 'label'):
-                            row_widget.controls[2].label = 'Transcoded 70%'
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                fileuploadrow.set_progress(0.7)
+                fileuploadrow.set_status('Transcoded 70%')
                 already_updated = True
             except Exception as e:
-                try:
-                    if hasattr(row_widget.controls[2], 'text'):
-                        row_widget.controls[2].text = "Error"
-                    elif hasattr(row_widget.controls[2], 'label'):
-                        row_widget.controls[2].label = "Error"
+                if fileuploadrow is not None:
+                    fileuploadrow.set_status("Error")
                     already_updated = True
                     page.update()
-                except Exception:
-                    pass
                 print(f"[start_uploads] Error uploading {fpath}: {e}")
             finally:
                 if already_updated:
@@ -617,14 +585,14 @@ async def start_uploads(event, ctx):
                 status.value = f'Append failed: {err}'
                 show_snack(status.value, error=True)
                 for idx, r in enumerate(file_rows_column.controls):
-                    try:
-                        if transcoded_results[idx]:
-                            r.controls[2].value = 'Transcoded (not appended)'
-                        else:
-                            if r.controls[2].value != 'Error':
-                                r.controls[2].value = 'Error'
-                    except Exception:
-                        pass
+                    fileuploadrow = getattr(r, '_fileuploadrow', None)
+                    if fileuploadrow is None:
+                        raise RuntimeError(f"Row is missing _fileuploadrow reference: {type(r)}")
+                    if transcoded_results[idx]:
+                        fileuploadrow.set_status('Transcoded (not appended)')
+                    else:
+                        if fileuploadrow.status_text.value != 'Error':
+                            fileuploadrow.set_status('Error')
                 page.update()
             else:
                 status.value = 'All chapters appended'
@@ -650,10 +618,9 @@ async def start_uploads(event, ctx):
     # Make per-file progress bars visible now that uploads have started
     try:
         for r in file_rows_column.controls:
-            try:
-                r.controls[1].visible = True
-            except Exception:
-                pass
+            fileuploadrow = getattr(r, '_fileuploadrow', None)
+            if fileuploadrow is not None:
+                fileuploadrow.progress.visible = True
     except Exception:
         pass
     page.update()
