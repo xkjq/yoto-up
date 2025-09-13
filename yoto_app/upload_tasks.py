@@ -679,14 +679,9 @@ async def start_uploads(event, ctx):
                 show_snack(status.value)
                 for r in file_rows_column.controls:
                     try:
-                        r.controls[2].value = 'Done (appended)'
-                        try:
-                            r.controls[1].visible = True
-                        except Exception:
-                            pass
-                        r.controls[1].value = 1.0
+                        r.set_status('Done (appended)')
                     except Exception:
-                        pass
+                        logger.exception(f"Failed to set row status to Done (appended) {r=}")
                 page.update()
 
         append_task = asyncio.create_task(append_all_after_uploads(upload_tasks))
