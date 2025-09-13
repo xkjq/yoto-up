@@ -147,6 +147,19 @@ async def start_uploads(event, ctx):
         filename_list = [clean_title_from_filename(f, strip_leading) for f in files]
         transcoded_results = [None] * len(files)
         upload_tasks = []
+        # Map from upload file path to gain adjustment (if any)
+        gain_notes = {}
+        for orig_path, info in gain_adjusted_files.items():
+            gain = info.get('gain', 0.0)
+            temp_path = info.get('temp_path')
+            if temp_path and abs(gain) > 0.01:
+                gain_notes[temp_path] = gain
+        # Prepare gain adjustment note lines for card metadata
+        gain_note_lines = []
+        for i, f in enumerate(files):
+            gain = gain_notes.get(f)
+            if gain is not None:
+                gain_note_lines.append(f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(f)}")
         def make_progress_cb(idx):
             def progress_cb(msg, frac):
                 try:
@@ -263,6 +276,15 @@ async def start_uploads(event, ctx):
                         track.key = f"{i+1:02}"
                     except Exception:
                         pass
+                    # Add gain note if this file had gain adjustment
+                    upload_path = files[i]
+                    gain = gain_notes.get(upload_path)
+                    if gain is not None:
+                        note_line = f"Gain adjusted by {gain:+.2f} dB on 2025-09-13."
+                        prev_note = getattr(track, 'note', None) or ''
+                        if note_line not in prev_note:
+                            new_note = (prev_note + '\n' if prev_note else '') + note_line
+                            setattr(track, 'note', new_note)
                     tracks.append(track)
                 chapter = Chapter(
                     key="01",
@@ -285,10 +307,22 @@ async def start_uploads(event, ctx):
                     except Exception:
                         pass
                     chapters.append(ch)
+            # Compose card metadata with gain adjustment notes
+            card_metadata = None
+            if gain_note_lines:
+                from models import CardMetadata
+                card_metadata = CardMetadata(note='\n'.join(gain_note_lines))
             card = Card(
                 title=title,
                 content=CardContent(chapters=chapters),
+                metadata=card_metadata
             )
+            # If there is an existing note, append to it
+            if gain_note_lines:
+                prev_note = getattr(card.metadata, 'note', '') if card.metadata else ''
+                if prev_note and not prev_note.endswith('\n'):
+                    prev_note += '\n'
+                card.metadata.note = (prev_note or '') + '\n'.join(gain_note_lines)
             created = api.create_or_update_content(card)
             cid = None
             try:
