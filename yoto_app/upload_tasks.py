@@ -20,7 +20,7 @@ class FileUploadRow:
         self.name = os.path.basename(filepath)
         self.status_text = Text('Queued')
         self.progress = ProgressBar(width=300, visible=False)
-        self.row = Row([
+        self.inner_row = Row([
             Text(self.name, width=300),
             ElevatedButton('Preview', on_click=self.on_preview),
             self.progress,
@@ -28,6 +28,8 @@ class FileUploadRow:
             ElevatedButton('View details', on_click=self.on_view_details),
             ElevatedButton('Remove', on_click=self.on_remove)
         ])
+        from flet import Container
+        self.row = Container(content=self.inner_row, bgcolor=None, padding=0)
         setattr(self.row, 'filename', filepath)
         setattr(self.row, '_fileuploadrow', self)
         self.maybe_page = maybe_page
@@ -48,6 +50,15 @@ class FileUploadRow:
         self.uploaded = True
         # Change the row background color for visual indication
         self.row.bgcolor = "#71fb91"  # light green
+        # Force UI update by removing and re-adding the row in the parent column
+        if self.maybe_column:
+            try:
+                idx = self.maybe_column.controls.index(self.row)
+                self.maybe_column.controls.pop(idx)
+                self.maybe_column.controls.insert(idx, self.row)
+                self.maybe_column.update()
+            except Exception as e:
+                logger.error(f"[FileUploadRow] Failed to refresh row color: {e}")
         if self.maybe_page:
             self.maybe_page.update()
 
