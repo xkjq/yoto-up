@@ -291,30 +291,14 @@ async def start_uploads(event, ctx):
 
         def make_progress_cb(idx):
             def progress_cb(msg, frac):
-                try:
-                    logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
-                    row = file_rows_column.controls[idx]
-                    # Only update the status Text control, not the filename
-                    status_control = None
-                    known_statuses = {'Queued', 'Uploading...', 'Done (100%)', 'Skipped (already exists)', 'Error'}
-                    for ctrl in row.controls:
-                        if isinstance(ctrl, Text) and getattr(ctrl, 'value', None) in known_statuses:
-                            status_control = ctrl
-                            break
-                    if status_control is not None:
-                        status_control.value = msg or ''
-                    if len(row.controls) > 1 and hasattr(row.controls[1], 'visible'):
-                        row.controls[1].visible = True
-                    # If frac is a number, update progress bar
-                    if len(row.controls) > 1 and hasattr(row.controls[1], 'value'):
-                        if frac is not None:
-                            try:
-                                row.controls[1].value = float(frac)
-                            except Exception:
-                                pass
-                    page.update()
-                except Exception as e:
-                    logger.error(f"[progress_cb] Exception for idx={idx}: {e}")
+                logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
+                row = file_rows_column.controls[idx]
+                if not hasattr(row, 'set_status') or not hasattr(row, 'set_progress'):
+                    raise RuntimeError(f"Row at idx={idx} does not support FileUploadRow interface: {type(row)}")
+                row.set_status(msg or '')
+                if frac is not None:
+                    row.set_progress(float(frac))
+                page.update()
             return progress_cb
 
         for idx, row in enumerate(file_rows_column.controls):
