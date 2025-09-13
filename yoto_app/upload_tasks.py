@@ -34,6 +34,10 @@ class FileUploadRow:
 
     def set_status(self, value):
         self.status_text.value = value
+        # Mark as uploaded if status indicates completion
+        done_statuses = {'Done (100%)', 'Done (appended)', 'Uploaded', 'All chapters appended'}
+        if isinstance(value, str) and any(s in value for s in done_statuses):
+            self.uploaded = True
         if self.maybe_page:
             self.maybe_page.update()
 

@@ -587,13 +587,25 @@ def main(page):
 
     upload_target_dropdown.on_change = _on_upload_target_change
 
-    # Action buttons
+
+    def remove_uploaded_files(ev=None):
+        from yoto_app.upload_tasks import FileUploadRow
+        file_rows_column.controls = [r for r in file_rows_column.controls if not (hasattr(r, 'is_uploaded') and r.is_uploaded())]
+        page.update()
+
     start_btn = ft.ElevatedButton('Start Upload')
     stop_btn = ft.ElevatedButton('Stop Upload', disabled=True)
     fetch_btn = ft.ElevatedButton('Fetch Playlists')
     multi_select_btn = ft.ElevatedButton('Select Multiple')
     delete_selected_btn = ft.ElevatedButton('Delete Selected', disabled=True)
     export_selected_btn = ft.ElevatedButton('Export Selected', disabled=True)
+    remove_uploaded_btn = ft.ElevatedButton('Remove Uploaded', on_click=remove_uploaded_files)
+
+    # Add Remove Uploaded button to the UI after the action buttons
+    action_buttons_row = ft.Row([
+        start_btn, stop_btn, fetch_btn, multi_select_btn, delete_selected_btn, export_selected_btn, remove_uploaded_btn
+    ])
+    page.add(action_buttons_row)
 
     def update_overall():
         # update overall progress bar when a file completes
