@@ -589,8 +589,9 @@ def main(page):
 
 
     def remove_uploaded_files(ev=None):
+        logger.debug("[remove_uploaded_files] Removing uploaded files from the queue")
         from yoto_app.upload_tasks import FileUploadRow
-        file_rows_column.controls = [r for r in file_rows_column.controls if not (hasattr(r, 'is_uploaded') and r.is_uploaded())]
+        file_rows_column.controls = [c for c in file_rows_column.controls if not (hasattr(c, '_fileuploadrow') and getattr(c._fileuploadrow, 'uploaded', False))]
         page.update()
 
     start_btn = ft.ElevatedButton('Start Upload')
