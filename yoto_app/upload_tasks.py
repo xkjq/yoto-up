@@ -11,6 +11,139 @@ from loguru import logger
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
 
+# --- Robust FileUploadRow class ---
+class FileUploadRow:
+    def __init__(self, filepath, maybe_page=None, maybe_column=None):
+        import os
+        from flet import Row, Text, ProgressBar, ElevatedButton
+        self.filepath = filepath
+        self.name = os.path.basename(filepath)
+        self.status_text = Text('Queued')
+        self.progress = ProgressBar(width=300, visible=False)
+        self.row = Row([
+            Text(self.name, width=300),
+            ElevatedButton('Preview', on_click=self.on_preview),
+            self.progress,
+            self.status_text,
+            ElevatedButton('View details', on_click=self.on_view_details),
+            ElevatedButton('Remove', on_click=self.on_remove)
+        ])
+        setattr(self.row, 'filename', filepath)
+        self.maybe_page = maybe_page
+        self.maybe_column = maybe_column
+
+    def set_status(self, value):
+        self.status_text.value = value
+        if self.maybe_page:
+            self.maybe_page.update()
+
+    def set_progress(self, frac):
+        self.progress.visible = True
+        self.progress.value = frac
+        if self.maybe_page:
+            self.maybe_page.update()
+
+    def on_view_details(self, ev=None):
+        try:
+            page = self.maybe_page or globals().get('_LAST_PAGE')
+            if not page:
+                print('[ft_row_for_file] No page available to show dialog')
+                return
+
+            # Try to import mutagen for robust tag parsing
+            tags = {}
+            try:
+                from mutagen import File as MutagenFile
+                mf = MutagenFile(self.filepath)
+                if mf is not None:
+                    tag_items = []
+                    for k, v in getattr(mf, 'tags', {}).items():
+                        try:
+                            if isinstance(v, (list, tuple)):
+                                val = ", ".join(str(item) for item in v)
+                            else:
+                                val = str(v)
+                            tag_items.append((str(k), val))
+                        except Exception:
+                            tag_items.append((str(k), repr(v)))
+                    tag_items.sort()
+                    for k, v in tag_items:
+                        tags[k] = v
+                    if hasattr(mf, 'info'):
+                        info = mf.info
+                        if hasattr(info, 'length'):
+                            tags['duration'] = f"{info.length:.2f} sec"
+                        if hasattr(info, 'bitrate'):
+                            tags['bitrate'] = f"{getattr(info, 'bitrate', 0) // 1000} kbps"
+                        if hasattr(info, 'channels'):
+                            tags['channels'] = str(getattr(info, 'channels'))
+                        if hasattr(info, 'sample_rate'):
+                            tags['sample_rate'] = f"{getattr(info, 'sample_rate')} Hz"
+            except Exception:
+                try:
+                    if self.filepath.lower().endswith('.mp3') and os.path.getsize(self.filepath) > 128:
+                        with open(self.filepath, 'rb') as fh:
+                            fh.seek(-128, os.SEEK_END)
+                            tagdata = fh.read(128)
+                            if tagdata[:3] == b'TAG':
+                                tags['title'] = tagdata[3:33].decode('latin1', errors='ignore').strip('\x00 ').strip()
+                                tags['artist'] = tagdata[33:63].decode('latin1', errors='ignore').strip('\x00 ').strip()
+                                tags['album'] = tagdata[63:93].decode('latin1', errors='ignore').strip('\x00 ').strip()
+                                tags['year'] = tagdata[93:97].decode('latin1', errors='ignore').strip('\x00 ').strip()
+                            else:
+                                tags['info'] = 'No ID3v1 tags found'
+                    else:
+                        tags['info'] = 'Unsupported or non-mp3 file for fallback parsing'
+                except Exception as fe:
+                    tags['error'] = f'Fallback tag read failed: {fe}'
+
+            lines = []
+            if not tags:
+                lines = [Text('No tags found')]
+            else:
+                for k, v in tags.items():
+                    lines.append(Text(f"{k}: {v}"))
+
+            dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[ElevatedButton('OK', on_click=lambda e: page.close(dlg))])
+            page.open(dlg)
+            page.update()
+        except Exception as e:
+            print(f"[on_view_details] error: {e}")
+
+    def on_preview(self, ev=None):
+        import webbrowser, os
+        url = f"file://{os.path.abspath(self.filepath)}"
+        try:
+            webbrowser.open(url)
+        except Exception as ex:
+            print(f"[Preview] Failed to open {url}: {ex}")
+
+    def on_remove(self, ev=None):
+        try:
+            col = self.maybe_column or globals().get('_LAST_COLUMN')
+            if not col:
+                print('[ft_row_for_file] No column available to remove row')
+                return
+            try:
+                col.controls.remove(r)
+            except Exception:
+                for existing in list(col.controls):
+                    if getattr(existing, 'filename', None) == self.filepath:
+                        try:
+                            col.controls.remove(existing)
+                        except Exception:
+                            pass
+            try:
+                page = self.maybe_page or globals().get('_LAST_PAGE')
+                if page:
+                    page.update()
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[on_remove] error: {e}")
+
+# --- End FileUploadRow class ---
+
 @logger.catch
 async def start_uploads(event, ctx):
     """Start uploads migrated from gui; ctx is the UI/context dict.
@@ -120,9 +253,9 @@ async def start_uploads(event, ctx):
     # Create rows
     for f in files:
         logger.debug(f"[start_uploads] Creating UI row for file: {f}")
-        r = ft_row_for_file(f, maybe_page=page, maybe_column=file_rows_column)
+        r = FileUploadRow(f, maybe_page=page, maybe_column=file_rows_column)
         if r:
-            file_rows_column.controls.append(r)
+            file_rows_column.controls.append(r.row)
     page.update()
     try:
         logger.debug('[start_uploads] Rows after creation:')
@@ -615,116 +748,3 @@ async def stop_uploads(event, ctx):
     if page:
         page.update()
     # No aggressive cancel implemented here; could be added
-
-
-def ft_row_for_file(filepath: str, maybe_page=None, maybe_column=None):
-    name = os.path.basename(filepath)
-
-    def on_view_details(ev=None, path=filepath):
-        try:
-            page = maybe_page or globals().get('_LAST_PAGE')
-            if not page:
-                print('[ft_row_for_file] No page available to show dialog')
-                return
-
-            # Try to import mutagen for robust tag parsing
-            tags = {}
-            try:
-                from mutagen import File as MutagenFile
-                mf = MutagenFile(path)
-                if mf is not None:
-                    tag_items = []
-                    for k, v in getattr(mf, 'tags', {}).items():
-                        try:
-                            if isinstance(v, (list, tuple)):
-                                val = ", ".join(str(item) for item in v)
-                            else:
-                                val = str(v)
-                            tag_items.append((str(k), val))
-                        except Exception:
-                            tag_items.append((str(k), repr(v)))
-                    tag_items.sort()
-                    for k, v in tag_items:
-                        tags[k] = v
-                    if hasattr(mf, 'info'):
-                        info = mf.info
-                        if hasattr(info, 'length'):
-                            tags['duration'] = f"{info.length:.2f} sec"
-                        if hasattr(info, 'bitrate'):
-                            tags['bitrate'] = f"{getattr(info, 'bitrate', 0) // 1000} kbps"
-                        if hasattr(info, 'channels'):
-                            tags['channels'] = str(getattr(info, 'channels'))
-                        if hasattr(info, 'sample_rate'):
-                            tags['sample_rate'] = f"{getattr(info, 'sample_rate')} Hz"
-            except Exception:
-                try:
-                    if path.lower().endswith('.mp3') and os.path.getsize(path) > 128:
-                        with open(path, 'rb') as fh:
-                            fh.seek(-128, os.SEEK_END)
-                            tagdata = fh.read(128)
-                            if tagdata[:3] == b'TAG':
-                                tags['title'] = tagdata[3:33].decode('latin1', errors='ignore').strip('\x00 ').strip()
-                                tags['artist'] = tagdata[33:63].decode('latin1', errors='ignore').strip('\x00 ').strip()
-                                tags['album'] = tagdata[63:93].decode('latin1', errors='ignore').strip('\x00 ').strip()
-                                tags['year'] = tagdata[93:97].decode('latin1', errors='ignore').strip('\x00 ').strip()
-                            else:
-                                tags['info'] = 'No ID3v1 tags found'
-                    else:
-                        tags['info'] = 'Unsupported or non-mp3 file for fallback parsing'
-                except Exception as fe:
-                    tags['error'] = f'Fallback tag read failed: {fe}'
-
-            lines = []
-            if not tags:
-                lines = [Text('No tags found')]
-            else:
-                for k, v in tags.items():
-                    lines.append(Text(f"{k}: {v}"))
-
-            dlg = AlertDialog(title=Text(f"Media details: {name}"), content=Column(lines), actions=[ElevatedButton('OK', on_click=lambda e: page.close(dlg))])
-            page.open(dlg)
-            page.update()
-        except Exception as e:
-            print(f"[on_view_details] error: {e}")
-
-    def on_preview(ev=None, path=filepath):
-        import webbrowser, os
-        url = f"file://{os.path.abspath(path)}"
-        try:
-            webbrowser.open(url)
-        except Exception as ex:
-            print(f"[Preview] Failed to open {url}: {ex}")
-
-    preview_btn = ElevatedButton('Preview', on_click=on_preview)
-    btn = ElevatedButton('View details', on_click=on_view_details)
-    def on_remove(ev=None, row_ref=None):
-        try:
-            col = maybe_column or globals().get('_LAST_COLUMN')
-            if not col:
-                print('[ft_row_for_file] No column available to remove row')
-                return
-            try:
-                col.controls.remove(r)
-            except Exception:
-                for existing in list(col.controls):
-                    if getattr(existing, 'filename', None) == filepath:
-                        try:
-                            col.controls.remove(existing)
-                        except Exception:
-                            pass
-            try:
-                page = maybe_page or globals().get('_LAST_PAGE')
-                if page:
-                    page.update()
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[on_remove] error: {e}")
-    remove_btn = ElevatedButton('Remove', on_click=on_remove)
-    pr = ProgressBar(width=300, visible=False)
-    r = Row(controls=[Text(name, width=300), preview_btn, pr, Text('Queued'), btn, remove_btn])
-    try:
-        setattr(r, 'filename', filepath)
-    except Exception:
-        pass
-    return r
