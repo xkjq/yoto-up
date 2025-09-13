@@ -247,8 +247,9 @@ def build_playlists_panel(
         for cid in to_delete:
             try:
                 api.delete_content(cid)
+                logger.info(f"[delete] Deleted {cid}")
             except Exception as e:
-                print(f"[delete] Failed to delete {cid}: {e}")
+                logger.error(f"[delete] Failed to delete {cid}: {e}")
         selected_playlist_ids.clear()
         delete_selected_btn.disabled = True
         export_selected_btn.disabled = True

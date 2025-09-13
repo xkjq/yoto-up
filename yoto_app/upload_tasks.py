@@ -279,8 +279,9 @@ async def start_uploads(event, ctx):
                 logger.debug(f"  row[{i}] inspect error: {e}")
     except Exception:
         pass
-    except Exception:
-        pass
+
+    # Card info display hook
+    show_card_info = ctx.get('show_card_info')
 
     # Launch workers (branch by upload target)
     tasks = []
@@ -322,7 +323,10 @@ async def start_uploads(event, ctx):
             fname = filename_list[idx]
             def make_upload_task(idx, f, fname):
                 async def upload_new_card_one():
-                    fileuploadrow.set_status('Uploading...')
+                    fileuploadrow = file_rows_column.controls[idx]
+                    fileuploadrow = getattr(fileuploadrow, '_fileuploadrow', None)
+                    if fileuploadrow is not None:
+                        fileuploadrow.set_status('Uploading...')
                     page.update()
                     already_updated = False
                     try:
@@ -340,15 +344,17 @@ async def start_uploads(event, ctx):
                         )
                         if tr is not None:
                             transcoded_results[idx] = tr
-                            fileuploadrow.set_progress(1.0)
-                            fileuploadrow.set_status('Done (100%)')
-                            fileuploadrow.on_upload_complete()
+                            if fileuploadrow is not None:
+                                fileuploadrow.set_progress(1.0)
+                                fileuploadrow.set_status('Done (100%)')
+                                fileuploadrow.on_upload_complete()
                             already_updated = True
                         else:
                             transcoded_results[idx] = True
-                            fileuploadrow.set_progress(1.0)
-                            fileuploadrow.set_status('Skipped (already exists)')
-                            fileuploadrow.on_upload_complete()
+                            if fileuploadrow is not None:
+                                fileuploadrow.set_progress(1.0)
+                                fileuploadrow.set_status('Skipped (already exists)')
+                                fileuploadrow.on_upload_complete()
                             already_updated = True
                     except Exception as e:
                         logger.error(f"start_uploads: upload error for {f}: {e}")
@@ -442,19 +448,11 @@ async def start_uploads(event, ctx):
                 note_val = (prev_note or '') + '\n'.join(gain_note_lines)
                 if card.metadata:
                     card.metadata.note = str(note_val)
-            created = api.create_or_update_content(card)
-            cid = None
-            try:
-                if hasattr(created, 'cardId'):
-                    cid = getattr(created, 'cardId')
-                elif hasattr(created, 'id'):
-                    cid = getattr(created, 'id')
-                elif isinstance(created, dict):
-                    cid = created.get('cardId') or created.get('id')
-            except Exception:
-                pass
+            created = api.create_or_update_content(card, return_card=True)
+            cid = created.cardId
             status.value = f'Created card: {cid}' if cid else 'Card created'
             show_snack(status.value)
+            show_card_info(created)
             fetch_playlists_sync(None)
         except Exception as e:
             logger.error(f"start_uploads: create card error: {e}")
@@ -534,6 +532,8 @@ async def start_uploads(event, ctx):
 
             status.value = 'Appending chapters to card...'
             page.update()
+            # Card info display hook
+            show_card_info = ctx.get('show_card_info')
 
             def do_append():
                 try:
@@ -585,7 +585,9 @@ async def start_uploads(event, ctx):
                                 cd = None
                             new_ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
                             card.content.chapters.append(new_ch)
-                    api.create_or_update_content(card)
+                    created = api.create_or_update_content(card, return_card=True)
+                    status.value = 'Chapters appended'
+                    show_card_info(created)
                     return True, None
                 except Exception as ex:
                     print(f"[start_uploads] Batch append error: {ex}")

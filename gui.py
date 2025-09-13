@@ -66,6 +66,7 @@ To authenticate with your Yoto account:
 
 
 def main(page):
+
     # Track per-file gain and temp file for upload
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     # In-memory cache for waveform/loudness data: {filepath: (audio, max_amp, avg_amp, lufs, ext, filepath)}
@@ -767,6 +768,7 @@ def main(page):
     playlist_delete_selected_btn = playlists_ui['delete_selected_btn']
     playlist_export_selected_btn = playlists_ui['export_selected_btn']
     sort_dropdown = playlists_ui['sort_dropdown']
+    show_card_details = playlists_ui['show_card_details']
     # Save playlist sort order on change
     if sort_dropdown:
         def _on_sort_change(ev):
@@ -942,6 +944,65 @@ def main(page):
     load_ui_state(playlists_ui)
     ctx['upload_mode_dropdown'] = upload_mode_dropdown  # Add to context for upload tasks
 
+    # Card info/link display (persistent at bottom)
+    card_info_display = ft.Column([], visible=False)
+
+    def show_card_popup(card):
+        # Show a dialog with full card details
+        from flet import AlertDialog, Text, Column, TextButton, Image
+        lines = []
+        lines.append(Text(f"Title: {getattr(card, 'title', '')}", size=18, weight=ft.FontWeight.BOLD))
+        lines.append(Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
+        if getattr(card, 'metadata', None):
+            meta = card.metadata
+            if getattr(meta, 'author', None):
+                lines.append(Text(f"Author: {meta.author}"))
+            if getattr(meta, 'description', None):
+                lines.append(Text(f"Description: {meta.description}"))
+            if getattr(meta, 'note', None):
+                lines.append(Text(f"Note: {meta.note}"))
+            if getattr(meta, 'cover', None) and getattr(meta.cover, 'imageL', None):
+                lines.append(Image(src=meta.cover.imageL, width=120, height=120))
+        if getattr(card, 'content', None) and getattr(card.content, 'chapters', None):
+            lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
+            for ch in card.content.chapters:
+                lines.append(Text(f"- {getattr(ch, 'title', '')}"))
+        lines.append(TextButton("View card", on_click=lambda e: show_card_details(e, card), style=ft.ButtonStyle(color=ft.Colors.BLUE)))
+        dlg = AlertDialog(
+            title=Text("Card Details"),
+            content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
+            actions=[TextButton("Close", on_click=lambda e: page.close(dlg))],
+            scrollable=True
+        )
+        page.open(dlg)
+        page.update()
+
+    def show_card_info(card):
+        # Show a clickable card summary that launches show_card_detail
+        card_info_display.controls.clear()
+        if not card or not getattr(card, 'cardId', None):
+            card_info_display.controls.append(ft.Text("No card info available", color=ft.Colors.RED))
+        else:
+            summary = ft.Container(
+                content=ft.Row([
+                    ft.Text(getattr(card, 'title', ''), size=16, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"ID: {getattr(card, 'cardId', '')}", size=12, color=ft.Colors.GREY),
+                    ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                on_click=lambda e: show_card_popup(card),
+                bgcolor=ft.Colors.BLUE_50,
+                padding=10,
+                border_radius=8,
+                ink=True,
+                tooltip="Click for card details"
+            )
+            card_info_display.controls.append(summary)
+        card_info_display.visible = True
+        page.update()
+
+    # Patch into ctx so upload_tasks can update it
+    ctx['show_card_info'] = show_card_info
+
     upload_column = ft.Column([
         ft.Row([
             upload_target_dropdown, 
@@ -979,7 +1040,9 @@ def main(page):
         ft.Text("Files:"),
         ft.Container(content=file_rows_column, padding=10, bgcolor=ft.Colors.WHITE),
         ft.Divider(),
-        ft.Row([status])
+        ft.Row([status]),
+        ft.Divider(),
+        card_info_display
     ], scroll=ft.ScrollMode.AUTO, expand=True)
 
     # Use Tabs so Auth, Playlists and Upload are on separate pages
