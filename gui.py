@@ -274,6 +274,13 @@ def main(page):
         def on_global_gain_change(e):
             logger.debug(f"[on_global_gain_change] Global gain changed to {e.control.value} dB")
             global_gain['value'] = e.control.value
+            progress_text = ft.Text("Applying global gain to all tracks...", size=14)
+            progress_bar = ft.ProgressBar(width=300, value=0)
+            progress_dlg = ft.AlertDialog(title=ft.Text("Applying Global Gain..."), content=ft.Column([progress_text, progress_bar]), modal=True)
+            page.open(progress_dlg)
+            page.update()
+            total = len(per_track)
+            completed = 0
             for i, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track):
                 if gain_slider is not None and audio is not None:
                     gain_slider.value = global_gain['value']
@@ -284,6 +291,20 @@ def main(page):
                     if warning:
                         col.controls.append(warning)
                     col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
+                    # Save gain-adjusted audio with progress (if needed)
+                    if abs(global_gain['value']) > 0.01 and audio_adjust_utils is not None:
+                        try:
+                            temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (global_gain['value'] / 20.0)), framerate, ext, filepath, global_gain['value'])
+                            gain_adjusted_files[filepath] = {'gain': global_gain['value'], 'temp_path': temp_path}
+                        except Exception as ex:
+                            show_snack(f"Failed to save adjusted audio for upload: {ex}", error=True)
+                    else:
+                        gain_adjusted_files.pop(filepath, None)
+                completed += 1
+                progress_text.value = f"Processed {completed} of {total} tracks"
+                progress_bar.value = completed / total
+                page.update()
+            page.close(progress_dlg)
             page.update()
 
         global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=0.0, label="Global Gain: {value} dB", width=320)
