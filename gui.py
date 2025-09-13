@@ -1,12 +1,14 @@
 import asyncio
 import os
+import tempfile
+import importlib.util
+import sys as _sys
 from pathlib import Path
 import sys
 import traceback
 import json
 import threading
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
+
 import os
 
 import flet as ft
@@ -64,16 +66,27 @@ To authenticate with your Yoto account:
 
 
 def main(page):
+    # Track per-file gain and temp file for upload
+    gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     # In-memory cache for waveform/loudness data: {filepath: (audio, max_amp, avg_amp, lufs, ext, filepath)}
     waveform_cache = {}
     import matplotlib.pyplot as plt
     import numpy as np
     import io
     import base64
-    import tempfile
     import contextlib
     import wave
-    from waveform_utils import audio_stats, batch_audio_stats
+    from waveform_utils import batch_audio_stats
+
+    # Import audio_adjust_utils at module level for reliability
+    audio_adjust_utils_path = os.path.join(os.path.dirname(__file__), "audio_adjust_utils.py")
+    _spec = importlib.util.spec_from_file_location("audio_adjust_utils", audio_adjust_utils_path)
+    if _spec and _spec.loader:
+        audio_adjust_utils = importlib.util.module_from_spec(_spec)
+        _sys.modules["audio_adjust_utils"] = audio_adjust_utils
+        _spec.loader.exec_module(audio_adjust_utils)
+    else:
+        audio_adjust_utils = None
 
     def show_waveforms_popup(e=None):
         logger.debug("[show_waveforms_popup] Generating waveforms popup")
@@ -83,6 +96,8 @@ def main(page):
             return
         images = []
         n_images = 0
+        per_track = []  # Store (audio, framerate, ext, filepath, gain_slider, col, gain_val) for each track
+        global_gain = {'value': 0.0}
         logger.debug(f"[show_waveforms_popup] Found {len(files)} files in upload queue")
         progress_text = ft.Text(f"Calculating waveform data... 0/{len(files)}", size=14)
         progress_bar = ft.ProgressBar(width=300, value=0)
@@ -106,66 +121,230 @@ def main(page):
         stats_results = batch_audio_stats(files, waveform_cache, progress_callback=progress_callback)
         page.update()
 
+        # Collect debug info for skipped files
+        skipped_files = []
+        for idx, stat in enumerate(stats_results):
+            audio, max_amp, avg_amp, lufs, ext, filepath = stat
+            if audio is None:
+                # Try to explain why
+                reason = None
+                if ext is None:
+                    reason = "Unrecognized or missing file extension."
+                elif ext not in ['.wav', '.mp3']:
+                    reason = f"Unsupported extension: {ext}"
+                elif not os.path.exists(filepath):
+                    reason = "File does not exist."
+                else:
+                    reason = "Could not decode audio or file is empty/corrupt."
+                skipped_files.append(f"{os.path.basename(filepath) or filepath}: {reason}")
+
+        def plot_and_stats(audio, framerate, ext, filepath, gain_db=0.0):
+            import pyloudnorm as pyln
+            # Apply gain in dB
+            audio_adj = audio * (10 ** (gain_db / 20.0))
+            # Recalculate stats
+            max_amp = float(np.max(np.abs(audio_adj)))
+            avg_amp = float(np.mean(np.abs(audio_adj)))
+            try:
+                meter = pyln.Meter(framerate)
+                lufs = float(meter.integrated_loudness(audio_adj))
+            except Exception:
+                lufs = None
+            # Downsample for plotting if too long
+            max_points = 2000
+            n = len(audio_adj)
+            if n > max_points:
+                idx = np.linspace(0, n - 1, max_points).astype(int)
+                audio_plot = audio_adj[idx]
+            else:
+                audio_plot = audio_adj
+            if ext == '.wav':
+                with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+                    framerate = wf.getframerate()
+                    n_frames = wf.getnframes()
+                    times = np.linspace(0, n_frames / framerate, num=n)
+            else:
+                framerate = 44100
+                times = np.linspace(0, n / framerate, num=n)
+            if n > max_points:
+                times = times[idx]
+            fig, ax = plt.subplots(figsize=(4, 1.2))
+            ax.plot(times, audio_plot, color='blue')
+            ax.set_title(os.path.basename(filepath), fontsize=8)
+            ax.set_xlabel('Time (s)', fontsize=7)
+            ax.set_ylabel('Amplitude', fontsize=7)
+            ax.tick_params(axis='both', which='major', labelsize=6)
+            plt.tight_layout()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png')
+            plt.close(fig)
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            fd, tmp_path = tempfile.mkstemp(suffix='.png')
+            os.close(fd)
+            with open(tmp_path, 'wb') as tmpfile:
+                tmpfile.write(base64.b64decode(img_b64))
+            lufs_str = f"LUFS: {lufs:.2f} dB" if lufs is not None else "LUFS: (unavailable)"
+            label = ft.Text(f"Max amplitude: {max_amp:.2f}   Average amplitude: {avg_amp:.2f}   {lufs_str}", size=10, color=ft.Colors.BLUE)
+            warning = None
+            if lufs is not None:
+                if lufs > -9:
+                    warning = ft.Text("Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)", size=10, color=ft.Colors.RED)
+                elif lufs > -16:
+                    warning = ft.Text("Warning: LUFS is moderately high (-16 dB to -9 dB)", size=10, color=ft.Colors.YELLOW_900)
+            return label, warning, tmp_path
+
+        # Actually process stats_results to build per_track and n_images
         for stat in stats_results:
             audio, max_amp, avg_amp, lufs, ext, filepath = stat
             if audio is not None:
-                max_points = 2000
-                n = len(audio)
-                if n > max_points:
-                    idx = np.linspace(0, n - 1, max_points).astype(int)
-                    audio_plot = audio[idx]
-                else:
-                    audio_plot = audio
                 if ext == '.wav':
                     with contextlib.closing(wave.open(filepath, 'rb')) as wf:
                         framerate = wf.getframerate()
-                        n_frames = wf.getnframes()
-                        times = np.linspace(0, n_frames / framerate, num=n)
                 else:
                     framerate = 44100
-                    times = np.linspace(0, n / framerate, num=n)
-                if n > max_points:
-                    times = times[idx]
-                fig, ax = plt.subplots(figsize=(4, 1.2))
-                ax.plot(times, audio_plot, color='blue')
-                ax.set_title(os.path.basename(filepath), fontsize=8)
-                ax.set_xlabel('Time (s)', fontsize=7)
-                ax.set_ylabel('Amplitude', fontsize=7)
-                ax.tick_params(axis='both', which='major', labelsize=6)
-                plt.tight_layout()
-                buf = io.BytesIO()
-                plt.savefig(buf, format='png')
-                plt.close(fig)
-                buf.seek(0)
-                img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-                fd, tmp_path = tempfile.mkstemp(suffix='.png')
-                os.close(fd)
-                with open(tmp_path, 'wb') as tmpfile:
-                    tmpfile.write(base64.b64decode(img_b64))
-                lufs_str = f"LUFS: {lufs:.2f} dB" if lufs is not None else "LUFS: (unavailable)"
-                label = ft.Text(f"Max amplitude: {max_amp:.2f}   Average amplitude: {avg_amp:.2f}   {lufs_str}", size=10, color=ft.Colors.BLUE)
-                warning = None
-                if lufs is not None:
-                    if lufs > -9:
-                        warning = ft.Text("Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)", size=10, color=ft.Colors.RED)
-                    elif lufs > -16:
-                        warning = ft.Text("Warning: LUFS is moderately high (-16 dB to -9 dB)", size=10, color=ft.Colors.YELLOW_900)
-                images.append(ft.Column([
-                    label,
-                    warning if warning else ft.Container(),
-                    ft.Image(src=tmp_path, width=320, height=100)
-                ]))
+                gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=0.0, label="Gain: {value} dB", width=320)
+                label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=0.0)
+                img = ft.Image(src=tmp_path, width=320, height=100)
+                col = ft.Column([])
+                gain_val = {'value': 0.0}
+                def on_gain_change(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, col=col, gain_val=gain_val):
+                    gain_db = e.control.value
+                    gain_val['value'] = gain_db
+                    label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
+                    col.controls.clear()
+                    col.controls.append(label)
+                    if warning:
+                        col.controls.append(warning)
+                    col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
+                    # Show progress dialog while saving adjusted audio
+                    progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
+                    page.open(progress_dlg)
+                    page.update()
+                    try:
+                        if abs(gain_db) > 0.01:
+                            if audio_adjust_utils is not None:
+                                try:
+                                    temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_db / 20.0)), framerate, ext, filepath, gain_db)
+                                    gain_adjusted_files[filepath] = {'gain': gain_db, 'temp_path': temp_path}
+                                except Exception as ex:
+                                    show_snack(f"Failed to save adjusted audio for upload: {ex}", error=True)
+                        else:
+                            gain_adjusted_files.pop(filepath, None)
+                    finally:
+                        page.close(progress_dlg)
+                        page.update()
+                    page.update()
+                gain_slider.on_change = on_gain_change
+                def on_save_adjusted_audio_click(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, gain_val=gain_val):
+                    if audio_adjust_utils is None:
+                        show_snack("audio_adjust_utils could not be loaded", error=True)
+                        return
+                    progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
+                    page.open(progress_dlg)
+                    page.update()
+                    try:
+                        temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
+                        show_snack(f"Saved adjusted audio to: {temp_path}")
+                        if abs(gain_val['value']) > 0.01:
+                            gain_adjusted_files[filepath] = {'gain': gain_val['value'], 'temp_path': temp_path}
+                        else:
+                            gain_adjusted_files.pop(filepath, None)
+                    except Exception as ex:
+                        show_snack(f"Failed to save adjusted audio: {ex}", error=True)
+                    finally:
+                        page.close(progress_dlg)
+                        page.update()
+                save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_click, tooltip="Save gain-adjusted audio to a temp file for upload")
+                col.controls.append(label)
+                if warning:
+                    col.controls.append(warning)
+                col.controls.append(img)
+                col.controls.append(save_btn)
+                per_track.append((audio, framerate, ext, filepath, gain_slider, col, gain_val))
                 n_images += 1
             else:
-                images.append(ft.Text("(No waveform for file)", size=10, color=ft.Colors.RED))
+                per_track.append((None, None, None, None, None, ft.Text("(No waveform for file)", size=10, color=ft.Colors.RED), None))
+
+        def on_global_gain_change(e):
+            global_gain['value'] = e.control.value
+            for i, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track):
+                if gain_slider is not None and audio is not None:
+                    gain_slider.value = global_gain['value']
+                    gain_val['value'] = global_gain['value']
+                    label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=global_gain['value'])
+                    col.controls.clear()
+                    col.controls.append(label)
+                    if warning:
+                        col.controls.append(warning)
+                    col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
+            page.update()
+
+        global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=0.0, label="Global Gain: {value} dB", width=320)
+        global_gain_slider.on_change = on_global_gain_change
+
+        save_btn = None
+        if n_images > 0:
+            def on_save_adjusted_audio_all_click(e):
+                if audio_adjust_utils is None:
+                    show_snack("audio_adjust_utils could not be loaded", error=True)
+                    return
+                progress_text = ft.Text("Saving gain-adjusted audio for all tracks...", size=14)
+                progress_bar = ft.ProgressBar(width=300, value=0)
+                progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.Column([progress_text, progress_bar]), modal=True)
+                page.open(progress_dlg)
+                page.update()
+                total = n_images
+                completed = 0
+                errors = []
+                for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+                    try:
+                        temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
+                        if abs(gain_val['value']) > 0.01:
+                            gain_adjusted_files[filepath] = {'gain': gain_val['value'], 'temp_path': temp_path}
+                        else:
+                            gain_adjusted_files.pop(filepath, None)
+                        progress_text.value = f"Saved: {os.path.basename(filepath)}"
+                    except Exception as ex:
+                        errors.append(f"{os.path.basename(filepath)}: {ex}")
+                        progress_text.value = f"Error: {os.path.basename(filepath)}"
+                    completed += 1
+                    progress_bar.value = completed / total
+                    page.update()
+                page.close(progress_dlg)
+                page.update()
+                if errors:
+                    show_snack(f"Some files failed: {'; '.join(errors)}", error=True)
+                else:
+                    show_snack("All gain-adjusted audio files saved.")
+            save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_all_click, tooltip="Save gain-adjusted audio for all tracks in the dialog")
+
         if n_images == 0:
-            images = [ft.Text("No waveforms could be generated for the files in the queue.", color=ft.Colors.RED)]
+            msg = "No waveforms could be generated for the files in the queue."
+            if skipped_files:
+                msg += "\n\nDetails:"
+                for s in skipped_files:
+                    msg += f"\n- {s}"
+            images = [ft.Text(msg, color=ft.Colors.RED)]
+            dlg_actions = [ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
         else:
+            images.append(global_gain_slider)
+            images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
+            for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+                if gain_slider is not None and audio is not None:
+                    images.append(ft.Column([
+                        gain_slider,
+                        col
+                    ]))
+                else:
+                    images.append(col)
             images.insert(0, ft.Text(f"Generated {n_images} waveform(s) for {len(files)} file(s).", color=ft.Colors.GREEN))
+            dlg_actions = [save_btn, ft.TextButton("Close", on_click=lambda e: page.close(dlg))] if save_btn else [ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+
         dlg = ft.AlertDialog(
             title=ft.Text("Waveforms for files to be uploaded"),
             content=ft.Column(images, scroll=ft.ScrollMode.AUTO, expand=True),
-            actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
+            actions=dlg_actions,
             scrollable=True
         )
         page.open(dlg)
@@ -416,7 +595,7 @@ def main(page):
                         from yoto_app.upload_tasks import ft_row_for_file
                         file_row = ft_row_for_file(f, page, file_rows_column)
                     except Exception:
-                        file_row = FileRow(f)
+                        file_row = ft.Row([ft.Text(f)])
                     file_rows_column.controls.append(file_row)
                     added += 1
             if added == 0 and files:
@@ -493,7 +672,7 @@ def main(page):
                         from yoto_app.upload_tasks import ft_row_for_file
                         file_row = ft_row_for_file(path, page, file_rows_column)
                     except Exception:
-                        file_row = FileRow(path)
+                        file_row = ft.Row([ft.Text(path)])
                     file_rows_column.controls.append(file_row)
             page.update()
 
@@ -565,9 +744,10 @@ def main(page):
         'new_card_title': new_card_title,
         'existing_card_dropdown': existing_card_dropdown,
         'existing_card_map': existing_card_map,
-        # store the control so the upload task can read current value at start
-        'strip_leading_track_numbers_control': strip_leading_checkbox,
-        'normalize_audio_control': normalize_checkbox,
+    # store the control so the upload task can read current value at start
+    'strip_leading_track_numbers_control': strip_leading_checkbox,
+    'normalize_audio_control': normalize_checkbox,
+    'gain_adjusted_files': gain_adjusted_files,
         'start_btn': start_btn,
         'stop_btn': stop_btn,
     }
@@ -622,59 +802,7 @@ def main(page):
         Runs the actual work in a background thread so the UI remains responsive.
         """
         # Background worker that performs the reset and optionally reauths
-        def audio_stats(filepath):
-            ext = os.path.splitext(filepath)[1].lower()
-            try:
-                if ext == '.wav':
-                    with contextlib.closing(wave.open(filepath, 'rb')) as wf:
-                        n_frames = wf.getnframes()
-                        framerate = wf.getframerate()
-                        frames = wf.readframes(n_frames)
-                        if wf.getsampwidth() == 2:
-                            dtype = np.int16
-                        else:
-                            dtype = np.uint8
-                        audio = np.frombuffer(frames, dtype=dtype)
-                        if wf.getnchannels() > 1:
-                            audio = audio.reshape(-1, wf.getnchannels()).mean(axis=1)
-                        # Normalize int16/uint8 to float32 -1.0 to 1.0
-                        if dtype == np.int16:
-                            audio = audio.astype(np.float32) / 32768.0
-                        elif dtype == np.uint8:
-                            audio = (audio.astype(np.float32) - 128) / 128.0
-                elif ext == '.mp3':
-                    try:
-                        from pydub import AudioSegment
-                        audio_seg = AudioSegment.from_file(filepath, format='mp3')
-                        samples = np.array(audio_seg.get_array_of_samples())
-                        if audio_seg.channels > 1:
-                            samples = samples.reshape((-1, audio_seg.channels)).mean(axis=1)
-                        audio = samples.astype(np.float32)
-                        # Normalize pydub samples to -1.0 to 1.0
-                        if audio_seg.sample_width == 2:
-                            audio = audio / 32768.0
-                        elif audio_seg.sample_width == 1:
-                            audio = (audio - 128) / 128.0
-                    except Exception:
-                        try:
-                            import librosa
-                            audio, _ = librosa.load(filepath, sr=None, mono=True)
-                        except Exception:
-                            return None, None, None, None, None, None
-                else:
-                    return None, None, None, None, None, None
-                max_amp = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
-                avg_amp = float(np.mean(np.abs(audio))) if len(audio) > 0 else 0.0
-                try:
-                    import pyloudnorm as pyln
-                    framerate = 44100 if ext != '.wav' else framerate
-                    meter = pyln.Meter(framerate)
-                    lufs = float(meter.integrated_loudness(audio))
-                except Exception:
-                    lufs = None
-                return audio, max_amp, avg_amp, lufs, ext, filepath
-            except Exception:
-                return None, None, None, None, None, None
+
 
         # Confirmation dialog handlers
         dlg = ft.AlertDialog(
@@ -695,7 +823,7 @@ def main(page):
             except Exception:
                 pass
             # Start background reset so the UI remains responsive
-            threading.Thread(target=_do_reset, daemon=True).start()
+            # threading.Thread(target=_do_reset, daemon=True).start()
 
         dlg.actions = [
             ft.TextButton("Cancel", on_click=_cancel),

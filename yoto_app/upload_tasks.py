@@ -20,6 +20,7 @@ async def start_uploads(event, ctx):
     upload_target_dropdown, new_card_title, existing_card_dropdown, existing_card_map,
     start_btn, stop_btn
     """
+    gain_adjusted_files = ctx.get('gain_adjusted_files', {})
     page = ctx["page"]
     #folder_widget = ctx["folder"]
     #utils_mod = ctx["utils_mod"]
@@ -69,7 +70,12 @@ async def start_uploads(event, ctx):
     for row in getattr(file_rows_column, 'controls', []):
         path = getattr(row, 'filename', None)
         if path and path not in seen:
-            files.append(path)
+            # If gain-adjusted temp file exists, use it for upload
+            temp_info = gain_adjusted_files.get(path)
+            if temp_info and temp_info.get('temp_path'):
+                files.append(temp_info['temp_path'])
+            else:
+                files.append(path)
             seen.add(path)
     logger.debug(f"[start_uploads] Files to upload (from UI): {files}")
     if not files:
