@@ -4,7 +4,7 @@ import traceback
 from models import Chapter, ChapterDisplay, Card, CardContent
 from yoto_api import YotoAPI
 from yoto_app.logging_helpers import safe_log
-from flet import Row, Text, ProgressBar, ElevatedButton, AlertDialog, Column
+from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
 
@@ -15,7 +15,7 @@ _LAST_PAGE = None
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
         import os
-        from flet import Row, Text, ProgressBar, ElevatedButton, AlertDialog, Column
+        from flet import Row, ProgressBar
         self.filepath = filepath
         self.original_filepath = filepath  # Always keep the original file path
         self.name = os.path.basename(filepath)
@@ -277,6 +277,97 @@ async def start_uploads(event, ctx):
                 chapters_out.append(new_ch)
         return chapters_out
 
+    # Shared progress callback factory used by upload helper
+    def make_progress_cb(idx):
+        def progress_cb(msg, frac):
+            try:
+                row = file_rows_column.controls[idx]
+                fileuploadrow = getattr(row, '_fileuploadrow', None)
+                if fileuploadrow is None:
+                    raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+                fileuploadrow.set_status(msg or '')
+                if frac is not None:
+                    fileuploadrow.set_progress(float(frac))
+                page.update()
+            except Exception as e:
+                logger.debug(f"[progress_cb] failed for idx={idx}: {e}")
+        return progress_cb
+
+    async def upload_and_transcode_idx(idx, audio_path, filename_for_api, loudnorm=False, show_progress=True):
+        """Upload a file and transcode via API, updating UI row state; returns transcode result or None on failure."""
+        fileuploadrow = None
+        try:
+            row = file_rows_column.controls[idx]
+            fileuploadrow = getattr(row, '_fileuploadrow', None)
+            if fileuploadrow is None:
+                raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
+            # Start status
+            fileuploadrow.set_status('Uploading...')
+            fileuploadrow.set_progress(0.0)
+            page.update()
+
+            progress_cb = make_progress_cb(idx) if show_progress else None
+            tr = await api.upload_and_transcode_audio_async(
+                audio_path=audio_path,
+                filename=filename_for_api,
+                loudnorm=loudnorm,
+                show_progress=bool(show_progress),
+                poll_interval=2,
+                max_attempts=60,
+                progress_callback=progress_cb,
+            )
+
+            if tr is not None:
+                if fileuploadrow is not None:
+                    fileuploadrow.set_progress(1.0)
+                    fileuploadrow.set_status('Done (100%)')
+                    fileuploadrow.on_upload_complete()
+            else:
+                if fileuploadrow is not None:
+                    fileuploadrow.set_progress(1.0)
+                    fileuploadrow.set_status('Skipped (already exists)')
+                    fileuploadrow.on_upload_complete()
+
+            return tr
+        except Exception as e:
+            logger.error(f"upload_and_transcode_idx: error idx={idx}, path={audio_path}: {e}")
+            if fileuploadrow is not None:
+                try:
+                    fileuploadrow.set_status('Error')
+                    page.update()
+                except Exception:
+                    pass
+            return None
+
+    async def schedule_uploads(file_paths, filename_list_local, show_progress=True):
+        """Schedule uploads for file_paths using semaphore and upload helper.
+        Returns a list of transcoded results (None for failures).
+        """
+        results = [None] * len(file_paths)
+
+        async def worker(i, path, fname):
+            async with sem:
+                tr = await upload_and_transcode_idx(i, audio_path=path, filename_for_api=fname, loudnorm=normalize_audio, show_progress=show_progress)
+                results[i] = tr
+                # update overall after each completes
+                try:
+                    update_overall()
+                except Exception:
+                    pass
+                try:
+                    page.update()
+                except Exception:
+                    pass
+
+        tasks_local = []
+        for i, path in enumerate(file_paths):
+            fname = filename_list_local[i] if filename_list_local and i < len(filename_list_local) else os.path.basename(path)
+            tasks_local.append(asyncio.create_task(worker(i, path, fname)))
+
+        if tasks_local:
+            await asyncio.gather(*tasks_local)
+        return results
+
 
 
     # Gather all unique FileUploadRow objects from file_rows_column.controls
@@ -356,90 +447,26 @@ async def start_uploads(event, ctx):
     # Launch workers (branch by upload target)
     tasks = []
     target = getattr(upload_target_dropdown, 'value', 'Create new card')
+    filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
+    transcoded_results = [None] * len(files)
+    gain_notes = {}
+    for orig_path, info in gain_adjusted_files.items():
+        gain = info.get('gain', 0.0)
+        temp_path = info.get('temp_path')
+        if temp_path and abs(gain) > 0.01:
+            gain_notes[temp_path] = gain
+    # Prepare gain adjustment note lines for card metadata
+    gain_note_lines = []
+    for i, f in enumerate(files):
+        gain = gain_notes.get(f)
+        if gain is not None:
+            gain_note_lines.append(f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(orig_files[i])}")
     if target == 'Create new card':
         title = (getattr(new_card_title, 'value', '') or '').strip() or 'New Yoto Card'
-        filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
-        transcoded_results = [None] * len(files)
-        upload_tasks = []
         # Map from upload file path to gain adjustment (if any)
-        gain_notes = {}
-        for orig_path, info in gain_adjusted_files.items():
-            gain = info.get('gain', 0.0)
-            temp_path = info.get('temp_path')
-            if temp_path and abs(gain) > 0.01:
-                gain_notes[temp_path] = gain
-        # Prepare gain adjustment note lines for card metadata
-        gain_note_lines = []
-        for i, f in enumerate(files):
-            gain = gain_notes.get(f)
-            if gain is not None:
-                gain_note_lines.append(f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(orig_files[i])}")
 
-        def make_progress_cb(idx):
-            def progress_cb(msg, frac):
-                logger.debug(f"[progress_cb] idx={idx}, msg={msg}, frac={frac}")
-                row = file_rows_column.controls[idx]
-                fileuploadrow = getattr(row, '_fileuploadrow', None)
-                if fileuploadrow is None:
-                    raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
-                fileuploadrow.set_status(msg or '')
-                if frac is not None:
-                    fileuploadrow.set_progress(float(frac))
-                page.update()
-            return progress_cb
-
-        for idx, fileuploadrow in enumerate(fileuploadrows):
-            f = files[idx]
-            fname = filename_list[idx]
-            def make_upload_task(idx, f, fname):
-                async def upload_new_card_one():
-                    fileuploadrow = file_rows_column.controls[idx]
-                    fileuploadrow = getattr(fileuploadrow, '_fileuploadrow', None)
-                    if fileuploadrow is not None:
-                        fileuploadrow.set_status('Uploading...')
-                    page.update()
-                    already_updated = False
-                    try:
-                        tr = await api.upload_and_transcode_audio_async(
-                            audio_path=f,
-                            filename=fname,
-                            loudnorm=normalize_audio,
-                            show_progress=True,
-                            progress=None,
-                            upload_task_id=None,
-                            transcode_task_id=None,
-                            poll_interval=2,
-                            max_attempts=60,
-                            progress_callback=make_progress_cb(idx),
-                        )
-                        if tr is not None:
-                            transcoded_results[idx] = tr
-                            if fileuploadrow is not None:
-                                fileuploadrow.set_progress(1.0)
-                                fileuploadrow.set_status('Done (100%)')
-                                fileuploadrow.on_upload_complete()
-                            already_updated = True
-                        else:
-                            transcoded_results[idx] = True
-                            if fileuploadrow is not None:
-                                fileuploadrow.set_progress(1.0)
-                                fileuploadrow.set_status('Skipped (already exists)')
-                                fileuploadrow.on_upload_complete()
-                            already_updated = True
-                    except Exception as e:
-                        logger.error(f"start_uploads: upload error for {f}: {e}")
-                    finally:
-                        if already_updated:
-                            update_overall()
-                            page.update()
-                async def sem_runner_new_card():
-                    async with sem:
-                        await upload_new_card_one()
-                return sem_runner_new_card
-
-            upload_tasks.append(asyncio.create_task(make_upload_task(idx, f, fname)()))
-
-        await asyncio.gather(*upload_tasks)
+        # Use shared scheduler to upload all files in parallel (bounded by semaphore)
+        transcoded_results = await schedule_uploads(files, filename_list)
 
         # After all uploads, check for failures before creating the card
         failed_files = [filename_list[i] for i, tr in enumerate(transcoded_results) if tr is None]
@@ -500,11 +527,6 @@ async def start_uploads(event, ctx):
         finally:
             page.update()
     else:
-        # Add to existing card
-        transcoded_results = [None] * len(files)
-        # Use original filenames (orig_files) for titles so temporary
-        # gain-adjusted file paths do not leak into track/chapter titles.
-        filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
 
         async def upload_one(idx, fpath):
             already_updated = False
@@ -518,17 +540,15 @@ async def start_uploads(event, ctx):
                 fileuploadrow.set_progress(0.0)
                 page.update()
 
-                tr = await api.upload_and_transcode_audio_async(
-                    audio_path=fpath,
-                    filename=os.path.basename(fpath),
-                    loudnorm=normalize_audio,
-                    show_progress=False,
-                )
+                tr = await upload_and_transcode_idx(idx, audio_path=fpath, filename_for_api=os.path.basename(fpath), loudnorm=normalize_audio, show_progress=False)
                 transcoded_results[idx] = tr
-
-                fileuploadrow.set_progress(0.7)
-                fileuploadrow.set_status('Transcoded 70%')
-                already_updated = True
+                if tr is not None:
+                    try:
+                        fileuploadrow.set_progress(0.7)
+                        fileuploadrow.set_status('Transcoded 70%')
+                        already_updated = True
+                    except Exception:
+                        pass
             except Exception as e:
                 if fileuploadrow is not None:
                     fileuploadrow.set_status("Error")
@@ -540,20 +560,11 @@ async def start_uploads(event, ctx):
                     update_overall()
                     page.update()
 
-        upload_tasks = []
-        for i, fpath in enumerate(files):
-            async def sem_runner(i=i, fpath=fpath):
-                async with sem:
-                    await upload_one(i, fpath)
-
-            upload_tasks.append(asyncio.create_task(sem_runner()))
+        # Schedule uploads using shared scheduler
+        transcoded_results = await schedule_uploads(files, filename_list, show_progress=False)
 
         async def append_all_after_uploads(tasks_to_wait):
             print("[start_uploads] Waiting for all uploads to complete before appending")
-            try:
-                await asyncio.gather(*tasks_to_wait)
-            except Exception as e:
-                print(f"[start_uploads] Error waiting for uploads: {e}")
 
             # If playlists haven't been fetched yet (map empty), try to fetch synchronously
             if (not existing_card_map or len(existing_card_map) == 0) and callable(fetch_playlists_sync):
@@ -618,6 +629,20 @@ async def start_uploads(event, ctx):
                         )
                         for ch in chapters_to_add:
                             card.content.chapters.append(ch)
+
+                    # If there is an existing note, append to it
+                    if gain_note_lines:
+                        prev_note = getattr(card.metadata, 'note', '') if card.metadata else ''
+                        if prev_note and not prev_note.endswith('\n'):
+                            prev_note += '\n'
+                        # Ensure note is always a string
+                        note_val = (prev_note or '') + '\n'.join(gain_note_lines)
+                        if card.metadata:
+                            card.metadata.note = str(note_val)
+                        else:
+                            from models import CardMetadata
+                            card.metadata = CardMetadata(note=str(note_val))
+
                     created = api.create_or_update_content(card, return_card=True)
                     status.value = 'Chapters appended'
                     show_card_info(created)
@@ -651,8 +676,11 @@ async def start_uploads(event, ctx):
                     fileuploadrow.on_upload_complete()
                 page.update()
 
-        append_task = asyncio.create_task(append_all_after_uploads(upload_tasks))
-        tasks = [append_task]
+    # append_all_after_uploads does not need the original upload_tasks variable
+    # (results are already awaited); pass an empty list to avoid referencing
+    # the undefined local `upload_tasks` variable which caused UnboundLocalError.
+    append_task = asyncio.create_task(append_all_after_uploads([]))
+    tasks = [append_task]
 
     status.value = "Uploading..."
     try:
