@@ -547,38 +547,6 @@ async def start_uploads(event, ctx):
                 page.update()
                 return
 
-        async def upload_one(idx, fpath):
-            already_updated = False
-            fileuploadrow = None
-            try:
-                row = file_rows_column.controls[idx]
-                fileuploadrow = getattr(row, '_fileuploadrow', None)
-                if fileuploadrow is None:
-                    raise RuntimeError(f"Row at idx={idx} is missing _fileuploadrow reference: {type(row)}")
-                fileuploadrow.set_status('Uploading 0%')
-                fileuploadrow.set_progress(0.0)
-                page.update()
-
-                tr = await upload_and_transcode_idx(idx, audio_path=fpath, filename_for_api=os.path.basename(fpath), loudnorm=normalize_audio, show_progress=False)
-                transcoded_results[idx] = tr
-                if tr is not None:
-                    try:
-                        fileuploadrow.set_progress(0.7)
-                        fileuploadrow.set_status('Transcoded 70%')
-                        already_updated = True
-                    except Exception:
-                        pass
-            except Exception as e:
-                if fileuploadrow is not None:
-                    fileuploadrow.set_status("Error")
-                    already_updated = True
-                    page.update()
-                print(f"[start_uploads] Error uploading {fpath}: {e}")
-            finally:
-                if already_updated:
-                    update_overall()
-                    page.update()
-
         # Schedule uploads using shared scheduler
         transcoded_results = await schedule_uploads(files, filename_list, show_progress=False)
 
