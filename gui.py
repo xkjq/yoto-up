@@ -32,6 +32,7 @@ from loguru import logger
 from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 
 from yoto_app.show_waveforms import show_waveforms_popup
+from yoto_app.icon_browser import build_icon_browser_panel
 
 from yoto_api import YotoAPI
 
@@ -197,6 +198,7 @@ def main(page):
         # Hide Playlists and Upload tabs
         tabs_control.tabs[1].visible = False
         tabs_control.tabs[2].visible = False
+        tabs_control.tabs[3].visible = False  # Icons tab
         # Switch to Auth tab
         tabs_control.selected_index = 0
         # Update instructions/status
@@ -801,12 +803,17 @@ def main(page):
     )
 
     # Create tabs and keep a reference so we can enable/disable them
+    # Build icon browser panel and add as a tab
+    icon_browser_ui = build_icon_browser_panel(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
+    icon_panel = icon_browser_ui.get('panel') if isinstance(icon_browser_ui, dict) else None
+
     tabs_control = ft.Tabs(
         selected_index=0,
         tabs=[
             ft.Tab(text="Auth", content=auth_column),
             ft.Tab(text="Playlists", content=playlists_column, visible=False),
             ft.Tab(text="Upload", content=upload_column, visible=False),
+            ft.Tab(text="Icons", content=icon_panel, visible=False),
         ],
         expand=True,
     )
@@ -819,6 +826,7 @@ def main(page):
         print("Auth complete")
         tabs_control.tabs[1].visible = True
         tabs_control.tabs[2].visible = True
+        tabs_control.tabs[3].visible = True  # Icons tab
 
         api : YotoAPI = api_ref.get("api")
         api.get_public_icons(show_in_console=False)
