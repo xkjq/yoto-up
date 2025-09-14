@@ -528,6 +528,25 @@ async def start_uploads(event, ctx):
             page.update()
     else:
 
+        # Early check: ensure an existing card is selected when appending.
+        sel = getattr(existing_card_dropdown, 'value', None)
+        card_id = existing_card_map.get(sel)
+        if not card_id:
+            # If the existing card map is empty, try to populate it synchronously
+            # via the optional fetch_playlists_sync hook, then re-check selection.
+            if (not existing_card_map or len(existing_card_map) == 0) and callable(fetch_playlists_sync):
+                try:
+                    await asyncio.to_thread(lambda: fetch_playlists_sync(None))
+                except Exception:
+                    pass
+                sel = getattr(existing_card_dropdown, 'value', None)
+                card_id = existing_card_map.get(sel)
+            if not card_id:
+                status.value = 'No target card selected for append'
+                show_snack(status.value, error=True)
+                page.update()
+                return
+
         async def upload_one(idx, fpath):
             already_updated = False
             fileuploadrow = None
