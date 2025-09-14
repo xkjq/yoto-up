@@ -67,6 +67,14 @@ def show_edit_card_dialog(
         multiline=True,
         width=760,
     )
+    note_field = ft.TextField(
+        label="Note (metadata)",
+        value=meta.get("note") or "",
+        multiline=True,
+        min_lines=2,
+        max_lines=6,
+        width=760,
+    )
     genre_field = ft.TextField(
         label="Genres (comma separated)",
         value=(
@@ -103,6 +111,7 @@ def show_edit_card_dialog(
         ft.Text("Metadata", weight=ft.FontWeight.BOLD),
         category_dropdown,
         description_field,
+        note_field,
         genre_field,
         languages_field,
         tags_field,
@@ -362,6 +371,7 @@ def show_edit_card_dialog(
             c["metadata"]["category"] = category_dropdown.value or None
             desc = description_field.value or ""
             c["metadata"]["description"] = desc if desc else None
+            c["metadata"]["note"] = note_field.value or None
 
             def split_list(s):
                 if not s:
