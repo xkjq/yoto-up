@@ -4,7 +4,7 @@ pydantic
 loguru
 rich
 pillow
-bs4
+beautifulsoup4
 rapidfuzz
 nltk
 textual
@@ -12,4 +12,9 @@ pynput
 mutagen
 mkdocs-material
 pymdown-extensions
-flet[desktop]==0.28.3
+flet[desktop]
+numpy
+matplotlib
+pydub
+librosa
+pyloudnorm
