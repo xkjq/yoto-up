@@ -21,7 +21,14 @@ from loguru import logger
 from yoto_app.logging_helpers import safe_log
 from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop
 
-print(f"[gui] module loaded, pid={os.getpid()}")
+import matplotlib.pyplot as plt
+import numpy as np
+import io
+import base64
+import contextlib
+import wave
+from waveform_utils import batch_audio_stats
+from yoto_app.show_waveforms import show_waveforms_popup
 
 # Supported audio extensions
 AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"}
@@ -71,13 +78,6 @@ def main(page):
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     # In-memory cache for waveform/loudness data: {filepath: (audio, max_amp, avg_amp, lufs, ext, filepath)}
     waveform_cache = {}
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import io
-    import base64
-    import contextlib
-    import wave
-    from waveform_utils import batch_audio_stats
 
     # Import audio_adjust_utils at module level for reliability
     audio_adjust_utils_path = os.path.join(os.path.dirname(__file__), "audio_adjust_utils.py")
@@ -89,8 +89,7 @@ def main(page):
     else:
         audio_adjust_utils = None
 
-    from yoto_app.show_waveforms import show_waveforms_popup
-    def show_waveforms_popup(e=None):
+    def show_waveforms_popup_wrapper(e=None):
         show_waveforms_popup(
             page=page,
             file_rows_column=file_rows_column,
@@ -725,7 +724,7 @@ def main(page):
 
     show_waveforms_btn = ft.TextButton(
         "Show Waveforms",
-        on_click=show_waveforms_popup,
+        on_click=show_waveforms_popup_wrapper,
         tooltip="Visualize sound levels for all files in the queue",
         disabled=True
     )
