@@ -245,10 +245,8 @@ async def start_uploads(event, ctx):
             for i, tr in enumerate(transcoded_results):
                 td = {'title': filename_list[i]} if filename_list and i < len(filename_list) else None
                 track = api.get_track_from_transcoded_audio(tr, track_details=td)
-                try:
-                    track.key = f"{i+1:02}"
-                except Exception:
-                    pass
+                track.key = f"{i+1:02}"
+                track.overlayLabel = str(i+1)
                 tracks.append(track)
             chapter = Chapter(
                 key="01",
@@ -269,6 +267,7 @@ async def start_uploads(event, ctx):
                     if hasattr(new_ch, 'tracks') and new_ch.tracks:
                         for j, t in enumerate(new_ch.tracks):
                             t.key = f"{j+1:02}"
+                            t.overlayLabel = str(j+1)
                 except Exception:
                     pass
                 chapters_out.append(new_ch)

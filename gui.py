@@ -33,6 +33,8 @@ from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as
 
 from yoto_app.show_waveforms import show_waveforms_popup
 
+from yoto_api import YotoAPI
+
 
 # Prefer a normal import so PyInstaller will detect and include the module.
 # Fall back to loading from the source file only when the normal import fails
@@ -817,6 +819,10 @@ def main(page):
         print("Auth complete")
         tabs_control.tabs[1].visible = True
         tabs_control.tabs[2].visible = True
+
+        api : YotoAPI = api_ref.get("api")
+        api.get_public_icons(show_in_console=False)
+        api.get_user_icons(show_in_console=False)
         # Always use the local page variable, not the argument
         page.update()
     page.auth_complete = auth_complete
