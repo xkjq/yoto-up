@@ -485,7 +485,9 @@ async def start_uploads(event, ctx):
     else:
         # Add to existing card
         transcoded_results = [None] * len(files)
-        filename_list = [clean_title_from_filename(f, strip_leading) for f in files]
+        # Use the original filenames (orig_files) for titles so temporary
+        # gain-adjusted file paths do not leak into track/chapter titles.
+        filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
 
         async def upload_one(idx, fpath):
             already_updated = False
