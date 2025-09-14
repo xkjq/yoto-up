@@ -33,3 +33,5 @@ dependencies = [
 # additional extras for docs/build or dev
 docs = ["mkdocs-material", "pymdown-extensions"]
 
+[tool.flet]
+app.module = "gui"
