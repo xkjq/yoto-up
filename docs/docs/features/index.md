@@ -4,12 +4,15 @@ This section gives a quick tour of the major features in Yoto-UP.
 
 - [Playlist Management]
     - Search, view and filter playlists
-    - Create and edit playlist
+    - Create and edit playlists with features including
+        - Convert between different playlist format (e.g. Chapters -> Tracks, Tracks -> Chapters)
+        - Versioning: made a mistake updating a playlist? simply revert to any old version 
 
 - [Icon management](icon_management.md)
     - Search, cache and upload 16×16 pixel icons
     - Render pixel art for inspection
-    - Helpers in `yoto_api.py`
+    - Automatically upload and attach to playlists
+    - Helpers in `yoto_api.py` for external app integration
     - Available both in terminal and the full GUI
 
 - [Cover management](cover_management.md)
