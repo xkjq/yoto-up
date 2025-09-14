@@ -1,7 +1,18 @@
 import asyncio
 import os
 import tempfile
+# Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
+# PyInstaller unpacks the app to a temporary folder which may be read-only for font cache writes.
+# Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
+# and avoids FileNotFoundError when matplotlib tries to access a bundled source file path.
+try:
+    mpl_cfg = os.path.join(tempfile.gettempdir(), "yoto_up_matplotlib")
+    os.environ.setdefault("MPLCONFIGDIR", mpl_cfg)
+    os.makedirs(mpl_cfg, exist_ok=True)
+except Exception:
+    pass
 import importlib.util
+from typing import cast, Any
 import sys as _sys
 from pathlib import Path
 import sys
@@ -19,9 +30,30 @@ from yoto_app.api_manager import ensure_api
 from yoto_app.playlists import build_playlists_panel
 from loguru import logger
 from yoto_app.logging_helpers import safe_log
-from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop
+from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 
 from yoto_app.show_waveforms import show_waveforms_popup
+
+
+# Prefer a normal import so PyInstaller will detect and include the module.
+# Fall back to loading from the source file only when the normal import fails
+# (useful in some dev workflows).
+try:
+    import audio_adjust_utils  # type: ignore
+except Exception:
+    audio_adjust_utils = cast(Any, None)  # type: ignore
+    # fallback: attempt to load from the local source file if present
+    audio_adjust_utils_path = os.path.join(os.path.dirname(__file__), "audio_adjust_utils.py")
+    if os.path.exists(audio_adjust_utils_path):
+        try:
+            _spec = importlib.util.spec_from_file_location("audio_adjust_utils", audio_adjust_utils_path)
+            if _spec and _spec.loader:
+                # mypy/linters can be picky about module typing; ignore here
+                audio_adjust_utils = importlib.util.module_from_spec(_spec)  # type: ignore
+                _sys.modules["audio_adjust_utils"] = audio_adjust_utils
+                _spec.loader.exec_module(audio_adjust_utils)  # type: ignore
+        except Exception:
+            audio_adjust_utils = None
 
 # Supported audio extensions
 AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"}
@@ -70,15 +102,6 @@ def main(page):
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     waveform_cache = {}
 
-    # Import audio_adjust_utils at module level for reliability
-    audio_adjust_utils_path = os.path.join(os.path.dirname(__file__), "audio_adjust_utils.py")
-    _spec = importlib.util.spec_from_file_location("audio_adjust_utils", audio_adjust_utils_path)
-    if _spec and _spec.loader:
-        audio_adjust_utils = importlib.util.module_from_spec(_spec)
-        _sys.modules["audio_adjust_utils"] = audio_adjust_utils
-        _spec.loader.exec_module(audio_adjust_utils)
-    else:
-        audio_adjust_utils = None
 
     def show_waveforms_popup_wrapper(e=None):
         show_waveforms_popup(
@@ -284,7 +307,6 @@ def main(page):
 
     def remove_uploaded_files(ev=None):
         logger.debug("[remove_uploaded_files] Removing uploaded files from the queue")
-        from yoto_app.upload_tasks import FileUploadRow
         file_rows_column.controls = [c for c in file_rows_column.controls if not (hasattr(c, '_fileuploadrow') and getattr(c._fileuploadrow, 'uploaded', False))]
         page.update()
 
@@ -405,8 +427,8 @@ def main(page):
                 try:
                     if folder.value:
                         populate_file_rows(folder.value)
-                except Exception as exc:
-                    safe_log("on_pick_result: populate_file_rows failed", exc)
+                except Exception:
+                    logger.error("on_pick_result: populate_file_rows failed", None)
             else:
                 # web mode: save files to temp? For simplicity, just inform user
                 folder.value = "(web file picker used - paste local folder path instead)"
@@ -415,7 +437,6 @@ def main(page):
 
     def on_pick_files_result(e: ft.FilePickerResultEvent):
         if e.files:
-            from yoto_app.upload_tasks import FileUploadRow
             for f in e.files:
                 # Add each selected file to the file_rows_column if not already present
                 path = getattr(f, "path", None)
@@ -423,8 +444,8 @@ def main(page):
                     try:
                         file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
                         file_rows_column.controls.append(file_row.row)
-                    except Exception as ex:
-                        raise RuntimeError(f"Failed to create FileUploadRow for {path}: {e}")
+                    except Exception as _:
+                        raise RuntimeError(f"Failed to create FileUploadRow for {path}")
             update_show_waveforms_btn()
             page.update()
 

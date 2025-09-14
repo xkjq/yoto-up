@@ -1,9 +1,9 @@
 name: Cross-platform flet build (Windows / macOS / Linux)
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+  #push:
+  #  tags:
+  #    - 'v*.*.*'  # Trigger on version tags like v1.2.3
   workflow_dispatch:
 
 permissions:
