@@ -27,11 +27,11 @@ dependencies = [
   "mutagen>=1.45.1",
   "textual>=0.2.0",
   "pynput>=1.7.3",
-  "numpy>=1.25"
-  "matplotlib>=3.7"
-  "pydub>=0.25"
-  "librosa>=0.10"
-  "pyloudnorm>=0.1"
+  "numpy>=1.25",
+  "matplotlib>=3.7",
+  "pydub>=0.25",
+  "librosa>=0.10",
+  "pyloudnorm>=0.1",
 ]
 
 [project.optional-dependencies]
