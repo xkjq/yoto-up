@@ -17,6 +17,7 @@ class FileUploadRow:
         import os
         from flet import Row, Text, ProgressBar, ElevatedButton, AlertDialog, Column
         self.filepath = filepath
+        self.original_filepath = filepath  # Always keep the original file path
         self.name = os.path.basename(filepath)
         self.status_text = Text('Queued')
         self.progress = ProgressBar(width=300, visible=False)
@@ -161,6 +162,7 @@ class FileUploadRow:
         """
         import os
         self.filepath = new_filepath
+        # self.name is only for display; keep original for title
         self.name = os.path.basename(new_filepath)
         # Update the filename attribute on the row container
         setattr(self.row, 'filename', new_filepath)
@@ -240,13 +242,15 @@ async def start_uploads(event, ctx):
         path = getattr(row, 'filename', None)
         if fileuploadrow is not None and path and path not in seen:
             fileuploadrows.append(fileuploadrow)
-            temp_info = gain_adjusted_files.get(path)
+            # Always use the original file for title/track naming
+            orig_path = getattr(fileuploadrow, 'original_filepath', path)
+            temp_info = gain_adjusted_files.get(orig_path)
             if temp_info and temp_info.get('temp_path'):
                 files.append(temp_info['temp_path'])
-                orig_files.append(path)
+                orig_files.append(orig_path)
             else:
-                files.append(path)
-                orig_files.append(path)
+                files.append(orig_path)
+                orig_files.append(orig_path)
             seen.add(path)
     logger.debug(f"[start_uploads] Files to upload (from UI): {files}")
     if not files:
