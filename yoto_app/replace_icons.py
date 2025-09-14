@@ -4,7 +4,6 @@ import time
 import json
 import flet as ft
 from loguru import logger
-from yoto_app.logging_helpers import safe_log
 
 
 def show_replace_icons_dialog(

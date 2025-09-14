@@ -26,7 +26,6 @@ from models import Card, CardMetadata, ChapterDisplay, TrackDisplay
 from yoto_app.auth import delete_tokens_file
 from yoto_app.config import CLIENT_ID
 from loguru import logger
-from yoto_app.logging_helpers import safe_log
 import time
 from yoto_api import YotoAPI
 
@@ -1084,7 +1083,6 @@ def build_playlists_panel(
         except Exception as ex:
             logger.error(f"fetch_playlists_sync error: {ex}")
             traceback.print_exc(file=sys.stderr)
-            # safe_log("fetch_playlists_sync error", ex)
             show_snack("Unable to fetch playlists", error=True)
 
     filter_btn.on_click = lambda e: threading.Thread(

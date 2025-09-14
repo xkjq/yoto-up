@@ -29,7 +29,6 @@ from yoto_app import auth as auth_mod
 from yoto_app.api_manager import ensure_api
 from yoto_app.playlists import build_playlists_panel
 from loguru import logger
-from yoto_app.logging_helpers import safe_log
 from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 
 from yoto_app.show_waveforms import show_waveforms_popup
@@ -300,7 +299,7 @@ def main(page):
                             print(f"[_on_upload_target_change] fetch_playlists_sync failed: {fe}")
             page.update()
         except Exception as exc:
-            safe_log('upload_target_change failed', exc)
+            logger.error(f"[_on_upload_target_change] failed: {exc}")
 
     upload_target_dropdown.on_change = _on_upload_target_change
 
@@ -458,7 +457,7 @@ def main(page):
             if folder.value:
                 populate_file_rows(folder.value)
         except Exception as exc:
-            safe_log("_on_folder_change: populate_file_rows failed", exc)
+            logger.error("_on_folder_change: populate_file_rows failed", exc)
 
     folder.on_change = _on_folder_change
 
@@ -640,7 +639,7 @@ def main(page):
                     hdr[insert_at:insert_at] = [playlist_fetch_btn or fetch_btn, playlist_multi_select_btn or multi_select_btn, playlist_delete_selected_btn or delete_selected_btn, playlist_export_selected_btn or export_selected_btn]
                     header.controls = hdr
             except Exception as e:
-                safe_log("failed to merge header buttons into playlists header", e)
+                logger.error(f"[_on_playlists_header_merge] failed: {e}")
     except Exception:
         pass
 

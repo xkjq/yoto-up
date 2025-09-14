@@ -3,7 +3,6 @@ import os
 import traceback
 from models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_api import YotoAPI
-from yoto_app.logging_helpers import safe_log
 from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
@@ -419,7 +418,7 @@ async def start_uploads(event, ctx):
         overall_bar.visible = True
         overall_text.visible = True
     except Exception as e:
-        safe_log("start_uploads: failed to set overall bar visibility", e)
+        logger.debug(f"[start_uploads] Failed to show overall progress: {e}")
     logger.debug(f"[start_uploads] Total files to upload: {total_files}")
 
     # No row creation here! Only use existing FileUploadRow objects.

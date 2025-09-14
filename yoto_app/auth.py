@@ -5,7 +5,6 @@ import os
 import time
 from yoto_api import YotoAPI
 from yoto_app.api_manager import ensure_api
-from yoto_app.logging_helpers import safe_log
 from loguru import logger
 from yoto_app import config
 
@@ -174,7 +173,7 @@ def start_device_auth(page, instr_container=None, api_ref=None, show_snack_fn=No
             else:
                 print('Client ID required')
         except Exception as e:
-            safe_log("start_device_auth: failed handling missing client id notification", e)
+            logger.error(f"start_device_auth: failed handling missing client id notification: {e}")
         return
     try:
         data = {'client_id': client, 'scope': 'profile offline_access', 'audience': 'https://api.yotoplay.com'}

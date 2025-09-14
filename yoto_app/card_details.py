@@ -9,7 +9,6 @@ from typing import Any, Dict
 import flet as ft
 import re
 from loguru import logger
-from yoto_app.logging_helpers import safe_log
 from datetime import datetime, timezone
 
 
@@ -505,7 +504,7 @@ def make_show_card_details(
                         api = api_ref.get("api")
                         card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                         if not card_id:
-                            safe_log("save_order: no card id found")
+                            logger.error("save_order: no card id found")
                             return
 
                         dlg_content = getattr(dialog, "content", None)
@@ -556,7 +555,7 @@ def make_show_card_details(
                         try:
                             card_model = Card(**c)
                         except Exception as ex:
-                            safe_log("save_order: failed to build Card model", ex)
+                            logger.error(f"save_order: failed to build Card model: {ex}")
                             show_snack(f"Failed to prepare card for save: {ex}", error=True)
                         try:
                             payload = card_model.model_dump(exclude_none=True)
@@ -585,10 +584,10 @@ def make_show_card_details(
                             show_card_details(None, updated)
                             page.update()
                         except Exception as ex:
-                            safe_log("save_order: background save failed", ex)
+                            logger.error(f"save_order: background save failed: {ex}")
 
                     threading.Thread(target=bg_save, daemon=True).start()
-                    safe_log("save_order: background save started")
+                    logger.info("save_order: background save started")
 
                 chapter_items = []
                 for ch_idx, ch in enumerate(chapters):
