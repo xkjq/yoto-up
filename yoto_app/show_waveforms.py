@@ -218,15 +218,6 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 gain_slider.value = global_gain['value']
                 gain_val['value'] = global_gain['value']
                 page._track_gains[filepath] = global_gain['value']
-                # Save gain-adjusted audio with progress (if needed)
-                if abs(global_gain['value']) > 0.01 and audio_adjust_utils is not None:
-                    try:
-                        temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (global_gain['value'] / 20.0)), framerate, ext, filepath, global_gain['value'])
-                        gain_adjusted_files[filepath] = {'gain': global_gain['value'], 'temp_path': temp_path}
-                    except Exception as ex:
-                        show_snack(f"Failed to save adjusted audio for upload: {ex}", error=True)
-                else:
-                    gain_adjusted_files.pop(filepath, None)
             completed += 1
             progress_text2.value = f"Processed {completed} of {total} tracks"
             progress_bar2.value = completed / total
@@ -258,6 +249,13 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                     temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
                     if abs(gain_val['value']) > 0.01:
                         gain_adjusted_files[filepath] = {'gain': gain_val['value'], 'temp_path': temp_path}
+                        # Update the upload queue row to use the new temp_path
+                        for row in getattr(file_rows_column, 'controls', []):
+                            fileuploadrow = getattr(row, '_fileuploadrow', None)
+                            if fileuploadrow and fileuploadrow.filepath == filepath:
+                                fileuploadrow.update_file(temp_path)
+                                setattr(row, 'filename', temp_path)
+                                break
                     else:
                         gain_adjusted_files.pop(filepath, None)
                     progress_text3.value = f"Saved: {os.path.basename(filepath)}"
