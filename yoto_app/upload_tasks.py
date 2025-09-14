@@ -230,6 +230,53 @@ async def start_uploads(event, ctx):
     global _LAST_PAGE
     _LAST_PAGE = page
 
+    # Shared helper: build chapters/tracks from transcoded results
+    def build_chapters_from_transcodes(transcoded_results, filename_list, title_for_single_chapter, api, single_chapter=False, files_list=None, orig_files_list=None):
+        """
+        Build a list of Chapter objects from transcoded results.
+        - transcoded_results: list of transcoded audio return values from API
+        - filename_list: list of cleaned titles corresponding to original files (used for chapter/track titles)
+        - title_for_single_chapter: title to use when creating a single chapter containing all tracks
+        - api: YotoAPI instance
+        - single_chapter: if True, put all tracks into one Chapter
+        - files_list / orig_files_list: used to map gain notes back to original basenames where needed
+        Returns: list of Chapter instances
+        """
+        chapters_out = []
+        if single_chapter and len(transcoded_results) > 1:
+            tracks = []
+            for i, tr in enumerate(transcoded_results):
+                td = {'title': filename_list[i]} if filename_list and i < len(filename_list) else None
+                track = api.get_track_from_transcoded_audio(tr, track_details=td)
+                try:
+                    track.key = f"{i+1:02}"
+                except Exception:
+                    pass
+                tracks.append(track)
+            chapter = Chapter(
+                key="01",
+                title=title_for_single_chapter,
+                overlayLabel="1",
+                tracks=tracks,
+                display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            )
+            chapters_out = [chapter]
+        else:
+            for i, tr in enumerate(transcoded_results):
+                if not tr:
+                    continue
+                cd = {'title': filename_list[i]} if filename_list and i < len(filename_list) else None
+                new_ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
+                try:
+                    new_ch.key = f"{i+1:02}"
+                    if hasattr(new_ch, 'tracks') and new_ch.tracks:
+                        for j, t in enumerate(new_ch.tracks):
+                            t.key = f"{j+1:02}"
+                except Exception:
+                    pass
+                chapters_out.append(new_ch)
+        return chapters_out
+
 
 
     # Gather all unique FileUploadRow objects from file_rows_column.controls
@@ -412,46 +459,16 @@ async def start_uploads(event, ctx):
                 mode_value = getattr(upload_mode_dropdown, 'value', 'Chapters')
                 single_chapter = (mode_value == 'Tracks')
 
-            if single_chapter and len(transcoded_results) > 1:
-                tracks = []
-                for i, tr in enumerate(transcoded_results):
-                    td = {'title': filename_list[i]}
-                    track = api.get_track_from_transcoded_audio(tr, track_details=td)
-                    try:
-                        track.key = f"{i+1:02}"
-                    except Exception:
-                        pass
-                    # Add gain note if this file had gain adjustment
-                    upload_path = files[i]
-                    gain = gain_notes.get(upload_path)
-                    if gain is not None:
-                        note_line = f"Gain adjusted by {gain:+.2f} dB on 2025-09-13."
-                        prev_note = getattr(track, 'note', None) or ''
-                        if note_line not in prev_note:
-                            new_note = (prev_note + '\n' if prev_note else '') + note_line
-                            setattr(track, 'note', new_note)
-                    tracks.append(track)
-                chapter = Chapter(
-                    key="01",
-                    title=title,
-                    overlayLabel="1",
-                    tracks=tracks,
-                    display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
-                )
-                chapters = [chapter]
-            else:
-                chapters = []
-                for i, tr in enumerate(transcoded_results):
-                    cd = {'title': filename_list[i]}
-                    ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
-                    try:
-                        ch.key = f"{i+1:02}"
-                        if hasattr(ch, 'tracks') and ch.tracks:
-                            for j, t in enumerate(ch.tracks):
-                                t.key = f"{j+1:02}"
-                    except Exception:
-                        pass
-                    chapters.append(ch)
+            # Build chapters/tracks for the new card using shared helper
+            chapters = build_chapters_from_transcodes(
+                transcoded_results=transcoded_results,
+                filename_list=filename_list,
+                title_for_single_chapter=title,
+                api=api,
+                single_chapter=single_chapter,
+                files_list=files,
+                orig_files_list=orig_files,
+            )
             # Compose card metadata with gain adjustment notes
             card_metadata = None
             if gain_note_lines:
@@ -485,7 +502,7 @@ async def start_uploads(event, ctx):
     else:
         # Add to existing card
         transcoded_results = [None] * len(files)
-        # Use the original filenames (orig_files) for titles so temporary
+        # Use original filenames (orig_files) for titles so temporary
         # gain-adjusted file paths do not leak into track/chapter titles.
         filename_list = [clean_title_from_filename(f, strip_leading) for f in orig_files]
 
@@ -578,38 +595,29 @@ async def start_uploads(event, ctx):
                         card.content.chapters = []
 
                     if single_chapter and len(transcoded_results) > 1:
-                        tracks = []
-                        for i, tr in enumerate(transcoded_results):
-                            # prefer filename for track title when available
-                            try:
-                                td = {'title': filename_list[i]}
-                            except Exception:
-                                td = None
-                            track = api.get_track_from_transcoded_audio(tr, track_details=td)
-                            try:
-                                track.key = f"{i+1:02}"
-                            except Exception:
-                                pass
-                            tracks.append(track)
-
-                        chapter = Chapter(
-                            title=f"Chapter {len(card.content.chapters) + 1}",
-                            key=f"{len(card.content.chapters) + 1}",
-                            overlayLabel=f"{len(card.content.chapters) + 1}",
-                            tracks=tracks,
+                        # Build a single chapter containing all tracks and append
+                        chapters_to_add = build_chapters_from_transcodes(
+                            transcoded_results=transcoded_results,
+                            filename_list=filename_list,
+                            title_for_single_chapter=f"Chapter {len(card.content.chapters) + 1}",
+                            api=api,
+                            single_chapter=True,
+                            files_list=files,
+                            orig_files_list=orig_files,
                         )
-                        card.content.chapters.append(chapter)
+                        for ch in chapters_to_add:
+                            card.content.chapters.append(ch)
                     else:
                         # One chapter per file
-                        for i, tr in enumerate(transcoded_results):
-                            if not tr:
-                                continue
-                            try:
-                                cd = {'title': filename_list[i]}
-                            except Exception:
-                                cd = None
-                            new_ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
-                            card.content.chapters.append(new_ch)
+                        chapters_to_add = build_chapters_from_transcodes(
+                            transcoded_results=transcoded_results,
+                            filename_list=filename_list,
+                            title_for_single_chapter=None,
+                            api=api,
+                            single_chapter=False,
+                        )
+                        for ch in chapters_to_add:
+                            card.content.chapters.append(ch)
                     created = api.create_or_update_content(card, return_card=True)
                     status.value = 'Chapters appended'
                     show_card_info(created)
