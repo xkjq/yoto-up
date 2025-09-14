@@ -453,6 +453,12 @@ def make_show_card_details(
                 controls.append(
                     ft.Text(f"  Category: {meta.get('category', '')}", selectable=True)
                 )
+                controls.append(
+                    ft.Text(f"  Description: {meta.get('description', '')}", selectable=True)
+                )
+                controls.append(
+                    ft.Text(f"  Note: {meta.get('note', '')}", selectable=True)
+                )
                 tags = meta.get("tags")
                 if tags:
                     if isinstance(tags, (list, tuple)):
