@@ -639,6 +639,7 @@ def main(page):
         except Exception:
             pass
         show_snack("Upload queue cleared")
+        update_show_waveforms_btn()
         page.update()
 
     def populate_file_rows(folder_path: str):
@@ -716,6 +717,7 @@ def main(page):
             else:
                 # web mode: save files to temp? For simplicity, just inform user
                 folder.value = "(web file picker used - paste local folder path instead)"
+            update_show_waveforms_btn()
         page.update()
 
     def on_pick_files_result(e: ft.FilePickerResultEvent):
@@ -728,8 +730,9 @@ def main(page):
                     try:
                         file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
                         file_rows_column.controls.append(file_row.row)
-                    except Exception as e:
+                    except Exception as ex:
                         raise RuntimeError(f"Failed to create FileUploadRow for {path}: {e}")
+            update_show_waveforms_btn()
             page.update()
 
     browse.on_result = on_pick_result
@@ -1028,30 +1031,6 @@ def main(page):
         # Enable if there are any files in the upload queue
         has_files = any(getattr(row, 'filename', None) for row in file_rows_column.controls)
         show_waveforms_btn.disabled = not has_files
-        page.update()
-
-    # Patch all file-adding/removal code to call update_show_waveforms_btn
-    # (This is a minimal patch; for full robustness, patch all relevant places.)
-    orig_add_files = None
-    if 'on_pick_files_result' in locals():
-        orig_add_files = on_pick_files_result
-    def on_pick_files_result(e: ft.FilePickerResultEvent):
-        if e.files:
-            from yoto_app.upload_tasks import FileUploadRow
-            for f in e.files:
-                path = getattr(f, "path", None)
-                if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
-                    try:
-                        file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
-                        file_rows_column.controls.append(file_row.row)
-                    except Exception as ex:
-                        raise RuntimeError(f"Failed to create FileUploadRow for {path}: {ex}")
-            update_show_waveforms_btn()
-            page.update()
-
-    def clear_queue(ev=None):
-        file_rows_column.controls.clear()
-        update_show_waveforms_btn()
         page.update()
 
     upload_column = ft.Column([
