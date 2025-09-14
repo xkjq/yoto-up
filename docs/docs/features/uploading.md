@@ -16,7 +16,6 @@ Where to configure
 
 - Concurrency: the Flet UI exposes a `Concurrency` field to control how many uploads run concurrently.
 - Upload mode: choose `Create new card` or `Add to existing card` in the Upload tab.
-- Tokens: the app uses `tokens.json` for OAuth tokens. Remove or rotate tokens before publishing the repo.
 
 Key code locations
 
@@ -25,11 +24,6 @@ Key code locations
   - `upload_and_transcode_audio_async`
   - `get_chapter_from_transcoded_audio`
   - `upload_and_transcode_and_create_card_async`
-
-Troubleshooting
-
-- If append fails with Pydantic validation errors for `Chapter` (missing `title` or `tracks`), ensure the transcoding step returned valid metadata. The app will skip invalid/null results during append.
-- If playlists are empty when you try to append, use the `Fetch Playlists` button or the `Fetch` action in the Playlists tab to populate the dropdown.
 
 Example workflow (Flet UI)
 
