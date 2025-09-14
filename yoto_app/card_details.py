@@ -1340,8 +1340,8 @@ def make_show_card_details(
                 def worker():
                     try:
                         full = api.get_card(card_id)
-                        # rewrite 'overlayLabel' sequentially and reset every chapter
-                        updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True, reset_every_chapter=True)
+                        # rewrite 'overlayLabel' sequentially
+                        updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True)
                         api.update_card(updated, return_card_model=False)
                         show_snack("Overlay labels relabelled")
                         try:
@@ -1511,7 +1511,7 @@ Merging will result in:
                 body.append(
                     ft.Text(
                         """Below you can renumber all overlayLabels or keys for tracks in this card.
-Renumbering overlayLabels will assign sequential overlay labels to tracks, resetting at each chapter. 
+Renumbering overlayLabels will assign sequential overlay labels to tracks.
 Renumbering keys will assign sequential keys to all tracks.
                         """,
                         size=12,

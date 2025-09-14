@@ -228,7 +228,7 @@ async def start_uploads(event, ctx):
     _LAST_PAGE = page
 
     # Shared helper: build chapters/tracks from transcoded results
-    def build_chapters_from_transcodes(transcoded_results, filename_list, title_for_single_chapter, api, single_chapter=False, files_list=None, orig_files_list=None):
+    def build_chapters_from_transcodes(transcoded_results, filename_list, title_for_single_chapter, api, single_chapter=False, existing_chapters=0):
         """
         Build a list of Chapter objects from transcoded results.
         - transcoded_results: list of transcoded audio return values from API
@@ -249,9 +249,9 @@ async def start_uploads(event, ctx):
                 track.overlayLabel = str(i+1)
                 tracks.append(track)
             chapter = Chapter(
-                key="01",
+                key=f"{i+1+existing_chapters:02}",
                 title=title_for_single_chapter,
-                overlayLabel="1",
+                overlayLabel=str(i+1+existing_chapters),
                 tracks=tracks,
                 display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
             )
@@ -263,7 +263,8 @@ async def start_uploads(event, ctx):
                 cd = {'title': filename_list[i]} if filename_list and i < len(filename_list) else None
                 new_ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
                 try:
-                    new_ch.key = f"{i+1:02}"
+                    new_ch.key = f"{i+1+existing_chapters:02}"
+                    new_ch.overlayLabel = str(i+1+existing_chapters)
                     if hasattr(new_ch, 'tracks') and new_ch.tracks:
                         for j, t in enumerate(new_ch.tracks):
                             t.key = f"{j+1:02}"
@@ -489,8 +490,6 @@ async def start_uploads(event, ctx):
                 title_for_single_chapter=title,
                 api=api,
                 single_chapter=single_chapter,
-                files_list=files,
-                orig_files_list=orig_files,
             )
             # Compose card metadata with gain adjustment notes
             card_metadata = None
@@ -595,8 +594,7 @@ async def start_uploads(event, ctx):
                             title_for_single_chapter=f"Chapter {len(card.content.chapters) + 1}",
                             api=api,
                             single_chapter=True,
-                            files_list=files,
-                            orig_files_list=orig_files,
+                            existing_chapters=len(card.content.chapters)
                         )
                         for ch in chapters_to_add:
                             card.content.chapters.append(ch)
@@ -608,6 +606,7 @@ async def start_uploads(event, ctx):
                             title_for_single_chapter=None,
                             api=api,
                             single_chapter=False,
+                            existing_chapters=len(card.content.chapters)
                         )
                         for ch in chapters_to_add:
                             card.content.chapters.append(ch)
