@@ -1284,7 +1284,7 @@ class YotoAPI:
             card.content.chapters = []
         card.content.chapters.append(new_chapter)
 
-        print(card.model_dump_json(exclude_none=True))
+        logger.debug(card.model_dump_json(exclude_none=True))
         logger.info(f"Updating card {card_id} with new chapter.")
         return self.create_or_update_content(card)
 
@@ -1642,7 +1642,7 @@ class YotoAPI:
         icons = None
         console = Console()
         # Try per-tag cache first
-        print(f"[YotoAPI] Checking tag cache: {tag_metadata_path}")
+        logger.debug(f"[YotoAPI] Checking tag cache: {tag_metadata_path}")
         if tag_metadata_path.exists() and not refresh_cache:
             try:
                 mtime = tag_metadata_path.stat().st_mtime
@@ -1830,24 +1830,24 @@ class YotoAPI:
                     # Sort by length (longer first), then uniqueness
                     filtered = sorted(set(filtered), key=lambda w: (-len(w), w))
                     tag_queries = filtered[:max_searches]
-                    print(f"[YotoAPI] Extracted keywords for tag search: {tag_queries}")
+                    logger.debug(f"[YotoAPI] Extracted keywords for tag search: {tag_queries}")
                 except Exception as e:
-                    print("[YotoAPI] Error extracting keywords")
-                    print(e)
+                    logger.error("[YotoAPI] Error extracting keywords")
+                    logger.error(e)
                     tag_queries = []
             # Limit number of extra searches
             tag_queries = tag_queries[:max_searches]
-            print(tag_queries)
+            logger.debug(f"[YotoAPI] Tag queries for search: {tag_queries}")
             for tag in tag_queries:
                 try:
                     new_icons = self.search_yotoicons(tag, show_in_console=False)
-                    print(f"[YotoAPI] Found {len(new_icons)} new icons for tag '{tag}'")    
+                    logger.debug(f"[YotoAPI] Found {len(new_icons)} new icons for tag '{tag}'")
                     # Deduplicate by id
                     existing_ids = {icon.get("id") for icon in icons if "id" in icon}
                     icons += [icon for icon in new_icons if icon.get("id") not in existing_ids]
                 except Exception as e:
-                    print(f"[YotoAPI] Error searching YotoIcons for tag '{tag}'")
-                    print(e)
+                    logger.error(f"[YotoAPI] Error searching YotoIcons for tag '{tag}'")
+                    logger.error(e)
         # Scoring function: higher score for closer match
         def score_icon(icon):
             fields = [icon.get("title", ""), icon.get("category", ""), icon.get("id", ""), icon.get("displayIconId", ""), " ".join(icon.get("tags", [])), " ".join(icon.get("publicTags", []))]
@@ -1936,7 +1936,6 @@ class YotoAPI:
             response.raise_for_status()
         except httpx.HTTPError:
             logger.error(f"Icon upload failed: {response.text}")
-            print(f"[YotoAPI] Icon upload failed: {response.text}")
             raise
         result = response.json().get("displayIcon", response.json())
         if yotoicons_id:
