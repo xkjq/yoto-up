@@ -980,14 +980,28 @@ def main(page):
     def show_card_info(card):
         # Show a clickable card summary that launches show_card_detail
         card_info_display.controls.clear()
+        def dismiss_item(item):
+            try:
+                card_info_display.controls.remove(item)
+                if not card_info_display.controls:
+                    card_info_display.visible = False
+                page.update()
+            except Exception:
+                pass
+
         if not card or not getattr(card, 'cardId', None):
-            card_info_display.controls.append(ft.Text("No card info available", color=ft.Colors.RED))
+            row = ft.Row([
+                ft.Text("No card info available", color=ft.Colors.RED),
+                ft.TextButton("Dismiss", on_click=lambda e: dismiss_item(row), style=ft.ButtonStyle(color=ft.Colors.RED))
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            card_info_display.controls.append(row)
         else:
             summary = ft.Container(
                 content=ft.Row([
                     ft.Text(getattr(card, 'title', ''), size=16, weight=ft.FontWeight.BOLD),
                     ft.Text(f"ID: {getattr(card, 'cardId', '')}", size=12, color=ft.Colors.GREY),
-                    ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE)
+                    ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE),
+                    ft.TextButton("Dismiss", on_click=lambda e: dismiss_item(summary), style=ft.ButtonStyle(color=ft.Colors.RED))
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 on_click=lambda e: show_card_popup(card),
                 bgcolor=ft.Colors.BLUE_50,
