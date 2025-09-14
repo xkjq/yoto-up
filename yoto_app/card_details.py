@@ -1342,6 +1342,7 @@ def make_show_card_details(
                         full = api.get_card(card_id)
                         # rewrite 'overlayLabel' sequentially
                         updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True)
+                        updated = api.rewrite_chapter_fields(updated, field="overlayLabel", sequential=True)
                         api.update_card(updated, return_card_model=False)
                         show_snack("Overlay labels relabelled")
                         try:
