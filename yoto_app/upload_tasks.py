@@ -658,11 +658,11 @@ async def start_uploads(event, ctx):
                     fileuploadrow.on_upload_complete()
                 page.update()
 
-    # append_all_after_uploads does not need the original upload_tasks variable
-    # (results are already awaited); pass an empty list to avoid referencing
-    # the undefined local `upload_tasks` variable which caused UnboundLocalError.
-    append_task = asyncio.create_task(append_all_after_uploads([]))
-    tasks = [append_task]
+        # append_all_after_uploads does not need the original upload_tasks variable
+        # (results are already awaited); pass an empty list to avoid referencing
+        # the undefined local `upload_tasks` variable which caused UnboundLocalError.
+        append_task = asyncio.create_task(append_all_after_uploads([]))
+        tasks = [append_task]
 
     status.value = "Uploading..."
     try:
