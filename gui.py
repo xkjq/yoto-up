@@ -21,13 +21,6 @@ from loguru import logger
 from yoto_app.logging_helpers import safe_log
 from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop
 
-import matplotlib.pyplot as plt
-import numpy as np
-import io
-import base64
-import contextlib
-import wave
-from waveform_utils import batch_audio_stats
 from yoto_app.show_waveforms import show_waveforms_popup
 
 # Supported audio extensions
@@ -74,9 +67,7 @@ To authenticate with your Yoto account:
 
 def main(page):
 
-    # Track per-file gain and temp file for upload
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
-    # In-memory cache for waveform/loudness data: {filepath: (audio, max_amp, avg_amp, lufs, ext, filepath)}
     waveform_cache = {}
 
     # Import audio_adjust_utils at module level for reliability

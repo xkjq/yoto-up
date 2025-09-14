@@ -155,6 +155,25 @@ class FileUploadRow:
         except Exception:
             pass
 
+    def update_file(self, new_filepath):
+        """
+        Update the row to reference a new file path and update displayed name.
+        """
+        import os
+        self.filepath = new_filepath
+        self.name = os.path.basename(new_filepath)
+        # Update the filename attribute on the row container
+        setattr(self.row, 'filename', new_filepath)
+        # Update the displayed file name in the UI
+        if self.inner_row.controls and isinstance(self.inner_row.controls[0], Text):
+            self.inner_row.controls[0].value = self.name
+        # Optionally reset status and progress
+        self.set_status('Queued')
+        self.set_progress(0.0)
+        self.uploaded = False
+        if self.maybe_page:
+            self.maybe_page.update()
+
 # --- End FileUploadRow class ---
 
 @logger.catch
