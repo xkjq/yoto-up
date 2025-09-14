@@ -1,12 +1,14 @@
 import asyncio
 import os
 import traceback
-from models import Chapter, ChapterDisplay, Card, CardContent
+from models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_api import YotoAPI
 from yoto_app.logging_helpers import safe_log
 from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
+import os
+import webbrowser
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
@@ -14,7 +16,6 @@ _LAST_PAGE = None
 # --- Robust FileUploadRow class ---
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
-        import os
         from flet import Row, ProgressBar
         self.filepath = filepath
         self.original_filepath = filepath  # Always keep the original file path
@@ -127,8 +128,6 @@ class FileUploadRow:
             print(f"[on_view_details] error: {e}")
 
     def on_preview(self, ev=None):
-        import webbrowser
-        import os
         url = f"file://{os.path.abspath(self.filepath)}"
         try:
             webbrowser.open(url)
@@ -160,7 +159,6 @@ class FileUploadRow:
         """
         Update the row to reference a new file path and update displayed name.
         """
-        import os
         self.filepath = new_filepath
         # self.name is only for display; keep original for title
         self.name = os.path.basename(new_filepath)
@@ -499,7 +497,6 @@ async def start_uploads(event, ctx):
             # Compose card metadata with gain adjustment notes
             card_metadata = None
             if gain_note_lines:
-                from models import CardMetadata
                 card_metadata = CardMetadata(note='\n'.join(gain_note_lines))
             card = Card(
                 title=title,
@@ -627,7 +624,6 @@ async def start_uploads(event, ctx):
                         if card.metadata:
                             card.metadata.note = str(note_val)
                         else:
-                            from models import CardMetadata
                             card.metadata = CardMetadata(note=str(note_val))
 
                     created = api.create_or_update_content(card, return_card=True)
