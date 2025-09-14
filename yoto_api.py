@@ -2416,6 +2416,49 @@ class YotoAPI:
 
         return card
 
+    def rewrite_chapter_fields(self, card: Card, field: str, value: str = "", sequential: bool=True) -> Card:
+        """
+        Rewrites the specified field for all chapters in a card to a new label.
+        Args:
+            card (Card): The card object containing chapters.
+            field (str): The field to set for all chapters (e.g., "key", "title").
+            label (str): The new label to set for all chapter titles.
+            sequential (bool): If True, appends a sequential number to each label (e.g., "Label 1", "Label 2", ...).
+
+        Returns:
+            Card: The updated card object with modified chapter labels.
+        """
+        logger.info(f"Rewriting chapter {field} to '{value}' (sequential={sequential})")
+        if not hasattr(card, "content") or not hasattr(card.content, "chapters"):
+            logger.warning("Card has no content or chapters to update.")
+            return card
+
+        if card.content.chapters is None:
+            logger.warning("Card content chapters is None.")
+            return card
+
+        def rewrite_field(chapter, new_value):
+            match field:
+                case "key":
+                    chapter.key = new_value
+                case "title":
+                    chapter.title = new_value
+                case "overlayLabel":
+                    chapter.overlayLabel = new_value
+                case _:
+                    logger.warning(f"Unsupported field '{field}' for rewriting.")
+                    raise ValueError(f"Unsupported field '{field}' for rewriting.")
+
+        for index, chapter in enumerate(card.content.chapters):
+            new_value = value
+            if sequential:
+                new_value = f"{value} {index + 1}".strip()
+            rewrite_field(chapter, new_value)
+            logger.debug(f"Updated chapter '{chapter.title}' {field} to '{new_value}'.")
+
+        return card
+
+
     def merge_chapters(self, card: Card, chapter_title: str = "Chapter 1", reset_overlay_labels: bool = True, reset_track_keys: bool = True) -> Card:
         """
         Merges all chapters in a card into a single chapter.
