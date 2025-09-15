@@ -451,11 +451,76 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 except Exception:
                     pass
                 # use api.search_yotoicons to refresh cache and then list cached results
-                api.search_yotoicons(search_field.value or "", show_in_console=False)
+                try:
+                    new_icons = api.search_yotoicons(search_field.value or "", show_in_console=False)
+                except Exception:
+                    new_icons = None
                 icons = load_cached_icons()
+                # integrate returned metadata for newly downloaded icons into in-memory maps
+                try:
+                    if new_icons:
+                        for m in new_icons:
+                            try:
+                                cp = m.get('cache_path') or m.get('cachePath')
+                                # ensure cache_path is a relative path under .yotoicons_cache or absolute
+                                if cp:
+                                    fname = Path(cp).name
+                                    _meta_by_filename[fname] = m
+                                url = m.get('img_url') or m.get('imgUrl') or m.get('url')
+                                if url:
+                                    try:
+                                        h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                        _meta_by_hash[h] = m
+                                    except Exception:
+                                        pass
+                                # if the cached image file exists, add candidate strings for immediate search
+                                if cp:
+                                    pth = str(cp)
+                                    # ensure path is inside .yotoicons_cache if not absolute
+                                    if not Path(pth).is_absolute():
+                                        pth = os.path.join('.yotoicons_cache', Path(pth).name)
+                                    if os.path.exists(pth):
+                                        _meta_map[pth] = m
+                                        # build candidate list similar to build_index()
+                                        cand = [Path(pth).name.lower()]
+                                        if m.get('title'):
+                                            cand.append(str(m.get('title')).lower())
+                                        if m.get('author'):
+                                            cand.append(str(m.get('author')).lower())
+                                        tags = m.get('publicTags') or m.get('tags')
+                                        if tags:
+                                            if isinstance(tags, list):
+                                                cand.append(" ".join([str(t).lower() for t in tags if t]))
+                                            else:
+                                                cand.append(str(tags).lower())
+                                        if m.get('displayIconId'):
+                                            cand.append(str(m.get('displayIconId')).lower())
+                                        if m.get('id'):
+                                            cand.append(str(m.get('id')).lower())
+                                        if m.get('category'):
+                                            cand.append(str(m.get('category')).lower())
+                                        if m.get('url'):
+                                            cand.append(str(m.get('url')).lower())
+                                        if m.get('img_url'):
+                                            cand.append(str(m.get('img_url')).lower())
+                                        # dedupe while preserving order
+                                        seen = set()
+                                        ordered = []
+                                        for s in cand:
+                                            if not s:
+                                                continue
+                                            if s not in seen:
+                                                seen.add(s)
+                                                ordered.append(s)
+                                        _candidates[pth] = ordered
+                        # mark metadata maps loaded so future operations can use them
+                        _meta_loaded = True
+                except Exception:
+                    pass
                 # render and notify (best-effort from background thread)
                 try:
                     # rebuild index since search may have added new metadata/cache files
+                    _index_built = False
                     build_index()
                     render_icons(icons)
                 except Exception:
