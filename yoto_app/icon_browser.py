@@ -5,7 +5,6 @@ import json
 import hashlib
 from pathlib import Path
 from difflib import SequenceMatcher
-import re
 from typing import Callable
 
 import flet as ft
@@ -56,6 +55,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     # faster metadata lookup maps (built once) to avoid rereading JSON files per-icon
     _meta_by_filename = {}   # filename -> meta
     _meta_by_hash = {}       # url-hash -> meta
+    _meta_by_filename_source = {}  # filename -> 'Yoto'|'YotoIcons'
+    _meta_by_hash_source = {}
     _meta_loaded = False
     _debounce_timer = None
 
@@ -63,25 +64,58 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         """Load all metadata JSON files once and build quick lookup maps.
         Populates _meta_by_filename and _meta_by_hash. Safe to call repeatedly.
         """
-        nonlocal _meta_by_filename, _meta_by_hash, _meta_loaded
+        nonlocal _meta_by_filename, _meta_by_hash, _meta_by_filename_source, _meta_by_hash_source, _meta_loaded
         if _meta_loaded:
             return
         logger.debug("load_all_metadata: loading metadata JSON files into memory")
         _meta_by_filename = {}
         _meta_by_hash = {}
+        _meta_by_filename_source = {}
+        _meta_by_hash_source = {}
         # official cache files
         try:
             yoto_meta = Path('.yoto_icon_cache') / 'icon_metadata.json'
             user_meta = Path('.yoto_icon_cache') / 'user_icon_metadata.json'
-            all_metas = []
             if yoto_meta.exists():
                 try:
-                    all_metas += json.loads(yoto_meta.read_text(encoding='utf-8') or '[]')
+                    metas = json.loads(yoto_meta.read_text(encoding='utf-8') or '[]')
+                    for m in metas:
+                        cp = m.get('cache_path') or m.get('cachePath')
+                        if cp:
+                            try:
+                                _meta_by_filename[Path(cp).name] = m
+                                _meta_by_filename_source[Path(cp).name] = 'Official cache'
+                            except Exception:
+                                pass
+                        url = m.get('url') or m.get('img_url') or m.get('imgUrl')
+                        if url:
+                            try:
+                                h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                _meta_by_hash[h] = m
+                                _meta_by_hash_source[h] = 'Official cache'
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             if user_meta.exists():
                 try:
-                    all_metas += json.loads(user_meta.read_text(encoding='utf-8') or '[]')
+                    metas = json.loads(user_meta.read_text(encoding='utf-8') or '[]')
+                    for m in metas:
+                        cp = m.get('cache_path') or m.get('cachePath')
+                        if cp:
+                            try:
+                                _meta_by_filename[Path(cp).name] = m
+                                _meta_by_filename_source[Path(cp).name] = 'Official cache'
+                            except Exception:
+                                pass
+                        url = m.get('url') or m.get('img_url') or m.get('imgUrl')
+                        if url:
+                            try:
+                                h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                _meta_by_hash[h] = m
+                                _meta_by_hash_source[h] = 'Official cache'
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             # yotoicons cache
@@ -89,33 +123,48 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
             if global_meta.exists():
                 try:
-                    all_metas += json.loads(global_meta.read_text(encoding='utf-8') or '[]')
+                    metas = json.loads(global_meta.read_text(encoding='utf-8') or '[]')
+                    for m in metas:
+                        cp = m.get('cache_path') or m.get('cachePath')
+                        if cp:
+                            try:
+                                _meta_by_filename[Path(cp).name] = m
+                                _meta_by_filename_source[Path(cp).name] = 'YotoIcons'
+                            except Exception:
+                                pass
+                        url = m.get('url') or m.get('img_url') or m.get('imgUrl')
+                        if url:
+                            try:
+                                h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                _meta_by_hash[h] = m
+                                _meta_by_hash_source[h] = 'YotoIcons'
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             for mf in yotoicons_dir.glob('*_metadata.json'):
                 if mf.name == global_meta.name:
                     continue
                 try:
-                    all_metas += json.loads(mf.read_text(encoding='utf-8') or '[]')
+                    metas = json.loads(mf.read_text(encoding='utf-8') or '[]')
+                    for m in metas:
+                        cp = m.get('cache_path') or m.get('cachePath')
+                        if cp:
+                            try:
+                                _meta_by_filename[Path(cp).name] = m
+                                _meta_by_filename_source[Path(cp).name] = 'YotoIcons'
+                            except Exception:
+                                pass
+                        url = m.get('url') or m.get('img_url') or m.get('imgUrl')
+                        if url:
+                            try:
+                                h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                _meta_by_hash[h] = m
+                                _meta_by_hash_source[h] = 'YotoIcons'
+                            except Exception:
+                                pass
                 except Exception:
                     continue
-            # build maps
-            for m in all_metas:
-                # map by cache path filename if present
-                cp = m.get('cache_path') or m.get('cachePath')
-                if cp:
-                    try:
-                        _meta_by_filename[Path(cp).name] = m
-                    except Exception:
-                        pass
-                # map by url/img_url hash
-                url = m.get('url') or m.get('img_url') or m.get('imgUrl')
-                if url:
-                    try:
-                        h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
-                        _meta_by_hash[h] = m
-                    except Exception:
-                        pass
         except Exception:
             pass
         _meta_loaded = True
@@ -147,17 +196,25 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     fname = Path(p).name
                     if fname in _meta_by_filename:
                         meta = _meta_by_filename.get(fname)
-                        src = 'Yoto' if (Path('.yoto_icon_cache') / 'icon_metadata.json').exists() and fname in _meta_by_filename else 'YotoIcons'
+                        src = _meta_by_filename_source.get(fname)
                     else:
                         stem = Path(p).stem
                         # check for url-hash prefix matches; stem may start with the 16-char hash
                         maybe_hash = stem[:16]
                         if maybe_hash in _meta_by_hash:
                             meta = _meta_by_hash.get(maybe_hash)
-                            src = 'YotoIcons'
+                            src = _meta_by_hash_source.get(maybe_hash)
                 except Exception:
                     meta = None
                     src = None
+                # if no explicit source from metadata maps, infer from the path
+                if not src:
+                    if p.startswith('.yoto_icon_cache') or p.startswith('./.yoto_icon_cache'):
+                        src = 'Official cache'
+                    elif p.startswith('.yotoicons_cache') or p.startswith('./.yotoicons_cache'):
+                        src = 'YotoIcons'
+                    else:
+                        src = 'Local'
                 _meta_map[p] = meta
                 _meta_source[p] = src
 
@@ -463,10 +520,33 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     return
                 # indicate search started
                 try:
-                    status_text.value = "Searching YotoIcons..."
+                    status_text.value = "Searching YotoIcons... (0 downloaded)"
                     page.update()
                 except Exception:
                     pass
+                # start a small monitor thread to report progress while the search runs
+                monitor_stop = threading.Event()
+                def _monitor():
+                    prev = 0
+                    while not monitor_stop.wait(0.7):
+                        try:
+                            yc = Path('.yotoicons_cache')
+                            cnt = 0
+                            if yc.exists():
+                                for f in yc.iterdir():
+                                    if f.is_file():
+                                        cnt += 1
+                            if cnt != prev:
+                                prev = cnt
+                                try:
+                                    status_text.value = f"Searching YotoIcons... ({cnt} files)"
+                                    page.update()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                monitor_thread = threading.Thread(target=_monitor, daemon=True)
+                monitor_thread.start()
                 # use api.search_yotoicons to refresh cache and then list cached results
                 try:
                     new_icons = api.search_yotoicons(search_field.value or "", show_in_console=False, return_new_only=True)
@@ -584,12 +664,16 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         render_icons(icons)
                 except Exception:
                     pass
+                # stop the monitor thread and clear status
+                try:
+                    monitor_stop.set()
+                except Exception:
+                    pass
                 try:
                     status_text.value = ""
                     page.update()
                 except Exception:
                     pass
-                show_snack("YotoIcons search complete")
             except Exception:
                 show_snack("YotoIcons search failed", True)
 
