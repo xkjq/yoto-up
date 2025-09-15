@@ -126,7 +126,23 @@ class PixelArtEditor:
                 '#00FF40', '#00FF80', '#00FFBF', '#00FFFF', '#00BFFF', '#0080FF', '#0040FF', '#0000FF',
                 '#4000FF', '#8000FF', '#BF00FF', '#FF00FF', '#FF00BF', '#FF0080', '#FF0040',
                 '#FFA500', '#800080', '#008000', '#808000', '#008080', '#C0C0C0', '#A52A2A', '#FFD700', '#B22222', '#228B22', '#4169E1', '#FF69B4', '#00CED1', '#F5DEB3', '#2F4F4F'
-            ]
+            ],
+            "Earth Tones": [
+                '#3B2F2F', '#8B5C2A', '#A0522D', '#C19A6B', '#BDB76B', '#DEB887', '#F4A460', '#D2B48C', '#EEDC82', '#C2B280', '#8B7D6B', '#6B4226', '#4E3629', '#7C482B', '#A67B5B', '#B2996E', '#C9AE5D', '#8B8000', '#556B2F', '#228B22', '#2E8B57', '#6B8E23', '#8FBC8F', '#BC8F8F', '#CD853F', '#D2691E', '#8B4513', '#A0522D', '#FFF8DC', '#F5DEB3', '#FFE4C4', '#FFDAB9',
+                '#6E260E', '#8B4513', '#A0522D', '#D2691E', '#CD853F', '#F4A460', '#DEB887', '#FFE4C4', '#FFF5EE', '#FAEBD7', '#FFEBCD', '#FFEFD5', '#FFDAB9'
+            ],
+            "Neon": [
+                '#39FF14', '#FF073A', '#FDFD96', '#FF6EC7', '#FFB347', '#FF44CC', '#00FFFF', '#FF00FF', '#FFFF00', '#FF3131', '#FFB3DE', '#B3FFB3', '#B3B3FF', '#FFB3B3', '#B3FFFF', '#FFFFB3', '#B3FFEC', '#FFB3EC', '#ECFFB3', '#B3ECFF', '#ECB3FF', '#FFECB3', '#B3FF39', '#39B3FF', '#FF39B3', '#B339FF', '#39FFB3', '#FF3939', '#39FF39', '#3939FF', '#FF39FF', '#39FFFF', '#FFFF39',
+                '#FF1493', '#FF4500', '#FF6347', '#FF69B4', '#FF7F50', '#FF8C00', '#FFA07A', '#FFA500', '#FFB6C1', '#FFC0CB', '#FFD700', '#FFE4B5', '#FFE4E1', '#FFEBCD', '#FFEFD5'
+            ],
+            "Greyscale": [
+                '#000000', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6', '#FFFFFF'
+            ],
+            "Retro": [
+                '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF',
+                '#C0C0C0', '#808080', '#800000', '#808000', '#008000', '#800080', '#008080', '#000080',
+                '#FFA500', '#A52A2A', '#F5DEB3', '#B22222', '#228B22', '#4169E1', '#FF69B4', '#FFD700', '#B39EB5', '#F49AC2', '#B2EC5D', '#77DD77', '#CB99C9', '#779ECB'
+            ],
         }
         self.color_set_dropdown = ft.Dropdown(
             label="Color Set",
