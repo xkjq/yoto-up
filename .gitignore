@@ -52,5 +52,6 @@ tokens.json
 
 .yoto_icon_cache/
 .yotoicons_cache/
+saved_icons/
 
 docs/site/
