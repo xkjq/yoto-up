@@ -9,6 +9,7 @@ from typing import Callable
 
 import flet as ft
 from loguru import logger
+from PIL import Image as PILImage
 
 from .icon_import_helpers import list_icon_cache_files
 
@@ -378,8 +379,35 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             if meta is None and not _index_built:
                 meta, meta_source = find_metadata_for_path(path)
 
-            preview = ft.Image(src=src, width=160, height=160)
-            details_panel.controls.append(preview)
+            # show a larger preview above the smaller one for better inspection
+            try:
+                abs_path = src if os.path.isabs(src) else os.path.abspath(src)
+            except Exception:
+                abs_path = src
+            # try to scale the large preview while preserving aspect ratio (upscale if small, downscale if huge)
+            try:
+                max_dim = 160
+                if os.path.exists(abs_path):
+                    try:
+                        with PILImage.open(abs_path) as im:
+                            w, h = im.size
+                        if w <= 0 or h <= 0:
+                            raise Exception("invalid image dimensions")
+                        ratio = max_dim / max(w, h)
+                        new_w = max(1, int(w * ratio))
+                        new_h = max(1, int(h * ratio))
+                    except Exception:
+                        # Pillow not available or failed -> fallback to a sensible fixed size
+                        new_w, new_h = (min(160, 160), min(160, 160))
+                else:
+                    new_w, new_h = (min(160, 160), min(160, 160))
+                large_preview = ft.Image(src=abs_path, width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
+            except Exception:
+                # final fallback
+                large_preview = ft.Image(src=abs_path, width=160, height=160, fit=ft.ImageFit.CONTAIN)
+            small_preview = ft.Image(src=src, width=16, height=16)
+            details_panel.controls.append(large_preview)
+            details_panel.controls.append(small_preview)
             # show human-friendly title if available
             if meta and meta.get('title'):
                 details_panel.controls.append(ft.Text(f"Title: {meta.get('title')}", weight=ft.FontWeight.BOLD))
