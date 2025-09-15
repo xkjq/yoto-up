@@ -178,6 +178,20 @@ class PixelArtEditor:
                 ], spacing=10)
             ], spacing=30),
         ])
+        # Add flip and rotate buttons
+        self.flip_horizontal_btn = ft.ElevatedButton("Flip Horizontal", on_click=lambda e: self.on_flip_image(e, 'horizontal'))
+        self.flip_vertical_btn = ft.ElevatedButton("Flip Vertical", on_click=lambda e: self.on_flip_image(e, 'vertical'))
+        self.rotate_left_btn = ft.ElevatedButton("Rotate Left", on_click=lambda e: self.on_rotate_image(e, -90))
+        self.rotate_right_btn = ft.ElevatedButton("Rotate Right", on_click=lambda e: self.on_rotate_image(e, 90))
+
+        # Add these buttons to the UI
+        self.container.controls.append(ft.Row([
+            self.flip_horizontal_btn,
+            self.flip_vertical_btn,
+            self.rotate_left_btn,
+            self.rotate_right_btn
+        ], spacing=10))
+
     def on_color_set_change(self, e):
         import copy
         set_name = self.color_set_dropdown.value
@@ -629,6 +643,37 @@ class PixelArtEditor:
         if page:
             page.open(dlg)
             page.update()
+
+    def flip_image(self, image, direction):
+        """Flip the image either horizontally or vertically."""
+        if direction == 'horizontal':
+            return image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        elif direction == 'vertical':
+            return image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        else:
+            raise ValueError("Invalid direction. Use 'horizontal' or 'vertical'.")
+
+    def rotate_image(self, image, angle):
+        """Rotate the image by a given angle."""
+        return image.rotate(angle, expand=True)
+
+    def crop_image(self, image, box):
+        """Crop the image to the given box (left, upper, right, lower)."""
+        return image.crop(box)
+
+    def on_flip_image(self, e, direction):
+        """Handle flipping the image."""
+        img = self._pixels_to_image(self.pixels)
+        flipped_img = self.flip_image(img, direction)
+        self.pixels = self._image_to_pixels(flipped_img)
+        self.refresh_grid()
+
+    def on_rotate_image(self, e, angle):
+        """Handle rotating the image."""
+        img = self._pixels_to_image(self.pixels)
+        rotated_img = self.rotate_image(img, angle)
+        self.pixels = self._image_to_pixels(rotated_img)
+        self.refresh_grid()
 
     def control(self):
         return self.container
