@@ -2,6 +2,14 @@ from pathlib import Path
 import flet as ft
 import sys
 import os
+from loguru import logger
+from PIL import Image
+import json
+try:
+    from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
+except ImportError:
+    from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
+
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -98,10 +106,27 @@ class PixelArtEditor:
             self.grid_container
         ])
     def on_import_icon(self, e):
-        import os
-        from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
         print("Importing icon from cache...")
-        icon_files = list_icon_cache_files()
+        # look in both caches so users can pick from either
+        icon_files = []
+        try:
+            for f in list_icon_cache_files(cache_dir='.yoto_icon_cache'):
+                icon_files.append(os.path.join('.yoto_icon_cache', f))
+        except Exception:
+            pass
+        try:
+            for f in list_icon_cache_files(cache_dir='.yotoicons_cache'):
+                icon_files.append(os.path.join('.yotoicons_cache', f))
+        except Exception:
+            pass
+        # dedupe while preserving order
+        seen = set()
+        uniq = []
+        for p in icon_files:
+            if p not in seen:
+                seen.add(p)
+                uniq.append(p)
+        icon_files = uniq
         print(f"Found icon files: {icon_files}")
         page = e.page if hasattr(e, 'page') else None
         if not icon_files:
@@ -111,31 +136,52 @@ class PixelArtEditor:
                 dlg.open = True
                 page.update()
             return
+        # dropdown values will be full relative paths (e.g. .yoto_icon_cache/abcd.png)
         dropdown = ft.Dropdown(label="Icon file", options=[ft.dropdown.Option(f) for f in icon_files], width=320)
         preview = ft.Image(width=64, height=64)
         status = ft.Text("")
         def on_select(ev):
-            fname = dropdown.value
-            if fname:
-                preview.src = os.path.join(".yoto_icon_cache", fname)
-                preview.update()
-        dropdown.on_change = on_select
-        def do_import(ev):
-            fname = dropdown.value
-            if not fname:
-                status.value = "Select an icon file."
-                status.update()
+            sel = dropdown.value
+            if not sel:
                 return
             try:
-                pixels = load_icon_as_pixels(os.path.join(".yoto_icon_cache", fname), size=self.size)
+                abs_path = os.path.abspath(sel)
+                # Flet sometimes needs absolute paths to load local files reliably
+                preview.src = abs_path
+                preview.update()
+                if page:
+                    page.update()
+            except Exception as ex:
+                status.value = f"Preview error: {ex}"
+                status.update()
+                if page:
+                    page.update()
+        dropdown.on_change = on_select
+        def do_import(ev):
+            sel = dropdown.value
+            if not sel:
+                status.value = "Select an icon file."
+                status.update()
+                if page:
+                    page.update()
+                return
+            try:
+                path = os.path.abspath(sel)
+                pixels = load_icon_as_pixels(path, size=self.size)
+                if not pixels or not isinstance(pixels, list):
+                    raise RuntimeError('Loaded icon returned invalid pixel data')
                 self.pixels = pixels
                 self.refresh_grid()
                 dlg.open = False
                 if page:
                     page.update()
             except Exception as ex:
-                status.value = f"Failed to load: {ex}"
+                import traceback
+                tb = traceback.format_exc()
+                status.value = f"Failed to load: {ex}\n{tb.splitlines()[-1]}"
                 status.update()
+                if page:
+                    page.update()
         dlg = ft.AlertDialog(
             title=ft.Text("Import Icon from Cache"),
             content=ft.Column([
@@ -220,11 +266,6 @@ class PixelArtEditor:
         return d
 
     def _pixels_to_image(self, pixels):
-        # returns a PIL Image or raises if PIL not available
-        try:
-            from PIL import Image
-        except Exception:
-            raise
         size = self.size
         img = Image.new('RGBA', (size, size), (255, 255, 255, 0))
         for y in range(size):
@@ -241,16 +282,23 @@ class PixelArtEditor:
         return img
 
     def _image_to_pixels(self, img):
-        # convert a PIL Image (mode RGB/RGBA) to pixels grid
-        try:
-            from PIL import Image
-        except Exception:
-            raise
+        # convert a PIL Image (mode RGB/RGBA) to pixels grid, always downsampling to grid size
         img = img.convert('RGBA')
         w, h = img.size
+        if w != self.size or h != self.size:
+            try:
+                resample = Image.Resampling.LANCZOS
+            except AttributeError:
+                if hasattr(Image, 'LANCZOS'):
+                    resample = Image.LANCZOS
+                elif hasattr(Image, 'Resampling') and hasattr(Image.Resampling, 'BICUBIC'):
+                    resample = Image.Resampling.BICUBIC
+                else:
+                    resample = 3  # 3 is BICUBIC in older PIL
+            img = img.resize((self.size, self.size), resample)
         pixels = [["#FFFFFF" for _ in range(self.size)] for _ in range(self.size)]
-        for y in range(min(h, self.size)):
-            for x in range(min(w, self.size)):
+        for y in range(self.size):
+            for x in range(self.size):
                 r, g, b, a = img.getpixel((x, y))
                 pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
         return pixels
@@ -280,7 +328,7 @@ class PixelArtEditor:
             try:
                 try:
                     img = self._pixels_to_image(self.pixels)
-                    img = img.resize((self.size * 16, self.size * 16), resample=1)
+                    # Save as original 16x16, do not resize
                     img.save(path)
                 except Exception:
                     # fallback: save JSON
@@ -317,7 +365,7 @@ class PixelArtEditor:
                 if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
                     files.append(fn)
         except Exception:
-            pass
+            logger.exception("Error listing saved icons")
         if not files:
             dlg = ft.AlertDialog(title=ft.Text("No saved icons found"), actions=[ft.TextButton("OK", on_click=lambda ev: self._close_dialog(dlg, page))])
             if page:
@@ -336,7 +384,6 @@ class PixelArtEditor:
             p = os.path.join(sd, v)
             if v.lower().endswith('.png'):
                 try:
-                    from PIL import Image
                     img = Image.open(p)
                     # create a temporary scaled preview
                     img2 = img.resize((64, 64))
@@ -344,7 +391,8 @@ class PixelArtEditor:
                     img2.save(tmp)
                     preview.src = tmp
                     preview.update()
-                except Exception:
+                except Exception as ex:
+                    logger.exception(f"Error loading image preview: {ex}")
                     preview.src = ''
                     preview.update()
             else:
@@ -355,25 +403,29 @@ class PixelArtEditor:
 
         def do_load(ev):
             v = dropdown.value
+            logger.debug(f"Loading selected icon: {v}")
             if not v:
                 status.value = "Select a file"
                 status.update()
                 return
             p = os.path.join(sd, v)
+            logger.debug(f"Full path to load: {p}")
             try:
                 if v.lower().endswith('.png'):
-                    from PIL import Image
                     img = Image.open(p)
                     pixels = self._image_to_pixels(img)
                 else:
-                    import json
                     with open(p, 'r', encoding='utf-8') as fh:
                         pixels = json.load(fh)
                 if isinstance(pixels, list):
+                    logger.debug(f"Loaded pixel data: {pixels}")
                     self.pixels = pixels
                     self.refresh_grid()
                     self._close_dialog(dlg, page)
+                else:
+                    logger.error("Loaded pixel data is not a list")
             except Exception as ex:
+                logger.error(f"Failed to load icon: {ex}")
                 status.value = f"Load failed: {ex}"
                 status.update()
 
