@@ -830,7 +830,7 @@ def main(page):
 
         api : YotoAPI = api_ref.get("api")
         api.get_public_icons(show_in_console=False)
-        api.get_user_icons(show_in_console=False)
+        #api.get_user_icons(show_in_console=False)
         # Always use the local page variable, not the argument
         page.update()
     page.auth_complete = auth_complete

@@ -452,7 +452,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     pass
                 # use api.search_yotoicons to refresh cache and then list cached results
                 try:
-                    new_icons = api.search_yotoicons(search_field.value or "", show_in_console=False)
+                    new_icons = api.search_yotoicons(search_field.value or "", show_in_console=False, return_new_only=True)
 
                     show_snack(f"YotoIcons search found {len(new_icons) if new_icons else 0} new icons")
                 except Exception:
@@ -545,6 +545,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                             seen.add(s)
                                             ordered.append(s)
                                     _candidates[pth] = ordered
+                            except Exception as e:
+                                logger.error(f"do_online_search: failed to integrate metadata for one icon: {e}")
                     # If any new files were discovered on disk, force metadata reload before rebuilding index
                     if discovered:
                         _meta_loaded = False
@@ -557,7 +559,12 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     # ensure metadata maps are reloaded from disk if needed
                     _meta_loaded = False
                     build_index()
-                    render_icons(icons)
+                    # apply the current filter so the UI respects the user's active search/settings
+                    try:
+                        do_filter()
+                    except Exception:
+                        # fallback: render all cached icons if filtering fails
+                        render_icons(icons)
                 except Exception:
                     pass
                 try:

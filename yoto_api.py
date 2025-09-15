@@ -1626,7 +1626,7 @@ class YotoAPI:
             rprint(table)
         return yoto_results + yotoicons_results
 
-    def search_yotoicons(self, tag: str, show_in_console: bool = True, limit: int = 20, refresh_cache: bool = False):
+    def search_yotoicons(self, tag: str, show_in_console: bool = True, limit: int = 20, refresh_cache: bool = False, return_new_only: bool = False):
         """
         Search and retrieve icons from yotoicons.com by tag (scrapes HTML, no API).
         Downloads and caches 16x16 pixel art images and metadata.
@@ -1640,6 +1640,7 @@ class YotoAPI:
         tag_metadata_path = cache_dir / f"{tag}_metadata.json"
         cache_expiry_seconds = 86400  # 1 day
         icons = None
+        new_icons = []
         console = Console()
         # Try per-tag cache first
         logger.debug(f"[YotoAPI] Checking tag cache: {tag_metadata_path}")
@@ -1780,6 +1781,8 @@ class YotoAPI:
                     table.add_row(icon["id"], icon["category"], tags, icon["author"], icon["downloads"], pixel_art)
                     progress.update(render_task, advance=1)
             rprint(table)
+        if return_new_only:
+            return new_icons
         return icons
 
 
