@@ -26,17 +26,26 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())
-    search_btn = ft.TextButton("Filter", on_click=lambda e: do_filter())
     online_search_btn = ft.ElevatedButton("Search YotoIcons online", on_click=lambda e: do_online_search())
-    search_row.controls.extend([search_field, search_btn, online_search_btn])
+    # keep the main search field and the online search button in the top row; the Filter button
+    # will be visually grouped with the fuzzy controls below for clarity.
+    # Group fuzzy controls + filter button into a bordered container so it's clear they belong together.
+    search_btn = ft.TextButton("Filter", on_click=lambda e: do_filter())
+    cb_fuzzy = ft.Checkbox(label="Fuzzy match", value=False, on_change=lambda e: do_filter())
+    threshold_field = ft.TextField(label="Threshold", value="0.6", width=80, tooltip="Match threshold 0..1 (higher = stricter)")
+    fuzzy_group = ft.Container(
+        content=ft.Row([cb_fuzzy, threshold_field, search_btn], spacing=8),
+        padding=8,
+        border=ft.border.all(1, "#E0E0E0"),
+        border_radius=6,
+    )
+    search_row.controls.extend([search_field, fuzzy_group, online_search_btn])
 
     # Source filter checkboxes
     cb_official = ft.Checkbox(label="Official", value=True, on_change=lambda e: do_filter())
     cb_yotoicons = ft.Checkbox(label="YotoIcons", value=True, on_change=lambda e: do_filter())
     cb_local = ft.Checkbox(label="Local", value=True, on_change=lambda e: do_filter())
-    cb_fuzzy = ft.Checkbox(label="Fuzzy match", value=False, on_change=lambda e: do_filter())
-    threshold_field = ft.TextField(label="Threshold", value="0.6", width=80, tooltip="Match threshold 0..1 (higher = stricter)")
-    filter_row = ft.Row([cb_official, cb_yotoicons, cb_local, cb_fuzzy, threshold_field], spacing=12)
+    filter_row = ft.Row([cb_official, cb_yotoicons, cb_local], spacing=12)
 
     icons_container = ft.GridView(expand=True, max_extent=80, child_aspect_ratio=1)
 
