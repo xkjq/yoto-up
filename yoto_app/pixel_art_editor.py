@@ -5,6 +5,7 @@ import os
 from loguru import logger
 from PIL import Image
 import json
+import copy
 try:
     from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
 except ImportError:
@@ -98,6 +99,7 @@ class PixelArtEditor:
         self.brightness_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Brightness", on_change=self.on_adjust_image)
         self.contrast_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Contrast", on_change=self.on_adjust_image)
         self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
+        self._original_pixels = None
 
         self.container = ft.Column([
             ft.Row([
@@ -125,17 +127,24 @@ class PixelArtEditor:
             ], spacing=30, alignment="start"),
         ])
     def on_adjust_image(self, e):
-        # Get slider values
         b = self.brightness_slider.value
         c = self.contrast_slider.value
         s = self.saturation_slider.value
-        # Convert current pixels to image
-        img = self._pixels_to_image(self.pixels)
+        # Store original grid before first adjustment
+        if self._original_pixels is None:
+            self._original_pixels = copy.deepcopy(self.pixels)
+        # If all sliders are at 1.0, restore original
+        if b == 1.0 and c == 1.0 and s == 1.0:
+            if self._original_pixels is not None:
+                self.pixels = copy.deepcopy(self._original_pixels)
+                self.refresh_grid()
+            return
+        # Otherwise, apply adjustments to original
+        img = self._pixels_to_image(self._original_pixels)
         from PIL import ImageEnhance
         img = ImageEnhance.Brightness(img).enhance(b)
         img = ImageEnhance.Contrast(img).enhance(c)
         img = ImageEnhance.Color(img).enhance(s)
-        # Convert back to pixels and update grid
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
