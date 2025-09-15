@@ -49,6 +49,11 @@ class PixelArtEditor:
             border_radius=4,
             border=ft.border.all(1, "#888888"),
         )
+        # Advanced color picker dialog
+        self.advanced_picker_btn = ft.ElevatedButton("Advanced Color Picker", on_click=self.open_color_picker)
+        self.color_picker_dialog = None
+        self.rgb_sliders = None
+        self.hex_input = None
         self.palette_colors = [
             '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF',
             '#FFFF00', '#FF00FF', '#00FFFF', '#888888', '#FFA500',
@@ -93,6 +98,7 @@ class PixelArtEditor:
             ft.Row([
                 self.color_field,
                 self.color_preview,
+                self.advanced_picker_btn,
                 self.clear_btn,
                 self.export_btn,
                 self.import_btn,
@@ -105,6 +111,81 @@ class PixelArtEditor:
             ft.Divider(),
             self.grid_container
         ])
+
+    def open_color_picker(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        # Parse current color
+        def hex_to_rgb(h):
+            h = h.lstrip('#')
+            if len(h) == 3:
+                h = ''.join([c*2 for c in h])
+            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+        def rgb_to_hex(r, g, b):
+            return f"#{r:02X}{g:02X}{b:02X}"
+        r, g, b = hex_to_rgb(self.current_color)
+        # Sliders
+        r_slider = ft.Slider(min=0, max=255, value=r, label="R", divisions=255, on_change=None)
+        g_slider = ft.Slider(min=0, max=255, value=g, label="G", divisions=255, on_change=None)
+        b_slider = ft.Slider(min=0, max=255, value=b, label="B", divisions=255, on_change=None)
+        hex_field = ft.TextField(label="Hex", value=self.current_color, width=100)
+        preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
+
+        def update_all(ev=None):
+            r_val = int(r_slider.value)
+            g_val = int(g_slider.value)
+            b_val = int(b_slider.value)
+            hex_val = rgb_to_hex(r_val, g_val, b_val)
+            hex_field.value = hex_val
+            preview.bgcolor = hex_val
+            hex_field.update()
+            preview.update()
+            self.current_color = hex_val
+            self.color_field.value = hex_val
+            self.color_field.update()
+            self.color_preview.bgcolor = hex_val
+            self.color_preview.update()
+            if page:
+                page.update()
+
+        def on_slider_change(ev):
+            update_all()
+
+        def on_hex_change(ev):
+            val = hex_field.value.strip()
+            if val.startswith('#') and (len(val) == 7 or len(val) == 4):
+                try:
+                    r_val, g_val, b_val = hex_to_rgb(val)
+                    r_slider.value = r_val
+                    g_slider.value = g_val
+                    b_slider.value = b_val
+                    r_slider.update()
+                    g_slider.update()
+                    b_slider.update()
+                    update_all()
+                except Exception:
+                    pass
+
+        r_slider.on_change = on_slider_change
+        g_slider.on_change = on_slider_change
+        b_slider.on_change = on_slider_change
+        hex_field.on_change = on_hex_change
+
+        content = ft.Column([
+            ft.Row([preview, hex_field]),
+            r_slider,
+            g_slider,
+            b_slider,
+        ], spacing=10)
+        self.color_picker_dialog = ft.AlertDialog(
+            title=ft.Text("Advanced Color Picker"),
+            content=content,
+            actions=[ft.TextButton("Close", on_click=lambda ev: self._close_dialog(self.color_picker_dialog, page))],
+            open=True
+        )
+        if page:
+            page.open(self.color_picker_dialog)
+            page.update()
+
     def on_import_icon(self, e):
         print("Importing icon from cache...")
         # look in both caches so users can pick from either
