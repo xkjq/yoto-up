@@ -94,6 +94,11 @@ class PixelArtEditor:
             width=grid_width,
             height=grid_height,
         )
+        # Add image adjustment sliders
+        self.brightness_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Brightness", on_change=self.on_adjust_image)
+        self.contrast_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Contrast", on_change=self.on_adjust_image)
+        self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
+
         self.container = ft.Column([
             ft.Row([
                 self.color_field,
@@ -109,8 +114,30 @@ class PixelArtEditor:
             self.palette,
             self.export_text,
             ft.Divider(),
-            self.grid_container
+            ft.Row([
+                self.grid_container,
+                ft.Column([
+                    ft.Text("Adjust Whole Picture:"),
+                    self.brightness_slider,
+                    self.contrast_slider,
+                    self.saturation_slider,
+                ], spacing=10, alignment="start")
+            ], spacing=30, alignment="start"),
         ])
+    def on_adjust_image(self, e):
+        # Get slider values
+        b = self.brightness_slider.value
+        c = self.contrast_slider.value
+        s = self.saturation_slider.value
+        # Convert current pixels to image
+        img = self._pixels_to_image(self.pixels)
+        from PIL import ImageEnhance
+        img = ImageEnhance.Brightness(img).enhance(b)
+        img = ImageEnhance.Contrast(img).enhance(c)
+        img = ImageEnhance.Color(img).enhance(s)
+        # Convert back to pixels and update grid
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
 
     def open_color_picker(self, e):
         page = e.page if hasattr(e, 'page') else None
