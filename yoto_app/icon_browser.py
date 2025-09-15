@@ -453,74 +453,109 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 # use api.search_yotoicons to refresh cache and then list cached results
                 try:
                     new_icons = api.search_yotoicons(search_field.value or "", show_in_console=False)
+
+                    show_snack(f"YotoIcons search found {len(new_icons) if new_icons else 0} new icons")
                 except Exception:
                     new_icons = None
                 icons = load_cached_icons()
                 # integrate returned metadata for newly downloaded icons into in-memory maps
                 try:
+                    discovered = 0
                     if new_icons:
                         for m in new_icons:
                             try:
                                 cp = m.get('cache_path') or m.get('cachePath')
-                                # ensure cache_path is a relative path under .yotoicons_cache or absolute
-                                if cp:
-                                    fname = Path(cp).name
-                                    _meta_by_filename[fname] = m
                                 url = m.get('img_url') or m.get('imgUrl') or m.get('url')
+                                # register in filename/hash maps regardless
+                                if cp:
+                                    try:
+                                        fname = Path(cp).name
+                                        _meta_by_filename[fname] = m
+                                    except Exception:
+                                        pass
                                 if url:
                                     try:
                                         h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
                                         _meta_by_hash[h] = m
                                     except Exception:
                                         pass
-                                # if the cached image file exists, add candidate strings for immediate search
+
+                                # try to resolve the actual cached image path
+                                pth = None
                                 if cp:
-                                    pth = str(cp)
-                                    # ensure path is inside .yotoicons_cache if not absolute
-                                    if not Path(pth).is_absolute():
-                                        pth = os.path.join('.yotoicons_cache', Path(pth).name)
-                                    if os.path.exists(pth):
-                                        _meta_map[pth] = m
-                                        # build candidate list similar to build_index()
-                                        cand = [Path(pth).name.lower()]
-                                        if m.get('title'):
-                                            cand.append(str(m.get('title')).lower())
-                                        if m.get('author'):
-                                            cand.append(str(m.get('author')).lower())
-                                        tags = m.get('publicTags') or m.get('tags')
-                                        if tags:
-                                            if isinstance(tags, list):
-                                                cand.append(" ".join([str(t).lower() for t in tags if t]))
-                                            else:
-                                                cand.append(str(tags).lower())
-                                        if m.get('displayIconId'):
-                                            cand.append(str(m.get('displayIconId')).lower())
-                                        if m.get('id'):
-                                            cand.append(str(m.get('id')).lower())
-                                        if m.get('category'):
-                                            cand.append(str(m.get('category')).lower())
-                                        if m.get('url'):
-                                            cand.append(str(m.get('url')).lower())
-                                        if m.get('img_url'):
-                                            cand.append(str(m.get('img_url')).lower())
-                                        # dedupe while preserving order
-                                        seen = set()
-                                        ordered = []
-                                        for s in cand:
-                                            if not s:
-                                                continue
-                                            if s not in seen:
-                                                seen.add(s)
-                                                ordered.append(s)
-                                        _candidates[pth] = ordered
-                        # mark metadata maps loaded so future operations can use them
-                        _meta_loaded = True
+                                    cand_path = Path(cp)
+                                    if not cand_path.is_absolute():
+                                        cand_path = Path('.').joinpath(cp)
+                                    # if the path is like '.yotoicons_cache/xxx.png' normalize to local path
+                                    try:
+                                        if not cand_path.exists():
+                                            # try under .yotoicons_cache with just the filename
+                                            cand_path2 = Path('.yotoicons_cache') / Path(cp).name
+                                            if cand_path2.exists():
+                                                cand_path = cand_path2
+                                    except Exception:
+                                        pass
+                                    if cand_path.exists():
+                                        pth = str(cand_path)
+                                # fallback: if we have a url hash, find any file in .yotoicons_cache starting with that hash
+                                if not pth and url:
+                                    try:
+                                        h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                        yc = Path('.yotoicons_cache')
+                                        if yc.exists():
+                                            for f in yc.iterdir():
+                                                if f.stem.startswith(h):
+                                                    pth = str(f)
+                                                    break
+                                    except Exception:
+                                        pass
+
+                                if pth and os.path.exists(pth):
+                                    discovered += 1
+                                    _meta_map[pth] = m
+                                    # build candidate list similar to build_index()
+                                    cand = [Path(pth).name.lower()]
+                                    if m.get('title'):
+                                        cand.append(str(m.get('title')).lower())
+                                    if m.get('author'):
+                                        cand.append(str(m.get('author')).lower())
+                                    tags = m.get('publicTags') or m.get('tags')
+                                    if tags:
+                                        if isinstance(tags, list):
+                                            cand.append(" ".join([str(t).lower() for t in tags if t]))
+                                        else:
+                                            cand.append(str(tags).lower())
+                                    if m.get('displayIconId'):
+                                        cand.append(str(m.get('displayIconId')).lower())
+                                    if m.get('id'):
+                                        cand.append(str(m.get('id')).lower())
+                                    if m.get('category'):
+                                        cand.append(str(m.get('category')).lower())
+                                    if m.get('url'):
+                                        cand.append(str(m.get('url')).lower())
+                                    if m.get('img_url'):
+                                        cand.append(str(m.get('img_url')).lower())
+                                    # dedupe while preserving order
+                                    seen = set()
+                                    ordered = []
+                                    for s in cand:
+                                        if not s:
+                                            continue
+                                        if s not in seen:
+                                            seen.add(s)
+                                            ordered.append(s)
+                                    _candidates[pth] = ordered
+                    # If any new files were discovered on disk, force metadata reload before rebuilding index
+                    if discovered:
+                        _meta_loaded = False
                 except Exception:
                     pass
                 # render and notify (best-effort from background thread)
                 try:
                     # rebuild index since search may have added new metadata/cache files
                     _index_built = False
+                    # ensure metadata maps are reloaded from disk if needed
+                    _meta_loaded = False
                     build_index()
                     render_icons(icons)
                 except Exception:
