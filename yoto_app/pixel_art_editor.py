@@ -100,6 +100,41 @@ class PixelArtEditor:
         self.contrast_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Contrast", on_change=self.on_adjust_image)
         self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
         self._original_pixels = None
+        self._palette_backup = None
+
+        # Add color set dropdown
+        self.color_sets = {
+            "Default": [
+                '#000000', '#222222', '#444444', '#666666', '#888888', '#AAAAAA', '#CCCCCC', '#FFFFFF',
+                '#FF0000', '#CC3333', '#FF6666', '#FF9999', '#FFCCCC',
+                '#00FF00', '#33CC33', '#66FF66', '#99FF99', '#CCFFCC',
+                '#0000FF', '#3333CC', '#6666FF', '#9999FF', '#CCCCFF',
+                '#FFFF00', '#FFCC00', '#FF9900', '#FF6600', '#FFA500',
+                '#FF00FF', '#CC33CC', '#FF66FF', '#FF99FF', '#FFCCFF',
+                '#00FFFF', '#33CCCC', '#66FFFF', '#99FFFF', '#CCFFFF',
+                '#800080', '#A52A2A', '#008000', '#808000', '#008080', '#C0C0C0', '#FFD700', '#B22222', '#228B22', '#4169E1', '#FF69B4', '#00CED1', '#F5DEB3', '#2F4F4F'
+            ],
+            "Pastel": [
+                '#FFD1DC', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA', '#B0E0E6', '#E0BBE4', '#F3E5AB', '#E6E6FA', '#F5DEB3', '#D8BFD8', '#E0FFFF', '#F0FFF0', '#F5F5DC', '#FFE4E1',
+                '#F3C6E2', '#F7CAC9', '#B5B9D6', '#C1F0F6', '#F3E5AB', '#E6E6FA', '#F5DEB3', '#D8BFD8', '#E0FFFF', '#F0FFF0', '#F5F5DC', '#FFE4E1', '#F3C6E2', '#F7CAC9', '#B5B9D6', '#C1F0F6',
+                '#F8BBD0', '#FADADD', '#E6CFCF', '#F9E3E3', '#F6E3B4', '#FFFACD', '#FFF5E1', '#FDFD96', '#E0F7FA', '#B2EBF2', '#B2DFDB', '#DCEDC8', '#C8E6C9', '#D1F2EB', '#E0F2F1',
+                '#D7BDE2', '#A9DFBF', '#F9E79F', '#F7DC6F', '#F5CBA7', '#FAD7A0', '#FDEBD0', '#F6DDCC', '#F9E79F', '#F7DC6F', '#F5CBA7', '#FAD7A0', '#FDEBD0', '#F6DDCC',
+                '#E3E4FA', '#D6CADD', '#C3B1E1', '#B39EB5', '#B2A1C7', '#C1B2D7', '#D1CFE2', '#E2D6F7', '#E6E6FA', '#E0BBE4', '#D8BFD8', '#F3E5AB', '#F5F5DC', '#F0FFF0', '#E0FFFF', '#FFE4E1'
+            ],
+            "Vivid": [
+                '#FF0000', '#FF4000', '#FF8000', '#FFBF00', '#FFFF00', '#BFFF00', '#80FF00', '#40FF00', '#00FF00',
+                '#00FF40', '#00FF80', '#00FFBF', '#00FFFF', '#00BFFF', '#0080FF', '#0040FF', '#0000FF',
+                '#4000FF', '#8000FF', '#BF00FF', '#FF00FF', '#FF00BF', '#FF0080', '#FF0040',
+                '#FFA500', '#800080', '#008000', '#808000', '#008080', '#C0C0C0', '#A52A2A', '#FFD700', '#B22222', '#228B22', '#4169E1', '#FF69B4', '#00CED1', '#F5DEB3', '#2F4F4F'
+            ]
+        }
+        self.color_set_dropdown = ft.Dropdown(
+            label="Color Set",
+            options=[ft.dropdown.Option(k) for k in self.color_sets.keys()],
+            value="Default",
+            width=160,
+            on_change=self.on_color_set_change
+        )
 
         self.container = ft.Column([
             ft.Row([
@@ -119,13 +154,41 @@ class PixelArtEditor:
             ft.Row([
                 self.grid_container,
                 ft.Column([
+                    self.color_set_dropdown,
                     ft.Text("Adjust Whole Picture:"),
                     self.brightness_slider,
                     self.contrast_slider,
                     self.saturation_slider,
-                ], spacing=10, alignment="start")
-            ], spacing=30, alignment="start"),
+                ], spacing=10)
+            ], spacing=30),
         ])
+    def on_color_set_change(self, e):
+        import copy
+        set_name = self.color_set_dropdown.value
+        palette = self.color_sets.get(set_name, self.palette_colors)
+        # If switching to Default, restore backup
+        if set_name == "Default" and self._palette_backup is not None:
+            self.pixels = copy.deepcopy(self._palette_backup)
+            self.refresh_grid()
+            return
+        # If switching away from Default, store backup
+        if set_name != "Default" and self._palette_backup is None:
+            self._palette_backup = copy.deepcopy(self.pixels)
+        def closest(hex_color):
+            h = hex_color.lstrip('#')
+            if len(h) == 3:
+                h = ''.join([c*2 for c in h])
+            r1, g1, b1 = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            def dist(c2):
+                h2 = c2.lstrip('#')
+                if len(h2) == 3:
+                    h2 = ''.join([c*2 for c in h2])
+                r2, g2, b2 = int(h2[0:2], 16), int(h2[2:4], 16), int(h2[4:6], 16)
+                return (r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2
+            return min(palette, key=dist)
+        new_pixels = [[closest(c) for c in row] for row in self.pixels]
+        self.pixels = new_pixels
+        self.refresh_grid()
     def on_adjust_image(self, e):
         b = self.brightness_slider.value
         c = self.contrast_slider.value
