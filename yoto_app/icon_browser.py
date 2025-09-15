@@ -26,7 +26,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD)])
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-    search_field = ft.TextField(label="Search cached icons", width=400)
+    search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())
     search_btn = ft.TextButton("Filter", on_click=lambda e: do_filter())
     online_search_btn = ft.ElevatedButton("Search YotoIcons online", on_click=lambda e: do_online_search())
     search_row.controls.extend([search_field, search_btn, online_search_btn])
@@ -57,6 +57,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     _meta_by_filename = {}   # filename -> meta
     _meta_by_hash = {}       # url-hash -> meta
     _meta_loaded = False
+    _debounce_timer = None
 
     def load_all_metadata():
         """Load all metadata JSON files once and build quick lookup maps.
@@ -279,6 +280,22 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             pass
 
         return None, None
+
+    def schedule_filter(delay: float = 0.5):
+        """Debounce wrapper: schedule do_filter to run after `delay` seconds since the last keystroke."""
+        nonlocal _debounce_timer
+        try:
+            if _debounce_timer is not None:
+                try:
+                    _debounce_timer.cancel()
+                except Exception:
+                    pass
+            _debounce_timer = threading.Timer(delay, lambda: do_filter())
+            _debounce_timer.daemon = True
+            _debounce_timer.start()
+        except Exception:
+            # fallback to immediate
+            do_filter()
 
     def show_icon_details(path: str):
         # Build a simple details view for the selected icon
