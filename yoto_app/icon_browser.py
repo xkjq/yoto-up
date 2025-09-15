@@ -44,6 +44,9 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     # Details panel on the right (fixed column)
     details_panel = ft.Column([ft.Text("Select an icon to see details", size=14)], spacing=8)
 
+    # status indicator shown under filters when long operations run
+    status_text = ft.Text("", size=12, color="#1E90FF")
+
     # in-memory caches to avoid expensive repeated JSON reads and metadata parsing
     _meta_map = {}        # path -> metadata dict or None
     _meta_source = {}     # path -> source label string or None
@@ -122,6 +125,12 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         """
         nonlocal _meta_map, _meta_source, _candidates, _index_built
         logger.debug("build_index: rebuilding metadata/candidate index")
+        try:
+            status_text.value = "Rebuilding index..."
+            page.update()
+        except Exception:
+            pass
+
         # ensure metadata maps are loaded once
         load_all_metadata()
         _meta_map = {}
@@ -189,6 +198,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 _meta_source[p] = None
                 _candidates[p] = [os.path.basename(p).lower()]
         _index_built = True
+        try:
+            status_text.value = ""
+            page.update()
+        except Exception:
+            pass
 
     def load_cached_icons():
         icons = []
@@ -430,6 +444,12 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 if not api:
                     show_snack("API not available; authenticate first", error=True)
                     return
+                # indicate search started
+                try:
+                    status_text.value = "Searching YotoIcons..."
+                    page.update()
+                except Exception:
+                    pass
                 # use api.search_yotoicons to refresh cache and then list cached results
                 api.search_yotoicons(search_field.value or "", show_in_console=False)
                 icons = load_cached_icons()
@@ -440,6 +460,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     render_icons(icons)
                 except Exception:
                     pass
+                try:
+                    status_text.value = ""
+                    page.update()
+                except Exception:
+                    pass
                 show_snack("YotoIcons search complete")
             except Exception:
                 show_snack("YotoIcons search failed", True)
@@ -447,7 +472,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         threading.Thread(target=_worker, daemon=True).start()
 
     # build left panel (search + source filters + icons) and make it scrollable independently
-    left_panel = ft.Column([search_row, filter_row, ft.Divider(), icons_container], scroll=ft.ScrollMode.AUTO, expand=True)
+    left_panel = ft.Column([search_row, filter_row, status_text, ft.Divider(), icons_container], scroll=ft.ScrollMode.AUTO, expand=True)
 
     # container for the right details column (fixed width)
     detail_container = ft.Container(content=details_panel, width=320)
