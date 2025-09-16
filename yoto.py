@@ -248,7 +248,6 @@ def versions(
         restore: POST the version back to the API to restore content (positional path or --path)
         delete: delete a specific version file (positional path or --path)
         delete-all: remove all saved versions for the given card id
-        """
     """
     API = get_api()
     verb_l = (verb or '').lower()
