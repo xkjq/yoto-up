@@ -318,7 +318,7 @@ class PixelArtEditor:
             update_all()
 
         def on_hex_change(ev):
-            val = hex_field.value.strip()
+            val = (hex_field.value or '').strip()
             if val.startswith('#') and (len(val) == 7 or len(val) == 4):
                 try:
                     r_val, g_val, b_val = hex_to_rgb(val)
@@ -743,10 +743,10 @@ class PixelArtEditor:
         """Adjust the hue of the image by a specified degree."""
         import colorsys
         def shift_hue(r, g, b, degrees):
-            h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+            h, lightness, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
             h = (h + degrees / 360) % 1
-            r, g, b = colorsys.hls_to_rgb(h, l, s)
-            return int(r * 255), int(g * 255), int(b * 255)
+            r2, g2, b2 = colorsys.hls_to_rgb(h, lightness, s)
+            return int(r2 * 255), int(g2 * 255), int(b2 * 255)
         pixels = image.load()
         for y in range(image.height):
             for x in range(image.width):
@@ -801,6 +801,69 @@ class PixelArtEditor:
         cropped = ImageEnhance.Contrast(cropped).enhance(contrast)
         image.paste(cropped, region)
         return image
+
+    # UI handlers for the color manipulation buttons (ensure these are present)
+    def on_invert_colors(self, e):
+        img = self._pixels_to_image(self.pixels)
+        img = self.invert_colors(img)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_convert_to_grayscale(self, e):
+        img = self._pixels_to_image(self.pixels)
+        img = self.convert_to_grayscale(img)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_adjust_hue(self, e, degrees):
+        img = self._pixels_to_image(self.pixels)
+        img = self.adjust_hue(img, degrees)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_replace_color(self, e, target_color, replacement_color):
+        img = self._pixels_to_image(self.pixels)
+        img = self.replace_color(img, self._hex_to_rgba(target_color), self._hex_to_rgba(replacement_color))
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_apply_gradient_overlay(self, e, gradient_color):
+        img = self._pixels_to_image(self.pixels)
+        img = self.apply_gradient_overlay(img, self._hex_to_rgba(gradient_color))
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_adjust_opacity(self, e, opacity):
+        img = self._pixels_to_image(self.pixels)
+        img = self.adjust_opacity(img, opacity)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_apply_sepia_tone(self, e):
+        img = self._pixels_to_image(self.pixels)
+        img = self.apply_sepia_tone(img)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_pixelate(self, e, pixel_size):
+        img = self._pixels_to_image(self.pixels)
+        img = self.pixelate(img, pixel_size)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_quantize_colors(self, e, num_colors):
+        img = self._pixels_to_image(self.pixels)
+        img = self.quantize_colors(img, num_colors)
+        if hasattr(img, 'convert'):
+            img = img.convert('RGBA')
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
+
+    def on_adjust_brightness_contrast_region(self, e, region, brightness, contrast):
+        img = self._pixels_to_image(self.pixels)
+        img = self.adjust_brightness_contrast_region(img, region, brightness, contrast)
+        self.pixels = self._image_to_pixels(img)
+        self.refresh_grid()
 
     def control(self):
         return self.container
