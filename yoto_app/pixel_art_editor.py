@@ -184,13 +184,51 @@ class PixelArtEditor:
         self.rotate_left_btn = ft.ElevatedButton("Rotate Left", on_click=lambda e: self.on_rotate_image(e, -90))
         self.rotate_right_btn = ft.ElevatedButton("Rotate Right", on_click=lambda e: self.on_rotate_image(e, 90))
 
+        # Add filter buttons
+        self.blur_filter_btn = ft.ElevatedButton("Apply Blur", on_click=lambda e: self.on_apply_filter(e, 'BLUR'))
+        self.sharpen_filter_btn = ft.ElevatedButton("Apply Sharpen", on_click=lambda e: self.on_apply_filter(e, 'SHARPEN'))
+
         # Add these buttons to the UI
         self.container.controls.append(ft.Row([
             self.flip_horizontal_btn,
             self.flip_vertical_btn,
             self.rotate_left_btn,
-            self.rotate_right_btn
+            self.rotate_right_btn,
+            self.blur_filter_btn,
+            self.sharpen_filter_btn
         ], spacing=10))
+
+        # Add buttons for new color manipulation features
+        self.invert_colors_btn = ft.ElevatedButton("Invert Colors", on_click=self.on_invert_colors)
+        self.grayscale_btn = ft.ElevatedButton("Convert to Grayscale", on_click=self.on_convert_to_grayscale)
+        self.hue_adjust_btn = ft.ElevatedButton("Adjust Hue", on_click=lambda e: self.on_adjust_hue(e, 30))
+        self.color_replace_btn = ft.ElevatedButton("Replace Color", on_click=lambda e: self.on_replace_color(e, '#FF0000', '#00FF00'))
+        self.gradient_overlay_btn = ft.ElevatedButton("Apply Gradient Overlay", on_click=lambda e: self.on_apply_gradient_overlay(e, '#FF0000'))
+        self.opacity_adjust_btn = ft.ElevatedButton("Adjust Opacity", on_click=lambda e: self.on_adjust_opacity(e, 0.5))
+        self.sepia_tone_btn = ft.ElevatedButton("Apply Sepia Tone", on_click=self.on_apply_sepia_tone)
+        self.pixelate_btn = ft.ElevatedButton("Pixelate", on_click=lambda e: self.on_pixelate(e, 5))
+        self.quantize_colors_btn = ft.ElevatedButton("Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16))
+        self.brightness_contrast_region_btn = ft.ElevatedButton("Adjust Brightness/Contrast (Region)", on_click=lambda e: self.on_adjust_brightness_contrast_region(e, (0, 0, 8, 8), 1.5, 1.2))
+
+        # Add these buttons to the UI
+        self.container.controls.append(ft.Column([
+            self.invert_colors_btn,
+            self.grayscale_btn,
+            self.hue_adjust_btn,
+            self.color_replace_btn,
+            self.gradient_overlay_btn,
+            self.opacity_adjust_btn,
+            self.sepia_tone_btn,
+            self.pixelate_btn,
+            self.quantize_colors_btn,
+            self.brightness_contrast_region_btn
+        ], spacing=10))
+
+        # Wire dialog handlers for the buttons
+        try:
+            self._wire_dialogs()
+        except Exception:
+            pass
 
     def on_color_set_change(self, e):
         import copy
@@ -661,6 +699,24 @@ class PixelArtEditor:
         """Crop the image to the given box (left, upper, right, lower)."""
         return image.crop(box)
 
+    def apply_filter(self, image, filter_type):
+        """Apply a filter to the image."""
+        if filter_type == 'BLUR':
+            from PIL import ImageFilter
+            return image.filter(ImageFilter.BLUR)
+        elif filter_type == 'SHARPEN':
+            from PIL import ImageFilter
+            return image.filter(ImageFilter.SHARPEN)
+        else:
+            raise ValueError("Unsupported filter type. Use 'BLUR' or 'SHARPEN'.")
+
+    def on_apply_filter(self, e, filter_type):
+        """Handle applying a filter to the image."""
+        img = self._pixels_to_image(self.pixels)
+        filtered_img = self.apply_filter(img, filter_type)
+        self.pixels = self._image_to_pixels(filtered_img)
+        self.refresh_grid()
+
     def on_flip_image(self, e, direction):
         """Handle flipping the image."""
         img = self._pixels_to_image(self.pixels)
@@ -675,8 +731,256 @@ class PixelArtEditor:
         self.pixels = self._image_to_pixels(rotated_img)
         self.refresh_grid()
 
+    def invert_colors(self, image):
+        """Invert the colors of the image."""
+        return image.point(lambda p: 255 - p)
+
+    def convert_to_grayscale(self, image):
+        """Convert the image to grayscale."""
+        return image.convert('L').convert('RGBA')
+
+    def adjust_hue(self, image, degrees):
+        """Adjust the hue of the image by a specified degree."""
+        import colorsys
+        def shift_hue(r, g, b, degrees):
+            h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+            h = (h + degrees / 360) % 1
+            r, g, b = colorsys.hls_to_rgb(h, l, s)
+            return int(r * 255), int(g * 255), int(b * 255)
+        pixels = image.load()
+        for y in range(image.height):
+            for x in range(image.width):
+                r, g, b, a = pixels[x, y]
+                pixels[x, y] = (*shift_hue(r, g, b, degrees), a)
+        return image
+
+    def replace_color(self, image, target_color, replacement_color):
+        """Replace all instances of a specific color with another color."""
+        pixels = image.load()
+        for y in range(image.height):
+            for x in range(image.width):
+                if pixels[x, y][:3] == target_color[:3]:
+                    pixels[x, y] = replacement_color
+        return image
+
+    def apply_gradient_overlay(self, image, gradient):
+        """Apply a gradient overlay to the image."""
+        overlay = Image.new('RGBA', image.size, gradient)
+        return Image.alpha_composite(image, overlay)
+
+    def adjust_opacity(self, image, opacity):
+        """Adjust the opacity of the image."""
+        alpha = image.split()[-1]
+        alpha = alpha.point(lambda p: int(p * opacity))
+        image.putalpha(alpha)
+        return image
+
+    def apply_sepia_tone(self, image):
+        """Apply a sepia tone to the image."""
+        sepia = [(r * 0.393 + g * 0.769 + b * 0.189,
+                  r * 0.349 + g * 0.686 + b * 0.168,
+                  r * 0.272 + g * 0.534 + b * 0.131)
+                 for r, g, b in image.getdata()]
+        image.putdata([tuple(map(int, p)) for p in sepia])
+        return image
+
+    def pixelate(self, image, pixel_size):
+        """Pixelate the image by enlarging each pixel."""
+        small = image.resize((image.width // pixel_size, image.height // pixel_size), Image.Resampling.NEAREST)
+        return small.resize(image.size, Image.Resampling.NEAREST)
+
+    def quantize_colors(self, image, num_colors):
+        """Reduce the number of colors in the image."""
+        return image.quantize(colors=num_colors)
+
+    def adjust_brightness_contrast_region(self, image, region, brightness, contrast):
+        """Adjust brightness and contrast for a specific region."""
+        from PIL import ImageEnhance
+        cropped = image.crop(region)
+        cropped = ImageEnhance.Brightness(cropped).enhance(brightness)
+        cropped = ImageEnhance.Contrast(cropped).enhance(contrast)
+        image.paste(cropped, region)
+        return image
+
     def control(self):
         return self.container
+
+    class _SmallDialog:
+        def __init__(self, title, content, page=None):
+            self.dialog = ft.AlertDialog(title=ft.Text(title), content=content, actions=[], open=False)
+            self.page = page
+        def open(self):
+            if self.page:
+                self.page.open(self.dialog)
+                self.page.update()
+            else:
+                self.dialog.open = True
+        def close(self):
+            if self.page:
+                self.page.update()
+            self.dialog.open = False
+
+    def _open_replace_color_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        target_field = ft.TextField(label="Target Color (hex)", value="#FF0000", width=140)
+        replacement_field = ft.TextField(label="Replacement Color (hex)", value="#00FF00", width=140)
+        status = ft.Text("")
+        def do_replace(ev):
+            t = (target_field.value or '').strip()
+            r = (replacement_field.value or '').strip()
+            if not t.startswith('#') or not r.startswith('#'):
+                status.value = "Enter valid hex colors like #FF0000"
+                status.update()
+                return
+            self.on_replace_color(ev, t, r)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([target_field, replacement_field, status])
+        dlg = self._SmallDialog("Replace Color", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Replace", on_click=do_replace), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    def _open_gradient_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        color_field = ft.TextField(label="Gradient Color (hex)", value="#FF0000", width=140)
+        status = ft.Text("")
+        def do_apply(ev):
+            c = (color_field.value or '').strip()
+            if not c.startswith('#'):
+                status.value = "Enter a valid hex color like #FF0000"
+                status.update()
+                return
+            self.on_apply_gradient_overlay(ev, c)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([color_field, status])
+        dlg = self._SmallDialog("Gradient Overlay", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    def _open_hue_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        degrees_field = ft.TextField(label="Degrees (e.g. 30 or -30)", value="30", width=140)
+        status = ft.Text("")
+        def do_apply(ev):
+            try:
+                deg = int((degrees_field.value or '').strip())
+            except Exception:
+                status.value = "Enter an integer degree value"
+                status.update()
+                return
+            self.on_adjust_hue(ev, deg)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([degrees_field, status])
+        dlg = self._SmallDialog("Adjust Hue", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    def _open_opacity_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        opacity_field = ft.TextField(label="Opacity (0.0-1.0)", value="0.5", width=140)
+        status = ft.Text("")
+        def do_apply(ev):
+            try:
+                op = float((opacity_field.value or '').strip())
+            except Exception:
+                status.value = "Enter a float between 0.0 and 1.0"
+                status.update()
+                return
+            if op < 0 or op > 1:
+                status.value = "Opacity must be between 0.0 and 1.0"
+                status.update()
+                return
+            self.on_adjust_opacity(ev, op)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([opacity_field, status])
+        dlg = self._SmallDialog("Adjust Opacity", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    def _open_pixelate_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        size_field = ft.TextField(label="Pixel size (integer)", value="5", width=140)
+        status = ft.Text("")
+        def do_apply(ev):
+            try:
+                sz = int((size_field.value or '').strip())
+            except Exception:
+                status.value = "Enter an integer pixel size"
+                status.update()
+                return
+            if sz <= 0:
+                status.value = "Pixel size must be > 0"
+                status.update()
+                return
+            self.on_pixelate(ev, sz)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([size_field, status])
+        dlg = self._SmallDialog("Pixelate", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    def _open_quantize_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        count_field = ft.TextField(label="Color count (integer)", value="16", width=140)
+        status = ft.Text("")
+        def do_apply(ev):
+            try:
+                cnt = int((count_field.value or '').strip())
+            except Exception:
+                status.value = "Enter an integer color count"
+                status.update()
+                return
+            if cnt <= 0:
+                status.value = "Color count must be > 0"
+                status.update()
+                return
+            self.on_quantize_colors(ev, cnt)
+            dlg.dialog.open = False
+            if page:
+                page.update()
+        content = ft.Column([count_field, status])
+        dlg = self._SmallDialog("Quantize Colors", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        if page:
+            page.open(dlg.dialog)
+            page.update()
+
+    # Rewire the buttons to open dialogs instead of hardcoded calls
+    def _wire_dialogs(self):
+        try:
+            self.invert_colors_btn.on_click = self.on_invert_colors
+            self.grayscale_btn.on_click = self.on_convert_to_grayscale
+            self.hue_adjust_btn.on_click = self._open_hue_dialog
+            self.color_replace_btn.on_click = self._open_replace_color_dialog
+            self.gradient_overlay_btn.on_click = self._open_gradient_dialog
+            self.opacity_adjust_btn.on_click = self._open_opacity_dialog
+            self.sepia_tone_btn.on_click = self.on_apply_sepia_tone
+            self.pixelate_btn.on_click = self._open_pixelate_dialog
+            self.quantize_colors_btn.on_click = self._open_quantize_dialog
+            self.brightness_contrast_region_btn.on_click = lambda e: self.on_adjust_brightness_contrast_region(e, (0, 0, 8, 8), 1.5, 1.2)
+        except Exception:
+            pass
+
+    # wiring is invoked from _build via self._wire_dialogs()
 
 # Standalone demo
 if __name__ == "__main__":
