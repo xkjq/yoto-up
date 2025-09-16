@@ -152,6 +152,16 @@ class PixelArtEditor:
             on_change=self.on_color_set_change
         )
 
+        # Make the main container scrollable so controls remain accessible on small windows
+        # right-side controls column (made a variable so we can append scrollable action panels)
+        self.right_column = ft.Column([
+            self.color_set_dropdown,
+            ft.Text("Adjust Whole Picture:"),
+            self.brightness_slider,
+            self.contrast_slider,
+            self.saturation_slider,
+        ], spacing=10)
+
         self.container = ft.Column([
             ft.Row([
                 self.color_field,
@@ -163,19 +173,14 @@ class PixelArtEditor:
                 self.import_icon_btn,
                 self.save_btn,
                 self.load_btn
-            ]),
+            ], wrap=True),
             self.palette,
             self.export_text,
             ft.Divider(),
             ft.Row([
                 self.grid_container,
-                ft.Column([
-                    self.color_set_dropdown,
-                    ft.Text("Adjust Whole Picture:"),
-                    self.brightness_slider,
-                    self.contrast_slider,
-                    self.saturation_slider,
-                ], spacing=10)
+                # place the right-side column next to the grid; this column can grow a scrollable actions area
+                self.right_column
             ], spacing=30),
         ])
         # Add flip and rotate buttons
@@ -188,15 +193,15 @@ class PixelArtEditor:
         self.blur_filter_btn = ft.ElevatedButton("Apply Blur", on_click=lambda e: self.on_apply_filter(e, 'BLUR'))
         self.sharpen_filter_btn = ft.ElevatedButton("Apply Sharpen", on_click=lambda e: self.on_apply_filter(e, 'SHARPEN'))
 
-        # Add these buttons to the UI
-        self.container.controls.append(ft.Row([
+        # Add these buttons to the right-side column (scrollable) and allow wrapping
+        self.right_column.controls.append(ft.Row([
             self.flip_horizontal_btn,
             self.flip_vertical_btn,
             self.rotate_left_btn,
             self.rotate_right_btn,
             self.blur_filter_btn,
-            self.sharpen_filter_btn
-        ], spacing=10))
+            self.sharpen_filter_btn,
+        ], spacing=10, wrap=True))
 
         # Add buttons for new color manipulation features
         self.invert_colors_btn = ft.ElevatedButton("Invert Colors", on_click=self.on_invert_colors)
@@ -210,8 +215,8 @@ class PixelArtEditor:
         self.quantize_colors_btn = ft.ElevatedButton("Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16))
         self.brightness_contrast_region_btn = ft.ElevatedButton("Adjust Brightness/Contrast (Region)", on_click=lambda e: self.on_adjust_brightness_contrast_region(e, (0, 0, 8, 8), 1.5, 1.2))
 
-        # Add these buttons to the UI
-        self.container.controls.append(ft.Column([
+        # Add these manipulation buttons to the right-side column so they wrap when space is constrained
+        self.right_column.controls.append(ft.Row([
             self.invert_colors_btn,
             self.grayscale_btn,
             self.hue_adjust_btn,
@@ -222,7 +227,7 @@ class PixelArtEditor:
             self.pixelate_btn,
             self.quantize_colors_btn,
             self.brightness_contrast_region_btn
-        ], spacing=10))
+        ], spacing=10, wrap=True))
 
         # Undo / Redo buttons
         self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
