@@ -860,7 +860,7 @@ class PixelArtEditor:
                 a = int(s[6:8], 16)
                 return (r, g, b, a)
             # try comma/space separated numbers
-            parts = [p for p in re.split('[,\s]+', s) if p]
+            parts = [p for p in re.split(r'[,\s]+', s) if p]
             if len(parts) >= 3:
                 r = int(float(parts[0]))
                 g = int(float(parts[1]))
