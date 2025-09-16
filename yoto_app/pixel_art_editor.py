@@ -217,8 +217,8 @@ class PixelArtEditor:
         self.quantize_colors_btn = ft.ElevatedButton("Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16))
         self.brightness_contrast_region_btn = ft.ElevatedButton("Adjust Brightness/Contrast (Region)", on_click=lambda e: self.on_adjust_brightness_contrast_region(e, (0, 0, 8, 8), 1.5, 1.2))
 
-        # Add these manipulation buttons to the right-side column so they wrap when space is constrained
-        self.right_column.controls.append(ft.Row([
+        # Group advanced controls into an ExpansionTile so they can be collapsed
+        self.advanced_controls_row = ft.Row([
             self.invert_colors_btn,
             self.grayscale_btn,
             self.hue_adjust_btn,
@@ -229,7 +229,14 @@ class PixelArtEditor:
             self.pixelate_btn,
             self.quantize_colors_btn,
             self.brightness_contrast_region_btn
-        ], spacing=10, wrap=True))
+        ], spacing=10, wrap=True)
+
+        # Use ExpansionTile (used elsewhere in the codebase) to create a collapsible tile
+        self.advanced_expander = ft.ExpansionTile(
+            title=ft.Container(content=ft.Text("Advanced Manipulations", size=12, weight=ft.FontWeight.W_400)),
+            controls=[self.advanced_controls_row],
+        )
+        self.right_column.controls.append(self.advanced_expander)
 
         # Give buttons a fixed width so wrapping behaves predictably in narrow viewports
         btns = [
