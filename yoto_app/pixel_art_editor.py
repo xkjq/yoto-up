@@ -224,6 +224,17 @@ class PixelArtEditor:
             self.brightness_contrast_region_btn
         ], spacing=10))
 
+        # Undo / Redo buttons
+        self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
+        self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
+        # Append to top controls row
+        self.container.controls[0].controls.append(self.undo_btn)
+        self.container.controls[0].controls.append(self.redo_btn)
+
+        # internal undo/redo stacks
+        self._undo_stack = []
+        self._redo_stack = []
+
         # Wire dialog handlers for the buttons
         try:
             self._wire_dialogs()
@@ -236,6 +247,7 @@ class PixelArtEditor:
         palette = self.color_sets.get(set_name, self.palette_colors)
         # If switching to Default, restore backup
         if set_name == "Default" and self._palette_backup is not None:
+            self._push_undo()
             self.pixels = copy.deepcopy(self._palette_backup)
             self.refresh_grid()
             return
@@ -255,8 +267,10 @@ class PixelArtEditor:
                 return (r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2
             return min(palette, key=dist)
         new_pixels = [[closest(c) for c in row] for row in self.pixels]
+        self._push_undo()
         self.pixels = new_pixels
         self.refresh_grid()
+
     def on_adjust_image(self, e):
         b = self.brightness_slider.value
         c = self.contrast_slider.value
@@ -267,10 +281,12 @@ class PixelArtEditor:
         # If all sliders are at 1.0, restore original
         if b == 1.0 and c == 1.0 and s == 1.0:
             if self._original_pixels is not None:
+                # restoring original does not need to push undo
                 self.pixels = copy.deepcopy(self._original_pixels)
                 self.refresh_grid()
             return
         # Otherwise, apply adjustments to original
+        self._push_undo()
         img = self._pixels_to_image(self._original_pixels)
         from PIL import ImageEnhance
         img = ImageEnhance.Brightness(img).enhance(b)
@@ -418,6 +434,7 @@ class PixelArtEditor:
                 pixels = load_icon_as_pixels(path, size=self.size)
                 if not pixels or not isinstance(pixels, list):
                     raise RuntimeError('Loaded icon returned invalid pixel data')
+                self._push_undo()
                 self.pixels = pixels
                 self.refresh_grid()
                 dlg.open = False
@@ -453,6 +470,7 @@ class PixelArtEditor:
 
     def make_pixel(self, x, y):
         def on_click(e):
+            self._push_undo()
             self.pixels[y][x] = self.current_color
             e.control.bgcolor = self.current_color
             e.control.update()
@@ -482,6 +500,7 @@ class PixelArtEditor:
         return handler
 
     def on_clear(self, e):
+        self._push_undo()
         self.pixels = [["#FFFFFF" for _ in range(self.size)] for _ in range(self.size)]
         self.refresh_grid()
 
@@ -495,6 +514,7 @@ class PixelArtEditor:
         try:
             data = json.loads(self.export_text.value)
             if isinstance(data, list) and len(data) == self.size and all(len(row) == self.size for row in data):
+                self._push_undo()
                 self.pixels = data
                 self.refresh_grid()
         except Exception:
@@ -714,6 +734,7 @@ class PixelArtEditor:
         """Handle applying a filter to the image."""
         img = self._pixels_to_image(self.pixels)
         filtered_img = self.apply_filter(img, filter_type)
+        self._push_undo()
         self.pixels = self._image_to_pixels(filtered_img)
         self.refresh_grid()
 
@@ -721,6 +742,7 @@ class PixelArtEditor:
         """Handle flipping the image."""
         img = self._pixels_to_image(self.pixels)
         flipped_img = self.flip_image(img, direction)
+        self._push_undo()
         self.pixels = self._image_to_pixels(flipped_img)
         self.refresh_grid()
 
@@ -728,6 +750,7 @@ class PixelArtEditor:
         """Handle rotating the image."""
         img = self._pixels_to_image(self.pixels)
         rotated_img = self.rotate_image(img, angle)
+        self._push_undo()
         self.pixels = self._image_to_pixels(rotated_img)
         self.refresh_grid()
 
@@ -806,48 +829,56 @@ class PixelArtEditor:
     def on_invert_colors(self, e):
         img = self._pixels_to_image(self.pixels)
         img = self.invert_colors(img)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_convert_to_grayscale(self, e):
         img = self._pixels_to_image(self.pixels)
         img = self.convert_to_grayscale(img)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_adjust_hue(self, e, degrees):
         img = self._pixels_to_image(self.pixels)
         img = self.adjust_hue(img, degrees)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_replace_color(self, e, target_color, replacement_color):
         img = self._pixels_to_image(self.pixels)
         img = self.replace_color(img, self._hex_to_rgba(target_color), self._hex_to_rgba(replacement_color))
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_apply_gradient_overlay(self, e, gradient_color):
         img = self._pixels_to_image(self.pixels)
         img = self.apply_gradient_overlay(img, self._hex_to_rgba(gradient_color))
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_adjust_opacity(self, e, opacity):
         img = self._pixels_to_image(self.pixels)
         img = self.adjust_opacity(img, opacity)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_apply_sepia_tone(self, e):
         img = self._pixels_to_image(self.pixels)
         img = self.apply_sepia_tone(img)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_pixelate(self, e, pixel_size):
         img = self._pixels_to_image(self.pixels)
         img = self.pixelate(img, pixel_size)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
@@ -856,12 +887,14 @@ class PixelArtEditor:
         img = self.quantize_colors(img, num_colors)
         if hasattr(img, 'convert'):
             img = img.convert('RGBA')
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
     def on_adjust_brightness_contrast_region(self, e, region, brightness, contrast):
         img = self._pixels_to_image(self.pixels)
         img = self.adjust_brightness_contrast_region(img, region, brightness, contrast)
+        self._push_undo()
         self.pixels = self._image_to_pixels(img)
         self.refresh_grid()
 
@@ -1044,6 +1077,48 @@ class PixelArtEditor:
             pass
 
     # wiring is invoked from _build via self._wire_dialogs()
+
+
+    # Undo / Redo logic
+    def _push_undo(self):
+        # push a deep copy of pixels
+        self._undo_stack.append(copy.deepcopy(self.pixels))
+        # limit stack size
+        if len(self._undo_stack) > 50:
+            self._undo_stack.pop(0)
+        # clear redo when new action performed
+        self._redo_stack.clear()
+
+    def _can_undo(self):
+        return len(self._undo_stack) > 0
+
+    def _can_redo(self):
+        return len(self._redo_stack) > 0
+
+    def on_undo(self, e):
+        if not self._can_undo():
+            return
+        self._redo_stack.append(copy.deepcopy(self.pixels))
+        self.pixels = self._undo_stack.pop()
+        self.refresh_grid()
+
+    def on_redo(self, e):
+        if not self._can_redo():
+            return
+        self._undo_stack.append(copy.deepcopy(self.pixels))
+        self.pixels = self._redo_stack.pop()
+        self.refresh_grid()
+
+    # wrap mutating operations to push undo state
+    def _mutate_start(self):
+        self._push_undo()
+
+    def _mutate_end(self):
+        # placeholder for future hooks
+        pass
+
+    # patch all places where pixels are changed to call _mutate_start()
+
 
 # Standalone demo
 if __name__ == "__main__":
