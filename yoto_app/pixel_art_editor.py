@@ -6,6 +6,7 @@ from loguru import logger
 from PIL import Image
 import json
 import copy
+import re
 try:
     from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
 except ImportError:
@@ -805,6 +806,71 @@ class PixelArtEditor:
                 if pixels[x, y][:3] == target_color[:3]:
                     pixels[x, y] = replacement_color
         return image
+
+    def _hex_to_rgba(self, hex_color, alpha=255):
+        """Convert a hex color (or simple rgba string) to an (R,G,B,A) tuple of ints 0-255.
+
+        Supported inputs:
+        - "#RGB" or "#RRGGBB" or "#RRGGBBAA"
+        - "rgba(r,g,b,a)" where a may be 0-1 or 0-255
+        - plain hex-like strings without '#'
+        Falls back to opaque black on parse error.
+        """
+        if not hex_color:
+            return (0, 0, 0, alpha)
+        s = str(hex_color).strip()
+        # rgba(...) format
+        if s.lower().startswith('rgba'):
+            try:
+                nums = re.findall(r"[0-9]*\.?[0-9]+", s)
+                if len(nums) >= 3:
+                    r = int(float(nums[0]))
+                    g = int(float(nums[1]))
+                    b = int(float(nums[2]))
+                    a = int(float(nums[3]) * 255) if len(nums) > 3 and float(nums[3]) <= 1 else (int(float(nums[3])) if len(nums) > 3 else alpha)
+                    return (r, g, b, a)
+            except Exception:
+                return (0, 0, 0, alpha)
+
+        # strip leading '#'
+        if s.startswith('#'):
+            s = s[1:]
+
+        try:
+            if len(s) == 3:
+                r = int(s[0] * 2, 16)
+                g = int(s[1] * 2, 16)
+                b = int(s[2] * 2, 16)
+                return (r, g, b, alpha)
+            if len(s) == 4:  # rgba in hex short form
+                r = int(s[0] * 2, 16)
+                g = int(s[1] * 2, 16)
+                b = int(s[2] * 2, 16)
+                a = int(s[3] * 2, 16)
+                return (r, g, b, a)
+            if len(s) == 6:
+                r = int(s[0:2], 16)
+                g = int(s[2:4], 16)
+                b = int(s[4:6], 16)
+                return (r, g, b, alpha)
+            if len(s) == 8:
+                r = int(s[0:2], 16)
+                g = int(s[2:4], 16)
+                b = int(s[4:6], 16)
+                a = int(s[6:8], 16)
+                return (r, g, b, a)
+            # try comma/space separated numbers
+            parts = [p for p in re.split('[,\s]+', s) if p]
+            if len(parts) >= 3:
+                r = int(float(parts[0]))
+                g = int(float(parts[1]))
+                b = int(float(parts[2]))
+                a = int(float(parts[3])) if len(parts) > 3 else alpha
+                return (r, g, b, a)
+        except Exception:
+            return (0, 0, 0, alpha)
+
+        return (0, 0, 0, alpha)
 
     def apply_gradient_overlay(self, image, gradient):
         """Apply a gradient overlay to the image."""
