@@ -369,6 +369,13 @@ def build_playlists_panel(
             delete_selected_btn.visible = multi_select_mode
             export_selected_btn.visible = multi_select_mode
             add_tags_btn.visible = multi_select_mode
+            select_all_btn.visible = multi_select_mode
+            if not multi_select_mode:
+                try:
+                    select_all_btn.text = "Select all"
+                    select_all_btn.update()
+                except Exception:
+                    pass
             if not multi_select_mode:
                 selected_playlist_ids.clear()
                 delete_selected_btn.disabled = True
@@ -394,6 +401,53 @@ def build_playlists_panel(
             pass
 
     multi_select_btn.on_click = toggle_multi_select
+
+    # Select All / Deselect All control (visible only in multi-select mode)
+    select_all_btn = ft.ElevatedButton(text="Select all", visible=False)
+
+    def _set_all_checkboxes(value: bool):
+        """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
+        try:
+            for row in playlists_list.controls:
+                for child in getattr(row, "controls", []):
+                    if getattr(child, "_is_playlist_checkbox", False):
+                        try:
+                            child.value = value
+                            # ensure UI updated
+                            child.update()
+                            # update selection set
+                            if value:
+                                selected_playlist_ids.add(getattr(child, "_cid", None))
+                            else:
+                                selected_playlist_ids.discard(getattr(child, "_cid", None))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    def select_all_toggle(ev=None):
+        try:
+            if select_all_btn.text == "Select all":
+                _set_all_checkboxes(True)
+                select_all_btn.text = "Deselect all"
+                delete_selected_btn.disabled = len(selected_playlist_ids) == 0
+                export_selected_btn.disabled = len(selected_playlist_ids) == 0
+                add_tags_btn.disabled = len(selected_playlist_ids) == 0
+            else:
+                _set_all_checkboxes(False)
+                select_all_btn.text = "Select all"
+                delete_selected_btn.disabled = True
+                export_selected_btn.disabled = True
+                add_tags_btn.disabled = True
+            try:
+                select_all_btn.update()
+            except Exception:
+                pass
+            page.update()
+        except Exception:
+            pass
+
+    select_all_btn.on_click = select_all_toggle
 
     def apply_filters(ev=None):
         try:
@@ -1134,6 +1188,7 @@ def build_playlists_panel(
                     ft.Text("Playlists", style=ft.TextThemeStyle.TITLE_MEDIUM),
                     fetch_btn,
                     multi_select_btn,
+                    select_all_btn,
                     delete_selected_btn,
                     export_selected_btn,
                     import_card_btn,
