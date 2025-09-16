@@ -153,15 +153,16 @@ class PixelArtEditor:
         )
 
         # Make the main container scrollable so controls remain accessible on small windows
-        # right-side controls column (made a variable so we can append scrollable action panels)
+        # right-side controls column (fixed width so its internal rows can wrap)
         self.right_column = ft.Column([
             self.color_set_dropdown,
             ft.Text("Adjust Whole Picture:"),
             self.brightness_slider,
             self.contrast_slider,
             self.saturation_slider,
-        ], spacing=10)
+        ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
+        # main container is scrollable and expands to available space
         self.container = ft.Column([
             ft.Row([
                 self.color_field,
@@ -182,7 +183,7 @@ class PixelArtEditor:
                 # place the right-side column next to the grid; this column can grow a scrollable actions area
                 self.right_column
             ], spacing=30),
-        ])
+        ], scroll=ft.ScrollMode.AUTO, expand=True)
         # Add flip and rotate buttons
         self.flip_horizontal_btn = ft.ElevatedButton("Flip Horizontal", on_click=lambda e: self.on_flip_image(e, 'horizontal'))
         self.flip_vertical_btn = ft.ElevatedButton("Flip Vertical", on_click=lambda e: self.on_flip_image(e, 'vertical'))
@@ -228,6 +229,20 @@ class PixelArtEditor:
             self.quantize_colors_btn,
             self.brightness_contrast_region_btn
         ], spacing=10, wrap=True))
+
+        # Give buttons a fixed width so wrapping behaves predictably in narrow viewports
+        btns = [
+            self.flip_horizontal_btn, self.flip_vertical_btn, self.rotate_left_btn, self.rotate_right_btn,
+            self.blur_filter_btn, self.sharpen_filter_btn,
+            self.invert_colors_btn, self.grayscale_btn, self.hue_adjust_btn, self.color_replace_btn,
+            self.gradient_overlay_btn, self.opacity_adjust_btn, self.sepia_tone_btn, self.pixelate_btn,
+            self.quantize_colors_btn, self.brightness_contrast_region_btn,
+        ]
+        for b in btns:
+            try:
+                b.width = 140
+            except Exception:
+                pass
 
         # Undo / Redo buttons
         self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
