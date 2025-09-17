@@ -352,6 +352,238 @@ class PixelArtEditor:
         hex_field = ft.TextField(label="Hex", value=self.current_color, width=100)
         preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
 
+        # color wheel parameters
+        wheel_size = 180
+        value_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Value", on_change=None)
+        wheel_img = ft.Image(width=wheel_size, height=wheel_size)
+        # HSV fallback sliders
+        hue_slider = ft.Slider(min=0, max=360, value=0, divisions=360, label="Hue", on_change=None)
+        sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation", on_change=None)
+
+        def _make_color_wheel_image(val):
+            # create a color wheel image and save to saved_icons/__color_wheel.png
+            try:
+                import math
+                import colorsys
+                saved_dir = self._ensure_saved_dir()
+                path = os.path.join(str(saved_dir), '__color_wheel.png')
+                size = wheel_size
+                img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                cx = cy = size / 2.0
+                radius = size / 2.0
+                for y in range(size):
+                    for x in range(size):
+                        dx = x - cx
+                        dy = y - cy
+                        r = math.hypot(dx, dy)
+                        if r <= radius:
+                            # angle to hue
+                            angle = math.atan2(dy, dx)
+                            hue = (angle / (2 * math.pi)) % 1.0
+                            sat = min(1.0, r / radius)
+                            rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
+                            img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
+                        else:
+                            img.putpixel((x, y), (0, 0, 0, 0))
+                img.save(path)
+                return path
+            except Exception:
+                return None
+
+        def on_wheel_click(ev):
+            logger.debug(f"color wheel tap event: {ev!r}")
+            # dump event attributes for debugging
+            try:
+                ev_attrs = [n for n in dir(ev) if not n.startswith('_')]
+                logger.debug(f"color wheel event dir: {ev_attrs}")
+            except Exception:
+                pass
+            try:
+                logger.debug(f"color wheel ev.__dict__: {getattr(ev, '__dict__', None)!r}")
+            except Exception:
+                pass
+            try:
+                ctrl = getattr(ev, 'control', None)
+                logger.debug(f"color wheel control: {ctrl!r}")
+                logger.debug(f"color wheel control __dict__: {getattr(ctrl, '__dict__', None)!r}")
+            except Exception:
+                pass
+            try:
+                logger.debug(f"color wheel ev.data: {getattr(ev, 'data', None)!r}")
+            except Exception:
+                pass
+            # Probe event for possible coordinate attributes
+            lx = getattr(ev, 'local_x', None)
+            ly = getattr(ev, 'local_y', None)
+            if lx is None or ly is None:
+                lx = getattr(ev, 'x', None)
+                ly = getattr(ev, 'y', None)
+            if lx is None or ly is None:
+                # try other likely attribute names
+                poss = ['local_position', 'position', 'offset', 'local_offset', 'clientX', 'clientY']
+                for name in poss:
+                    v = getattr(ev, name, None)
+                    if v is None:
+                        continue
+                    # v might be a tuple-like (x,y) or an object with x/y
+                    try:
+                        if isinstance(v, (tuple, list)) and len(v) >= 2:
+                            lx, ly = v[0], v[1]
+                            break
+                        if hasattr(v, 'x') and hasattr(v, 'y'):
+                            lx, ly = getattr(v, 'x'), getattr(v, 'y')
+                            break
+                    except Exception:
+                        continue
+            if lx is None or ly is None:
+                # log attributes for debugging and return
+                try:
+                    attrs = ','.join(sorted(name for name in dir(ev) if not name.startswith('_')))
+                except Exception:
+                    attrs = str(dir(ev))
+                logger.debug(f"color wheel event has no coords; available attrs: {attrs}")
+                return
+            # scale to image pixels
+            try:
+                logger.debug(f"color wheel tap raw: lx={lx!r} ly={ly!r}")
+                img_path = os.path.join(str(self._ensure_saved_dir()), '__color_wheel.png')
+                if not os.path.exists(img_path):
+                    return
+                # compute relative position inside image
+                iw = wheel_size
+                ih = wheel_size
+                # lx/ly may be normalized (0..1) or pixel coordinates; handle both
+                if isinstance(lx, (int, float)) and isinstance(ly, (int, float)):
+                    if 0.0 <= lx <= 1.0 and 0.0 <= ly <= 1.0:
+                        px = int(lx * (iw - 1))
+                        py = int(ly * (ih - 1))
+                    else:
+                        # assume pixel coords
+                        px = int(lx)
+                        py = int(ly)
+                else:
+                    px = int(lx)
+                    py = int(ly)
+                # fallback: clamp
+                px = max(0, min(iw-1, px))
+                py = max(0, min(ih-1, py))
+                im = Image.open(img_path).convert('RGBA')
+                val = im.getpixel((px, py))
+                logger.debug(f"color wheel mapped to px={px} py={py} pixel={val!r}")
+                if isinstance(val, int):
+                    r = g = b = int(val)
+                    a = 255
+                elif isinstance(val, (tuple, list)):
+                    if len(val) >= 3:
+                        r, g, b = int(val[0]), int(val[1]), int(val[2])
+                        a = int(val[3]) if len(val) > 3 else 255
+                    else:
+                        return
+                else:
+                    return
+                if a == 0:
+                    return
+                hexv = f"#{r:02X}{g:02X}{b:02X}"
+                hex_field.value = hexv
+                hex_field.update()
+                preview.bgcolor = hexv
+                preview.update()
+                self.current_color = hexv
+                try:
+                    self.color_field.value = hexv
+                    self.color_field.update()
+                except Exception:
+                    pass
+                try:
+                    if getattr(self, 'page', None):
+                        self.page.update()
+                except Exception:
+                    pass
+            except Exception as ex:
+                logger.exception(f"color wheel click error: {ex}")
+                return
+
+        def on_value_change(ev):
+            v = float(value_slider.value)
+            p = _make_color_wheel_image(v)
+            if p:
+                wheel_img.src = p
+                wheel_img.update()
+            if page:
+                page.update()
+
+        def hsv_to_hex(h, s, v):
+            try:
+                import colorsys
+                r, g, b = colorsys.hsv_to_rgb(h/360.0, float(s), float(v))
+                return f"#{int(r*255):02X}{int(g*255):02X}{int(b*255):02X}"
+            except Exception:
+                return '#000000'
+
+        def on_hsv_change(ev=None):
+            h = float(hue_slider.value)
+            s = float(sat_slider.value)
+            v = float(value_slider.value)
+            hexv = hsv_to_hex(h, s, v)
+            # update rgb sliders
+            try:
+                r_val, g_val, b_val = hex_to_rgb(hexv)
+                r_slider.value = r_val
+                g_slider.value = g_val
+                b_slider.value = b_val
+                r_slider.update(); g_slider.update(); b_slider.update()
+            except Exception:
+                pass
+            hex_field.value = hexv
+            hex_field.update()
+            preview.bgcolor = hexv
+            preview.update()
+            self.current_color = hexv
+            try:
+                self.color_field.value = hexv
+                self.color_field.update()
+            except Exception:
+                pass
+            if page:
+                page.update()
+
+        value_slider.on_change = on_value_change
+        hue_slider.on_change = on_hsv_change
+        sat_slider.on_change = on_hsv_change
+        # wrap wheel_img in a GestureDetector so clicks/pans are delivered (attach several handlers)
+        wheel_gesture = ft.GestureDetector(content=wheel_img, on_tap=on_wheel_click, on_tap_down=on_wheel_click, on_pan_update=on_wheel_click)
+
+        # generate initial wheel
+        try:
+            pth = _make_color_wheel_image(value_slider.value)
+            if pth:
+                wheel_img.src = pth
+        except Exception:
+            pass
+
+        # initialize HSV sliders from current color so UI is in-sync
+        try:
+            import colorsys
+            r0, g0, b0 = hex_to_rgb(self.current_color)
+            rf, gf, bf = r0/255.0, g0/255.0, b0/255.0
+            h0, s0, v0 = colorsys.rgb_to_hsv(rf, gf, bf)
+            hue_slider.value = h0 * 360.0
+            sat_slider.value = s0
+            value_slider.value = v0
+            # update wheel and other fields
+            try:
+                value_slider.update(); hue_slider.update(); sat_slider.update()
+            except Exception:
+                pass
+            # call handlers to sync UI
+            try:
+                on_value_change(None)
+                on_hsv_change(None)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         def update_all(ev=None):
             r_val = int(r_slider.value)
             g_val = int(g_slider.value)
@@ -393,11 +625,11 @@ class PixelArtEditor:
         hex_field.on_change = on_hex_change
 
         content = ft.Column([
-            ft.Row([preview, hex_field]),
+            ft.Row([preview, hex_field, ft.Column([wheel_gesture, value_slider])]),
             r_slider,
             g_slider,
             b_slider,
-        ], spacing=10)
+        ], spacing=10, width=wheel_size + 150)
         self.color_picker_dialog = ft.AlertDialog(
             title=ft.Text("Advanced Color Picker"),
             content=content,
