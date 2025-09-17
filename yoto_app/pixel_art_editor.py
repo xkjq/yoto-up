@@ -155,12 +155,19 @@ class PixelArtEditor:
 
         # Make the main container scrollable so controls remain accessible on small windows
         # right-side controls column (fixed width so its internal rows can wrap)
+        # Put the three adjustment sliders into an expandable block
+        image_adjustments_tile = ft.ExpansionTile(
+            title=ft.Text("Colour manipulations", size=12, weight=ft.FontWeight.W_400),
+            controls=[
+                self.color_set_dropdown,
+                ft.Row([ft.Text("Brightness", width=120), self.brightness_slider], alignment=ft.MainAxisAlignment.START, spacing=8),
+                ft.Row([ft.Text("Contrast", width=120), self.contrast_slider], alignment=ft.MainAxisAlignment.START, spacing=8),
+                ft.Row([ft.Text("Saturation", width=120), self.saturation_slider], alignment=ft.MainAxisAlignment.START, spacing=8),
+            ],
+        )
+
         self.right_column = ft.Column([
-            self.color_set_dropdown,
-            ft.Text("Adjust Whole Picture:"),
-            self.brightness_slider,
-            self.contrast_slider,
-            self.saturation_slider,
+            image_adjustments_tile,
         ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
         # main container is scrollable and expands to available space
@@ -177,7 +184,7 @@ class PixelArtEditor:
                 self.load_btn
             ], wrap=True),
             self.palette,
-            self.export_text,
+            #self.export_text,
             ft.Divider(),
             ft.Row([
                 self.grid_container,
@@ -609,8 +616,13 @@ class PixelArtEditor:
                 page.update()
             return
 
-        # simple filename dialog
+        # Show metadata dialog and save JSON file containing metadata + pixels + PNG (base64)
         name_field = ft.TextField(label="Filename (no extension)")
+        title_field = ft.TextField(label="Title", value="")
+        author_field = ft.TextField(label="Author", value="")
+        tags_field = ft.TextField(label="Tags (comma separated)")
+        desc_field = ft.TextField(label="Description", multiline=True, height=80)
+        save_png_checkbox = ft.Checkbox(label="Also save PNG file", value=True)
         status = ft.Text("")
 
         def do_save(ev):
@@ -619,27 +631,72 @@ class PixelArtEditor:
                 status.value = "Enter a filename"
                 status.update()
                 return
-            basename = fn + '.png'
+            # collect metadata
+            meta = {
+                "title": (title_field.value or '').strip(),
+                "author": (author_field.value or '').strip(),
+                "tags": [t.strip() for t in (tags_field.value or '').split(',') if t.strip()],
+                "description": (desc_field.value or '').strip(),
+                "created_by": "yoto-up",
+            }
+
+            basename = fn + '.json'
             path = os.path.join(str(saved_dir), basename) if hasattr(saved_dir, 'joinpath') else os.path.join(saved_dir, basename)
+
             try:
-                try:
-                    img = self._pixels_to_image(self.pixels)
-                    # Save as original 16x16, do not resize
-                    img.save(path)
-                except Exception:
-                    # fallback: save JSON
-                    import json
-                    with open(path + '.json', 'w', encoding='utf-8') as fh:
-                        json.dump(self.pixels, fh)
+                # build image and base64 PNG
+                img = self._pixels_to_image(self.pixels)
+                import io
+                import base64
+                import json
+                buf = io.BytesIO()
+                img.save(buf, format='PNG')
+                png_bytes = buf.getvalue()
+                png_b64 = base64.b64encode(png_bytes).decode('ascii')
+
+                # payload
+                obj = {
+                    "metadata": meta,
+                    "pixels": self.pixels,
+                    "png_base64": png_b64,
+                }
+
+                # write JSON file
+                with open(path, 'w', encoding='utf-8') as fh:
+                    json.dump(obj, fh, ensure_ascii=False, indent=2)
+
+                # optionally write PNG file as well
+                if save_png_checkbox.value:
+                    png_path = os.path.join(str(saved_dir), fn + '.png')
+                    try:
+                        with open(png_path, 'wb') as pf:
+                            pf.write(png_bytes)
+                    except Exception:
+                        # ignore PNG write errors but report status
+                        status.value = "Saved JSON but failed to write PNG"
+                        status.update()
+
                 if page:
                     status.value = f"Saved: {basename}"
                     status.update()
                     page.update()
+                # close dialog
+                try:
+                    dlg.open = False
+                    if page:
+                        page.update()
+                except Exception:
+                    pass
+
             except Exception as ex:
                 status.value = f"Save failed: {ex}"
                 status.update()
 
-        dlg = ft.AlertDialog(title=ft.Text("Save Icon"), content=ft.Column([name_field, status]), actions=[ft.TextButton("Save", on_click=do_save), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))])
+        dlg = ft.AlertDialog(
+            title=ft.Text("Save Icon (JSON + metadata)"),
+            content=ft.Column([name_field, title_field, author_field, tags_field, desc_field, save_png_checkbox, status], spacing=8),
+            actions=[ft.TextButton("Save", on_click=do_save), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))]
+        )
         if page:
             page.open(dlg)
             page.update()
@@ -678,22 +735,37 @@ class PixelArtEditor:
             if not v:
                 return
             p = os.path.join(sd, v)
-            if v.lower().endswith('.png'):
-                try:
+            try:
+                if v.lower().endswith('.png'):
                     img = Image.open(p)
-                    # create a temporary scaled preview
                     img2 = img.resize((64, 64))
                     tmp = os.path.join(sd, '__preview.png')
                     img2.save(tmp)
                     preview.src = tmp
-                    preview.update()
-                except Exception as ex:
-                    logger.exception(f"Error loading image preview: {ex}")
+                elif v.lower().endswith('.json'):
+                    # parse json package
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+                    # if embedded png exists, write a preview file
+                    if isinstance(obj, dict) and obj.get('png_base64'):
+                        try:
+                            import base64
+                            b = base64.b64decode(obj['png_base64'])
+                            tmp_path = os.path.join(sd, '__preview.png')
+                            with open(tmp_path, 'wb') as pf:
+                                pf.write(b)
+                            preview.src = tmp_path
+                        except Exception:
+                            preview.src = ''
+                    else:
+                        # no embedded PNG; render pixels to a small preview if possible
+                        preview.src = ''
+                else:
                     preview.src = ''
-                    preview.update()
-            else:
+            except Exception as ex:
+                logger.exception(f"Error loading file preview: {ex}")
                 preview.src = ''
-                preview.update()
+            preview.update()
 
         dropdown.on_change = on_select
 
@@ -710,16 +782,47 @@ class PixelArtEditor:
                 if v.lower().endswith('.png'):
                     img = Image.open(p)
                     pixels = self._image_to_pixels(img)
-                else:
+                elif v.lower().endswith('.json'):
                     with open(p, 'r', encoding='utf-8') as fh:
-                        pixels = json.load(fh)
+                        obj = json.load(fh)
+                    # restore pixels from known shapes
+                    if isinstance(obj, dict):
+                        # write metadata to export_text for user to see/edit
+                        try:
+                            meta = obj.get('metadata', {})
+                            meta_text = json.dumps(meta, ensure_ascii=False, indent=2)
+                            #self.export_text.value = meta_text
+                            #self.export_text.update()
+                        except Exception:
+                            pass
+                        if 'pixels' in obj and isinstance(obj['pixels'], list):
+                            pixels = obj['pixels']
+                        elif 'png_base64' in obj:
+                            # decode embedded PNG and convert to pixels
+                            try:
+                                import base64
+                                import io
+                                b = base64.b64decode(obj['png_base64'])
+                                img = Image.open(io.BytesIO(b))
+                                pixels = self._image_to_pixels(img)
+                            except Exception:
+                                pixels = None
+                        else:
+                            pixels = None
+                    else:
+                        pixels = None
+                else:
+                    pixels = None
+
                 if isinstance(pixels, list):
-                    logger.debug(f"Loaded pixel data: {pixels}")
+                    logger.debug(f"Loaded pixel data: (list with {len(pixels)} rows)")
                     self.pixels = pixels
                     self.refresh_grid()
                     self._close_dialog(dlg, page)
                 else:
-                    logger.error("Loaded pixel data is not a list")
+                    logger.error("Loaded pixel data is not a list or could not be decoded")
+                    status.value = "Selected file contains no pixel data"
+                    status.update()
             except Exception as ex:
                 logger.error(f"Failed to load icon: {ex}")
                 status.value = f"Load failed: {ex}"
