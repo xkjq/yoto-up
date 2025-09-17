@@ -80,6 +80,8 @@ class PixelArtEditor:
         # Save / Load created icons
         self.save_btn = ft.ElevatedButton("Save PNG", on_click=self.on_save_png)
         self.load_btn = ft.ElevatedButton("Load PNG", on_click=self.on_load_png)
+        # Text generation (pixel letters/numbers)
+        self.text_btn = ft.ElevatedButton("Text", on_click=self._open_text_dialog)
         #self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
         self.grid = ft.Column([
             ft.Row([
@@ -180,6 +182,7 @@ class PixelArtEditor:
                 #self.export_btn,
                 #self.import_btn,
                 self.import_icon_btn,
+                self.text_btn,
                 self.save_btn,
                 self.load_btn
             ], wrap=True),
@@ -252,6 +255,7 @@ class PixelArtEditor:
             self.invert_colors_btn, self.grayscale_btn, self.hue_adjust_btn, self.color_replace_btn,
             self.gradient_overlay_btn, self.opacity_adjust_btn, self.sepia_tone_btn, self.pixelate_btn,
             self.quantize_colors_btn, self.brightness_contrast_region_btn,
+            self.text_btn,
         ]
         for b in btns:
             try:
@@ -606,6 +610,116 @@ class PixelArtEditor:
                 pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
         return pixels
 
+    # 5x7 pixel font for A-Z and 0-9 (each entry is a list of 7 integers, 5 bits each)
+    _font_5x7 = {
+        'A': [0b01110,0b10001,0b10001,0b11111,0b10001,0b10001,0b10001],
+        'B': [0b11110,0b10001,0b10001,0b11110,0b10001,0b10001,0b11110],
+        'C': [0b01110,0b10001,0b10000,0b10000,0b10000,0b10001,0b01110],
+        'D': [0b11110,0b10001,0b10001,0b10001,0b10001,0b10001,0b11110],
+        'E': [0b11111,0b10000,0b10000,0b11110,0b10000,0b10000,0b11111],
+        'F': [0b11111,0b10000,0b10000,0b11110,0b10000,0b10000,0b10000],
+        'G': [0b01110,0b10001,0b10000,0b10111,0b10001,0b10001,0b01110],
+        'H': [0b10001,0b10001,0b10001,0b11111,0b10001,0b10001,0b10001],
+        'I': [0b01110,0b00100,0b00100,0b00100,0b00100,0b00100,0b01110],
+        'J': [0b00111,0b00010,0b00010,0b00010,0b10010,0b10010,0b01100],
+        'K': [0b10001,0b10010,0b10100,0b11000,0b10100,0b10010,0b10001],
+        'L': [0b10000,0b10000,0b10000,0b10000,0b10000,0b10000,0b11111],
+        'M': [0b10001,0b11011,0b10101,0b10101,0b10001,0b10001,0b10001],
+        'N': [0b10001,0b10001,0b11001,0b10101,0b10011,0b10001,0b10001],
+        'O': [0b01110,0b10001,0b10001,0b10001,0b10001,0b10001,0b01110],
+        'P': [0b11110,0b10001,0b10001,0b11110,0b10000,0b10000,0b10000],
+        'Q': [0b01110,0b10001,0b10001,0b10001,0b10101,0b10010,0b01101],
+        'R': [0b11110,0b10001,0b10001,0b11110,0b10100,0b10010,0b10001],
+        'S': [0b01111,0b10000,0b10000,0b01110,0b00001,0b00001,0b11110],
+        'T': [0b11111,0b00100,0b00100,0b00100,0b00100,0b00100,0b00100],
+        'U': [0b10001,0b10001,0b10001,0b10001,0b10001,0b10001,0b01110],
+        'V': [0b10001,0b10001,0b10001,0b10001,0b10001,0b01010,0b00100],
+        'W': [0b10001,0b10001,0b10001,0b10101,0b10101,0b11011,0b10001],
+        'X': [0b10001,0b10001,0b01010,0b00100,0b01010,0b10001,0b10001],
+        'Y': [0b10001,0b10001,0b01010,0b00100,0b00100,0b00100,0b00100],
+        'Z': [0b11111,0b00001,0b00010,0b00100,0b01000,0b10000,0b11111],
+        '0': [0b01110,0b10001,0b10011,0b10101,0b11001,0b10001,0b01110],
+        '1': [0b00100,0b01100,0b00100,0b00100,0b00100,0b00100,0b01110],
+        '2': [0b01110,0b10001,0b00001,0b00010,0b00100,0b01000,0b11111],
+        '3': [0b01110,0b10001,0b00001,0b00110,0b00001,0b10001,0b01110],
+        '4': [0b00010,0b00110,0b01010,0b10010,0b11111,0b00010,0b00010],
+        '5': [0b11111,0b10000,0b11110,0b00001,0b00001,0b10001,0b01110],
+        '6': [0b00110,0b01000,0b10000,0b11110,0b10001,0b10001,0b01110],
+        '7': [0b11111,0b00001,0b00010,0b00100,0b01000,0b01000,0b01000],
+        '8': [0b01110,0b10001,0b10001,0b01110,0b10001,0b10001,0b01110],
+        '9': [0b01110,0b10001,0b10001,0b01111,0b00001,0b00010,0b01100],
+        ' ': [0,0,0,0,0,0,0]
+    }
+
+    def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0):
+        """Return a pixel grid (list of rows) with text stamped at given offset. Does not modify self.pixels."""
+        # prepare a blank grid
+        grid = [[None for _ in range(self.size)] for _ in range(self.size)]
+        tx = x_offset
+        ty = y_offset
+        text = (text or '').upper()
+        for ch in text:
+            glyph = self._font_5x7.get(ch, self._font_5x7.get(' '))
+            for row_idx, bits in enumerate(glyph):
+                for bit_idx in range(5):
+                    if bits & (1 << (4 - bit_idx)):
+                        # apply scale
+                        for sy in range(scale):
+                            for sx in range(scale):
+                                gx = tx + bit_idx * scale + sx
+                                gy = ty + row_idx * scale + sy
+                                if 0 <= gx < self.size and 0 <= gy < self.size:
+                                    grid[gy][gx] = color
+            tx += (5 + 1) * scale  # 1px spacing
+        return grid
+
+    def _stamp_pixels(self, stamp_grid):
+        """Stamp a grid of pixel colors (None means skip) onto self.pixels, pushing undo."""
+        self._push_undo()
+        for y in range(self.size):
+            for x in range(self.size):
+                v = stamp_grid[y][x]
+                if v is not None:
+                    self.pixels[y][x] = v
+        self.refresh_grid()
+
+    def _open_text_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        text_field = ft.TextField(label="Text", value="A", width=200)
+        color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
+        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,4)], value='1', width=100)
+        pos_x = ft.TextField(label="X Offset", value="0", width=80)
+        pos_y = ft.TextField(label="Y Offset", value="0", width=80)
+        status = ft.Text("")
+
+        def do_stamp(ev):
+            try:
+                txt = (text_field.value or '').strip()
+                col = (color_field.value or '').strip()
+                sc = int(scale_dropdown.value)
+                ox = int((pos_x.value or '0').strip())
+                oy = int((pos_y.value or '0').strip())
+                if not txt:
+                    status.value = "Enter text"
+                    status.update()
+                    return
+                # render and stamp
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy)
+                self._stamp_pixels(stamp)
+                dlg.open = False
+                if page:
+                    page.update()
+            except Exception as ex:
+                status.value = f"Error: {ex}"
+                status.update()
+
+        content = ft.Column([text_field, ft.Row([color_field, scale_dropdown, pos_x, pos_y], wrap=True), status], spacing=8, width=350)
+        dlg = ft.AlertDialog(title=ft.Text("Stamp Text"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
+        if page:
+            logger.debug(f"Opening text dialog, page={page}")
+            page.open(dlg)
+            page.update()
+
     def on_save_png(self, e):
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
@@ -790,9 +904,9 @@ class PixelArtEditor:
                         # write metadata to export_text for user to see/edit
                         try:
                             meta = obj.get('metadata', {})
-                            meta_text = json.dumps(meta, ensure_ascii=False, indent=2)
-                            #self.export_text.value = meta_text
-                            #self.export_text.update()
+                            if hasattr(self, 'export_text') and self.export_text is not None:
+                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
+                                self.export_text.update()
                         except Exception:
                             pass
                         if 'pixels' in obj and isinstance(obj['pixels'], list):
