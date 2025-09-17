@@ -31,9 +31,9 @@ class PixelArtEditor:
         self.grid = None
         self.color_dropdown = None
         self.clear_btn = None
-        self.export_btn = None
-        self.import_btn = None
-        self.export_text = None
+        #self.export_btn = None
+        #self.import_btn = None
+        #self.export_text = None
         self.container = None
         self._build()
 
@@ -74,13 +74,13 @@ class PixelArtEditor:
             ) for c in self.palette_colors
         ], spacing=4)
         self.clear_btn = ft.ElevatedButton("Clear", on_click=self.on_clear)
-        self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
-        self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
+        #self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
+        #self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
         self.import_icon_btn = ft.ElevatedButton("Import Icon from Cache", on_click=self.on_import_icon)
         # Save / Load created icons
         self.save_btn = ft.ElevatedButton("Save PNG", on_click=self.on_save_png)
         self.load_btn = ft.ElevatedButton("Load PNG", on_click=self.on_load_png)
-        self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
+        #self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
         self.grid = ft.Column([
             ft.Row([
                 self.make_pixel(x, y) for x in range(self.size)
@@ -177,8 +177,8 @@ class PixelArtEditor:
                 self.color_preview,
                 self.advanced_picker_btn,
                 self.clear_btn,
-                self.export_btn,
-                self.import_btn,
+                #self.export_btn,
+                #self.import_btn,
                 self.import_icon_btn,
                 self.save_btn,
                 self.load_btn
@@ -539,22 +539,22 @@ class PixelArtEditor:
         self.pixels = [["#FFFFFF" for _ in range(self.size)] for _ in range(self.size)]
         self.refresh_grid()
 
-    def on_export(self, e):
-        import json
-        self.export_text.value = json.dumps(self.pixels)
-        self.export_text.update()
+    #def on_export(self, e):
+    #    import json
+    #    self.export_text.value = json.dumps(self.pixels)
+    #    self.export_text.update()
 
-    def on_import(self, e):
-        import json
-        try:
-            data = json.loads(self.export_text.value)
-            if isinstance(data, list) and len(data) == self.size and all(len(row) == self.size for row in data):
-                self._push_undo()
-                self.pixels = data
-                self.refresh_grid()
-        except Exception:
-            self.export_text.value = "Invalid JSON!"
-            self.export_text.update()
+    #def on_import(self, e):
+    #    import json
+    #    try:
+    #        data = json.loads(self.export_text.value)
+    #        if isinstance(data, list) and len(data) == self.size and all(len(row) == self.size for row in data):
+    #            self._push_undo()
+    #            self.pixels = data
+    #            self.refresh_grid()
+    #    except Exception:
+    #        self.export_text.value = "Invalid JSON!"
+    #        self.export_text.update()
 
     def refresh_grid(self):
         for y, row in enumerate(self.grid.controls):
