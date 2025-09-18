@@ -76,7 +76,7 @@ class ColourPicker:
         try:
             with open(path, 'wb') as f:
                 img.save(f, format='PNG')
-                f.flush()
+                #f.flush()
             return path
         except Exception as ex:
             return None
@@ -169,7 +169,7 @@ class ColourPicker:
             self._wheel_debounce_timer.start()
         wheel_gesture = ft.GestureDetector(
             content=wheel_img,
-            on_tap=debounce_wheel_gesture,
+            on_tap_down=debounce_wheel_gesture,
             on_pan_update=debounce_wheel_gesture
         )
         #wheel_container = ft.Container(content=wheel_img, width=self.wheel_size, height=self.wheel_size, on_tap=on_wheel_tap)
