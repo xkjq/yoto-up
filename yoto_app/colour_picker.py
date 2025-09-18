@@ -5,6 +5,7 @@ import colorsys
 from PIL import Image
 from loguru import logger
 import uuid
+import threading
 
 class ColourPicker:
     def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None):
@@ -96,6 +97,15 @@ class ColourPicker:
         preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
         value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
         wheel_img = ft.Image(width=self.wheel_size, height=self.wheel_size)
+        # Debounce timer for HSV changes
+        self._debounce_timer = None
+        def debounce_hsv_change(ev=None, delay=0.2):
+            if self._debounce_timer:
+                self._debounce_timer.cancel()
+            def run():
+                on_hsv_change(ev)
+            self._debounce_timer = threading.Timer(delay, run)
+            self._debounce_timer.start()
         def on_wheel_tap(ev):
             x = getattr(ev, 'local_x', None)
             y = getattr(ev, 'local_y', None)
@@ -125,36 +135,42 @@ class ColourPicker:
 
 
         # Use GestureDetector to capture tap/pointer events
-        def on_wheel_gesture(ev):
-            x = getattr(ev, 'local_x', None)
-            y = getattr(ev, 'local_y', None)
-            logger.debug(f"Wheel gesture at: local_x={x}, local_y={y}")
-            if x is None or y is None:
-                return
-            size = self.wheel_size
-            cx = cy = size / 2.0
-            dx = x - cx
-            dy = y - cy
-            r = math.hypot(dx, dy)
-            radius = size / 2.0
-            if r > radius:
-                logger.debug("Gesture outside wheel")
-                return
-            angle = math.atan2(dy, dx)
-            hue = (angle / (2 * math.pi)) % 1.0
-            sat = min(1.0, r / radius)
-            logger.debug(f"Wheel gesture mapped to hue={hue*360:.1f}, sat={sat:.2f}")
-            hue_slider.value = int(hue * 360)
-            sat_slider.value = sat
-            hue_slider.update()
-            sat_slider.update()
-            on_hsv_change()
-            if page:
-                page.update()
+        self._wheel_debounce_timer = None
+        def debounce_wheel_gesture(ev, delay=0.2):
+            if self._wheel_debounce_timer:
+                self._wheel_debounce_timer.cancel()
+            def run():
+                x = getattr(ev, 'local_x', None)
+                y = getattr(ev, 'local_y', None)
+                logger.debug(f"Wheel gesture at: local_x={x}, local_y={y}")
+                if x is None or y is None:
+                    return
+                size = self.wheel_size
+                cx = cy = size / 2.0
+                dx = x - cx
+                dy = y - cy
+                r = math.hypot(dx, dy)
+                radius = size / 2.0
+                if r > radius:
+                    logger.debug("Gesture outside wheel")
+                    return
+                angle = math.atan2(dy, dx)
+                hue = (angle / (2 * math.pi)) % 1.0
+                sat = min(1.0, r / radius)
+                logger.debug(f"Wheel gesture mapped to hue={hue*360:.1f}, sat={sat:.2f}")
+                hue_slider.value = int(hue * 360)
+                sat_slider.value = sat
+                hue_slider.update()
+                sat_slider.update()
+                on_hsv_change()
+                if page:
+                    page.update()
+            self._wheel_debounce_timer = threading.Timer(delay, run)
+            self._wheel_debounce_timer.start()
         wheel_gesture = ft.GestureDetector(
             content=wheel_img,
-            on_tap=on_wheel_gesture,
-            on_pan_update=on_wheel_gesture
+            on_tap=debounce_wheel_gesture,
+            on_pan_update=debounce_wheel_gesture
         )
         #wheel_container = ft.Container(content=wheel_img, width=self.wheel_size, height=self.wheel_size, on_tap=on_wheel_tap)
 
@@ -245,9 +261,9 @@ class ColourPicker:
             except Exception:
                 pass
 
-        value_slider.on_change = on_hsv_change
-        hue_slider.on_change = on_hsv_change
-        sat_slider.on_change = on_hsv_change
+        value_slider.on_change = debounce_hsv_change
+        hue_slider.on_change = debounce_hsv_change
+        sat_slider.on_change = debounce_hsv_change
 
         def update_all(ev=None):
             r_val = int(r_slider.value)
