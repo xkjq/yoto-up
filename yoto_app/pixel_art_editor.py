@@ -363,37 +363,42 @@ class PixelArtEditor:
         sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation (0-1)", on_change=None)
 
         def _make_color_wheel_image(val):
-            # create a color wheel image and save to saved_icons/__color_wheel.png
-            saved_dir = self._ensure_saved_dir()
-            path = os.path.join(str(saved_dir), '__color_wheel.png')
-            size = wheel_size
-            img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-            cx = cy = size / 2.0
-            radius = size / 2.0
-            for y in range(size):
-                for x in range(size):
-                    dx = x - cx
-                    dy = y - cy
-                    r = math.hypot(dx, dy)
-                    if r <= radius:
-                        # angle to hue
-                        angle = math.atan2(dy, dx)
-                        hue = (angle / (2 * math.pi)) % 1.0
-                        sat = min(1.0, r / radius)
-                        rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
-                        img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
-                    else:
-                        img.putpixel((x, y), (0, 0, 0, 0))
-
+            try:
+                import math
+                import colorsys
+                saved_dir = self._ensure_saved_dir()
+                path = os.path.join(str(saved_dir), '__color_wheel.png')
+                size = wheel_size
+                img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                cx = cy = size / 2.0
+                radius = size / 2.0
+                for y in range(size):
+                    for x in range(size):
+                        dx = x - cx
+                        dy = y - cy
+                        r = math.hypot(dx, dy)
+                        if r <= radius:
+                            # angle to hue
+                            angle = math.atan2(dy, dx)
+                            hue = (angle / (2 * math.pi)) % 1.0
+                            sat = min(1.0, r / radius)
+                            rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
+                            img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
+                        else:
+                            img.putpixel((x, y), (0, 0, 0, 0))
+            except Exception as ex:
+                logger.error(f"color wheel generation error: {ex}")
+                return None
             # Save and flush the PNG to disk, then confirm file exists
             try:
                 with open(path, 'wb') as f:
                     img.save(f, format='PNG')
                     f.flush()
+                logger.debug(f"color wheel PNG save succeeded: {path}")
                 return path
             except Exception as ex:
                 logger.error(f"color wheel PNG save error: {ex}")
-                return path
+                return None
 
         def on_wheel_click(ev):
             logger.debug(f"color wheel tap event: {ev!r}")
@@ -514,8 +519,17 @@ class PixelArtEditor:
             if p:
                 wheel_img.src = p
                 wheel_img.update()
-            if page:
-                page.update()
+            # Also update the dialog/page so the new wheel is visible immediately
+            try:
+                if self.color_picker_dialog:
+                    self.color_picker_dialog.update()
+            except Exception:
+                logger.debug("color wheel dialog update failed")
+            try:
+                if page:
+                    page.update()
+            except Exception:
+                logger.debug("page update failed")
 
         def hsv_to_hex(h, s, v):
             try:
