@@ -28,8 +28,7 @@ class ColourPicker:
         try:
             abs_dir = os.path.abspath(str(self.saved_dir))
             os.makedirs(abs_dir, exist_ok=True)
-            unique_name = f"__color_wheel_{uuid.uuid4().hex}.png"
-            path = os.path.join(abs_dir, unique_name)
+            path = os.path.join(abs_dir, "__color_wheel.png")
             size = self.wheel_size
             cx = cy = size / 2.0
             radius = size / 2.0
@@ -71,12 +70,8 @@ class ColourPicker:
                             img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
                         else:
                             img.putpixel((x, y), (0, 0, 0, 0))
-        except Exception as ex:
-            return None
-        try:
             with open(path, 'wb') as f:
                 img.save(f, format='PNG')
-                #f.flush()
             return path
         except Exception as ex:
             return None
@@ -205,27 +200,7 @@ class ColourPicker:
         hue_slider = ft.Slider(min=0, max=360, value=0, divisions=360, label="Hue (0-360°)", on_change=None)
         sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation (0-1)", on_change=None)
 
-        def on_value_change(ev):
-            v = float(value_slider.value)
-            p = self._make_color_wheel_image(v)
-            logger.debug(f"on_value_change: wheel image path: {p}")
-            if p and os.path.exists(p):
-                wheel_img.src = p
-                wheel_img.update()
-            else:
-                logger.error(f"Wheel image not found or not generated: {p}")
-                wheel_img.src = None
-                wheel_img.update()
-            try:
-                if self.color_picker_dialog:
-                    self.color_picker_dialog.update()
-            except Exception:
-                logger.debug("color wheel dialog update failed")
-            try:
-                if page:
-                    page.update()
-            except Exception:
-                logger.debug("page update failed")
+        # Remove on_value_change, use on_hsv_change for all HSV slider updates
 
         def on_hsv_change(ev=None):
             h = float(hue_slider.value)
@@ -259,6 +234,7 @@ class ColourPicker:
                 if page:
                     page.update()
             except Exception:
+                logger.error("on_hsv_change: unexpected error")
                 pass
 
         value_slider.on_change = debounce_hsv_change
@@ -320,5 +296,4 @@ class ColourPicker:
     def close_dialog(self, page=None):
         if self.color_picker_dialog:
             self.color_picker_dialog.open = False
-        if page:
             page.update()
