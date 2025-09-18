@@ -28,7 +28,9 @@ class ColourPicker:
         try:
             abs_dir = os.path.abspath(str(self.saved_dir))
             os.makedirs(abs_dir, exist_ok=True)
-            path = os.path.join(abs_dir, "__color_wheel.png")
+            import uuid
+            unique_name = f"__color_wheel_{uuid.uuid4().hex}.png"
+            path = os.path.join(abs_dir, unique_name)
             size = self.wheel_size
             cx = cy = size / 2.0
             radius = size / 2.0
@@ -204,7 +206,7 @@ class ColourPicker:
 
         # Remove on_value_change, use on_hsv_change for all HSV slider updates
 
-        def on_hsv_change(ev=None):
+        def on_value_change(ev=None):
             h = float(hue_slider.value)
             s = float(sat_slider.value)
             v = float(value_slider.value)
