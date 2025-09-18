@@ -91,7 +91,9 @@ class ColourPicker:
         hex_field = ft.TextField(label="Hex", value=self.current_color, width=100)
         preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
         value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
-        wheel_img = ft.Image(width=self.wheel_size, height=self.wheel_size)
+        # Generate initial wheel image and set src
+        initial_wheel_path = self._make_color_wheel_image(value_slider.value)
+        wheel_img = ft.Image(src=initial_wheel_path, width=self.wheel_size, height=self.wheel_size)
         # Debounce timer for HSV changes
         self._debounce_timer = None
         def debounce_hsv_change(ev=None, delay=0.2):
@@ -131,7 +133,7 @@ class ColourPicker:
 
         # Use GestureDetector to capture tap/pointer events
         self._wheel_debounce_timer = None
-        def debounce_wheel_gesture(ev, delay=0.2):
+        def debounce_wheel_gesture(ev, delay=0.02):
             if self._wheel_debounce_timer:
                 self._wheel_debounce_timer.cancel()
             def run():
@@ -284,7 +286,7 @@ class ColourPicker:
             ft.Row([ft.Text("Blue", width=120), b_slider]),
             ft.Row([ft.Text("Hue (0-360°)", width=120), hue_slider]),
             ft.Row([ft.Text("Saturation (0-1)", width=120), sat_slider]),
-        ], spacing=10, width=self.wheel_size + 150)
+        ], spacing=10, width=self.wheel_size + 250)
         self.color_picker_dialog = ft.AlertDialog(
             title=ft.Text("Advanced Color Picker"),
             content=content,
