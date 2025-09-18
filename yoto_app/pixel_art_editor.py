@@ -339,7 +339,18 @@ class PixelArtEditor:
     def open_color_picker(self, e):
         from yoto_app.colour_picker import ColourPicker
         page = e.page if hasattr(e, 'page') else None
-        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir())
+        def on_color_selected(hex_color):
+            self.current_color = hex_color
+            # Update active colour display if present
+            if hasattr(self, 'color_preview') and self.color_preview:
+                self.color_preview.bgcolor = hex_color
+                self.color_preview.update()
+            # Update hex input box if present
+            if hasattr(self, 'hex_input') and self.hex_input:
+                self.hex_input.value = hex_color
+                self.hex_input.update()
+            self.refresh_grid()
+        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
         dialog = picker.build_dialog(page=page)
         if page:
             page.open(dialog)

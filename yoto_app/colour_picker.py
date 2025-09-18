@@ -8,11 +8,12 @@ import uuid
 import threading
 
 class ColourPicker:
-    def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None):
+    def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None, on_color_selected=None):
         self.current_color = current_color
         self.wheel_size = wheel_size
         self.saved_dir = saved_dir or '.'
         self.color_picker_dialog = None
+        self.on_color_selected = on_color_selected
 
 
     def hex_to_rgb(self, h):
@@ -98,46 +99,16 @@ class ColourPicker:
         wheel_img = ft.Image(src=initial_wheel_path, width=self.wheel_size, height=self.wheel_size)
         # Debounce timer for HSV changes
         self._debounce_timer = None
-        def debounce_hsv_change(ev=None, delay=0.2):
+        def debounce_value_change(ev=None, delay=0.2):
             if self._debounce_timer:
                 self._debounce_timer.cancel()
             def run():
-                on_hsv_change(ev)
+                on_value_change(ev)
             self._debounce_timer = threading.Timer(delay, run)
             self._debounce_timer.start()
-        def on_wheel_tap(ev):
-            x = getattr(ev, 'local_x', None)
-            y = getattr(ev, 'local_y', None)
-            logger.debug(f"Wheel tapped at: local_x={x}, local_y={y}")
-            if x is None or y is None:
-                return
-            size = self.wheel_size
-            cx = cy = size / 2.0
-            dx = x - cx
-            dy = y - cy
-            r = math.hypot(dx, dy)
-            radius = size / 2.0
-            if r > radius:
-                logger.debug("Tap outside wheel")
-                return
-            angle = math.atan2(dy, dx)
-            hue = (angle / (2 * math.pi)) % 1.0
-            sat = min(1.0, r / radius)
-            logger.debug(f"Wheel tap mapped to hue={hue*360:.1f}, sat={sat:.2f}")
-            hue_slider.value = int(hue * 360)
-            sat_slider.value = sat
-            hue_slider.update()
-            sat_slider.update()
-            on_hsv_change()
-            if page:
-                page.update()
-
-
-        # Use GestureDetector to capture tap/pointer events
-        self._wheel_debounce_timer = None
-        def debounce_wheel_gesture(ev, delay=0.02):
-            if self._wheel_debounce_timer:
-                self._wheel_debounce_timer.cancel()
+        def debounce_wheel_gesture(ev, delay=0.2):
+            if self._debounce_timer:
+                self._debounce_timer.cancel()
             def run():
                 x = getattr(ev, 'local_x', None)
                 y = getattr(ev, 'local_y', None)
@@ -156,16 +127,41 @@ class ColourPicker:
                 angle = math.atan2(dy, dx)
                 hue = (angle / (2 * math.pi)) % 1.0
                 sat = min(1.0, r / radius)
-                logger.debug(f"Wheel gesture mapped to hue={hue*360:.1f}, sat={sat:.2f}")
                 hue_slider.value = int(hue * 360)
                 sat_slider.value = sat
                 hue_slider.update()
                 sat_slider.update()
-                on_hsv_change()
-                if page:
-                    page.update()
-            self._wheel_debounce_timer = threading.Timer(delay, run)
-            self._wheel_debounce_timer.start()
+                # Only update preview, not wheel image
+                h = float(hue_slider.value)
+                s = float(sat_slider.value)
+                v = float(value_slider.value)
+                hexv = self.hsv_to_hex(h, s, v)
+                try:
+                    r_val, g_val, b_val = self.hex_to_rgb(hexv)
+                    r_slider.value = r_val
+                    g_slider.value = g_val
+                    b_slider.value = b_val
+                    r_slider.update()
+                    g_slider.update()
+                    b_slider.update()
+                except Exception:
+                    pass
+                hex_field.value = hexv
+                hex_field.update()
+                preview.bgcolor = hexv
+                preview.update()
+                self.current_color = hexv
+                if self.on_color_selected:
+                    self.on_color_selected(hexv)
+                try:
+                    if page:
+                        page.update()
+                except Exception:
+                    logger.error("debounce_wheel_gesture: unexpected error")
+                    pass
+            self._debounce_timer = threading.Timer(delay, run)
+            self._debounce_timer.start()
+
         wheel_gesture = ft.GestureDetector(
             content=wheel_img,
             on_tap_down=debounce_wheel_gesture,
@@ -226,6 +222,8 @@ class ColourPicker:
             preview.bgcolor = hexv
             preview.update()
             self.current_color = hexv
+            if self.on_color_selected:
+                self.on_color_selected(hexv)
             # Regenerate and update wheel image on any HSV change
             p = self._make_color_wheel_image(v)
             if p and os.path.exists(p):
@@ -241,9 +239,9 @@ class ColourPicker:
                 logger.error("on_hsv_change: unexpected error")
                 pass
 
-        value_slider.on_change = debounce_hsv_change
-        hue_slider.on_change = debounce_hsv_change
-        sat_slider.on_change = debounce_hsv_change
+        value_slider.on_change = debounce_value_change
+        hue_slider.on_change = debounce_value_change
+        sat_slider.on_change = debounce_value_change
 
         def update_all(ev=None):
             r_val = int(r_slider.value)
@@ -255,6 +253,8 @@ class ColourPicker:
             hex_field.update()
             preview.update()
             self.current_color = hex_val
+            if self.on_color_selected:
+                self.on_color_selected(hex_val)
             if page:
                 page.update()
 
