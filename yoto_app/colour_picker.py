@@ -4,6 +4,7 @@ import math
 import colorsys
 from PIL import Image
 from loguru import logger
+import uuid
 
 class ColourPicker:
     def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None):
@@ -11,6 +12,7 @@ class ColourPicker:
         self.wheel_size = wheel_size
         self.saved_dir = saved_dir or '.'
         self.color_picker_dialog = None
+
 
     def hex_to_rgb(self, h):
         h = h.lstrip('#')
@@ -23,35 +25,59 @@ class ColourPicker:
 
     def _make_color_wheel_image(self, val):
         try:
-            path = os.path.join(str(self.saved_dir), '__color_wheel.png')
+            abs_dir = os.path.abspath(str(self.saved_dir))
+            os.makedirs(abs_dir, exist_ok=True)
+            unique_name = f"__color_wheel_{uuid.uuid4().hex}.png"
+            path = os.path.join(abs_dir, unique_name)
             size = self.wheel_size
-            img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             cx = cy = size / 2.0
             radius = size / 2.0
-            for y in range(size):
-                for x in range(size):
-                    dx = x - cx
-                    dy = y - cy
-                    r = math.hypot(dx, dy)
-                    if r <= radius:
-                        angle = math.atan2(dy, dx)
-                        hue = (angle / (2 * math.pi)) % 1.0
-                        sat = min(1.0, r / radius)
-                        rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
-                        img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
-                    else:
-                        img.putpixel((x, y), (0, 0, 0, 0))
+            try:
+                import numpy as np
+                yy, xx = np.mgrid[0:size, 0:size]
+                dx = xx - cx
+                dy = yy - cy
+                r = np.hypot(dx, dy)
+                angle = np.arctan2(dy, dx)
+                hue = (angle / (2 * np.pi)) % 1.0
+                sat = np.clip(r / radius, 0, 1)
+                mask = r <= radius
+                v = float(val)
+                hsv = np.stack([hue, sat, np.full_like(hue, v)], axis=-1)
+                rgb = np.zeros_like(hsv)
+                for i in range(size):
+                    for j in range(size):
+                        if mask[i, j]:
+                            rgb[i, j, :3] = colorsys.hsv_to_rgb(hsv[i, j, 0], hsv[i, j, 1], hsv[i, j, 2])
+                arr = np.zeros((size, size, 4), dtype=np.uint8)
+                arr[..., 0] = (rgb[..., 0] * 255).astype(np.uint8)
+                arr[..., 1] = (rgb[..., 1] * 255).astype(np.uint8)
+                arr[..., 2] = (rgb[..., 2] * 255).astype(np.uint8)
+                arr[..., 3] = (mask * 255).astype(np.uint8)
+                img = Image.fromarray(arr, 'RGBA')
+            except ImportError:
+                img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                for y in range(size):
+                    for x in range(size):
+                        dx = x - cx
+                        dy = y - cy
+                        r = math.hypot(dx, dy)
+                        if r <= radius:
+                            angle = math.atan2(dy, dx)
+                            hue = (angle / (2 * math.pi)) % 1.0
+                            sat = min(1.0, r / radius)
+                            rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
+                            img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
+                        else:
+                            img.putpixel((x, y), (0, 0, 0, 0))
         except Exception as ex:
-            logger.error(f"color wheel generation error: {ex}")
             return None
         try:
             with open(path, 'wb') as f:
                 img.save(f, format='PNG')
                 f.flush()
-            logger.debug(f"color wheel PNG save succeeded: {path}")
             return path
         except Exception as ex:
-            logger.error(f"color wheel PNG save error: {ex}")
             return None
 
     def hsv_to_hex(self, h, s, v):
@@ -70,14 +96,109 @@ class ColourPicker:
         preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
         value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
         wheel_img = ft.Image(width=self.wheel_size, height=self.wheel_size)
+        def on_wheel_tap(ev):
+            x = getattr(ev, 'local_x', None)
+            y = getattr(ev, 'local_y', None)
+            logger.debug(f"Wheel tapped at: local_x={x}, local_y={y}")
+            if x is None or y is None:
+                return
+            size = self.wheel_size
+            cx = cy = size / 2.0
+            dx = x - cx
+            dy = y - cy
+            r = math.hypot(dx, dy)
+            radius = size / 2.0
+            if r > radius:
+                logger.debug("Tap outside wheel")
+                return
+            angle = math.atan2(dy, dx)
+            hue = (angle / (2 * math.pi)) % 1.0
+            sat = min(1.0, r / radius)
+            logger.debug(f"Wheel tap mapped to hue={hue*360:.1f}, sat={sat:.2f}")
+            hue_slider.value = int(hue * 360)
+            sat_slider.value = sat
+            hue_slider.update()
+            sat_slider.update()
+            on_hsv_change()
+            if page:
+                page.update()
+
+
+        # Use GestureDetector to capture tap/pointer events
+        def on_wheel_gesture(ev):
+            x = getattr(ev, 'local_x', None)
+            y = getattr(ev, 'local_y', None)
+            logger.debug(f"Wheel gesture at: local_x={x}, local_y={y}")
+            if x is None or y is None:
+                return
+            size = self.wheel_size
+            cx = cy = size / 2.0
+            dx = x - cx
+            dy = y - cy
+            r = math.hypot(dx, dy)
+            radius = size / 2.0
+            if r > radius:
+                logger.debug("Gesture outside wheel")
+                return
+            angle = math.atan2(dy, dx)
+            hue = (angle / (2 * math.pi)) % 1.0
+            sat = min(1.0, r / radius)
+            logger.debug(f"Wheel gesture mapped to hue={hue*360:.1f}, sat={sat:.2f}")
+            hue_slider.value = int(hue * 360)
+            sat_slider.value = sat
+            hue_slider.update()
+            sat_slider.update()
+            on_hsv_change()
+            if page:
+                page.update()
+        wheel_gesture = ft.GestureDetector(
+            content=wheel_img,
+            on_tap=on_wheel_gesture,
+            on_pan_update=on_wheel_gesture
+        )
+        #wheel_container = ft.Container(content=wheel_img, width=self.wheel_size, height=self.wheel_size, on_tap=on_wheel_tap)
+
+        def on_wheel_click(ev):
+            # Get click position relative to wheel center
+            if not ev.local_x or not ev.local_y:
+                return
+            x = ev.local_x
+            y = ev.local_y
+            size = self.wheel_size
+            cx = cy = size / 2.0
+            dx = x - cx
+            dy = y - cy
+            r = math.hypot(dx, dy)
+            radius = size / 2.0
+            if r > radius:
+                return  # Click outside wheel
+            angle = math.atan2(dy, dx)
+            hue = (angle / (2 * math.pi)) % 1.0
+            sat = min(1.0, r / radius)
+            v = float(value_slider.value)
+            # Update sliders and preview
+            hue_slider.value = int(hue * 360)
+            sat_slider.value = sat
+            hue_slider.update()
+            sat_slider.update()
+            on_hsv_change()
+            if page:
+                page.update()
+
+        wheel_img.on_click = on_wheel_click
         hue_slider = ft.Slider(min=0, max=360, value=0, divisions=360, label="Hue (0-360°)", on_change=None)
         sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation (0-1)", on_change=None)
 
         def on_value_change(ev):
             v = float(value_slider.value)
             p = self._make_color_wheel_image(v)
-            if p:
+            logger.debug(f"on_value_change: wheel image path: {p}")
+            if p and os.path.exists(p):
                 wheel_img.src = p
+                wheel_img.update()
+            else:
+                logger.error(f"Wheel image not found or not generated: {p}")
+                wheel_img.src = None
                 wheel_img.update()
             try:
                 if self.color_picker_dialog:
@@ -110,13 +231,21 @@ class ColourPicker:
             preview.bgcolor = hexv
             preview.update()
             self.current_color = hexv
+            # Regenerate and update wheel image on any HSV change
+            p = self._make_color_wheel_image(v)
+            if p and os.path.exists(p):
+                wheel_img.src = p
+                wheel_img.update()
+            else:
+                wheel_img.src = None
+                wheel_img.update()
             try:
                 if page:
                     page.update()
             except Exception:
                 pass
 
-        value_slider.on_change = on_value_change
+        value_slider.on_change = on_hsv_change
         hue_slider.on_change = on_hsv_change
         sat_slider.on_change = on_hsv_change
 
@@ -157,7 +286,7 @@ class ColourPicker:
         hex_field.on_change = on_hex_change
 
         content = ft.Column([
-            ft.Row([preview, hex_field, ft.Column([wheel_img, ft.Row([ft.Text("Value (Brightness)", width=120), value_slider])])]),
+            ft.Row([preview, hex_field, ft.Column([wheel_gesture, ft.Row([ft.Text("Value (Brightness)", width=120), value_slider])])]),
             ft.Row([ft.Text("Red", width=120), r_slider]),
             ft.Row([ft.Text("Green", width=120), g_slider]),
             ft.Row([ft.Text("Blue", width=120), b_slider]),
