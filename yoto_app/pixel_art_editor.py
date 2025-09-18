@@ -11,6 +11,8 @@ try:
     from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
 except ImportError:
     from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
+import math
+import colorsys
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -346,49 +348,52 @@ class PixelArtEditor:
             return f"#{r:02X}{g:02X}{b:02X}"
         r, g, b = hex_to_rgb(self.current_color)
         # Sliders
-        r_slider = ft.Slider(min=0, max=255, value=r, label="R", divisions=255, on_change=None)
-        g_slider = ft.Slider(min=0, max=255, value=g, label="G", divisions=255, on_change=None)
-        b_slider = ft.Slider(min=0, max=255, value=b, label="B", divisions=255, on_change=None)
+        r_slider = ft.Slider(min=0, max=255, value=r, label="Red", divisions=255, on_change=None)
+        g_slider = ft.Slider(min=0, max=255, value=g, label="Green", divisions=255, on_change=None)
+        b_slider = ft.Slider(min=0, max=255, value=b, label="Blue", divisions=255, on_change=None)
         hex_field = ft.TextField(label="Hex", value=self.current_color, width=100)
         preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
 
         # color wheel parameters
-        wheel_size = 180
-        value_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Value", on_change=None)
+        wheel_size = 280
+        value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
         wheel_img = ft.Image(width=wheel_size, height=wheel_size)
         # HSV fallback sliders
-        hue_slider = ft.Slider(min=0, max=360, value=0, divisions=360, label="Hue", on_change=None)
-        sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation", on_change=None)
+        hue_slider = ft.Slider(min=0, max=360, value=0, divisions=360, label="Hue (0-360°)", on_change=None)
+        sat_slider = ft.Slider(min=0.0, max=1.0, value=1.0, divisions=100, label="Saturation (0-1)", on_change=None)
 
         def _make_color_wheel_image(val):
             # create a color wheel image and save to saved_icons/__color_wheel.png
+            saved_dir = self._ensure_saved_dir()
+            path = os.path.join(str(saved_dir), '__color_wheel.png')
+            size = wheel_size
+            img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+            cx = cy = size / 2.0
+            radius = size / 2.0
+            for y in range(size):
+                for x in range(size):
+                    dx = x - cx
+                    dy = y - cy
+                    r = math.hypot(dx, dy)
+                    if r <= radius:
+                        # angle to hue
+                        angle = math.atan2(dy, dx)
+                        hue = (angle / (2 * math.pi)) % 1.0
+                        sat = min(1.0, r / radius)
+                        rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
+                        img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
+                    else:
+                        img.putpixel((x, y), (0, 0, 0, 0))
+
+            # Save and flush the PNG to disk, then confirm file exists
             try:
-                import math
-                import colorsys
-                saved_dir = self._ensure_saved_dir()
-                path = os.path.join(str(saved_dir), '__color_wheel.png')
-                size = wheel_size
-                img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-                cx = cy = size / 2.0
-                radius = size / 2.0
-                for y in range(size):
-                    for x in range(size):
-                        dx = x - cx
-                        dy = y - cy
-                        r = math.hypot(dx, dy)
-                        if r <= radius:
-                            # angle to hue
-                            angle = math.atan2(dy, dx)
-                            hue = (angle / (2 * math.pi)) % 1.0
-                            sat = min(1.0, r / radius)
-                            rgb = colorsys.hsv_to_rgb(hue, sat, float(val))
-                            img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
-                        else:
-                            img.putpixel((x, y), (0, 0, 0, 0))
-                img.save(path)
+                with open(path, 'wb') as f:
+                    img.save(f, format='PNG')
+                    f.flush()
                 return path
-            except Exception:
-                return None
+            except Exception as ex:
+                logger.error(f"color wheel PNG save error: {ex}")
+                return path
 
         def on_wheel_click(ev):
             logger.debug(f"color wheel tap event: {ev!r}")
@@ -531,7 +536,9 @@ class PixelArtEditor:
                 r_slider.value = r_val
                 g_slider.value = g_val
                 b_slider.value = b_val
-                r_slider.update(); g_slider.update(); b_slider.update()
+                r_slider.update()
+                g_slider.update()
+                b_slider.update()
             except Exception:
                 pass
             hex_field.value = hexv
@@ -553,36 +560,29 @@ class PixelArtEditor:
         # wrap wheel_img in a GestureDetector so clicks/pans are delivered (attach several handlers)
         wheel_gesture = ft.GestureDetector(content=wheel_img, on_tap=on_wheel_click, on_tap_down=on_wheel_click, on_pan_update=on_wheel_click)
 
-        # generate initial wheel
+        # generate initial wheel and force the Image control to refresh so clicks work
         try:
             pth = _make_color_wheel_image(value_slider.value)
             if pth:
                 wheel_img.src = pth
+                wheel_img.update()
+                if page:
+                    page.update()
         except Exception:
+            logger.debug("color wheel initial generation failed")
             pass
 
         # initialize HSV sliders from current color so UI is in-sync
-        try:
-            import colorsys
-            r0, g0, b0 = hex_to_rgb(self.current_color)
-            rf, gf, bf = r0/255.0, g0/255.0, b0/255.0
-            h0, s0, v0 = colorsys.rgb_to_hsv(rf, gf, bf)
-            hue_slider.value = h0 * 360.0
-            sat_slider.value = s0
-            value_slider.value = v0
-            # update wheel and other fields
-            try:
-                value_slider.update(); hue_slider.update(); sat_slider.update()
-            except Exception:
-                pass
-            # call handlers to sync UI
-            try:
-                on_value_change(None)
-                on_hsv_change(None)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        r0, g0, b0 = hex_to_rgb(self.current_color)
+        rf, gf, bf = r0/255.0, g0/255.0, b0/255.0
+        h0, s0, v0 = colorsys.rgb_to_hsv(rf, gf, bf)
+        hue_slider.value = h0 * 360.0
+        sat_slider.value = s0
+        value_slider.value = v0
+        # NOTE: Do NOT call .update() on Slider controls here because
+        # Flet requires controls to be added to the page before update()
+        # is used. We'll perform the initial sync after the dialog is
+        # opened below.
 
         def update_all(ev=None):
             r_val = int(r_slider.value)
@@ -625,10 +625,12 @@ class PixelArtEditor:
         hex_field.on_change = on_hex_change
 
         content = ft.Column([
-            ft.Row([preview, hex_field, ft.Column([wheel_gesture, value_slider])]),
-            r_slider,
-            g_slider,
-            b_slider,
+            ft.Row([preview, hex_field, ft.Column([wheel_gesture, ft.Row([ft.Text("Value (Brightness)", width=120), value_slider])])]),
+            ft.Row([ft.Text("Red", width=120), r_slider]),
+            ft.Row([ft.Text("Green", width=120), g_slider]),
+            ft.Row([ft.Text("Blue", width=120), b_slider]),
+            ft.Row([ft.Text("Hue (0-360°)", width=120), hue_slider]),
+            ft.Row([ft.Text("Saturation (0-1)", width=120), sat_slider]),
         ], spacing=10, width=wheel_size + 150)
         self.color_picker_dialog = ft.AlertDialog(
             title=ft.Text("Advanced Color Picker"),
@@ -639,6 +641,11 @@ class PixelArtEditor:
         if page:
             page.open(self.color_picker_dialog)
             page.update()
+            # Now that the dialog and its controls are attached to the page,
+            # it's safe to run the initial sync handlers which may call
+            # .update() on controls.
+            on_value_change(None)
+            on_hsv_change(None)
 
     def on_import_icon(self, e):
         print("Importing icon from cache...")
