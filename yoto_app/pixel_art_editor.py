@@ -1801,9 +1801,10 @@ class PixelArtEditor:
 
 # Standalone demo
 if __name__ == "__main__":
-	import argparse
+	import argparse, json as _json
 	parser = argparse.ArgumentParser(prog="pixel_art_editor", add_help=True)
 	parser.add_argument("--load", "-l", help="Path to icon (PNG/JSON) to load on startup", default=None)
+	parser.add_argument("--metadata", "-m", help="Path to metadata JSON file to pre-populate metadata fields", default=None)
 	args = parser.parse_args()
 
 	def main(page: ft.Page):
@@ -1813,7 +1814,14 @@ if __name__ == "__main__":
 		# If launched with --load, try to load after controls attached
 		if args.load:
 			try:
-				editor.load_icon(args.load)
+				metadata = None
+				if args.metadata:
+					try:
+						with open(args.metadata, 'r', encoding='utf-8') as mf:
+							metadata = _json.load(mf)
+					except Exception:
+						metadata = None
+				editor.load_icon(args.load, metadata=metadata)
 			except Exception:
 				logger.exception("Failed to auto-load provided icon")
 
