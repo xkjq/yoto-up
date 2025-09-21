@@ -5,17 +5,16 @@ import os
 from loguru import logger
 from PIL import Image
 import json
-import copy
 import re
+import hashlib
+import copy
 try:
     from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
     from yoto_app.pixel_fonts import _font_3x5, _font_5x7
 except ImportError:
     from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
     from pixel_fonts import _font_3x5, _font_5x7
-import math
 import colorsys
-import copy
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -420,13 +419,123 @@ class PixelArtEditor:
                 return
             try:
                 path = os.path.abspath(sel)
-                pixels = load_icon_as_pixels(path, size=self.size)
+                pixels = None
+                # If the cache file is JSON, try to extract metadata + pixels (or embedded png)
+                if path.lower().endswith('.json'):
+                    try:
+                        with open(path, 'r', encoding='utf-8') as fh:
+                            obj = json.load(fh)
+                    except Exception:
+                        obj = None
+                    if isinstance(obj, dict):
+                        # populate export_text with metadata if present
+                        try:
+                            meta = obj.get('metadata', {})
+                            if hasattr(self, 'export_text') and self.export_text is not None:
+                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
+                                self.export_text.update()
+                        except Exception:
+                            pass
+                        if 'pixels' in obj and isinstance(obj['pixels'], list):
+                            pixels = obj['pixels']
+                        elif 'png_base64' in obj:
+                            try:
+                                import base64
+                                import io
+                                b = base64.b64decode(obj['png_base64'])
+                                img = Image.open(io.BytesIO(b))
+                                pixels = self._image_to_pixels(img)
+                            except Exception:
+                                pixels = None
+                # fallback to generic loader (supports PNG etc.)
+                if pixels is None:
+                    pixels = load_icon_as_pixels(path, size=self.size)
                 if not pixels or not isinstance(pixels, list):
                     raise RuntimeError('Loaded icon returned invalid pixel data')
                 self._push_undo()
                 self.pixels = pixels
                 self.refresh_grid()
-                dlg.open = False
+                # If there's metadata files in the caches, try to find matching metadata and populate export_text
+                try:
+                    pth = Path(path)
+                    # check official cache metadata files
+                    meta_found = None
+                    yoto_meta = Path('.yoto_icon_cache') / 'icon_metadata.json'
+                    user_meta = Path('.yoto_icon_cache') / 'user_icon_metadata.json'
+                    metas = []
+                    if yoto_meta.exists():
+                        try:
+                            metas += json.loads(yoto_meta.read_text(encoding='utf-8') or '[]')
+                        except Exception:
+                            pass
+                    if user_meta.exists():
+                        try:
+                            metas += json.loads(user_meta.read_text(encoding='utf-8') or '[]')
+                        except Exception:
+                            pass
+                    for m in metas:
+                        cp = m.get('cache_path') or m.get('cachePath')
+                        if cp and Path(cp).name == pth.name:
+                            meta_found = m
+                            break
+                        url = m.get('url')
+                        if url:
+                            try:
+                                h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                if pth.stem.startswith(h):
+                                    meta_found = m
+                                    break
+                            except Exception:
+                                pass
+                    # check yotoicons metadata files
+                    if not meta_found:
+                        yotoicons_dir = Path('.yotoicons_cache')
+                        global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
+                        metas2 = []
+                        if global_meta.exists():
+                            try:
+                                metas2 += json.loads(global_meta.read_text(encoding='utf-8') or '[]')
+                            except Exception:
+                                pass
+                        try:
+                            for mf in yotoicons_dir.glob('*_metadata.json'):
+                                if mf.name == global_meta.name:
+                                    continue
+                                try:
+                                    metas2 += json.loads(mf.read_text(encoding='utf-8') or '[]')
+                                except Exception:
+                                    continue
+                        except Exception:
+                            pass
+                        for m in metas2:
+                            cp = m.get('cache_path') or m.get('cachePath')
+                            if cp and Path(cp).name == pth.name:
+                                meta_found = m
+                                break
+                            img_url = m.get('img_url') or m.get('imgUrl')
+                            if img_url:
+                                try:
+                                    h = hashlib.sha256(str(img_url).encode()).hexdigest()[:16]
+                                    if pth.stem.startswith(h):
+                                        meta_found = m
+                                        break
+                                except Exception:
+                                    pass
+                    if meta_found and hasattr(self, 'export_text') and self.export_text is not None:
+                        try:
+                            meta = meta_found.get('metadata') or meta_found.get('meta') or meta_found
+                            if isinstance(meta, dict):
+                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
+                                self.export_text.update()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # close dialog
+                try:
+                    dlg.open = False
+                except Exception:
+                    pass
                 if page:
                     page.update()
             except Exception as ex:
@@ -575,11 +684,9 @@ class PixelArtEditor:
         if font_name == "3x5":
             font = _font_3x5
             width = 3
-            height = 5
         else:
             font = _font_5x7
             width = 5
-            height = 7
         for ch in text:
             glyph = font.get(ch, font.get(' '))
             for row_idx, bits in enumerate(glyph):
@@ -680,7 +787,7 @@ class PixelArtEditor:
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
         compact_checkbox = ft.Checkbox(label="Compact", value=False, on_change=lambda ev: update_preview())
-        def update_preview(ev=None):
+        def update_text_preview(ev=None):
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
             sc = int(scale_dropdown.value)
@@ -754,7 +861,8 @@ class PixelArtEditor:
                 dlg.open = True
                 page.open(dlg)
                 page.update()
-        def update_preview(ev=None):
+
+        def update_image_preview(ev=None):
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
             sc = int(scale_dropdown.value)
@@ -808,6 +916,9 @@ class PixelArtEditor:
                         preview_applied_img.update()
                     status.value = f"Applied preview error: {ex2}"
                     status.update()
+        # Provide a unified name expected by callbacks
+        update_preview = update_text_preview
+
         # Attach update_preview to all relevant fields
         text_field.on_change = update_preview
         color_field.on_change = update_preview
