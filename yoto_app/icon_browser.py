@@ -441,7 +441,14 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     details_panel.controls.append(ft.Text(f"{str(desc)[:300]}"))
             # Action buttons
             def set_selected(e, p=path):
+                logger.debug(f"set_selected: {p}")
+                try:
+                    # store selected path on the page so other dialogs (Replace dialog) can access it
+                    setattr(page, "replace_icon_path", p)
+                except Exception:
+                    pass
                 show_snack(f"Icon selected: {p}")
+
             def open_in_explorer(e, p=path):
                 try:
                     # best-effort: open containing folder using system default

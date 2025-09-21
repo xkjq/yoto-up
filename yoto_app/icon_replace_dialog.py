@@ -107,6 +107,13 @@ class IconReplaceDialog:
         search_progress = ft.ProgressRing(width=24, visible=False)
         search_status = ft.Text('', size=12)
 
+        # Selected-icon preview (hidden when no selection). Will be shown next to the "Selected icon" button.
+        preview_label = ft.Text("Selected icon preview", size=12, weight=ft.FontWeight.BOLD, visible=False)
+        preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.ImageFit.CONTAIN)
+        preview_name = ft.Text('', size=12, visible=False)
+        # pack preview into a small column
+        preview_column = ft.Column([preview_label, preview_image, preview_name], alignment=ft.MainAxisAlignment.CENTER, visible=True)
+
         def do_search(_ev=None):
             def search_worker():
                 try:
@@ -360,6 +367,142 @@ class IconReplaceDialog:
             self.show_card_details(None, self.card)
             self.page.update()
 
+        def update_preview(marked_path):
+            """Synchronously update preview controls based on marked_path."""
+            try:
+                if not marked_path:
+                    preview_label.visible = False
+                    preview_image.visible = False
+                    preview_image.src = ''
+                    preview_name.visible = False
+                    preview_name.value = ''
+                    try:
+                        self.page.update()
+                    except Exception:
+                        pass
+                    return
+                # determine src and visibility
+                try:
+                    abs_path = marked_path if os.path.isabs(marked_path) else os.path.abspath(marked_path)
+                except Exception:
+                    abs_path = marked_path
+                show_it = False
+                try:
+                    if abs_path and (str(abs_path).startswith('http://') or str(abs_path).startswith('https://')):
+                        preview_image.src = abs_path
+                        show_it = True
+                    elif abs_path and os.path.exists(abs_path):
+                        preview_image.src = abs_path
+                        show_it = True
+                    else:
+                        preview_image.src = ''
+                        show_it = False
+                except Exception:
+                    preview_image.src = ''
+                    show_it = False
+
+                preview_label.visible = show_it
+                preview_image.visible = show_it
+                preview_name.value = os.path.basename(marked_path) if marked_path else ''
+                preview_name.visible = show_it and bool(preview_name.value)
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+
+        def use_selected_icon(ev=None):
+            """Apply the icon path set on page.replace_icon_path (if any)."""
+            def _worker():
+                try:
+                    marked = getattr(self.page, "replace_icon_path", None)
+                    if not marked:
+                        self.show_snack("No icon marked in browser", True)
+                        return
+                    pth = Path(marked)
+                    icon_payload = None
+                    # support JSON packages saved by PixelArtEditor
+                    if pth.suffix.lower() == '.json':
+                        try:
+                            obj = json.loads(pth.read_text(encoding='utf-8') or '{}')
+                            if isinstance(obj, dict):
+                                if obj.get('png_base64'):
+                                    icon_payload = {'png_base64': obj.get('png_base64'), 'title': (obj.get('metadata') or {}).get('title')}
+                                elif obj.get('pixels'):
+                                    # attempt to render pixels into png_base64 (best-effort)
+                                    try:
+                                        from PIL import Image as PILImage
+                                        import io as _io, base64 as _b64
+                                        pixels = obj.get('pixels')
+                                        h = len(pixels)
+                                        w = len(pixels[0]) if h else 0
+                                        img = PILImage.new('RGBA', (w, h))
+                                        for yy in range(h):
+                                            for xx in range(w):
+                                                c = pixels[yy][xx] if xx < len(pixels[yy]) else '#FFFFFF'
+                                                if isinstance(c, str) and c.startswith('#'):
+                                                    ch = c.lstrip('#')
+                                                    if len(ch) == 3:
+                                                        ch = ''.join([c*2 for c in ch])
+                                                    r = int(ch[0:2], 16); g = int(ch[2:4], 16); b = int(ch[4:6], 16)
+                                                    img.putpixel((xx, yy), (r, g, b, 255))
+                                                else:
+                                                    img.putpixel((xx, yy), (255,255,255,255))
+                                        buf = _io.BytesIO()
+                                        img.save(buf, format='PNG')
+                                        icon_payload = {'png_base64': _b64.b64encode(buf.getvalue()).decode('ascii')}
+                                    except Exception:
+                                        icon_payload = None
+                        except Exception:
+                            icon_payload = None
+                    elif pth.suffix.lower() == '.png':
+                        try:
+                            import base64
+                            b = pth.read_bytes()
+                            icon_payload = {'png_base64': base64.b64encode(b).decode('ascii')}
+                        except Exception:
+                            icon_payload = None
+                    else:
+                        # unknown file type - try to upload as cache_path if file exists
+                        try:
+                            if pth.exists():
+                                icon_payload = {'cache_path': str(pth)}
+                        except Exception:
+                            icon_payload = None
+
+                    if not icon_payload:
+                        self.show_snack("Marked icon cannot be uploaded (no image data)", True)
+                        return
+
+                    uploaded = self._upload_icon_payload(icon_payload)
+                    if not uploaded or not (isinstance(uploaded, dict) and uploaded.get('mediaId')):
+                        self.show_snack("Upload failed or returned no mediaId", True)
+                        return
+                    media_id = uploaded.get('mediaId')
+                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                    if self.kind == 'chapter':
+                        target_ch = full.content.chapters[self.ch_i]
+                        if not getattr(target_ch, 'display', False):
+                            target_ch.display = ChapterDisplay()
+                        target_ch.display.icon16x16 = f"yoto:#{media_id}"
+                    else:
+                        target_ch = full.content.chapters[self.ch_i]
+                        target_tr = target_ch.tracks[self.tr_i]
+                        if not getattr(target_tr, 'display', False):
+                            target_tr.display = TrackDisplay()
+                        target_tr.display.icon16x16 = f"yoto:#{media_id}"
+                    self.api.update_card(full, return_card_model=False)
+                    self.show_card_details(None, full)
+                    self.show_snack("Applied marked icon")
+                except Exception as ex:
+                    logger.exception("use_selected_icon failed")
+                    self.show_snack(f"Failed to apply marked icon: {ex}", True)
+            threading.Thread(target=_worker, daemon=True).start()
+
         # Build a Tabs control inside the dialog so user can switch between Search and My Icons
         tabs = ft.Tabs(selected_index=0, tabs=[
             ft.Tab(text="Search", content=ft.Column([
@@ -372,15 +515,24 @@ class IconReplaceDialog:
             ], width=900, expand=True))
         ], expand=True)
 
+        # include a "Use marked icon" action so the user can apply the icon selected from the browser
+        use_selected_btn = ft.TextButton("Selected icon", on_click=use_selected_icon)
+        # include the preview_column above the tabs so it's visible when a selection exists
         self.dialog = ft.AlertDialog(
             title=ft.Text('Replace icon'),
             content=ft.Column([tabs], width=920),
-            actions=[ft.TextButton('Close', on_click=close_replace)],
+            # place preview next to the selected-icon action so they are adjacent
+            actions=[use_selected_btn, preview_column, ft.TextButton('Close', on_click=close_replace)],
         )
+
         self.page.open(self.dialog)
-        # kick off the initial search and refresh saved icons
-        do_search(None)
+        # initialize preview to current page.replace_icon_path (if any)
         try:
-            refresh_saved_icons()
+            marked_now = getattr(self.page, "replace_icon_path", None)
+            update_preview(marked_now)
         except Exception:
             pass
+        # kick off the initial search and refresh saved icons
+        do_search(None)
+        refresh_saved_icons()
+       
