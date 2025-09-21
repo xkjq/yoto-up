@@ -484,54 +484,16 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         if not selected_icon_path[0]:
             return
         path = selected_icon_path[0]
-        # Try to spawn a separate process running the editor so it appears in a new window.
-        # If we have metadata for this icon, write it to a temp JSON file and pass via --metadata.
         try:
-            import subprocess, tempfile
-            # try to find metadata for the icon to pass to the new editor process
-            meta = _meta_map.get(path)
-            meta_source = _meta_source.get(path)
-            if meta is None and not _index_built:
-                try:
-                    meta, meta_source = find_metadata_for_path(path)
-                except Exception:
-                    meta = None
-
-            cmd = [sys.executable, "-m", "yoto_app.pixel_art_editor", "--load", path]
-            metadata_tmp_path = None
-            if meta:
-                try:
-                    tf = tempfile.NamedTemporaryFile(delete=False, suffix='.json', prefix='yoto_meta_')
-                    import json as _json
-                    _json.dump(meta, tf)
-                    tf.flush()
-                    tf.close()
-                    metadata_tmp_path = tf.name
-                    cmd.extend(["--metadata", metadata_tmp_path])
-                except Exception:
-                    metadata_tmp_path = None
-
-            kwargs = {"stdout": None, "stderr": None, "stdin": None, "close_fds": True, "start_new_session": True}
-            # On Windows, request a new console window for clarity
-            if os.name == 'nt':
-                try:
-                    kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-                except Exception:
-                    pass
-            subprocess.Popen(cmd, **kwargs)
-            show_snack("Opened editor in a new window")
-            return
-        except Exception as ex_spawn:
-            logger.debug(f"Failed to spawn new editor process ({ex_spawn}), falling back to in-app editor", exc_info=True)
-
-        # Fallback: open editor in an in-app dialog (existing behavior)
-        try:
-            logger.debug("Opening icon editor in-app (fallback)")
+            logger.debug("Opening icon editor in-app (single-window mode)")
             editor = PixelArtEditor()
+            # Build and open the dialog first so editor controls are attached to the page
             dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
             page.dialog = dlg
             page.open(dlg)
-            # Try to load metadata from index if available
+            page.update()
+
+            # Resolve metadata for the selected icon (if available)
             meta = _meta_map.get(path)
             meta_source = _meta_source.get(path)
             if meta is None and not _index_built:
@@ -539,12 +501,15 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     meta, meta_source = find_metadata_for_path(path)
                 except Exception:
                     meta = None
+
+            # Load the icon after the dialog is open so editor's nested dialogs work correctly
             try:
                 load_fn = getattr(editor, "load_icon", None)
                 if callable(load_fn):
                     load_fn(path, metadata=meta)
             except Exception:
                 logger.exception("Failed to load icon into in-app editor")
+
             page.update()
         except Exception as ex:
             logger.error(f"Failed to open icon editor: {ex}")

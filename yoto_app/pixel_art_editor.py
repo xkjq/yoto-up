@@ -303,6 +303,7 @@ class PixelArtEditor:
         """Load an icon (PNG/JSON) into the editor, populate metadata fields if present."""
         try:
             logger.debug(f"PixelArtEditor.load_icon: Loading icon from {path}")
+            logger.debug(f"PixelArtEditor.load_icon: Caller provided metadata: {metadata}")
             pixels = None
             p = str(path)
             if p.lower().endswith('.json'):
@@ -355,7 +356,10 @@ class PixelArtEditor:
                     if metadata and isinstance(metadata, dict) and hasattr(self, 'meta_title_field'):
                         self.meta_title_field.value = metadata.get('title', '') or ''
                         self.meta_author_field.value = metadata.get('author', '') or ''
-                        self.meta_tags_field.value = ', '.join(metadata.get('tags', [])) if isinstance(metadata.get('tags', []), list) else (metadata.get('tags') or '')
+                        if metadata.get('tags'):
+                            self.meta_tags_field.value = ', '.join(metadata.get('tags', [])) if isinstance(metadata.get('tags', []), list) else (metadata.get('tags') or '')
+                        elif metadata.get("publicTags"):
+                            self.meta_tags_field.value = ', '.join(metadata.get('publicTags', [])) if isinstance(metadata.get('publicTags', []), list) else (metadata.get('publicTags') or '')
                         self.meta_description_field.value = metadata.get('description', '') or ''
                         self.meta_title_field.update()
                         self.meta_author_field.update()
