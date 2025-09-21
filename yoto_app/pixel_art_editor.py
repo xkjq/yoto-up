@@ -686,7 +686,60 @@ class PixelArtEditor:
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
-        font_dropdown = ft.Dropdown(label="Font", options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")], value="5x7", width=100)
+        def update_preview(ev=None):
+            txt = (text_field.value or '').strip()
+            col = (color_field.value or '').strip()
+            sc = int(scale_dropdown.value)
+            font_name = font_dropdown.value
+            ox = int((pos_x.value or '0').strip())
+            oy = int((pos_y.value or '0').strip())
+            import tempfile
+            # Preview 1: just the stamp
+            if not txt:
+                if preview_img.page:
+                    preview_img.src = None
+                    preview_img.update()
+                if preview_applied_img.page:
+                    preview_applied_img.src = None
+                    preview_applied_img.update()
+                return
+            stamp = None
+            try:
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
+                img = self._pixels_to_image(stamp)
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    img.save(tmp.name)
+                    preview_img.src = tmp.name
+                    preview_img.update()
+            except Exception as ex:
+                if preview_img.page:
+                    preview_img.src = None
+                    preview_img.update()
+                status.value = f"Preview error: {ex}"
+                status.update()
+            # Preview 2: stamp applied to current image
+            if stamp is not None:
+                try:
+                    import copy
+                    applied_pixels = copy.deepcopy(self.pixels)
+                    for y in range(self.size):
+                        for x in range(self.size):
+                            v = stamp[y][x]
+                            if v is not None:
+                                applied_pixels[y][x] = v
+                    img2 = self._pixels_to_image(applied_pixels)
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
+                        img2.save(tmp2.name)
+                        if preview_applied_img.page:
+                            preview_applied_img.src = tmp2.name
+                            preview_applied_img.update()
+                except Exception as ex2:
+                    if preview_applied_img.page:
+                        preview_applied_img.src = None
+                        preview_applied_img.update()
+                    status.value = f"Applied preview error: {ex2}"
+                    status.update()
+        font_dropdown = ft.Dropdown(label="Font", options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")], value="5x7", width=100, on_change=lambda ev: update_preview())
         scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,4)], value='1', width=100)
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
