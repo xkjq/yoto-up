@@ -456,7 +456,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
             btn_row = ft.Row([
                 ft.ElevatedButton("Use this icon", on_click=set_selected),
-                ft.TextButton("Open folder", on_click=open_in_explorer)
+                ft.TextButton("Open folder", on_click=open_in_explorer),
+                ft.ElevatedButton("Edit Icon", on_click=lambda e: open_icon_editor())
             ])
             details_panel.controls.append(btn_row)
         except Exception:
@@ -474,6 +475,27 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         #except Exception:
         #    pass
         page.update()
+
+    selected_icon_path = [None]  # mutable container for selected icon path
+    def open_icon_editor():
+        logger.debug(f"open_icon_editor called, selected_icon_path={selected_icon_path[0]}")
+        if selected_icon_path[0]:
+            try:
+                from yoto_app.pixel_art_editor import PixelArtEditor
+                logger.debug("Opening icon editor")
+                editor = PixelArtEditor()
+                # Try to load icon if method exists, else just open editor
+                if hasattr(editor, 'load_icon'):
+                    editor.load_icon(selected_icon_path[0])
+                elif hasattr(editor, 'open_icon'):
+                    editor.open_icon(selected_icon_path[0])
+                # Show editor in a dialog or page (pseudo-code)
+                dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
+                page.dialog = dlg
+                page.open(dlg)
+                page.update()
+            except Exception as ex:
+                logger.error(f"Failed to open icon editor: {ex}") 
 
     def render_icons(icons):
         icons_container.controls.clear()
