@@ -13,6 +13,7 @@ except ImportError:
     from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
 import math
 import colorsys
+import copy
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -526,7 +527,9 @@ class PixelArtEditor:
         for y in range(size):
             for x in range(size):
                 hexc = pixels[y][x]
-                if hexc.startswith('#'):
+                if hexc is None:
+                    img.putpixel((x, y), (0, 0, 0, 0))
+                elif isinstance(hexc, str) and hexc.startswith('#'):
                     hexc = hexc.lstrip('#')
                     if len(hexc) == 3:
                         hexc = ''.join([c*2 for c in hexc])
@@ -534,6 +537,8 @@ class PixelArtEditor:
                     g = int(hexc[2:4], 16)
                     b = int(hexc[4:6], 16)
                     img.putpixel((x, y), (r, g, b, 255))
+                else:
+                    img.putpixel((x, y), (0, 0, 0, 0))
         return img
 
     def _image_to_pixels(self, img):
@@ -639,21 +644,79 @@ class PixelArtEditor:
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
+        preview_img = ft.Image(width=64, height=64)
+        preview_applied_img = ft.Image(width=64, height=64)
 
         def on_color_selected(hex_color):
             color_field.value = hex_color
             color_field.update()
-            # Optionally update preview if present
             if hasattr(self, 'color_preview') and self.color_preview:
                 self.color_preview.bgcolor = hex_color
                 self.color_preview.update()
-            # Reopen the stamp dialog
+            update_preview()
             if page:
-                # Close all dialogs first
                 page.dialog = None
                 dlg.open = True
                 page.open(dlg)
                 page.update()
+        def update_preview(ev=None):
+            txt = (text_field.value or '').strip()
+            col = (color_field.value or '').strip()
+            sc = int(scale_dropdown.value)
+            ox = int((pos_x.value or '0').strip())
+            oy = int((pos_y.value or '0').strip())
+            import tempfile
+            # Preview 1: just the stamp
+            if not txt:
+                if preview_img.page:
+                    preview_img.src = None
+                    preview_img.update()
+                if preview_applied_img.page:
+                    preview_applied_img.src = None
+                    preview_applied_img.update()
+                return
+            stamp = None
+            try:
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy)
+                img = self._pixels_to_image(stamp)
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    img.save(tmp.name)
+                    preview_img.src = tmp.name
+                    preview_img.update()
+            except Exception as ex:
+                if preview_img.page:
+                    preview_img.src = None
+                    preview_img.update()
+                status.value = f"Preview error: {ex}"
+                status.update()
+            # Preview 2: stamp applied to current image
+            if stamp is not None:
+                try:
+                    import copy
+                    applied_pixels = copy.deepcopy(self.pixels)
+                    for y in range(self.size):
+                        for x in range(self.size):
+                            v = stamp[y][x]
+                            if v is not None:
+                                applied_pixels[y][x] = v
+                    img2 = self._pixels_to_image(applied_pixels)
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
+                        img2.save(tmp2.name)
+                        if preview_applied_img.page:
+                            preview_applied_img.src = tmp2.name
+                            preview_applied_img.update()
+                except Exception as ex2:
+                    if preview_applied_img.page:
+                        preview_applied_img.src = None
+                        preview_applied_img.update()
+                    status.value = f"Applied preview error: {ex2}"
+                    status.update()
+        # Attach update_preview to all relevant fields
+        text_field.on_change = update_preview
+        color_field.on_change = update_preview
+        scale_dropdown.on_change = update_preview
+        pos_x.on_change = update_preview
+        pos_y.on_change = update_preview
 
         def open_picker(ev):
             from yoto_app.colour_picker import ColourPicker
@@ -690,6 +753,10 @@ class PixelArtEditor:
         content = ft.Column([
             text_field,
             ft.Row([color_field, picker_btn, scale_dropdown, pos_x, pos_y], wrap=True),
+            ft.Row([
+                ft.Column([ft.Text("Stamp Preview"), preview_img]),
+                ft.Column([ft.Text("Applied Preview"), preview_applied_img])
+            ]),
             status
         ], spacing=8, width=350)
         dlg = ft.AlertDialog(title=ft.Text("Stamp Text"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
@@ -697,6 +764,7 @@ class PixelArtEditor:
             logger.debug(f"Opening text dialog, page={page}")
             page.open(dlg)
             page.update()
+            update_preview()  # Show previews immediately after dialog is open
 
     def on_save_png(self, e):
         page = e.page if hasattr(e, 'page') else None
