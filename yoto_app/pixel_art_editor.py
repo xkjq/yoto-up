@@ -644,8 +644,8 @@ class PixelArtEditor:
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
-        preview_img = ft.Image(width=64, height=64)
-        preview_applied_img = ft.Image(width=64, height=64)
+        preview_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+        preview_applied_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
 
         def on_color_selected(hex_color):
             color_field.value = hex_color
