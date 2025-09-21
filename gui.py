@@ -33,6 +33,7 @@ from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as
 
 from yoto_app.show_waveforms import show_waveforms_popup
 from yoto_app.icon_browser import build_icon_browser_panel
+from yoto_app.pixel_art_editor import PixelArtEditor
 
 from yoto_api import YotoAPI
 
@@ -172,7 +173,6 @@ def main(page):
         except Exception as e:
             logger.error(f"load_ui_state: failed to read or parse state file: {e}")
 
-    # ...existing code...
     # Controls must be created before loading state
     def show_dev_warning():
         dlg = ft.AlertDialog(
@@ -199,6 +199,7 @@ def main(page):
         tabs_control.tabs[1].visible = False
         tabs_control.tabs[2].visible = False
         tabs_control.tabs[3].visible = False  # Icons tab
+        tabs_control.tabs[4].visible = False  # Editor tab
         # Switch to Auth tab
         tabs_control.selected_index = 0
         # Update instructions/status
@@ -807,16 +808,28 @@ def main(page):
     icon_browser_ui = build_icon_browser_panel(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
     icon_panel = icon_browser_ui.get('panel') if isinstance(icon_browser_ui, dict) else None
 
+    # Instantiate PixelArtEditor and expose as a dedicated tab on the main page
+    try:
+        editor = PixelArtEditor(page=page)
+        editor_tab = editor.as_tab("Editor") or editor.as_tab("Icon Editor")
+        # keep a reference on the page for external callers if needed
+        page.pixel_editor = editor
+    except Exception:
+        editor = None
+        editor_tab = None
+
     tabs_control = ft.Tabs(
-        selected_index=0,
-        tabs=[
-            ft.Tab(text="Auth", content=auth_column),
-            ft.Tab(text="Playlists", content=playlists_column, visible=False),
-            ft.Tab(text="Upload", content=upload_column, visible=False),
-            ft.Tab(text="Icons", content=icon_panel, visible=False),
-        ],
-        expand=True,
-    )
+         selected_index=0,
+         tabs=[
+             ft.Tab(text="Auth", content=auth_column),
+             ft.Tab(text="Playlists", content=playlists_column, visible=False),
+             ft.Tab(text="Upload", content=upload_column, visible=False),
+             ft.Tab(text="Icons", content=icon_panel, visible=False),
+             # Editor tab (if created) - inserted before Icons
+             editor_tab if editor_tab is not None else ft.Tab(text="Editor", content=ft.Text("Editor unavailable")),
+         ],
+         expand=True,
+     )
     # Place About button above tabs
     page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), about_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
@@ -827,6 +840,7 @@ def main(page):
         tabs_control.tabs[1].visible = True
         tabs_control.tabs[2].visible = True
         tabs_control.tabs[3].visible = True  # Icons tab
+        tabs_control.tabs[4].visible = True  # Editor tab
 
         api : YotoAPI = api_ref.get("api")
         api.get_public_icons(show_in_console=False)

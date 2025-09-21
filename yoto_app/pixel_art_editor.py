@@ -1057,9 +1057,12 @@ class PixelArtEditor:
                 self.color_preview.bgcolor = hex_color
                 self.color_preview.update()
             update_preview()
+            # Reopen the text dialog (dlg) after the picker finishes
             if page:
-                page.open(dlg)
-                page.update()
+                try:
+                    self._open_dialog(dlg, page)
+                except Exception:
+                    pass
 
         def update_image_preview(ev=None):
             txt = (text_field.value or '').strip()
@@ -1127,10 +1130,11 @@ class PixelArtEditor:
 
         def open_picker(ev):
             page = ev.page if hasattr(ev, 'page') else None
-            picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
+            picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected, loading_dialog=self)
             dialog = picker.build_dialog(page=page)
             if page:
-                page._open_dialog(dialog)
+                # open colour picker as child dialog of the text dialog
+                self._open_dialog(dialog, page)
                 page.update()
 
         picker_btn = ft.TextButton("Pick Color", on_click=open_picker)
@@ -1151,9 +1155,10 @@ class PixelArtEditor:
                 # render and stamp
                 stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name, compact=compact)
                 self._stamp_pixels(stamp)
-                dlg.open = False
-                if page:
-                    page.update()
+                try:
+                    self._close_dialog(dlg, page)
+                except Exception:
+                    pass
             except Exception as ex:
                 status.value = f"Error: {ex}"
                 status.update()
@@ -1587,6 +1592,9 @@ class PixelArtEditor:
         img = self.invert_colors(img)
         self._push_undo()
         self.pixels = self._image_to_pixels(img)
+
+
+
         self.refresh_grid()
 
     def on_convert_to_grayscale(self, e):
@@ -1657,6 +1665,62 @@ class PixelArtEditor:
     def control(self):
         return self.container
 
+    # Tab helpers: allow embedding the editor as a normal tab in the app's Tabs view.
+    def as_tab(self, title: str = "Icon Editor"):
+        """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
+        try:
+            if getattr(self, "_tab", None):
+                return self._tab
+            # Wrap editor.container in a Column to ensure it expands properly inside tab content
+            content = ft.Column([self.container], scroll=ft.ScrollMode.AUTO, expand=True)
+            tab = ft.Tab(text=title, content=content)
+            self._tab = tab
+            return tab
+        except Exception:
+            logger.exception("Failed to create editor tab")
+            # fallback: return a plain container wrapped as a Tab-like object
+            try:
+                tab = ft.Tab(text=title, content=self.container)
+                self._tab = tab
+                return tab
+            except Exception:
+                return None
+
+    def attach_to_tabview(self, tabview: ft.Tabs, select: bool = True, page: ft.Page = None):
+        """Attach the editor as a new tab to an existing ft.Tabs (tabview).
+        If select=True the new tab will be selected. Pass page to trigger update.
+        Returns the appended ft.Tab or None on failure.
+        """
+        try:
+            if tabview is None:
+                return None
+            tab = getattr(self, "_tab", None) or self.as_tab()
+            if tab is None:
+                return None
+            # Avoid duplicates: if the same tab already present, just select it
+            for idx, t in enumerate(tabview.tabs):
+                if t is tab:
+                    if select:
+                        tabview.selected_index = idx
+                    if page:
+                        page.update()
+                    return tab
+            tabview.tabs.append(tab)
+            if select:
+                tabview.selected_index = len(tabview.tabs) - 1
+            # remember the page if provided for later dialog helpers
+            if page:
+                self.page = page
+                try:
+                    page.update()
+                except Exception:
+                    pass
+            return tab
+        except Exception:
+            logger.exception("Failed to attach editor to tabview")
+            return None
+#
+# ...existing code...
     class _SmallDialog:
         def __init__(self, title, content, page=None):
             self.dialog = ft.AlertDialog(title=ft.Text(title), content=content, actions=[], open=False)
@@ -1715,15 +1779,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_replace_color(ev, t, r)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([target_field, replacement_field, status])
         dlg = self._SmallDialog("Replace Color", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Replace", on_click=do_replace), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Replace", on_click=do_replace), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     def _open_gradient_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1736,15 +1800,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_apply_gradient_overlay(ev, c)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([color_field, status])
         dlg = self._SmallDialog("Gradient Overlay", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     def _open_hue_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1758,15 +1822,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_adjust_hue(ev, deg)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([degrees_field, status])
         dlg = self._SmallDialog("Adjust Hue", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     def _open_opacity_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1784,15 +1848,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_adjust_opacity(ev, op)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([opacity_field, status])
         dlg = self._SmallDialog("Adjust Opacity", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     def _open_pixelate_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1810,15 +1874,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_pixelate(ev, sz)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([size_field, status])
         dlg = self._SmallDialog("Pixelate", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     def _open_quantize_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1836,15 +1900,15 @@ class PixelArtEditor:
                 status.update()
                 return
             self.on_quantize_colors(ev, cnt)
-            dlg.dialog.open = False
-            if page:
-                page.update()
+            try:
+                dlg.close()
+            except Exception:
+                pass
         content = ft.Column([count_field, status])
         dlg = self._SmallDialog("Quantize Colors", content, page=page)
-        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: (setattr(dlg.dialog, 'open', False), page.update() if page else None))]
+        dlg.dialog.actions = [ft.TextButton("Apply", on_click=do_apply), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
-            page.open(dlg.dialog)
-            page.update()
+            dlg.open()
 
     # Rewire the buttons to open dialogs instead of hardcoded calls
     def _wire_dialogs(self):
