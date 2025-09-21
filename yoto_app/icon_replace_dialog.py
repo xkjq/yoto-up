@@ -108,7 +108,7 @@ class IconReplaceDialog:
         search_status = ft.Text('', size=12)
 
         # Selected-icon preview (hidden when no selection). Will be shown next to the "Selected icon" button.
-        preview_label = ft.Text("Selected icon preview", size=12, weight=ft.FontWeight.BOLD, visible=False)
+        preview_label = ft.Text("Selected icon", size=12, weight=ft.FontWeight.BOLD, visible=False)
         preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.ImageFit.CONTAIN)
         preview_name = ft.Text('', size=12, visible=False)
         # pack preview into a small column
