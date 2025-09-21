@@ -677,7 +677,7 @@ class PixelArtEditor:
         return pixels
 
 
-    def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0, font_name="5x7"):
+    def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0, font_name="5x7", compact=False):
         """Return a pixel grid (list of rows) with text stamped at given offset. Does not modify self.pixels."""
         # prepare a blank grid
         grid = [[None for _ in range(self.size)] for _ in range(self.size)]
@@ -703,7 +703,10 @@ class PixelArtEditor:
                                 gy = ty + row_idx * scale + sy
                                 if 0 <= gx < self.size and 0 <= gy < self.size:
                                     grid[gy][gx] = color
-            tx += (width + 1) * scale  # 1px spacing
+            if compact:
+                tx += width * scale
+            else:
+                tx += (width + 1) * scale  # 1px spacing
         return grid
 
     def _stamp_pixels(self, stamp_grid):
@@ -722,16 +725,18 @@ class PixelArtEditor:
             txt = (text_field.value or '').strip().upper()
             font_name = font_dropdown.value
             scale = int(scale_dropdown.value)
+            compact = compact_checkbox.value
             if font_name == "3x5":
-                font = self._font_3x5
                 width = 3
                 height = 5
             else:
-                font = self._font_5x7
                 width = 5
                 height = 7
             n_chars = len(txt)
-            stamp_w = n_chars * (width + 1) * scale - scale if n_chars > 0 else 0
+            if compact:
+                stamp_w = n_chars * width * scale if n_chars > 0 else 0
+            else:
+                stamp_w = n_chars * (width + 1) * scale - scale if n_chars > 0 else 0
             stamp_h = height * scale
             return stamp_w, stamp_h
 
@@ -786,6 +791,7 @@ class PixelArtEditor:
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
+        compact_checkbox = ft.Checkbox(label="Compact", value=False, on_change=lambda ev: update_preview())
         def update_preview(ev=None):
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
@@ -793,6 +799,7 @@ class PixelArtEditor:
             font_name = font_dropdown.value
             ox = int((pos_x.value or '0').strip())
             oy = int((pos_y.value or '0').strip())
+            compact = compact_checkbox.value
             import tempfile
             # Preview 1: just the stamp
             if not txt:
@@ -805,7 +812,7 @@ class PixelArtEditor:
                 return
             stamp = None
             try:
-                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name, compact=compact)
                 img = self._pixels_to_image(stamp)
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     img.save(tmp.name)
@@ -866,6 +873,7 @@ class PixelArtEditor:
             font_name = font_dropdown.value
             ox = int((pos_x.value or '0').strip())
             oy = int((pos_y.value or '0').strip())
+            compact = compact_checkbox.value
             import tempfile
             # Preview 1: just the stamp
             if not txt:
@@ -878,7 +886,7 @@ class PixelArtEditor:
                 return
             stamp = None
             try:
-                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name, compact=compact)
                 img = self._pixels_to_image(stamp)
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     img.save(tmp.name)
@@ -935,15 +943,16 @@ class PixelArtEditor:
                 txt = (text_field.value or '').strip()
                 col = (color_field.value or '').strip()
                 sc = int(scale_dropdown.value)
+                font_name = font_dropdown.value
                 ox = int((pos_x.value or '0').strip())
                 oy = int((pos_y.value or '0').strip())
+                compact = compact_checkbox.value
                 if not txt:
                     status.value = "Enter text"
                     status.update()
                     return
                 # render and stamp
-                font_name = font_dropdown.value
-                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name, compact=compact)
                 self._stamp_pixels(stamp)
                 dlg.open = False
                 if page:
@@ -955,6 +964,7 @@ class PixelArtEditor:
         content = ft.Column([
             text_field,
             ft.Row([color_field, picker_btn, font_dropdown, scale_dropdown, pos_x, pos_y], wrap=True),
+            compact_checkbox,
             pos_buttons,
             ft.Row([
                 ft.Column([ft.Text("Stamp Preview"), preview_img]),
@@ -1170,8 +1180,6 @@ class PixelArtEditor:
                                 pixels = self._image_to_pixels(img)
                             except Exception:
                                 pixels = None
-                        else:
-                            pixels = None
                     else:
                         pixels = None
                 else:
