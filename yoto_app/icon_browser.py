@@ -484,35 +484,63 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         if not selected_icon_path[0]:
             return
         path = selected_icon_path[0]
+
+        # Resolve metadata early (used for both tab and fallback)
+        meta = _meta_map.get(path)
+        meta_source = _meta_source.get(path)
+        if meta is None and not _index_built:
+            try:
+                meta, meta_source = find_metadata_for_path(path)
+            except Exception:
+                meta = None
+
         try:
-            logger.debug("Opening icon editor in-app (single-window mode)")
-            editor = PixelArtEditor()
-            # Build and open the dialog first so editor controls are attached to the page
-            dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
-            page.dialog = dlg
-            page.open(dlg)
-            page.update()
+            # Reuse an editor bound to the page if present; else create and attach one
+            editor = getattr(page, "pixel_editor", None)
+            if editor is None:
+                editor = PixelArtEditor(page=page)
+                page.pixel_editor = editor
 
-            # Resolve metadata for the selected icon (if available)
-            meta = _meta_map.get(path)
-            meta_source = _meta_source.get(path)
-            if meta is None and not _index_built:
+            # Try to find a Tabs control on the page to host the editor tab
+            tabs_control = None
+            try:
+                for c in getattr(page, "controls", []) or []:
+                    if isinstance(c, ft.Tabs):
+                        tabs_control = c
+                        break
+            except Exception:
+                tabs_control = None
+
+            if tabs_control:
+                # Attach/select editor tab in Tabs
                 try:
-                    meta, meta_source = find_metadata_for_path(path)
+                    editor.attach_to_tabview(tabs_control, select=True, page=page)
+                    page.update()
                 except Exception:
-                    meta = None
+                    logger.exception("Failed to attach/select editor tab; attempting fallback attach without selection")
+                    try:
+                        editor.attach_to_tabview(tabs_control, select=False, page=page)
+                    except Exception:
+                        logger.exception("Failed to attach editor tab")
+            else:
+                # No Tabs control found — fallback to opening editor in a dialog
+                try:
+                    dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
+                    page.dialog = dlg
+                    page.open(dlg)
+                    page.update()
+                except Exception:
+                    logger.exception("Failed to open editor dialog fallback")
 
-            # Load the icon after the dialog is open so editor's nested dialogs work correctly
+            # Load the selected icon into the editor (tab or dialog)
             try:
                 load_fn = getattr(editor, "load_icon", None)
                 if callable(load_fn):
                     load_fn(path, metadata=meta)
             except Exception:
-                logger.exception("Failed to load icon into in-app editor")
-
-            page.update()
-        except Exception as ex:
-            logger.error(f"Failed to open icon editor: {ex}")
+                logger.exception("Failed to load icon into editor")
+        except Exception:
+            logger.exception("open_icon_editor failed")
 
     def render_icons(icons):
         icons_container.controls.clear()
