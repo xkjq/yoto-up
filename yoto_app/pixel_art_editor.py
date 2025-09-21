@@ -684,28 +684,70 @@ class PixelArtEditor:
 
     def _open_text_dialog(self, e):
         # Quick position buttons
-        def set_position(x, y):
+        def get_stamp_size():
+            txt = (text_field.value or '').strip().upper()
+            font_name = font_dropdown.value
+            scale = int(scale_dropdown.value)
+            if font_name == "3x5":
+                font = self._font_3x5
+                width = 3
+                height = 5
+            else:
+                font = self._font_5x7
+                width = 5
+                height = 7
+            n_chars = len(txt)
+            stamp_w = n_chars * (width + 1) * scale - scale if n_chars > 0 else 0
+            stamp_h = height * scale
+            return stamp_w, stamp_h
+
+        def set_position(pos):
+            grid_size = self.size
+            stamp_w, stamp_h = get_stamp_size()
+            if pos == "Top Left":
+                x = 0
+                y = 0
+            elif pos == "Top Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = 0
+            elif pos == "Top Right":
+                x = max(grid_size - stamp_w, 0)
+                y = 0
+            elif pos == "Middle Left":
+                x = 0
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Middle Right":
+                x = max(grid_size - stamp_w, 0)
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Bottom Left":
+                x = 0
+                y = max(grid_size - stamp_h, 0)
+            elif pos == "Bottom Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = max(grid_size - stamp_h, 0)
+            elif pos == "Bottom Right":
+                x = max(grid_size - stamp_w, 0)
+                y = max(grid_size - stamp_h, 0)
+            else:
+                x = 0
+                y = 0
             pos_x.value = str(x)
             pos_y.value = str(y)
             pos_x.update()
             pos_y.update()
             update_preview()
 
-        grid_size = self.size
         positions = [
-            ("Top Left", 0, 0),
-            ("Top Center", grid_size//2, 0),
-            ("Top Right", grid_size-1, 0),
-            ("Middle Left", 0, grid_size//2),
-            ("Center", grid_size//2, grid_size//2),
-            ("Middle Right", grid_size-1, grid_size//2),
-            ("Bottom Left", 0, grid_size-1),
-            ("Bottom Center", grid_size//2, grid_size-1),
-            ("Bottom Right", grid_size-1, grid_size-1),
+            "Top Left", "Top Center", "Top Right",
+            "Middle Left", "Center", "Middle Right",
+            "Bottom Left", "Bottom Center", "Bottom Right"
         ]
         pos_buttons = ft.Row([
-            ft.TextButton(label, on_click=lambda ev, x=x, y=y: set_position(x, y))
-            for label, x, y in positions
+            ft.TextButton(label, on_click=lambda ev, label=label: set_position(label))
+            for label in positions
         ], wrap=True, spacing=4)
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
