@@ -11,9 +11,11 @@ import copy
 try:
     from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
     from yoto_app.pixel_fonts import _font_3x5, _font_5x7
+    from yoto_app.colour_picker import ColourPicker
 except ImportError:
     from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
     from pixel_fonts import _font_3x5, _font_5x7
+    from colour_picker import ColourPicker
 import colorsys
 
 if __name__ == "__main__":
@@ -298,7 +300,71 @@ class PixelArtEditor:
             self._wire_dialogs()
         except Exception:
             pass
-    
+
+    # ----- dialog management helpers so nested dialogs return to editor dialog -----
+    def _open_dialog(self, dlg, page=None):
+        """Open dlg, remembering and closing the current parent dialog (if it is the editor dialog).
+        When dlg is closed via _close_dialog we'll reopen the parent dialog automatically."""
+        page = page or getattr(self, 'page', None)
+        try:
+            parent = None
+            if page and getattr(page, 'dialog', None):
+                parent = page.dialog
+                # Only consider parent if it contains this editor's container
+                try:
+                    if getattr(parent, 'content', None) is self.container:
+                        dlg._parent_dialog = parent
+                        # hide parent while child is active
+                        try:
+                            parent.open = False
+                        except Exception:
+                            pass
+                    else:
+                        dlg._parent_dialog = None
+                except Exception:
+                    logger.exception("Error checking parent dialog content")
+                    dlg._parent_dialog = None
+            if page:
+                page.open(dlg)
+                page.update()
+        except Exception:
+            logger.exception("Error opening dialog")
+            # best-effort fallback
+            try:
+                if page:
+                    page.open(dlg)
+                    page.update()
+            except Exception:
+                pass
+
+    def _close_dialog(self, dlg, page=None):
+        """Close dlg and reopen any parent dialog that was hidden by _open_dialog."""
+        page = page or getattr(self, 'page', None)
+        try:
+            try:
+                dlg.open = False
+            except Exception:
+                logger.exception("Error closing dialog")
+                # some wrappers store nested dialog under dlg.dialog
+                try:
+                    getattr(dlg, 'dialog').open = False
+                except Exception:
+                    logger.exception("Error closing nested dialog")
+            if page:
+                page.update()
+            parent = getattr(dlg, '_parent_dialog', None)
+            if not parent and hasattr(dlg, 'dialog'):
+                parent = getattr(dlg, 'dialog', None)._parent_dialog if getattr(dlg, 'dialog', None) else None
+            if parent and page:
+                try:
+                    page.open(parent)
+                    page.update()
+                except Exception:
+                    logger.exception("Error reopening parent dialog")
+        except Exception:
+            logger.exception("Error in _close_dialog")
+    # ---------------------------------------------------------------------------
+
     def load_icon(self, path: str, metadata: dict = None):
         """Load an icon (PNG/JSON) into the editor, populate metadata fields if present."""
         try:
@@ -443,9 +509,8 @@ class PixelArtEditor:
             self.refresh_grid()
         picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected, loading_dialog=self)
         dialog = picker.build_dialog(page=page)
-        if page:
-            page.open(dialog)
-            page.update()
+        # use dialog helper so parent (editor) is restored when picker closes
+        self._open_dialog(dialog, page)
 
     def on_import_icon(self, e):
         print("Importing icon from cache...")
@@ -658,13 +723,33 @@ class PixelArtEditor:
             ]
         )
         if page:
-            page.open(dlg)
-            page.update()
+            self._open_dialog(dlg, page)
 
     def _close_dialog(self, dlg, page=None):
-        dlg.open = False
-        if page:
-            page.update()
+        """Close dlg and reopen any parent dialog that was hidden by _open_dialog."""
+        page = page or getattr(self, 'page', None)
+        try:
+            try:
+                dlg.open = False
+            except Exception:
+                # some wrappers store nested dialog under dlg.dialog
+                try:
+                    getattr(dlg, 'dialog').open = False
+                except Exception:
+                    pass
+            if page:
+                page.update()
+            parent = getattr(dlg, '_parent_dialog', None)
+            if not parent and hasattr(dlg, 'dialog'):
+                parent = getattr(dlg, 'dialog', None)._parent_dialog if getattr(dlg, 'dialog', None) else None
+            if parent and page:
+                try:
+                    page.open(parent)
+                    page.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def make_pixel(self, x, y):
         def on_click(e):
@@ -973,8 +1058,6 @@ class PixelArtEditor:
                 self.color_preview.update()
             update_preview()
             if page:
-                page.dialog = None
-                dlg.open = True
                 page.open(dlg)
                 page.update()
 
@@ -1043,12 +1126,11 @@ class PixelArtEditor:
         pos_y.on_change = update_preview
 
         def open_picker(ev):
-            from yoto_app.colour_picker import ColourPicker
             page = ev.page if hasattr(ev, 'page') else None
             picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
             dialog = picker.build_dialog(page=page)
             if page:
-                page.open(dialog)
+                page._open_dialog(dialog)
                 page.update()
 
         picker_btn = ft.TextButton("Pick Color", on_click=open_picker)
@@ -1090,8 +1172,7 @@ class PixelArtEditor:
         dlg = ft.AlertDialog(title=ft.Text("Stamp Text"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
         if page:
             logger.debug(f"Opening text dialog, page={page}")
-            page.open(dlg)
-            page.update()
+            self._open_dialog(dlg, page)
             update_preview()  # Show previews immediately after dialog is open
 
     def on_save_png(self, e):
@@ -1166,13 +1247,7 @@ class PixelArtEditor:
                     status.update()
                     page.update()
                 # close dialog
-                try:
-                    dlg.open = False
-                    if page:
-                        page.update()
-                except Exception:
-                    pass
-
+                self._close_dialog(dlg, page)
             except Exception as ex:
                 status.value = f"Save failed: {ex}"
                 status.update()
@@ -1183,8 +1258,7 @@ class PixelArtEditor:
             actions=[ft.TextButton("Save", on_click=do_save), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))]
         )
         if page:
-            page.open(dlg)
-            page.update()
+            self._open_dialog(dlg, page)
 
     def on_load_png(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1319,8 +1393,7 @@ class PixelArtEditor:
 
         dlg = ft.AlertDialog(title=ft.Text("Load Saved Icon"), content=ft.Column([dropdown, preview, status]), actions=[ft.TextButton("Load", on_click=do_load), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))])
         if page:
-            page.open(dlg)
-            page.update()
+            self._open_dialog(dlg, page)
 
     def flip_image(self, image, direction):
         """Flip the image either horizontally or vertically."""
@@ -1588,16 +1661,46 @@ class PixelArtEditor:
         def __init__(self, title, content, page=None):
             self.dialog = ft.AlertDialog(title=ft.Text(title), content=content, actions=[], open=False)
             self.page = page
+            self._parent_dialog = None
         def open(self):
             if self.page:
-                self.page.open(self.dialog)
-                self.page.update()
+                # remember parent and hide it while this dialog is active
+                try:
+                    parent = getattr(self.page, 'dialog', None)
+                    if parent:
+                        self._parent_dialog = parent
+                        try:
+                            parent.open = False
+                        except Exception:
+                            pass
+                except Exception:
+                    self._parent_dialog = None
+                try:
+                    self.page.open(self.dialog)
+                    self.page.update()
+                except Exception:
+                    pass
             else:
                 self.dialog.open = True
         def close(self):
-            if self.page:
-                self.page.update()
-            self.dialog.open = False
+            try:
+                if self.page:
+                    try:
+                        self.dialog.open = False
+                        self.page.update()
+                    except Exception:
+                        pass
+                else:
+                    self.dialog.open = False
+                # reopen parent if we hidden one
+                if getattr(self, '_parent_dialog', None) and self.page:
+                    try:
+                        self.page.open(self._parent_dialog)
+                        self.page.update()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     def _open_replace_color_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1799,34 +1902,3 @@ class PixelArtEditor:
     def _mutate_end(self):
         # placeholder for future hooks
         pass
-
-    # patch all places where pixels are changed to call _mutate_start()
-
-
-# Standalone demo
-if __name__ == "__main__":
-	import argparse, json as _json
-	parser = argparse.ArgumentParser(prog="pixel_art_editor", add_help=True)
-	parser.add_argument("--load", "-l", help="Path to icon (PNG/JSON) to load on startup", default=None)
-	parser.add_argument("--metadata", "-m", help="Path to metadata JSON file to pre-populate metadata fields", default=None)
-	args = parser.parse_args()
-
-	def main(page: ft.Page):
-		page.title = "Pixel Art Editor"
-		editor = PixelArtEditor()
-		page.add(editor.control())
-		# If launched with --load, try to load after controls attached
-		if args.load:
-			try:
-				metadata = None
-				if args.metadata:
-					try:
-						with open(args.metadata, 'r', encoding='utf-8') as mf:
-							metadata = _json.load(mf)
-					except Exception:
-						metadata = None
-				editor.load_icon(args.load, metadata=metadata)
-			except Exception:
-				logger.exception("Failed to auto-load provided icon")
-
-	ft.app(target=main)
