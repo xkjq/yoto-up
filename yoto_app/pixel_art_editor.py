@@ -21,6 +21,46 @@ if __name__ == "__main__":
 ICON_DIR = "saved_icons"
 
 class PixelArtEditor:
+    # 3x5 pixel font for A-Z and 0-9 (each entry is a list of 5 integers, 3 bits each)
+    _font_3x5 = {
+        'A': [0b010,0b101,0b111,0b101,0b101],
+        'B': [0b110,0b101,0b110,0b101,0b110],
+        'C': [0b011,0b100,0b100,0b100,0b011],
+        'D': [0b110,0b101,0b101,0b101,0b110],
+        'E': [0b111,0b100,0b110,0b100,0b111],
+        'F': [0b111,0b100,0b110,0b100,0b100],
+        'G': [0b011,0b100,0b101,0b101,0b011],
+        'H': [0b101,0b101,0b111,0b101,0b101],
+        'I': [0b111,0b010,0b010,0b010,0b111],
+        'J': [0b001,0b001,0b001,0b101,0b010],
+        'K': [0b101,0b101,0b110,0b101,0b101],
+        'L': [0b100,0b100,0b100,0b100,0b111],
+        'M': [0b101,0b111,0b111,0b101,0b101],
+        'N': [0b101,0b111,0b111,0b111,0b101],
+        'O': [0b010,0b101,0b101,0b101,0b010],
+        'P': [0b110,0b101,0b110,0b100,0b100],
+        'Q': [0b010,0b101,0b101,0b010,0b001],
+        'R': [0b110,0b101,0b110,0b101,0b101],
+        'S': [0b011,0b100,0b010,0b001,0b110],
+        'T': [0b111,0b010,0b010,0b010,0b010],
+        'U': [0b101,0b101,0b101,0b101,0b111],
+        'V': [0b101,0b101,0b101,0b101,0b010],
+        'W': [0b101,0b101,0b111,0b111,0b101],
+        'X': [0b101,0b101,0b010,0b101,0b101],
+        'Y': [0b101,0b101,0b010,0b010,0b010],
+        'Z': [0b111,0b001,0b010,0b100,0b111],
+        '0': [0b010,0b101,0b101,0b101,0b010],
+        '1': [0b010,0b110,0b010,0b010,0b111],
+        '2': [0b110,0b001,0b010,0b100,0b111],
+        '3': [0b110,0b001,0b010,0b001,0b110],
+        '4': [0b101,0b101,0b111,0b001,0b001],
+        '5': [0b111,0b100,0b110,0b001,0b110],
+        '6': [0b011,0b100,0b110,0b101,0b010],
+        '7': [0b111,0b001,0b010,0b100,0b100],
+        '8': [0b010,0b101,0b010,0b101,0b010],
+        '9': [0b010,0b101,0b011,0b001,0b110],
+        ' ': [0,0,0,0,0]
+    }
     def __init__(self, size=16, pixel_size=24):
         self.size = size
         self.pixel_size = pixel_size
@@ -49,7 +89,6 @@ class PixelArtEditor:
         )
         self.color_preview = ft.Container(
             width=32,
-            height=32,
             bgcolor=self.current_color,
             border_radius=4,
             border=ft.border.all(1, "#888888"),
@@ -604,26 +643,33 @@ class PixelArtEditor:
         ' ': [0,0,0,0,0,0,0]
     }
 
-    def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0):
+    def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0, font_name="5x7"):
         """Return a pixel grid (list of rows) with text stamped at given offset. Does not modify self.pixels."""
         # prepare a blank grid
         grid = [[None for _ in range(self.size)] for _ in range(self.size)]
         tx = x_offset
         ty = y_offset
         text = (text or '').upper()
+        if font_name == "3x5":
+            font = self._font_3x5
+            width = 3
+            height = 5
+        else:
+            font = self._font_5x7
+            width = 5
+            height = 7
         for ch in text:
-            glyph = self._font_5x7.get(ch, self._font_5x7.get(' '))
+            glyph = font.get(ch, font.get(' '))
             for row_idx, bits in enumerate(glyph):
-                for bit_idx in range(5):
-                    if bits & (1 << (4 - bit_idx)):
-                        # apply scale
+                for bit_idx in range(width):
+                    if bits & (1 << (width - 1 - bit_idx)):
                         for sy in range(scale):
                             for sx in range(scale):
                                 gx = tx + bit_idx * scale + sx
                                 gy = ty + row_idx * scale + sy
                                 if 0 <= gx < self.size and 0 <= gy < self.size:
                                     grid[gy][gx] = color
-            tx += (5 + 1) * scale  # 1px spacing
+            tx += (width + 1) * scale  # 1px spacing
         return grid
 
     def _stamp_pixels(self, stamp_grid):
@@ -640,6 +686,7 @@ class PixelArtEditor:
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
+        font_dropdown = ft.Dropdown(label="Font", options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")], value="5x7", width=100)
         scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,4)], value='1', width=100)
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
@@ -663,6 +710,7 @@ class PixelArtEditor:
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
             sc = int(scale_dropdown.value)
+            font_name = font_dropdown.value
             ox = int((pos_x.value or '0').strip())
             oy = int((pos_y.value or '0').strip())
             import tempfile
@@ -677,7 +725,7 @@ class PixelArtEditor:
                 return
             stamp = None
             try:
-                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy)
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
                 img = self._pixels_to_image(stamp)
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     img.save(tmp.name)
@@ -741,7 +789,8 @@ class PixelArtEditor:
                     status.update()
                     return
                 # render and stamp
-                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy)
+                font_name = font_dropdown.value
+                stamp = self._render_text_to_pixels(txt, col, scale=sc, x_offset=ox, y_offset=oy, font_name=font_name)
                 self._stamp_pixels(stamp)
                 dlg.open = False
                 if page:
@@ -752,7 +801,7 @@ class PixelArtEditor:
 
         content = ft.Column([
             text_field,
-            ft.Row([color_field, picker_btn, scale_dropdown, pos_x, pos_y], wrap=True),
+            ft.Row([color_field, picker_btn, font_dropdown, scale_dropdown, pos_x, pos_y], wrap=True),
             ft.Row([
                 ft.Column([ft.Text("Stamp Preview"), preview_img]),
                 ft.Column([ft.Text("Applied Preview"), preview_applied_img])
