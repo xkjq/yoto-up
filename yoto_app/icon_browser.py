@@ -10,6 +10,7 @@ from typing import Callable
 import flet as ft
 from loguru import logger
 from PIL import Image as PILImage
+from yoto_app.pixel_art_editor import PixelArtEditor
 
 from .icon_import_helpers import list_icon_cache_files
 
@@ -480,23 +481,47 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     selected_icon_path = [None]  # mutable container for selected icon path
     def open_icon_editor():
         logger.debug(f"open_icon_editor called, selected_icon_path={selected_icon_path[0]}")
-        if selected_icon_path[0]:
+        if not selected_icon_path[0]:
+            return
+        path = selected_icon_path[0]
+        # Try to spawn a separate process running the editor so it appears in a new window
+        try:
+            import subprocess
+            cmd = [sys.executable, "-m", "yoto_app.pixel_art_editor", "--load", path]
+            kwargs = {"stdout": None, "stderr": None, "stdin": None, "close_fds": True, "start_new_session": True}
+            # On Windows, request a new console window for clarity
+            if os.name == 'nt':
+                try:
+                    kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+                except Exception:
+                    pass
+            subprocess.Popen(cmd, **kwargs)
+            show_snack("Opened editor in a new window")
+            return
+        except Exception as ex_spawn:
+            logger.debug(f"Failed to spawn new editor process ({ex_spawn}), falling back to in-app editor", exc_info=True)
+
+        # Fallback: open editor in an in-app dialog (existing behavior)
+        try:
+            logger.debug("Opening icon editor in-app (fallback)")
+            editor = PixelArtEditor()
+            dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
+            page.dialog = dlg
+            page.open(dlg)
+            # Try to load metadata from index if available
+            meta = _meta_map.get(path)
+            meta_source = _meta_source.get(path)
+            if meta is None and not _index_built:
+                meta, meta_source = find_metadata_for_path(path)
             try:
-                from yoto_app.pixel_art_editor import PixelArtEditor
-                logger.debug("Opening icon editor")
-                editor = PixelArtEditor()
-                # Try to load icon if method exists, else just open editor
-                if hasattr(editor, 'load_icon'):
-                    editor.load_icon(selected_icon_path[0])
-                elif hasattr(editor, 'open_icon'):
-                    editor.open_icon(selected_icon_path[0])
-                # Show editor in a dialog or page (pseudo-code)
-                dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
-                page.dialog = dlg
-                page.open(dlg)
-                page.update()
-            except Exception as ex:
-                logger.error(f"Failed to open icon editor: {ex}") 
+                load_fn = getattr(editor, "load_icon", None)
+                if callable(load_fn):
+                    load_fn(path, metadata=meta)
+            except Exception:
+                logger.exception("Failed to load icon into in-app editor")
+            page.update()
+        except Exception as ex:
+            logger.error(f"Failed to open icon editor: {ex}")
 
     def render_icons(icons):
         icons_container.controls.clear()

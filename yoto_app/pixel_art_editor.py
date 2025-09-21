@@ -22,7 +22,7 @@ if __name__ == "__main__":
 ICON_DIR = "saved_icons"
 
 class PixelArtEditor:
-    def __init__(self, size=16, pixel_size=24):
+    def __init__(self, size=16, pixel_size=24, page=None, loading_dialog=None  ):
         self.size = size
         self.pixel_size = pixel_size
         self.current_color = '#000000'
@@ -39,6 +39,8 @@ class PixelArtEditor:
         #self.import_btn = None
         #self.export_text = None
         self.container = None
+        self.page = page
+        self.loading_dialog = loading_dialog
         self._build()
 
     def _build(self):
@@ -81,10 +83,15 @@ class PixelArtEditor:
         #self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
         self.import_icon_btn = ft.ElevatedButton("Import Icon from Cache", on_click=self.on_import_icon)
         # Save / Load created icons
-        self.save_btn = ft.ElevatedButton("Save PNG", on_click=self.on_save_png)
-        self.load_btn = ft.ElevatedButton("Load PNG", on_click=self.on_load_png)
+        self.save_btn = ft.ElevatedButton("Save Icon", on_click=self.on_save_png)
+        self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
         self.text_btn = ft.ElevatedButton("Stamp text", on_click=self._open_text_dialog)
+        # Persistent metadata fields (visible/editable while creating icon)
+        self.meta_title_field = ft.TextField(label="Title", value="", width=300)
+        self.meta_author_field = ft.TextField(label="Author", value="", width=300)
+        self.meta_tags_field = ft.TextField(label="Tags (comma separated)", value="", width=300)
+        self.meta_description_field = ft.TextField(label="Description", multiline=True, height=80, width=300)
         #self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
         self.grid = ft.Column([
             ft.Row([
@@ -171,9 +178,24 @@ class PixelArtEditor:
             ],
         )
 
+        # Undo / Redo buttons
+        self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
+        self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
+
+        # include metadata panel on the right so user can view/edit while creating
+        meta_panel = ft.Column([
+            ft.Text("Icon metadata", size=12, weight=ft.FontWeight.W_600),
+            self.meta_title_field,
+            self.meta_author_field,
+            self.meta_tags_field,
+            self.meta_description_field
+        ], spacing=6)
         self.right_column = ft.Column([
-            image_adjustments_tile,
+            ft.Row([self.undo_btn, self.redo_btn], spacing=10),
+
             self.text_btn,
+            meta_panel,
+            image_adjustments_tile,
         ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
         # main container is scrollable and expands to available space
@@ -266,12 +288,6 @@ class PixelArtEditor:
             except Exception:
                 pass
 
-        # Undo / Redo buttons
-        self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
-        self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
-        # Append to top controls row
-        self.container.controls[0].controls.append(self.undo_btn)
-        self.container.controls[0].controls.append(self.redo_btn)
 
         # internal undo/redo stacks
         self._undo_stack = []
@@ -282,6 +298,76 @@ class PixelArtEditor:
             self._wire_dialogs()
         except Exception:
             pass
+    
+    def load_icon(self, path: str, metadata: dict = None):
+        """Load an icon (PNG/JSON) into the editor, populate metadata fields if present."""
+        try:
+            logger.debug(f"PixelArtEditor.load_icon: Loading icon from {path}")
+            pixels = None
+            p = str(path)
+            if p.lower().endswith('.json'):
+                try:
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+                except Exception:
+                    obj = None
+                if isinstance(obj, dict):
+                    # populate persistent metadata fields if present
+                    try:
+                        meta = obj.get('metadata', {}) or {}
+                        if hasattr(self, 'meta_title_field'):
+                            self.meta_title_field.value = meta.get('title', '') or ''
+                            self.meta_author_field.value = meta.get('author', '') or ''
+                            self.meta_tags_field.value = ', '.join(meta.get('tags', [])) if isinstance(meta.get('tags', []), list) else (meta.get('tags') or '')
+                            self.meta_description_field.value = meta.get('description', '') or ''
+                            self.meta_title_field.update()
+                            self.meta_author_field.update()
+                            self.meta_tags_field.update()
+                            self.meta_description_field.update()
+                    except Exception:
+                        pass
+                    if 'pixels' in obj and isinstance(obj['pixels'], list):
+                        pixels = obj['pixels']
+                    elif 'png_base64' in obj:
+                        try:
+                            import base64, io
+                            b = base64.b64decode(obj['png_base64'])
+                            img = Image.open(io.BytesIO(b))
+                            pixels = self._image_to_pixels(img)
+                        except Exception:
+                            pixels = None
+            # fallback to generic loader (supports PNG etc.)
+            if pixels is None:
+                try:
+                    # use helper that handles caches; fall back to PIL
+                    pixels = load_icon_as_pixels(path, size=self.size)
+                except Exception:
+                    try:
+                        img = Image.open(path)
+                        pixels = self._image_to_pixels(img)
+                    except Exception:
+                        pixels = None
+            if pixels and isinstance(pixels, list):
+                self._push_undo()
+                self.pixels = pixels
+                # if caller provided metadata, populate persistent fields
+                try:
+                    if metadata and isinstance(metadata, dict) and hasattr(self, 'meta_title_field'):
+                        self.meta_title_field.value = metadata.get('title', '') or ''
+                        self.meta_author_field.value = metadata.get('author', '') or ''
+                        self.meta_tags_field.value = ', '.join(metadata.get('tags', [])) if isinstance(metadata.get('tags', []), list) else (metadata.get('tags') or '')
+                        self.meta_description_field.value = metadata.get('description', '') or ''
+                        self.meta_title_field.update()
+                        self.meta_author_field.update()
+                        self.meta_tags_field.update()
+                        self.meta_description_field.update()
+                except Exception:
+                    pass
+                self.refresh_grid()
+                return True
+        except Exception as ex:
+            logger.exception(f"load_icon failed: {ex}")
+        return False
 
     def on_color_set_change(self, e):
         import copy
@@ -351,7 +437,7 @@ class PixelArtEditor:
                 self.hex_input.value = hex_color
                 self.hex_input.update()
             self.refresh_grid()
-        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
+        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected, loading_dialog=self)
         dialog = picker.build_dialog(page=page)
         if page:
             page.open(dialog)
@@ -428,12 +514,18 @@ class PixelArtEditor:
                     except Exception:
                         obj = None
                     if isinstance(obj, dict):
-                        # populate export_text with metadata if present
+                        # populate persistent metadata fields if present
                         try:
-                            meta = obj.get('metadata', {})
-                            if hasattr(self, 'export_text') and self.export_text is not None:
-                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
-                                self.export_text.update()
+                            meta = obj.get('metadata', {}) or {}
+                            if hasattr(self, 'meta_title_field'):
+                                self.meta_title_field.value = meta.get('title', '') or ''
+                                self.meta_author_field.value = meta.get('author', '') or ''
+                                self.meta_tags_field.value = ', '.join(meta.get('tags', [])) if isinstance(meta.get('tags', []), list) else (meta.get('tags') or '')
+                                self.meta_description_field.value = meta.get('description', '') or ''
+                                self.meta_title_field.update()
+                                self.meta_author_field.update()
+                                self.meta_tags_field.update()
+                                self.meta_description_field.update()
                         except Exception:
                             pass
                         if 'pixels' in obj and isinstance(obj['pixels'], list):
@@ -521,12 +613,18 @@ class PixelArtEditor:
                                         break
                                 except Exception:
                                     pass
-                    if meta_found and hasattr(self, 'export_text') and self.export_text is not None:
+                    if meta_found:
                         try:
-                            meta = meta_found.get('metadata') or meta_found.get('meta') or meta_found
-                            if isinstance(meta, dict):
-                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
-                                self.export_text.update()
+                            meta = meta_found.get('metadata') or meta_found.get('meta') or meta_found or {}
+                            if isinstance(meta, dict) and hasattr(self, 'meta_title_field'):
+                                self.meta_title_field.value = meta.get('title', '') or ''
+                                self.meta_author_field.value = meta.get('author', '') or ''
+                                self.meta_tags_field.value = ', '.join(meta.get('tags', [])) if isinstance(meta.get('tags', []), list) else (meta.get('tags') or '')
+                                self.meta_description_field.value = meta.get('description', '') or ''
+                                self.meta_title_field.update()
+                                self.meta_author_field.update()
+                                self.meta_tags_field.update()
+                                self.meta_description_field.update()
                         except Exception:
                             pass
                 except Exception:
@@ -536,8 +634,6 @@ class PixelArtEditor:
                     dlg.open = False
                 except Exception:
                     pass
-                if page:
-                    page.update()
             except Exception as ex:
                 import traceback
                 tb = traceback.format_exc()
@@ -601,6 +697,22 @@ class PixelArtEditor:
         self._push_undo()
         self.pixels = [["#FFFFFF" for _ in range(self.size)] for _ in range(self.size)]
         self.refresh_grid()
+        # Also clear persistent metadata fields (if present) and update UI
+        try:
+            if hasattr(self, 'meta_title_field'):
+                self.meta_title_field.value = ""
+                self.meta_title_field.update()
+            if hasattr(self, 'meta_author_field'):
+                self.meta_author_field.value = ""
+                self.meta_author_field.update()
+            if hasattr(self, 'meta_tags_field'):
+                self.meta_tags_field.value = ""
+                self.meta_tags_field.update()
+            if hasattr(self, 'meta_description_field'):
+                self.meta_description_field.value = ""
+                self.meta_description_field.update()
+        except Exception:
+            pass
 
     #def on_export(self, e):
     #    import json
@@ -988,12 +1100,8 @@ class PixelArtEditor:
                 page.update()
             return
 
-        # Show metadata dialog and save JSON file containing metadata + pixels + PNG (base64)
+        # Use persistent metadata fields; dialog only asks for filename / png option
         name_field = ft.TextField(label="Filename (no extension)")
-        title_field = ft.TextField(label="Title", value="")
-        author_field = ft.TextField(label="Author", value="")
-        tags_field = ft.TextField(label="Tags (comma separated)")
-        desc_field = ft.TextField(label="Description", multiline=True, height=80)
         save_png_checkbox = ft.Checkbox(label="Also save PNG file", value=True)
         status = ft.Text("")
 
@@ -1004,11 +1112,12 @@ class PixelArtEditor:
                 status.update()
                 return
             # collect metadata
+            # read from persistent metadata fields (visible/editable on main UI)
             meta = {
-                "title": (title_field.value or '').strip(),
-                "author": (author_field.value or '').strip(),
-                "tags": [t.strip() for t in (tags_field.value or '').split(',') if t.strip()],
-                "description": (desc_field.value or '').strip(),
+                "title": (getattr(self, 'meta_title_field', ft.TextField(value='')).value or '').strip(),
+                "author": (getattr(self, 'meta_author_field', ft.TextField(value='')).value or '').strip(),
+                "tags": [t.strip() for t in ((getattr(self, 'meta_tags_field', ft.TextField(value='')).value or '')).split(',') if t.strip()],
+                "description": (getattr(self, 'meta_description_field', ft.TextField(value='')).value or '').strip(),
                 "created_by": "yoto-up",
             }
 
@@ -1066,7 +1175,7 @@ class PixelArtEditor:
 
         dlg = ft.AlertDialog(
             title=ft.Text("Save Icon (JSON + metadata)"),
-            content=ft.Column([name_field, title_field, author_field, tags_field, desc_field, save_png_checkbox, status], spacing=8),
+            content=ft.Column([name_field, save_png_checkbox, status], spacing=8),
             actions=[ft.TextButton("Save", on_click=do_save), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))]
         )
         if page:
@@ -1159,12 +1268,18 @@ class PixelArtEditor:
                         obj = json.load(fh)
                     # restore pixels from known shapes
                     if isinstance(obj, dict):
-                        # write metadata to export_text for user to see/edit
+                        # populate persistent metadata fields so user can edit metadata immediately
                         try:
-                            meta = obj.get('metadata', {})
-                            if hasattr(self, 'export_text') and self.export_text is not None:
-                                self.export_text.value = json.dumps(meta, ensure_ascii=False, indent=2)
-                                self.export_text.update()
+                            meta = obj.get('metadata', {}) or {}
+                            if hasattr(self, 'meta_title_field'):
+                                self.meta_title_field.value = meta.get('title', '') or ''
+                                self.meta_author_field.value = meta.get('author', '') or ''
+                                self.meta_tags_field.value = ', '.join(meta.get('tags', [])) if isinstance(meta.get('tags', []), list) else (meta.get('tags') or '')
+                                self.meta_description_field.value = meta.get('description', '') or ''
+                                self.meta_title_field.update()
+                                self.meta_author_field.update()
+                                self.meta_tags_field.update()
+                                self.meta_description_field.update()
                         except Exception:
                             pass
                         if 'pixels' in obj and isinstance(obj['pixels'], list):
@@ -1554,7 +1669,7 @@ class PixelArtEditor:
             try:
                 op = float((opacity_field.value or '').strip())
             except Exception:
-                status.value = "Enter a float between 0.0 and 1.0"
+                status.value = "Enter a float between 0.0 and  1.0"
                 status.update()
                 return
             if op < 0 or op > 1:
@@ -1686,8 +1801,20 @@ class PixelArtEditor:
 
 # Standalone demo
 if __name__ == "__main__":
-    def main(page: ft.Page):
-        page.title = "Pixel Art Editor"
-        editor = PixelArtEditor()
-        page.add(editor.control())
-    ft.app(target=main)
+	import argparse
+	parser = argparse.ArgumentParser(prog="pixel_art_editor", add_help=True)
+	parser.add_argument("--load", "-l", help="Path to icon (PNG/JSON) to load on startup", default=None)
+	args = parser.parse_args()
+
+	def main(page: ft.Page):
+		page.title = "Pixel Art Editor"
+		editor = PixelArtEditor()
+		page.add(editor.control())
+		# If launched with --load, try to load after controls attached
+		if args.load:
+			try:
+				editor.load_icon(args.load)
+			except Exception:
+				logger.exception("Failed to auto-load provided icon")
+
+	ft.app(target=main)

@@ -8,13 +8,14 @@ import uuid
 import threading
 
 class ColourPicker:
-    def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None, on_color_selected=None):
+    def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None, on_color_selected=None, loading_dialog=None):
         self.current_color = current_color
         self.wheel_size = wheel_size
         self.saved_dir = saved_dir or '.'
         self.color_picker_dialog = None
         self.on_color_selected = on_color_selected
         self._temp_wheel_files = set()
+        self.loading_dialog = None
 
 
     def hex_to_rgb(self, h):
@@ -314,4 +315,6 @@ class ColourPicker:
         self._temp_wheel_files.clear()
         if self.color_picker_dialog:
             self.color_picker_dialog.open = False
+            if self.loading_dialog is not None:
+                page.open(self.loading_dialog)
             page.update()
