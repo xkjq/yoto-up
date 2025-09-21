@@ -683,6 +683,30 @@ class PixelArtEditor:
         self.refresh_grid()
 
     def _open_text_dialog(self, e):
+        # Quick position buttons
+        def set_position(x, y):
+            pos_x.value = str(x)
+            pos_y.value = str(y)
+            pos_x.update()
+            pos_y.update()
+            update_preview()
+
+        grid_size = self.size
+        positions = [
+            ("Top Left", 0, 0),
+            ("Top Center", grid_size//2, 0),
+            ("Top Right", grid_size-1, 0),
+            ("Middle Left", 0, grid_size//2),
+            ("Center", grid_size//2, grid_size//2),
+            ("Middle Right", grid_size-1, grid_size//2),
+            ("Bottom Left", 0, grid_size-1),
+            ("Bottom Center", grid_size//2, grid_size-1),
+            ("Bottom Right", grid_size-1, grid_size-1),
+        ]
+        pos_buttons = ft.Row([
+            ft.TextButton(label, on_click=lambda ev, x=x, y=y: set_position(x, y))
+            for label, x, y in positions
+        ], wrap=True, spacing=4)
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
@@ -855,6 +879,7 @@ class PixelArtEditor:
         content = ft.Column([
             text_field,
             ft.Row([color_field, picker_btn, font_dropdown, scale_dropdown, pos_x, pos_y], wrap=True),
+            pos_buttons,
             ft.Row([
                 ft.Column([ft.Text("Stamp Preview"), preview_img]),
                 ft.Column([ft.Text("Applied Preview"), preview_applied_img])
