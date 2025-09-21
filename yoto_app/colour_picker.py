@@ -107,6 +107,7 @@ class ColourPicker:
             self._debounce_timer = threading.Timer(delay, run)
             self._debounce_timer.start()
         def debounce_wheel_gesture(ev, delay=0.2):
+
             if self._debounce_timer:
                 self._debounce_timer.cancel()
             def run():
@@ -275,6 +276,10 @@ class ColourPicker:
                     update_all()
                 except Exception:
                     pass
+        def choose_action(ev=None):
+            if self.on_color_selected:
+                self.on_color_selected(self.current_color)
+            self.close_dialog(page)
 
         r_slider.on_change = on_slider_change
         g_slider.on_change = on_slider_change
@@ -292,7 +297,8 @@ class ColourPicker:
         self.color_picker_dialog = ft.AlertDialog(
             title=ft.Text("Advanced Color Picker"),
             content=content,
-            actions=[ft.TextButton("Close", on_click=lambda ev: self.close_dialog(page))],
+            actions=[ft.TextButton("Close", on_click=lambda ev: self.close_dialog(page)),
+                     ft.TextButton("Choose", on_click=choose_action)],
             open=True
         )
         return self.color_picker_dialog

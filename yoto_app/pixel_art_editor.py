@@ -640,6 +640,32 @@ class PixelArtEditor:
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
 
+        def on_color_selected(hex_color):
+            color_field.value = hex_color
+            color_field.update()
+            # Optionally update preview if present
+            if hasattr(self, 'color_preview') and self.color_preview:
+                self.color_preview.bgcolor = hex_color
+                self.color_preview.update()
+            # Reopen the stamp dialog
+            if page:
+                # Close all dialogs first
+                page.dialog = None
+                dlg.open = True
+                page.open(dlg)
+                page.update()
+
+        def open_picker(ev):
+            from yoto_app.colour_picker import ColourPicker
+            page = ev.page if hasattr(ev, 'page') else None
+            picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
+            dialog = picker.build_dialog(page=page)
+            if page:
+                page.open(dialog)
+                page.update()
+
+        picker_btn = ft.TextButton("Pick Color", on_click=open_picker)
+
         def do_stamp(ev):
             try:
                 txt = (text_field.value or '').strip()
@@ -661,7 +687,11 @@ class PixelArtEditor:
                 status.value = f"Error: {ex}"
                 status.update()
 
-        content = ft.Column([text_field, ft.Row([color_field, scale_dropdown, pos_x, pos_y], wrap=True), status], spacing=8, width=350)
+        content = ft.Column([
+            text_field,
+            ft.Row([color_field, picker_btn, scale_dropdown, pos_x, pos_y], wrap=True),
+            status
+        ], spacing=8, width=350)
         dlg = ft.AlertDialog(title=ft.Text("Stamp Text"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
         if page:
             logger.debug(f"Opening text dialog, page={page}")
