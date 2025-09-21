@@ -1192,7 +1192,7 @@ class PixelArtEditor:
 
         # Use persistent metadata fields; dialog only asks for filename / png option
         name_field = ft.TextField(label="Filename (no extension)")
-        save_png_checkbox = ft.Checkbox(label="Also save PNG file", value=True)
+        save_png_checkbox = ft.Checkbox(label="Also save PNG file", value=False)
         status = ft.Text("")
 
         def do_save(ev):
