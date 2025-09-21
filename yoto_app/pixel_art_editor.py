@@ -85,7 +85,7 @@ class PixelArtEditor:
         self.save_btn = ft.ElevatedButton("Save PNG", on_click=self.on_save_png)
         self.load_btn = ft.ElevatedButton("Load PNG", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
-        self.text_btn = ft.ElevatedButton("Text", on_click=self._open_text_dialog)
+        self.text_btn = ft.ElevatedButton("Stamp text", on_click=self._open_text_dialog)
         #self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
         self.grid = ft.Column([
             ft.Row([
@@ -174,6 +174,7 @@ class PixelArtEditor:
 
         self.right_column = ft.Column([
             image_adjustments_tile,
+            self.text_btn,
         ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
         # main container is scrollable and expands to available space
