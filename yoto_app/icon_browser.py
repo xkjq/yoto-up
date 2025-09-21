@@ -365,6 +365,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             do_filter()
 
     def show_icon_details(path: str):
+        selected_icon_path[0] = path
         # Build a simple details view for the selected icon
         details_panel.controls.clear()
         logger.debug(f"show_icon_details: {path}")
