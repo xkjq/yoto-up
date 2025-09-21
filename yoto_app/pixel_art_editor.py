@@ -187,7 +187,6 @@ class PixelArtEditor:
                 #self.export_btn,
                 #self.import_btn,
                 self.import_icon_btn,
-                self.text_btn,
                 self.save_btn,
                 self.load_btn
             ], wrap=True),
