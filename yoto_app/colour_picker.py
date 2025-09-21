@@ -14,6 +14,7 @@ class ColourPicker:
         self.saved_dir = saved_dir or '.'
         self.color_picker_dialog = None
         self.on_color_selected = on_color_selected
+        self._temp_wheel_files = set()
 
 
     def hex_to_rgb(self, h):
@@ -27,11 +28,10 @@ class ColourPicker:
 
     def _make_color_wheel_image(self, val):
         try:
-            abs_dir = os.path.abspath(str(self.saved_dir))
-            os.makedirs(abs_dir, exist_ok=True)
-            import uuid
-            unique_name = f"__color_wheel_{uuid.uuid4().hex}.png"
-            path = os.path.join(abs_dir, unique_name)
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            path = tmp.name
+            tmp.close()
             size = self.wheel_size
             cx = cy = size / 2.0
             radius = size / 2.0
@@ -73,8 +73,8 @@ class ColourPicker:
                             img.putpixel((x, y), (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255))
                         else:
                             img.putpixel((x, y), (0, 0, 0, 0))
-            with open(path, 'wb') as f:
-                img.save(f, format='PNG')
+            img.save(path, format='PNG')
+            self._temp_wheel_files.add(path)
             return path
         except Exception as ex:
             return None
@@ -304,6 +304,14 @@ class ColourPicker:
         return self.color_picker_dialog
 
     def close_dialog(self, page=None):
+        # Clean up temp wheel images
+        for f in getattr(self, '_temp_wheel_files', []):
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except Exception:
+                pass
+        self._temp_wheel_files.clear()
         if self.color_picker_dialog:
             self.color_picker_dialog.open = False
             page.update()
