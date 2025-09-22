@@ -527,25 +527,81 @@ class PixelArtEditor:
     def set_current_color(self, hex_color):
         """Set the editor's current color and update preview/input widgets."""
         self.current_color = hex_color
-        # Update active colour display if present
+        # Update main color field if present
+        try:
+            if hasattr(self, 'color_field') and self.color_field:
+                try:
+                    self.color_field.value = '' if hex_color is None else (hex_color or '')
+                    self.color_field.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Update active colour preview: show checker for transparent, composite semi-alpha over white
         try:
             if hasattr(self, 'color_preview') and self.color_preview:
-                self.color_preview.bgcolor = hex_color
-                self.color_preview.update()
+                try:
+                    # Transparent -> show checker image as content
+                    if hex_color is None:
+                        try:
+                            chk = str(self._ensure_saved_dir() / '__checker.png')
+                            self.color_preview.content = ft.Image(src=chk, width=24, height=24, fit=ft.ImageFit.COVER)
+                        except Exception:
+                            # fallback to text marker
+                            try:
+                                self.color_preview.content = ft.Text('T', size=12)
+                            except Exception:
+                                self.color_preview.content = None
+                        try:
+                            self.color_preview.bgcolor = None
+                        except Exception:
+                            self.color_preview.bgcolor = "#FFFFFF"
+                    else:
+                        # For semi-transparent colors, composite on white for preview
+                        try:
+                            r, g, b, a = self._hex_to_rgba(hex_color, alpha=255)
+                            if a < 255:
+                                r2 = int((r * a + 255 * (255 - a)) / 255)
+                                g2 = int((g * a + 255 * (255 - a)) / 255)
+                                b2 = int((b * a + 255 * (255 - a)) / 255)
+                                display_bg = f"#{r2:02X}{g2:02X}{b2:02X}"
+                            else:
+                                display_bg = f"#{r:02X}{g:02X}{b:02X}"
+                        except Exception:
+                            display_bg = hex_color
+                        # clear any content image and set bgcolor
+                        try:
+                            self.color_preview.content = None
+                        except Exception:
+                            pass
+                        try:
+                            self.color_preview.bgcolor = display_bg
+                        except Exception:
+                            pass
+                    try:
+                        self.color_preview.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         except Exception:
             pass
-        # Update hex input box if present
+
+        # Update hex_input if present (separate small input), and any color_picker widget
         try:
             if hasattr(self, 'hex_input') and self.hex_input:
-                self.hex_input.value = hex_color
-                self.hex_input.update()
+                try:
+                    self.hex_input.value = '' if hex_color is None else (hex_color or '')
+                    self.hex_input.update()
+                except Exception:
+                    pass
         except Exception:
             pass
-        # If a colour picker widget exists, try to keep it in sync
         try:
             if hasattr(self, 'color_picker') and self.color_picker:
                 try:
-                    self.color_picker.value = hex_color
+                    self.color_picker.value = '' if hex_color is None else (hex_color or '')
                     self.color_picker.update()
                 except Exception:
                     pass
@@ -891,21 +947,19 @@ class PixelArtEditor:
         return c
 
     def on_color_change(self, e):
-        val = e.control.value.strip()
+        val = (e.control.value or '').strip()
         if val.startswith('#') and (len(val) == 7 or len(val) == 4):
-            self.current_color = val
-            self.color_preview.bgcolor = val
-            self.color_preview.update()
-            self.color_picker.value = val
-            self.color_picker.update()
+            self.set_current_color(val)
 
     def make_palette_click_handler(self, color):
         def handler(e):
-            self.current_color = color
-            self.color_field.value = color
-            self.color_field.update()
-            self.color_preview.bgcolor = color
-            self.color_preview.update()
+            self.set_current_color(color)
+            try:
+                if hasattr(self, 'color_field') and self.color_field:
+                    self.color_field.value = color
+                    self.color_field.update()
+            except Exception:
+                pass
         return handler
 
     def on_clear(self, e):
