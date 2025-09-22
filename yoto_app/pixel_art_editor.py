@@ -484,7 +484,7 @@ class PixelArtEditor:
                 # Left: keep grid area fixed/non-scrolling so it remains visible
                 ft.Column([self.grid_container], expand=False),
                 # Right: controls get their own scroll area
-                ft.Column([self.right_column], scroll=ft.ScrollMode.AUTO, expand=True)
+                ft.Container(ft.Column([self.right_column], height=600, expand=True, scroll=ft.ScrollMode.AUTO, spacing=10))
             ], spacing=30),
         ], scroll=ft.ScrollMode.AUTO, expand=True)
         # Add flip and rotate buttons
