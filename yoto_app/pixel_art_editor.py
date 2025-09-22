@@ -45,6 +45,10 @@ class PixelArtEditor:
         self.container = None
         self.page = page
         self.loading_dialog = loading_dialog
+        # flag used to track drag-paint sessions (avoid pushing undo repeatedly)
+        self._drag_painting = False
+        # track ctrl key pressed state
+        self._ctrl_down = False
         # Defer heavy UI construction until the editor is actually shown or used
         self._built = False
 
@@ -134,12 +138,51 @@ class PixelArtEditor:
             width=grid_width,
             height=grid_height,
         )
+        # attach pointer handlers to the grid container so presses inside the grid
+        # set the global mouse state used by hover painting
+        try:
+            def _grid_pointer_down(ev):
+                try:
+                    self._mouse_down = True
+                    self._drag_painting = True
+                except Exception:
+                    pass
+
+            def _grid_pointer_up(ev):
+                try:
+                    self._mouse_down = False
+                    self._drag_painting = False
+                except Exception:
+                    pass
+
+            try:
+                # some flet versions accept attributes after construction
+                self.grid_container.on_pointer_down = _grid_pointer_down
+            except Exception:
+                try:
+                    # fallback: set on the content container
+                    if getattr(self.grid_container, 'content', None):
+                        self.grid_container.content.on_pointer_down = _grid_pointer_down
+                except Exception:
+                    pass
+            try:
+                self.grid_container.on_pointer_up = _grid_pointer_up
+            except Exception:
+                try:
+                    if getattr(self.grid_container, 'content', None):
+                        self.grid_container.content.on_pointer_up = _grid_pointer_up
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # Add image adjustment sliders
         self.brightness_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Brightness", on_change=self.on_adjust_image)
         self.contrast_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Contrast", on_change=self.on_adjust_image)
         self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
         self._original_pixels = None
         self._palette_backup = None
+        # track mouse button state when interacting with the grid (fallback for hover events)
+        self._mouse_down = False
 
         # Fill tolerance slider (used by Fill Similar dialog and as a quick control)
         self.fill_tolerance_slider = ft.Slider(min=0, max=255, value=32, divisions=32, label="Fill tolerance")
@@ -160,6 +203,61 @@ class PixelArtEditor:
         # wire change handler
         try:
             self.fill_tolerance_slider.on_change = _on_fill_tolerance_change
+        except Exception:
+            pass
+
+        # If we have a page, attach global pointer handlers to track mouse button state
+        try:
+            if getattr(self, 'page', None):
+                def _on_pointer_down(ev):
+                    try:
+                        self._mouse_down = True
+                    except Exception:
+                        pass
+                def _on_pointer_up(ev):
+                    try:
+                        self._mouse_down = False
+                        # end drag painting session
+                        self._drag_painting = False
+                    except Exception:
+                        pass
+                try:
+                    # attach to page events if supported
+                    self.page.on_pointer_down = _on_pointer_down
+                    self.page.on_pointer_up = _on_pointer_up
+                except Exception:
+                    pass
+
+                # track ctrl key globally so we can enable ctrl-drag painting
+                def _on_key_down(ev):
+                    try:
+                        k = getattr(ev, 'key', None)
+                        data = getattr(ev, 'data', None)
+                        if k and str(k).lower() in ('control', 'ctrl'):
+                            self._ctrl_down = True
+                        # some runtimes include key info in data
+                        elif isinstance(data, dict) and data.get('key', '').lower() in ('control', 'ctrl'):
+                            self._ctrl_down = True
+                    except Exception as e:
+                        logger.exception(f"Error in _on_key_down: {e}")
+
+                def _on_key_up(ev):
+                    try:
+                        k = getattr(ev, 'key', None)
+                        data = getattr(ev, 'data', None)
+                        if k and str(k).lower() in ('control', 'ctrl'):
+                            self._ctrl_down = False
+                        elif isinstance(data, dict) and data.get('key', '').lower() in ('control', 'ctrl'):
+                            self._ctrl_down = False
+                    except Exception as e:
+                        logger.exception(f"Error in _on_key_up: {e}")
+
+                try:
+                    self.page.on_key_down = _on_key_down
+                    self.page.on_key_up = _on_key_up
+                except Exception:
+                    # older/newer runtimes may use different names; ignore if not present
+                    pass
         except Exception:
             pass
 
@@ -1109,13 +1207,112 @@ class PixelArtEditor:
                     display_bg = f"#{r:02X}{g:02X}{b:02X}"
             except Exception:
                 display_bg = val
+        # pointer handlers: set mouse-down state and start/stop drag painting
+        def _on_pointer_down(ev):
+            try:
+                self._mouse_down = True
+                # start painting immediately
+                _apply_paint()
+                self._drag_painting = True
+            except Exception:
+                pass
+
+        def _on_pointer_up(ev):
+            try:
+                self._mouse_down = False
+                self._drag_painting = False
+            except Exception:
+                pass
+
         c = ft.Container(
             width=self.pixel_size,
             height=self.pixel_size,
             content=cell_content,
             bgcolor=display_bg,
-            on_click=on_click
+            on_click=on_click,
+            on_hover=lambda ev: _on_hover(ev) if True else None,
         )
+        # Some Flet versions support on_pointer_down/up as attributes rather than init args.
+        try:
+            c.on_pointer_down = _on_pointer_down
+        except Exception:
+            pass
+        try:
+            c.on_pointer_up = _on_pointer_up
+        except Exception:
+            pass
+        # Helper used by both click and hover to paint the cell
+        def _apply_paint():
+            try:
+                logger.debug(f"_apply_paint: pos=({x},{y}) color={self.current_color} drag={getattr(self,'_drag_painting',False)} sampler={getattr(self,'sampler_mode',False)}")
+                # only mutate during painting or initial click
+                if getattr(self, 'sampler_mode', False):
+                    return
+                # push undo once per drag session
+                if not getattr(self, '_drag_painting', False):
+                    try:
+                        self._push_undo()
+                    except Exception:
+                        pass
+                self._drag_painting = True
+                self.pixels[y][x] = self.current_color
+                if self.current_color is None:
+                    try:
+                        c.bgcolor = None
+                    except Exception:
+                        c.bgcolor = "#00000000"
+                    try:
+                        chk = str(self._ensure_saved_dir() / '__checker.png')
+                        c.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                    except Exception:
+                        try:
+                            c.content = None
+                        except Exception:
+                            pass
+                else:
+                    c.bgcolor = self.current_color
+                    try:
+                        c.content = None
+                    except Exception:
+                        pass
+                try:
+                    c.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        def _on_hover(ev):
+            # Flet hover event may include ev.data with button mask; defensively check
+            try:
+                data = getattr(ev, 'data', None)
+                logger.debug(f"_on_hover: pos=({x},{y}) ev.data={data} mouse_down={getattr(self,'_mouse_down',False)}")
+                pressed = False
+                # Only treat ev.data as a press if it's a dict containing a button mask
+                # (many Flet builds send boolean/string hover states which are NOT presses)
+                if isinstance(data, dict):
+                    buttons = data.get('buttons') or data.get('button') or 0
+                    try:
+                        if int(buttons) & 1:
+                            pressed = True
+                    except Exception:
+                        pass
+
+                # Also allow the explicit page/grid-level mouse flag (set by pointer_down handlers)
+                if getattr(self, '_mouse_down', False):
+                    pressed = True
+                # Allow ctrl-drag: if Ctrl is held, treat hover as painting
+                if getattr(self, '_ctrl_down', False):
+                    pressed = True
+
+                if pressed:
+                    _apply_paint()
+                    logger.debug(f"_on_hover: painted ({x},{y})")
+                else:
+                    # not pressed: ensure drag session ends
+                    self._drag_painting = False
+            except Exception:
+                pass
         return c
 
     def on_fill_toggle(self, e):
