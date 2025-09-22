@@ -100,7 +100,11 @@ class IconReplaceDialog:
 
         search_field = ft.TextField(label='Search text for icons', value=default_text, width=400)
         include_yoto = ft.Checkbox(label='Include YotoIcons', value=True)
-        apply_to_first_track = ft.Checkbox(label='Also replace first track icon', value=True)
+        # Show the "also replace first track icon" option only when replacing a chapter icon
+        if self.kind == 'chapter':
+            apply_to_first_track = ft.Checkbox(label='Also replace first track icon', value=True)
+        else:
+            apply_to_first_track = None
         max_searches_field = ft.TextField(label='Max extra searches', value='2', width=120)
         top_n_field = ft.TextField(label='Top N results', value='10', width=120)
         results_list = ft.ListView(expand=True, spacing=6, height=420)
@@ -194,7 +198,7 @@ class IconReplaceDialog:
                                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
                                        # Optionally also apply to the first track of this chapter
                                         try:
-                                            if apply_to_first_track.value:
+                                            if apply_to_first_track and apply_to_first_track.value:
                                                 if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
                                                     first_tr = target_ch.tracks[0]
                                                     if not getattr(first_tr, 'display', False):
@@ -328,7 +332,7 @@ class IconReplaceDialog:
                                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
                                        # Optionally also apply to the first track of this chapter
                                         try:
-                                            if apply_to_first_track.value:
+                                            if apply_to_first_track and apply_to_first_track.value:
                                                 if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
                                                     first_tr = target_ch.tracks[0]
                                                     if not getattr(first_tr, 'display', False):
@@ -529,7 +533,7 @@ class IconReplaceDialog:
                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
                        # Optionally also apply to the first track of this chapter
                         try:
-                            if apply_to_first_track.value:
+                            if apply_to_first_track and apply_to_first_track.value:
                                 if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
                                     first_tr = target_ch.tracks[0]
                                     if not getattr(first_tr, 'display', False):
@@ -555,9 +559,12 @@ class IconReplaceDialog:
         tabs = ft.Tabs(selected_index=0, tabs=[
             ft.Tab(text="Search", content=ft.Column([
                 ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
-                ft.Row([include_yoto, max_searches_field, top_n_field]),
-                results_list
-            ], width=900, expand=True)),
+                # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
+                (lambda: ft.Row(
+                    [c for c in ([include_yoto] + ([apply_to_first_track] if apply_to_first_track else []) + [max_searches_field, top_n_field])]
+                ))(),
+                 results_list
+             ], width=900, expand=True)),
             ft.Tab(text="My Icons", content=ft.Column([
                 saved_icons_list
             ], width=900, expand=True))
@@ -566,9 +573,15 @@ class IconReplaceDialog:
         # include a "Use marked icon" action so the user can apply the icon selected from the browser
         use_selected_btn = ft.TextButton("Selected icon", on_click=use_selected_icon)
         # include the preview_column above the tabs so it's visible when a selection exists
+        # build dialog content without accidentally inserting None controls
+        content_children = [tabs]
+        if apply_to_first_track:
+            # place the checkbox above the tabs (it is also included in the tabs' search row)
+            content_children.insert(0, apply_to_first_track)
+
         self.dialog = ft.AlertDialog(
             title=ft.Text('Replace icon'),
-            content=ft.Column([tabs, apply_to_first_track], width=920),
+            content=ft.Column(content_children, width=920),
             # place preview next to the selected-icon action so they are adjacent
             actions=[use_selected_btn, preview_column, ft.TextButton('Close', on_click=close_replace)],
         )
