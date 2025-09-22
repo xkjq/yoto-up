@@ -106,6 +106,9 @@ class PixelArtEditor:
         self.import_icon_btn = ft.ElevatedButton("Import Icon from Cache", on_click=self.on_import_icon)
         self.sampler_mode = False
         self.sampler_checkbox = ft.Checkbox(label="Sampler (pick color)", value=False, on_change=self.on_sampler_toggle)
+        # Fill (bucket) mode
+        self.fill_mode = False
+        self.fill_checkbox = ft.Checkbox(label="Fill mode (bucket)", value=False, on_change=self.on_fill_toggle)
         # Save / Load created icons
         self.save_btn = ft.ElevatedButton("Save Icon", on_click=self.on_save_png)
         self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
@@ -136,6 +139,9 @@ class PixelArtEditor:
         self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
         self._original_pixels = None
         self._palette_backup = None
+
+        # Fill tolerance slider (used by Fill Similar dialog and as a quick control)
+        self.fill_tolerance_slider = ft.Slider(min=0, max=255, value=32, divisions=32, label="Fill tolerance", on_change=lambda e: None)
 
         # Add color set dropdown
         self.color_sets = {
@@ -218,6 +224,7 @@ class PixelArtEditor:
             self.text_btn,
             meta_panel,
             image_adjustments_tile,
+            ft.Row([ft.Text("Fill tolerance"), self.fill_tolerance_slider], spacing=8),
         ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
         # main container is scrollable and expands to available space
@@ -234,7 +241,7 @@ class PixelArtEditor:
                 self.load_btn
             ], wrap=True),
             self.palette,
-            ft.Row([self.sampler_checkbox]),
+            ft.Row([self.sampler_checkbox, self.fill_checkbox, ft.TextButton("Fill Similar...", on_click=self._open_fill_similar_dialog)]),
             #self.export_text,
             ft.Divider(),
             ft.Row([
@@ -891,6 +898,23 @@ class PixelArtEditor:
                 # If sampler check fails, continue to painting behaviour
                 pass
 
+            # If fill mode active, perform flood-fill from this pixel
+            try:
+                if getattr(self, 'fill_mode', False):
+                    target = self.pixels[y][x]
+                    replacement = self.current_color
+                    tol = int(getattr(self, 'fill_tolerance_slider', ft.Slider()).value or 0)
+                    self._push_undo()
+                    self._flood_fill(x, y, target, replacement, tol)
+                    try:
+                        # if grid exists, refresh entire grid
+                        self.refresh_grid()
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
+
             # painting behaviour
             self._push_undo()
             self.pixels[y][x] = self.current_color
@@ -955,6 +979,92 @@ class PixelArtEditor:
             on_click=on_click
         )
         return c
+
+    def on_fill_toggle(self, e):
+        try:
+            self.fill_mode = bool(getattr(e.control, 'value', False))
+        except Exception:
+            self.fill_mode = False
+
+    def _color_distance(self, c1, c2):
+        """Return a simple 0-255 distance between two hex colors (ignoring alpha)."""
+        if c1 is None and c2 is None:
+            return 0
+        if c1 is None or c2 is None:
+            return 255
+        try:
+            r1, g1, b1, _ = self._hex_to_rgba(c1, alpha=255)
+            r2, g2, b2, _ = self._hex_to_rgba(c2, alpha=255)
+            return int(((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2) ** 0.5)
+        except Exception:
+            return 255
+
+    def _flood_fill(self, sx, sy, target_color, replacement_color, tolerance=32):
+        """Flood-fill contiguous area starting at (sx,sy). Colors within tolerance are considered matching."""
+        if tolerance < 0:
+            tolerance = 0
+        if replacement_color == target_color:
+            return
+        w = self.size
+        h = self.size
+        visited = [[False]*w for _ in range(h)]
+        stack = [(sx, sy)]
+        while stack:
+            x, y = stack.pop()
+            if x < 0 or x >= w or y < 0 or y >= h:
+                continue
+            if visited[y][x]:
+                continue
+            visited[y][x] = True
+            cur = self.pixels[y][x]
+            if self._color_distance(cur, target_color) <= tolerance:
+                self.pixels[y][x] = replacement_color
+                # push neighbors
+                stack.append((x+1, y))
+                stack.append((x-1, y))
+                stack.append((x, y+1))
+                stack.append((x, y-1))
+
+    def _open_fill_similar_dialog(self, e):
+        page = e.page if hasattr(e, 'page') else None
+        tol = int(getattr(self, 'fill_tolerance_slider', ft.Slider()).value or 32)
+        tol_field = ft.TextField(label="Tolerance (0-255)", value=str(tol), width=120)
+        repl_field = ft.TextField(label="Replacement Color (hex or blank for transparent)", value=self.current_color or '', width=220)
+        status = ft.Text("")
+        def do_fill(ev):
+            try:
+                t = int((tol_field.value or '32').strip())
+            except Exception:
+                status.value = "Enter integer tolerance"
+                status.update()
+                return
+            r = (repl_field.value or '').strip() or None
+            # perform global replace of similar colors
+            target = None
+            # if user has a selection color, use that; otherwise use current image top-left
+            try:
+                target = self.current_color
+            except Exception:
+                target = None
+            self._push_undo()
+            for y in range(self.size):
+                for x in range(self.size):
+                    if self._color_distance(self.pixels[y][x], target) <= t:
+                        self.pixels[y][x] = r
+            try:
+                self.refresh_grid()
+            except Exception:
+                pass
+            try:
+                dlg.close()
+            except Exception:
+                pass
+
+        content = ft.Column([tol_field, repl_field, status])
+        dlg = self._SmallDialog("Fill Similar Colors", content, page=page)
+        dlg.dialog.actions = [ft.TextButton("Fill", on_click=do_fill), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
+        if page:
+            dlg.open()
 
     def on_color_change(self, e):
         val = (e.control.value or '').strip()
