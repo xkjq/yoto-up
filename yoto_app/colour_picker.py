@@ -15,7 +15,7 @@ class ColourPicker:
         self.color_picker_dialog = None
         self.on_color_selected = on_color_selected
         self._temp_wheel_files = set()
-        self.loading_dialog = None
+        self.loading_dialog = loading_dialog
 
 
     def hex_to_rgb(self, h):
@@ -100,6 +100,7 @@ class ColourPicker:
         wheel_img = ft.Image(src=initial_wheel_path, width=self.wheel_size, height=self.wheel_size)
         # Debounce timer for HSV changes
         self._debounce_timer = None
+
         def debounce_value_change(ev=None, delay=0.2):
             if self._debounce_timer:
                 self._debounce_timer.cancel()
@@ -306,6 +307,7 @@ class ColourPicker:
 
     def close_dialog(self, page=None):
         # Clean up temp wheel images
+        logger.debug("Closing picker dialog")
         for f in getattr(self, '_temp_wheel_files', []):
             try:
                 if os.path.exists(f):
@@ -313,8 +315,10 @@ class ColourPicker:
             except Exception:
                 pass
         self._temp_wheel_files.clear()
-        if self.color_picker_dialog:
+        if self.loading_dialog is not None:
+            logger.debug(f"Reopening loading dialog, {self.loading_dialog}")
+            page.dialog = self.loading_dialog
+            page.open(self.loading_dialog)
+        else:
             self.color_picker_dialog.open = False
-            if self.loading_dialog is not None:
-                page.open(self.loading_dialog)
-            page.update()
+        page.update()

@@ -100,6 +100,7 @@ class IconReplaceDialog:
 
         search_field = ft.TextField(label='Search text for icons', value=default_text, width=400)
         include_yoto = ft.Checkbox(label='Include YotoIcons', value=True)
+        apply_to_first_track = ft.Checkbox(label='Also replace first track icon', value=True)
         max_searches_field = ft.TextField(label='Max extra searches', value='2', width=120)
         top_n_field = ft.TextField(label='Top N results', value='10', width=120)
         results_list = ft.ListView(expand=True, spacing=6, height=420)
@@ -114,6 +115,23 @@ class IconReplaceDialog:
         # pack preview into a small column
         preview_column = ft.Column([preview_label, preview_image, preview_name], alignment=ft.MainAxisAlignment.CENTER, visible=True)
 
+        def _schedule_page_update():
+            """Schedule a page update on the Flet event loop (safe from background threads)."""
+            try:
+                # prefer async update routed through the page event loop
+                try:
+                    self.page.run_async(self.page.update_async())
+                    return
+                except Exception:
+                    pass
+                # last-resort synchronous update (may raise if called from wrong thread)
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
         def do_search(_ev=None):
             def search_worker():
                 try:
@@ -124,7 +142,7 @@ class IconReplaceDialog:
                         search_btn.disabled = True
                     except Exception:
                         pass
-                    self.page.update()
+                    _schedule_page_update()
 
                     q = (search_field.value or '').strip()
                     try:
@@ -137,7 +155,7 @@ class IconReplaceDialog:
                         topn = 5
                     inc = bool(include_yoto.value)
                     results_list.controls.clear()
-                    self.page.update()
+                    _schedule_page_update()
                     icons = self.api.find_best_icons_for_text(q or default_text or ' ', include_yotoicons=inc, max_searches=mx, top_n=topn)
                     if not icons:
                         results_list.controls.append(ft.Text('No icons found', selectable=True))
@@ -174,6 +192,16 @@ class IconReplaceDialog:
                                         if not getattr(target_ch, 'display', False):
                                             target_ch.display = ChapterDisplay()
                                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
+                                       # Optionally also apply to the first track of this chapter
+                                        try:
+                                            if apply_to_first_track.value:
+                                                if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
+                                                    first_tr = target_ch.tracks[0]
+                                                    if not getattr(first_tr, 'display', False):
+                                                        first_tr.display = TrackDisplay()
+                                                    first_tr.display.icon16x16 = f"yoto:#{media_id}"
+                                        except Exception:
+                                            pass
                                     else:
                                         target_ch = full.content.chapters[self.ch_i]
                                         target_tr = target_ch.tracks[self.tr_i]
@@ -199,10 +227,10 @@ class IconReplaceDialog:
                             row_children.append(ft.Column([ft.Text(title_text, selectable=True), ft.Text(', '.join(icon.get('tags', [])[:5]) if icon.get('tags') else '')]))
                             row_children.append(ft.ElevatedButton('Use', on_click=use_icon))
                             results_list.controls.append(ft.Row(row_children, alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
-                    self.page.update()
+                    _schedule_page_update()
                 except Exception as e:
                     results_list.controls.append(ft.Text(f'Search failed: {e}'))
-                    self.page.update()
+                    _schedule_page_update()
                 finally:
                     # hide progress indicator and re-enable button regardless of outcome
                     try:
@@ -211,7 +239,7 @@ class IconReplaceDialog:
                         search_btn.disabled = False
                     except Exception:
                         pass
-                    self.page.update()
+                    _schedule_page_update()
             threading.Thread(target=search_worker, daemon=True).start()
     # create a button variable so the worker thread can disable/enable it
         search_btn = ft.TextButton('Search', on_click=do_search)
@@ -298,6 +326,16 @@ class IconReplaceDialog:
                                         if not getattr(target_ch, 'display', False):
                                             target_ch.display = ChapterDisplay()
                                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
+                                       # Optionally also apply to the first track of this chapter
+                                        try:
+                                            if apply_to_first_track.value:
+                                                if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
+                                                    first_tr = target_ch.tracks[0]
+                                                    if not getattr(first_tr, 'display', False):
+                                                        first_tr.display = TrackDisplay()
+                                                    first_tr.display.icon16x16 = f"yoto:#{media_id}"
+                                        except Exception:
+                                            pass
                                     else:
                                         target_ch = full.content.chapters[self.ch_i]
                                         target_tr = target_ch.tracks[self.tr_i]
@@ -489,6 +527,16 @@ class IconReplaceDialog:
                         if not getattr(target_ch, 'display', False):
                             target_ch.display = ChapterDisplay()
                         target_ch.display.icon16x16 = f"yoto:#{media_id}"
+                       # Optionally also apply to the first track of this chapter
+                        try:
+                            if apply_to_first_track.value:
+                                if getattr(target_ch, 'tracks', None) and len(target_ch.tracks) > 0:
+                                    first_tr = target_ch.tracks[0]
+                                    if not getattr(first_tr, 'display', False):
+                                        first_tr.display = TrackDisplay()
+                                    first_tr.display.icon16x16 = f"yoto:#{media_id}"
+                        except Exception:
+                            pass
                     else:
                         target_ch = full.content.chapters[self.ch_i]
                         target_tr = target_ch.tracks[self.tr_i]
@@ -520,7 +568,7 @@ class IconReplaceDialog:
         # include the preview_column above the tabs so it's visible when a selection exists
         self.dialog = ft.AlertDialog(
             title=ft.Text('Replace icon'),
-            content=ft.Column([tabs], width=920),
+            content=ft.Column([tabs, apply_to_first_track], width=920),
             # place preview next to the selected-icon action so they are adjacent
             actions=[use_selected_btn, preview_column, ft.TextButton('Close', on_click=close_replace)],
         )
@@ -535,4 +583,3 @@ class IconReplaceDialog:
         # kick off the initial search and refresh saved icons
         do_search(None)
         refresh_saved_icons()
-       

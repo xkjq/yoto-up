@@ -494,7 +494,6 @@ class PixelArtEditor:
         self.refresh_grid()
 
     def open_color_picker(self, e):
-        from yoto_app.colour_picker import ColourPicker
         page = e.page if hasattr(e, 'page') else None
         def on_color_selected(hex_color):
             self.current_color = hex_color
@@ -507,7 +506,7 @@ class PixelArtEditor:
                 self.hex_input.value = hex_color
                 self.hex_input.update()
             self.refresh_grid()
-        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected, loading_dialog=self)
+        picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
         dialog = picker.build_dialog(page=page)
         # use dialog helper so parent (editor) is restored when picker closes
         self._open_dialog(dialog, page)
@@ -1057,12 +1056,12 @@ class PixelArtEditor:
                 self.color_preview.bgcolor = hex_color
                 self.color_preview.update()
             update_preview()
-            # Reopen the text dialog (dlg) after the picker finishes
-            if page:
-                try:
-                    self._open_dialog(dlg, page)
-                except Exception:
-                    pass
+            ## Reopen the text dialog (dlg) after the picker finishes
+            #if page:
+            #    try:
+            #        self._open_dialog(dlg, page)
+            #    except Exception:
+            #        pass
 
         def update_image_preview(ev=None):
             txt = (text_field.value or '').strip()
@@ -1130,7 +1129,7 @@ class PixelArtEditor:
 
         def open_picker(ev):
             page = ev.page if hasattr(ev, 'page') else None
-            picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected, loading_dialog=self)
+            picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
             dialog = picker.build_dialog(page=page)
             if page:
                 # open colour picker as child dialog of the text dialog
