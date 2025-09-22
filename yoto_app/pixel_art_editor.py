@@ -481,9 +481,10 @@ class PixelArtEditor:
             #self.export_text,
             ft.Divider(),
             ft.Row([
-                self.grid_container,
-                # place the right-side column next to the grid; this column can grow a scrollable actions area
-                self.right_column
+                # Left: keep grid area fixed/non-scrolling so it remains visible
+                ft.Column([self.grid_container], expand=False),
+                # Right: controls get their own scroll area
+                ft.Column([self.right_column], scroll=ft.ScrollMode.AUTO, expand=True)
             ], spacing=30),
         ], scroll=ft.ScrollMode.AUTO, expand=True)
         # Add flip and rotate buttons
