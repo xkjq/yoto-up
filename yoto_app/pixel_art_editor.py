@@ -227,6 +227,121 @@ class PixelArtEditor:
             ft.Row([ft.Text("Fill tolerance"), self.fill_tolerance_slider], spacing=8),
         ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
+        # Inline "Fill Similar" expander (replaces dialog-based flow)
+        self.target_field = ft.TextField(label="Target Color (hex or blank for current)", value=(self.current_color or ''), width=160)
+        self.repl_field = ft.TextField(label="Replacement Color (hex or blank for transparent)", value=self.current_color or '', width=160)
+        self.target_preview = ft.Container(width=24, height=24, border=ft.border.all(1, "#888888"))
+        self.repl_preview = ft.Container(width=24, height=24, border=ft.border.all(1, "#888888"))
+        self._fill_similar_status = ft.Text("")
+
+        def _update_fill_previews(ev=None):
+            try:
+                t = (self.target_field.value or '').strip() or self.current_color
+                if not t:
+                    self.target_preview.content = ft.Text(' ', size=1)
+                    self.target_preview.bgcolor = None
+                else:
+                    try:
+                        r, g, b, a = self._hex_to_rgba(t, alpha=255)
+                        if a < 255:
+                            r2 = int((r * a + 255 * (255 - a)) / 255)
+                            g2 = int((g * a + 255 * (255 - a)) / 255)
+                            b2 = int((b * a + 255 * (255 - a)) / 255)
+                            display = f"#{r2:02X}{g2:02X}{b2:02X}"
+                        else:
+                            display = f"#{r:02X}{g:02X}{b:02X}"
+                    except Exception:
+                        display = t
+                    self.target_preview.content = None
+                    self.target_preview.bgcolor = display
+            except Exception:
+                pass
+            try:
+                r = (self.repl_field.value or '').strip() or None
+                if r is None:
+                    try:
+                        chk = str(self._ensure_saved_dir() / '__checker.png')
+                        self.repl_preview.content = ft.Image(src=chk, width=20, height=20, fit=ft.ImageFit.COVER)
+                        self.repl_preview.bgcolor = None
+                    except Exception:
+                        self.repl_preview.content = ft.Text('T', size=10)
+                        self.repl_preview.bgcolor = None
+                else:
+                    try:
+                        rr, gg, bb, aa = self._hex_to_rgba(r, alpha=255)
+                        if aa < 255:
+                            rr2 = int((rr * aa + 255 * (255 - aa)) / 255)
+                            gg2 = int((gg * aa + 255 * (255 - aa)) / 255)
+                            bb2 = int((bb * aa + 255 * (255 - aa)) / 255)
+                            display2 = f"#{rr2:02X}{gg2:02X}{bb2:02X}"
+                        else:
+                            display2 = f"#{rr:02X}{gg:02X}{bb:02X}"
+                    except Exception:
+                        display2 = r
+                    self.repl_preview.content = None
+                    self.repl_preview.bgcolor = display2
+            except Exception:
+                pass
+            try:
+                self.target_preview.update()
+            except Exception:
+                pass
+            try:
+                self.repl_preview.update()
+            except Exception:
+                pass
+
+        def _sample_target_inline(ev):
+            try:
+                self.target_field.value = self.current_color or ''
+                self.target_field.update()
+                _update_fill_previews()
+            except Exception:
+                pass
+
+        def _do_fill_inline(ev):
+            try:
+                t = int(getattr(self, 'fill_tolerance_slider', ft.Slider()).value or 32)
+            except Exception:
+                t = 32
+            r = (self.repl_field.value or '').strip() or None
+            target = (self.target_field.value or '').strip() or self.current_color
+            if target == '':
+                target = None
+            self._push_undo()
+            for yy in range(self.size):
+                for xx in range(self.size):
+                    try:
+                        if self._color_distance(self.pixels[yy][xx], target) <= t:
+                            self.pixels[yy][xx] = r
+                    except Exception:
+                        pass
+            try:
+                self.refresh_grid()
+            except Exception:
+                pass
+            try:
+                # collapse the expander after fill
+                self.fill_similar_expander.open = False
+                self.fill_similar_expander.update()
+            except Exception:
+                pass
+
+        # wire live preview updates
+        self.target_field.on_change = _update_fill_previews
+        self.repl_field.on_change = _update_fill_previews
+
+        fill_controls = ft.Column([
+            ft.Row([ft.Column([ft.Text("Target"), ft.Row([self.target_field, ft.Column([self.target_preview])])]), ft.Column([ft.Text("Replacement"), ft.Row([self.repl_field, ft.Column([self.repl_preview])])])], spacing=12),
+            ft.Row([ft.Text("Tolerance (use slider at right)"), ft.TextButton("Sample target", on_click=_sample_target_inline), ft.ElevatedButton("Fill", on_click=_do_fill_inline)]),
+            self._fill_similar_status
+        ], spacing=8)
+
+        self.fill_similar_expander = ft.ExpansionTile(
+            title=ft.Text("Fill Similar", size=12, weight=ft.FontWeight.W_400),
+            controls=[fill_controls]
+        )
+
         # main container is scrollable and expands to available space
         self.container = ft.Column([
             ft.Row([
@@ -241,7 +356,7 @@ class PixelArtEditor:
                 self.load_btn
             ], wrap=True),
             self.palette,
-            ft.Row([self.sampler_checkbox, self.fill_checkbox, ft.TextButton("Fill Similar...", on_click=self._open_fill_similar_dialog)]),
+            ft.Row([self.sampler_checkbox, self.fill_checkbox, self.fill_similar_expander]),
             #self.export_text,
             ft.Divider(),
             ft.Row([
@@ -1029,8 +1144,82 @@ class PixelArtEditor:
         page = e.page if hasattr(e, 'page') else None
         tol = int(getattr(self, 'fill_tolerance_slider', ft.Slider()).value or 32)
         tol_field = ft.TextField(label="Tolerance (0-255)", value=str(tol), width=120)
-        repl_field = ft.TextField(label="Replacement Color (hex or blank for transparent)", value=self.current_color or '', width=220)
+        target_field = ft.TextField(label="Target Color (hex or blank for current)", value=(self.current_color or ''), width=160)
+        repl_field = ft.TextField(label="Replacement Color (hex or blank for transparent)", value=self.current_color or '', width=160)
+        # small previews
+        target_preview = ft.Container(width=24, height=24, border=ft.border.all(1, "#888888"))
+        repl_preview = ft.Container(width=24, height=24, border=ft.border.all(1, "#888888"))
         status = ft.Text("")
+
+        def update_previews(ev=None):
+            # target
+            try:
+                t = (target_field.value or '').strip() or self.current_color
+                if not t:
+                    target_preview.content = ft.Text(' ', size=1)
+                    target_preview.bgcolor = None
+                else:
+                    # composite semi-alpha for preview
+                    try:
+                        r, g, b, a = self._hex_to_rgba(t, alpha=255)
+                        if a < 255:
+                            r2 = int((r * a + 255 * (255 - a)) / 255)
+                            g2 = int((g * a + 255 * (255 - a)) / 255)
+                            b2 = int((b * a + 255 * (255 - a)) / 255)
+                            display = f"#{r2:02X}{g2:02X}{b2:02X}"
+                        else:
+                            display = f"#{r:02X}{g:02X}{b:02X}"
+                    except Exception:
+                        display = t
+                    target_preview.content = None
+                    target_preview.bgcolor = display
+            except Exception:
+                pass
+            # replacement
+            try:
+                r = (repl_field.value or '').strip() or None
+                if r is None:
+                    # show checker for transparent
+                    try:
+                        chk = str(self._ensure_saved_dir() / '__checker.png')
+                        repl_preview.content = ft.Image(src=chk, width=20, height=20, fit=ft.ImageFit.COVER)
+                        repl_preview.bgcolor = None
+                    except Exception:
+                        repl_preview.content = ft.Text('T', size=10)
+                        repl_preview.bgcolor = None
+                else:
+                    try:
+                        rr, gg, bb, aa = self._hex_to_rgba(r, alpha=255)
+                        if aa < 255:
+                            rr2 = int((rr * aa + 255 * (255 - aa)) / 255)
+                            gg2 = int((gg * aa + 255 * (255 - aa)) / 255)
+                            bb2 = int((bb * aa + 255 * (255 - aa)) / 255)
+                            display2 = f"#{rr2:02X}{gg2:02X}{bb2:02X}"
+                        else:
+                            display2 = f"#{rr:02X}{gg:02X}{bb:02X}"
+                    except Exception:
+                        display2 = r
+                    repl_preview.content = None
+                    repl_preview.bgcolor = display2
+            except Exception:
+                pass
+            try:
+                target_preview.update()
+            except Exception:
+                pass
+            try:
+                repl_preview.update()
+            except Exception:
+                pass
+        def sample_target(ev):
+            # sample current_color into target field
+            try:
+                target_field.value = self.current_color or ''
+                target_field.update()
+                update_previews()
+            except Exception:
+                pass
+
         def do_fill(ev):
             try:
                 t = int((tol_field.value or '32').strip())
@@ -1039,18 +1228,18 @@ class PixelArtEditor:
                 status.update()
                 return
             r = (repl_field.value or '').strip() or None
-            # perform global replace of similar colors
-            target = None
-            # if user has a selection color, use that; otherwise use current image top-left
-            try:
-                target = self.current_color
-            except Exception:
+            # determine target: explicit user input or current_color
+            target = (target_field.value or '').strip() or self.current_color
+            if target == '':
                 target = None
             self._push_undo()
             for y in range(self.size):
                 for x in range(self.size):
-                    if self._color_distance(self.pixels[y][x], target) <= t:
-                        self.pixels[y][x] = r
+                    try:
+                        if self._color_distance(self.pixels[y][x], target) <= t:
+                            self.pixels[y][x] = r
+                    except Exception:
+                        pass
             try:
                 self.refresh_grid()
             except Exception:
@@ -1060,11 +1249,22 @@ class PixelArtEditor:
             except Exception:
                 pass
 
-        content = ft.Column([tol_field, repl_field, status])
+        # wire preview updates live
+        target_field.on_change = update_previews
+        repl_field.on_change = update_previews
+
+        # dialog content with previews and sample button
+        content = ft.Column([
+            ft.Row([ft.Column([ft.Text("Target"), ft.Row([target_field, ft.Column([target_preview])])]), ft.Column([ft.Text("Replacement"), ft.Row([repl_field, ft.Column([repl_preview])])])], spacing=12),
+            ft.Row([tol_field, ft.TextButton("Sample target", on_click=sample_target)]),
+            status
+        ], spacing=8, width=420)
         dlg = self._SmallDialog("Fill Similar Colors", content, page=page)
         dlg.dialog.actions = [ft.TextButton("Fill", on_click=do_fill), ft.TextButton("Cancel", on_click=lambda ev: dlg.close())]
         if page:
             dlg.open()
+            # ensure previews reflect initial values
+            update_previews()
 
     def on_color_change(self, e):
         val = (e.control.value or '').strip()
