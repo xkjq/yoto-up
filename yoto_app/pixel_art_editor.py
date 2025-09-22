@@ -59,6 +59,7 @@ class PixelArtEditor:
         )
         self.color_preview = ft.Container(
             width=32,
+            height=32,
             bgcolor=self.current_color,
             border_radius=4,
             border=ft.border.all(1, "#888888"),
@@ -141,7 +142,26 @@ class PixelArtEditor:
         self._palette_backup = None
 
         # Fill tolerance slider (used by Fill Similar dialog and as a quick control)
-        self.fill_tolerance_slider = ft.Slider(min=0, max=255, value=32, divisions=32, label="Fill tolerance", on_change=lambda e: None)
+        self.fill_tolerance_slider = ft.Slider(min=0, max=255, value=32, divisions=32, label="Fill tolerance")
+        # Small label that shows the current numeric tolerance value
+        self.fill_tolerance_label = ft.Text(str(int(self.fill_tolerance_slider.value)), size=12)
+
+        def _on_fill_tolerance_change(e):
+            try:
+                v = int(getattr(e.control, 'value', self.fill_tolerance_slider.value) or 0)
+                self.fill_tolerance_label.value = str(v)
+                try:
+                    self.fill_tolerance_label.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        # wire change handler
+        try:
+            self.fill_tolerance_slider.on_change = _on_fill_tolerance_change
+        except Exception:
+            pass
 
         # Add color set dropdown
         self.color_sets = {
@@ -209,23 +229,6 @@ class PixelArtEditor:
         # Undo / Redo buttons
         self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
         self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
-
-        # include metadata panel on the right so user can view/edit while creating
-        meta_panel = ft.Column([
-            ft.Text("Icon metadata", size=12, weight=ft.FontWeight.W_600),
-            self.meta_title_field,
-            self.meta_author_field,
-            self.meta_tags_field,
-            self.meta_description_field
-        ], spacing=6)
-        self.right_column = ft.Column([
-            ft.Row([self.undo_btn, self.redo_btn], spacing=10),
-
-            self.text_btn,
-            meta_panel,
-            image_adjustments_tile,
-            ft.Row([ft.Text("Fill tolerance"), self.fill_tolerance_slider], spacing=8),
-        ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
 
         # Inline "Fill Similar" expander (replaces dialog-based flow)
         self.target_field = ft.TextField(label="Target Color (hex or blank for current)", value=(self.current_color or ''), width=160)
@@ -331,6 +334,7 @@ class PixelArtEditor:
         self.target_field.on_change = _update_fill_previews
         self.repl_field.on_change = _update_fill_previews
 
+        # Now that target/repl fields exist, build the fill controls and expander
         fill_controls = ft.Column([
             ft.Row([ft.Column([ft.Text("Target"), ft.Row([self.target_field, ft.Column([self.target_preview])])]), ft.Column([ft.Text("Replacement"), ft.Row([self.repl_field, ft.Column([self.repl_preview])])])], spacing=12),
             ft.Row([ft.Text("Tolerance (use slider at right)"), ft.TextButton("Sample target", on_click=_sample_target_inline), ft.ElevatedButton("Fill", on_click=_do_fill_inline)]),
@@ -341,6 +345,25 @@ class PixelArtEditor:
             title=ft.Text("Fill Similar", size=12, weight=ft.FontWeight.W_400),
             controls=[fill_controls]
         )
+
+        # include metadata panel on the right so user can view/edit while creating
+        meta_panel = ft.Column([
+            ft.Text("Icon metadata", size=12, weight=ft.FontWeight.W_600),
+            self.meta_title_field,
+            self.meta_author_field,
+            self.meta_tags_field,
+            self.meta_description_field
+        ], spacing=6)
+        self.right_column = ft.Column([
+            ft.Row([self.undo_btn, self.redo_btn], spacing=10),
+
+            self.text_btn,
+            meta_panel,
+            image_adjustments_tile,
+            ft.Row([ft.Text("Fill tolerance"), self.fill_tolerance_slider, self.fill_tolerance_label], spacing=8),
+            ft.Row([self.sampler_checkbox, self.fill_checkbox, self.fill_similar_expander], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
+        ], spacing=10, width=600, scroll=ft.ScrollMode.AUTO)
+
 
         # main container is scrollable and expands to available space
         self.container = ft.Column([
@@ -356,7 +379,7 @@ class PixelArtEditor:
                 self.load_btn
             ], wrap=True),
             self.palette,
-            ft.Row([self.sampler_checkbox, self.fill_checkbox, self.fill_similar_expander]),
+            ft.Row([]),
             #self.export_text,
             ft.Divider(),
             ft.Row([
@@ -408,7 +431,7 @@ class PixelArtEditor:
             self.sepia_tone_btn,
             self.pixelate_btn,
             self.quantize_colors_btn,
-            self.brightness_contrast_region_btn
+            self.brightness_contrast_region_btn,
         ], spacing=10, wrap=True)
 
         # Use ExpansionTile (used elsewhere in the codebase) to create a collapsible tile
