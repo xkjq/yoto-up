@@ -17,6 +17,7 @@ except ImportError:
     from pixel_fonts import _font_3x5, _font_5x7
     from colour_picker import ColourPicker
 import colorsys
+import base64, io
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -44,9 +45,12 @@ class PixelArtEditor:
         self.container = None
         self.page = page
         self.loading_dialog = loading_dialog
-        self._build()
+        # Defer heavy UI construction until the editor is actually shown or used
+        self._built = False
 
     def _build(self):
+        # mark built early to avoid recursion if _build triggers ensure_built
+        self._built = True
         self.color_field = ft.TextField(
             label="Color (hex)",
             width=120,
@@ -113,15 +117,13 @@ class PixelArtEditor:
         self.meta_tags_field = ft.TextField(label="Tags (comma separated)", value="", width=300)
         self.meta_description_field = ft.TextField(label="Description", multiline=True, height=80, width=300)
         #self.export_text = ft.TextField(label="Export/Import JSON", multiline=True, width=400, height=80)
-        self.grid = ft.Column([
-            ft.Row([
-                self.make_pixel(x, y) for x in range(self.size)
-            ], spacing=0) for y in range(self.size)
-        ], spacing=0)
+        # Defer creating the full grid (heavy) until needed
+        self.grid = None
         grid_width = self.size * self.pixel_size
         grid_height = self.size * self.pixel_size
+        # Light placeholder container; real grid will be injected by ensure_grid()
         self.grid_container = ft.Container(
-            content=self.grid,
+            content=ft.Container(content=ft.Text("(grid loading)")),
             border_radius=4,
             border=ft.border.all(2, "#888888"),
             padding=2,
@@ -416,13 +418,13 @@ class PixelArtEditor:
                         pixels = obj['pixels']
                     elif 'png_base64' in obj:
                         try:
-                            import base64, io
                             b = base64.b64decode(obj['png_base64'])
                             img = Image.open(io.BytesIO(b))
                             pixels = self._image_to_pixels(img)
                         except Exception:
                             pixels = None
             # fallback to generic loader (supports PNG etc.)
+            logger.debug(f"PixelArtEditor.load_icon: Using generic loader for {path}")
             if pixels is None:
                 try:
                     # use helper that handles caches; fall back to PIL
@@ -433,7 +435,9 @@ class PixelArtEditor:
                         pixels = self._image_to_pixels(img)
                     except Exception:
                         pixels = None
+            logger.debug(f"PixelArtEditor.load_icon: Loaded pixels: {pixels}")
             if pixels and isinstance(pixels, list):
+                logger.debug("PixelArtEditor.load_icon: Pushing undo state and updating pixels")
                 self._push_undo()
                 self.pixels = pixels
                 # if caller provided metadata, populate persistent fields
@@ -452,6 +456,7 @@ class PixelArtEditor:
                         self.meta_description_field.update()
                 except Exception:
                     pass
+                logger.debug("PixelArtEditor.load_icon: Refreshing grid")
                 self.refresh_grid()
                 return True
         except Exception as ex:
@@ -716,6 +721,11 @@ class PixelArtEditor:
                 if not pixels or not isinstance(pixels, list):
                     raise RuntimeError('Loaded icon returned invalid pixel data')
                 self._push_undo()
+                # ensure grid exists before assigning pixels so UI can be updated
+                try:
+                    self.ensure_grid()
+                except Exception:
+                    pass
                 self.pixels = pixels
                 self.refresh_grid()
                 # If there's metadata files in the caches, try to find matching metadata and populate export_text
@@ -1001,6 +1011,7 @@ class PixelArtEditor:
     #        self.export_text.update()
 
     def refresh_grid(self):
+        logger.debug("PixelArtEditor.refresh_grid: Refreshing grid")
         for y, row in enumerate(self.grid.controls):
             for x, cell in enumerate(row.controls):
                 val = self.pixels[y][x]
@@ -1040,6 +1051,7 @@ class PixelArtEditor:
                         cell.update()
                     except Exception:
                         pass
+        logger.debug("PixelArtEditor.refresh_grid: Grid refreshed")
 
     # Helpers for saving/loading
     def _ensure_saved_dir(self):
@@ -1942,6 +1954,18 @@ class PixelArtEditor:
     def as_tab(self, title: str = "Icon Editor"):
         """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
         try:
+            # Ensure UI is built before creating tab
+            if not getattr(self, '_built', False):
+                try:
+                    self._build()
+                except Exception:
+                    logger.exception("Error building editor UI in as_tab")
+            # ensure the heavy grid is present when creating the tab
+            try:
+                self.ensure_grid()
+            except Exception:
+                pass
+            
             if getattr(self, "_tab", None):
                 return self._tab
             # Wrap editor.container in a Column to ensure it expands properly inside tab content
@@ -1967,6 +1991,18 @@ class PixelArtEditor:
         try:
             if tabview is None:
                 return None
+            # ensure UI is built before creating/attaching the tab
+            if not getattr(self, '_built', False):
+                try:
+                    self._build()
+                except Exception:
+                    logger.exception("Error building editor UI in attach_to_tabview")
+            # if we're selecting the tab, make sure grid is created now (avoid heavy work for non-selected attach)
+            if select:
+                try:
+                    self.ensure_grid()
+                except Exception:
+                    pass
             tab = getattr(self, "_tab", None) or self.as_tab()
             if tab is None:
                 return None
@@ -1992,6 +2028,32 @@ class PixelArtEditor:
         except Exception:
             logger.exception("Failed to attach editor to tabview")
             return None
+
+    def ensure_grid(self):
+        """Create the full pixel grid controls if they haven't been created yet.
+        This is the expensive operation (size*size Flet control creation) and is deferred
+        until the editor is actually displayed or an icon is loaded into it.
+        """
+        if getattr(self, '_grid_built', False):
+            return
+        try:
+            # build the grid controls
+            self.grid = ft.Column([
+                ft.Row([
+                    self.make_pixel(x, y) for x in range(self.size)
+                ], spacing=0) for y in range(self.size)
+            ], spacing=0)
+            grid_width = self.size * self.pixel_size
+            grid_height = self.size * self.pixel_size
+            self.grid_container.content = self.grid
+            try:
+                self.grid_container.width = grid_width
+                self.grid_container.height = grid_height
+            except Exception:
+                pass
+            self._grid_built = True
+        except Exception:
+            logger.exception("Failed to build pixel grid")
 #
 # ...existing code...
     class _SmallDialog:

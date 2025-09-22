@@ -495,11 +495,13 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         # Resolve metadata early (used for both tab and fallback)
         meta = _meta_map.get(path)
         meta_source = _meta_source.get(path)
+        logger.debug(f"open_icon_editor: path={path} meta_source={meta_source}")
         if meta is None and not _index_built:
             try:
                 meta, meta_source = find_metadata_for_path(path)
             except Exception:
                 meta = None
+        logger.debug(f"open_icon_editor: resolved meta_source={meta_source}")
 
         try:
             # Reuse an editor bound to the page if present; else create and attach one
@@ -523,6 +525,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 try:
                     editor.attach_to_tabview(tabs_control, select=True, page=page)
                     page.update()
+                    logger.debug("Editor tab attached/selected in Tabs control")
                 except Exception:
                     logger.exception("Failed to attach/select editor tab; attempting fallback attach without selection")
                     try:
@@ -543,7 +546,10 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             try:
                 load_fn = getattr(editor, "load_icon", None)
                 if callable(load_fn):
+                    logger.debug(f"Loading icon into editor: {path} with metadata source={meta_source}")
                     load_fn(path, metadata=meta)
+                    logger.debug("Icon loaded into editor")
+                    page.update()
             except Exception:
                 logger.exception("Failed to load icon into editor")
         except Exception:
