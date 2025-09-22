@@ -468,12 +468,15 @@ class PixelArtEditor:
         if set_name != "Default" and self._palette_backup is None:
             self._palette_backup = copy.deepcopy(self.pixels)
         def closest(hex_color):
-            h = hex_color.lstrip('#')
+            # If hex_color is None (transparent), preserve it
+            if not hex_color:
+                return hex_color
+            h = str(hex_color).lstrip('#')
             if len(h) == 3:
                 h = ''.join([c*2 for c in h])
             r1, g1, b1 = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
             def dist(c2):
-                h2 = c2.lstrip('#')
+                h2 = str(c2).lstrip('#')
                 if len(h2) == 3:
                     h2 = ''.join([c*2 for c in h2])
                 r2, g2, b2 = int(h2[0:2], 16), int(h2[2:4], 16), int(h2[4:6], 16)
