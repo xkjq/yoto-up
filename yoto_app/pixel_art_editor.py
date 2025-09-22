@@ -80,6 +80,21 @@ class PixelArtEditor:
                 tooltip=c
             ) for c in self.palette_colors
         ], spacing=4)
+        # Add a transparent swatch at the end
+        try:
+            self.palette.controls.append(
+                ft.Container(
+                    width=24,
+                    height=24,
+                    content=ft.Text("T", size=10),
+                    border_radius=4,
+                    border=ft.border.all(1, "#888888"),
+                    on_click=self.make_palette_click_handler(None),
+                    tooltip="Transparent"
+                )
+            )
+        except Exception:
+            pass
         self.clear_btn = ft.ElevatedButton("Clear", on_click=self.on_clear)
         #self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
         #self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
@@ -754,7 +769,15 @@ class PixelArtEditor:
         def on_click(e):
             self._push_undo()
             self.pixels[y][x] = self.current_color
-            e.control.bgcolor = self.current_color
+            # render transparent as no bgcolor (None)
+            if self.current_color is None:
+                try:
+                    e.control.bgcolor = None
+                except Exception:
+                    # Some flet versions expect a string; fall back to explicit transparent rgba
+                    e.control.bgcolor = "#00000000"
+            else:
+                e.control.bgcolor = self.current_color
             e.control.update()
         return ft.Container(
             width=self.pixel_size,
@@ -838,6 +861,7 @@ class PixelArtEditor:
             for x in range(size):
                 hexc = pixels[y][x]
                 if hexc is None:
+                    # transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
                 elif isinstance(hexc, str) and hexc.startswith('#'):
                     hexc = hexc.lstrip('#')
@@ -848,6 +872,7 @@ class PixelArtEditor:
                     b = int(hexc[4:6], 16)
                     img.putpixel((x, y), (r, g, b, 255))
                 else:
+                    # unknown -> transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
         return img
 
@@ -870,7 +895,10 @@ class PixelArtEditor:
         for y in range(self.size):
             for x in range(self.size):
                 r, g, b, a = img.getpixel((x, y))
-                pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
+                if a == 0:
+                    pixels[y][x] = None
+                else:
+                    pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
         return pixels
 
 
