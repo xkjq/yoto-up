@@ -37,6 +37,7 @@ class PixelArtEditor:
         self.grid = None
         self.color_dropdown = None
         self.clear_btn = None
+        self.sampler_mode = False
         #self.export_btn = None
         #self.import_btn = None
         #self.export_text = None
@@ -99,6 +100,8 @@ class PixelArtEditor:
         #self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
         #self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
         self.import_icon_btn = ft.ElevatedButton("Import Icon from Cache", on_click=self.on_import_icon)
+        self.sampler_mode = False
+        self.sampler_checkbox = ft.Checkbox(label="Sampler (pick color)", value=False, on_change=self.on_sampler_toggle)
         # Save / Load created icons
         self.save_btn = ft.ElevatedButton("Save Icon", on_click=self.on_save_png)
         self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
@@ -229,6 +232,7 @@ class PixelArtEditor:
                 self.load_btn
             ], wrap=True),
             self.palette,
+            ft.Row([self.sampler_checkbox]),
             #self.export_text,
             ft.Divider(),
             ft.Row([
@@ -514,20 +518,45 @@ class PixelArtEditor:
     def open_color_picker(self, e):
         page = e.page if hasattr(e, 'page') else None
         def on_color_selected(hex_color):
-            self.current_color = hex_color
-            # Update active colour display if present
-            if hasattr(self, 'color_preview') and self.color_preview:
-                self.color_preview.bgcolor = hex_color
-                self.color_preview.update()
-            # Update hex input box if present
-            if hasattr(self, 'hex_input') and self.hex_input:
-                self.hex_input.value = hex_color
-                self.hex_input.update()
-            self.refresh_grid()
+            self.set_current_color(hex_color)
         picker = ColourPicker(current_color=self.current_color, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
         dialog = picker.build_dialog(page=page)
         # use dialog helper so parent (editor) is restored when picker closes
         self._open_dialog(dialog, page)
+
+    def set_current_color(self, hex_color):
+        """Set the editor's current color and update preview/input widgets."""
+        self.current_color = hex_color
+        # Update active colour display if present
+        try:
+            if hasattr(self, 'color_preview') and self.color_preview:
+                self.color_preview.bgcolor = hex_color
+                self.color_preview.update()
+        except Exception:
+            pass
+        # Update hex input box if present
+        try:
+            if hasattr(self, 'hex_input') and self.hex_input:
+                self.hex_input.value = hex_color
+                self.hex_input.update()
+        except Exception:
+            pass
+        # If a colour picker widget exists, try to keep it in sync
+        try:
+            if hasattr(self, 'color_picker') and self.color_picker:
+                try:
+                    self.color_picker.value = hex_color
+                    self.color_picker.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def on_sampler_toggle(self, e):
+        try:
+            self.sampler_mode = bool(getattr(e.control, 'value', False))
+        except Exception:
+            self.sampler_mode = False
 
     def on_import_icon(self, e):
         print("Importing icon from cache...")
@@ -770,6 +799,33 @@ class PixelArtEditor:
 
     def make_pixel(self, x, y):
         def on_click(e):
+            # If sampler mode is active, pick the color from the clicked pixel
+            try:
+                if getattr(self, 'sampler_mode', False):
+                    sampled = self.pixels[y][x]
+                    # sampled may be None (transparent) or a hex string
+                    try:
+                        self.set_current_color(sampled)
+                    except Exception:
+                        # fallback: set directly
+                        self.current_color = sampled
+                    # disable sampler (one-shot)
+                    try:
+                        self.sampler_mode = False
+                        if hasattr(self, 'sampler_checkbox') and self.sampler_checkbox:
+                            try:
+                                self.sampler_checkbox.value = False
+                                self.sampler_checkbox.update()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                # If sampler check fails, continue to painting behaviour
+                pass
+
+            # painting behaviour
             self._push_undo()
             self.pixels[y][x] = self.current_color
             # render transparent as no bgcolor (None)
