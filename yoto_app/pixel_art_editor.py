@@ -1128,9 +1128,10 @@ class PixelArtEditor:
         pos_y.on_change = update_preview
 
         def open_picker(ev):
+            logger.debug("Opening colour picker from text dialog")
             page = ev.page if hasattr(ev, 'page') else None
             picker = ColourPicker(current_color=color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_color_selected)
-            dialog = picker.build_dialog(page=page)
+            dialog = picker.build_dialog(page=page, caller_page_dialog=page.dialog if page else None)
             if page:
                 # open colour picker as child dialog of the text dialog
                 self._open_dialog(dialog, page)
@@ -1175,6 +1176,7 @@ class PixelArtEditor:
         ], spacing=8, width=350)
         dlg = ft.AlertDialog(title=ft.Text("Stamp Text"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
         if page:
+            page.dialog = dlg  # keep a reference
             logger.debug(f"Opening text dialog, page={page}")
             self._open_dialog(dlg, page)
             update_preview()  # Show previews immediately after dialog is open

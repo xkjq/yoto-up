@@ -87,7 +87,13 @@ class ColourPicker:
         except Exception:
             return '#000000'
 
-    def build_dialog(self, page=None):
+    def build_dialog(self, page=None, caller_page_dialog=None):
+        ## remember which page opened the picker so close_dialog can reopen caller dialogs
+        self._caller_page = page
+        self.caller_page_dialog = caller_page_dialog
+        #logger.debug("Building colour picker dialog")
+        #logger.debug(f"Caller page: {self._caller_page}")
+        #logger.debug(f"Caller page dialog: {self._caller_page_dialog}")
         r, g, b = self.hex_to_rgb(self.current_color)
         r_slider = ft.Slider(min=0, max=255, value=r, label="Red", divisions=255, on_change=None)
         g_slider = ft.Slider(min=0, max=255, value=g, label="Green", divisions=255, on_change=None)
@@ -315,10 +321,14 @@ class ColourPicker:
             except Exception:
                 pass
         self._temp_wheel_files.clear()
-        if self.loading_dialog is not None:
-            logger.debug(f"Reopening loading dialog, {self.loading_dialog}")
-            page.dialog = self.loading_dialog
-            page.open(self.loading_dialog)
+        
+
+        # Reopen caller dialog (e.g. stamp dialog) if provided and a page is available
+        if page and getattr(self, 'caller_page_dialog', None):
+            logger.debug("Reopening caller dialog")
+            page.dialog = self.caller_page_dialog
+            page.open(page.dialog)
+            self.caller_page_dialog = None
         else:
             self.color_picker_dialog.open = False
         page.update()
