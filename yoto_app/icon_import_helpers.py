@@ -37,9 +37,12 @@ def load_icon_as_pixels(path, size=16):
             else:
                 r = g = b = 255
                 a = 255
-            if a < 128:
-                row.append('#FFFFFF')
-            else:
+            # Preserve alpha: None for fully transparent, #RRGGBB for opaque, #RRGGBBAA for partial alpha
+            if a == 0:
+                row.append(None)
+            elif a == 255:
                 row.append('#{:02X}{:02X}{:02X}'.format(r, g, b))
+            else:
+                row.append('#{:02X}{:02X}{:02X}{:02X}'.format(r, g, b, a))
         pixels.append(row)
     return pixels
