@@ -776,15 +776,60 @@ class PixelArtEditor:
                 except Exception:
                     # Some flet versions expect a string; fall back to explicit transparent rgba
                     e.control.bgcolor = "#00000000"
+                # show checker image if available
+                try:
+                    chk = str(self._ensure_saved_dir() / '__checker.png')
+                    e.control.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                except Exception:
+                    # fallback: no content
+                    try:
+                        e.control.content = None
+                    except Exception:
+                        pass
             else:
                 e.control.bgcolor = self.current_color
-            e.control.update()
-        return ft.Container(
+                # remove checker content if present
+                try:
+                    e.control.content = None
+                except Exception:
+                    pass
+            try:
+                e.control.update()
+            except Exception:
+                pass
+
+        # initialize cell appearance based on current pixels value
+        val = self.pixels[y][x]
+        cell_content = None
+        display_bg = None
+        if val is None:
+            try:
+                chk = str(self._ensure_saved_dir() / '__checker.png')
+                cell_content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+            except Exception:
+                cell_content = None
+            display_bg = None
+        else:
+            # If stored value includes alpha (#RRGGBBAA), composite over white for display
+            try:
+                r, g, b, a = self._hex_to_rgba(val, alpha=255)
+                if a < 255:
+                    r2 = int((r * a + 255 * (255 - a)) / 255)
+                    g2 = int((g * a + 255 * (255 - a)) / 255)
+                    b2 = int((b * a + 255 * (255 - a)) / 255)
+                    display_bg = f"#{r2:02X}{g2:02X}{b2:02X}"
+                else:
+                    display_bg = f"#{r:02X}{g:02X}{b:02X}"
+            except Exception:
+                display_bg = val
+        c = ft.Container(
             width=self.pixel_size,
             height=self.pixel_size,
-            bgcolor=self.pixels[y][x],
+            content=cell_content,
+            bgcolor=display_bg,
             on_click=on_click
         )
+        return c
 
     def on_color_change(self, e):
         val = e.control.value.strip()
@@ -845,13 +890,61 @@ class PixelArtEditor:
     def refresh_grid(self):
         for y, row in enumerate(self.grid.controls):
             for x, cell in enumerate(row.controls):
-                cell.bgcolor = self.pixels[y][x]
-                cell.update()
+                val = self.pixels[y][x]
+                try:
+                    if val is None:
+                        # transparent: show checker image
+                        try:
+                            chk = str(self._ensure_saved_dir() / '__checker.png')
+                            cell.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                        except Exception:
+                            cell.content = None
+                        try:
+                            cell.bgcolor = None
+                        except Exception:
+                            cell.bgcolor = "#FFFFFF"
+                    else:
+                        # opaque or semi-transparent: remove checker and set bgcolor to composite over white if needed
+                        try:
+                            cell.content = None
+                        except Exception:
+                            pass
+                        try:
+                            r, g, b, a = self._hex_to_rgba(val, alpha=255)
+                            if a < 255:
+                                r2 = int((r * a + 255 * (255 - a)) / 255)
+                                g2 = int((g * a + 255 * (255 - a)) / 255)
+                                b2 = int((b * a + 255 * (255 - a)) / 255)
+                                cell.bgcolor = f"#{r2:02X}{g2:02X}{b2:02X}"
+                            else:
+                                cell.bgcolor = f"#{r:02X}{g:02X}{b:02X}"
+                        except Exception:
+                            cell.bgcolor = val
+                    cell.update()
+                except Exception:
+                    try:
+                        cell.bgcolor = (None if self.pixels[y][x] is None else self.pixels[y][x])
+                        cell.update()
+                    except Exception:
+                        pass
 
     # Helpers for saving/loading
     def _ensure_saved_dir(self):
         d = Path(ICON_DIR)
         d.mkdir(parents=True, exist_ok=True)
+        # ensure checker preview exists
+        try:
+            chk = d / '__checker.png'
+            if not chk.exists():
+                from PIL import ImageDraw
+                sq = 8
+                im = Image.new('RGBA', (sq*2, sq*2), (255, 255, 255, 0))
+                draw = ImageDraw.Draw(im)
+                draw.rectangle([0,0,sq-1,sq-1], fill=(200,200,200,255))
+                draw.rectangle([sq,sq,sq*2-1,sq*2-1], fill=(200,200,200,255))
+                im.save(str(chk))
+        except Exception:
+            pass
         return d
 
     def _pixels_to_image(self, pixels):
@@ -863,14 +956,14 @@ class PixelArtEditor:
                 if hexc is None:
                     # transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
-                elif isinstance(hexc, str) and hexc.startswith('#'):
-                    hexc = hexc.lstrip('#')
-                    if len(hexc) == 3:
-                        hexc = ''.join([c*2 for c in hexc])
-                    r = int(hexc[0:2], 16)
-                    g = int(hexc[2:4], 16)
-                    b = int(hexc[4:6], 16)
-                    img.putpixel((x, y), (r, g, b, 255))
+                elif isinstance(hexc, str):
+                    # try to parse known formats: #RRGGBB, #RRGGBBAA, rgba(...)
+                    try:
+                        # use helper to parse many formats
+                        r, g, b, a = self._hex_to_rgba(hexc, alpha=255)
+                        img.putpixel((x, y), (r, g, b, a))
+                    except Exception:
+                        img.putpixel((x, y), (0, 0, 0, 0))
                 else:
                     # unknown -> transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
@@ -897,8 +990,11 @@ class PixelArtEditor:
                 r, g, b, a = img.getpixel((x, y))
                 if a == 0:
                     pixels[y][x] = None
-                else:
+                elif a == 255:
                     pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
+                else:
+                    # preserve partial alpha as 8-digit hex #RRGGBBAA
+                    pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}{a:02X}"
         return pixels
 
 
