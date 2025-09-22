@@ -119,6 +119,8 @@ class PixelArtEditor:
         self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
         self.text_btn = ft.ElevatedButton("Stamp text", on_click=self._open_text_dialog)
+        # Stamp small images/pictures onto the grid
+        self.stamp_image_btn = ft.ElevatedButton("Stamp image", on_click=self._open_image_stamp_dialog)
         # Persistent metadata fields (visible/editable while creating icon)
         self.meta_title_field = ft.TextField(label="Title", value="", width=300)
         self.meta_author_field = ft.TextField(label="Author", value="", width=300)
@@ -455,7 +457,8 @@ class PixelArtEditor:
         self.right_column = ft.Column([
             ft.Row([self.undo_btn, self.redo_btn], spacing=10),
 
-            self.text_btn,
+            ft.Row([self.text_btn, self.stamp_image_btn], spacing=10),
+
             meta_panel,
             image_adjustments_tile,
             ft.Row([ft.Text("Fill tolerance"), self.fill_tolerance_slider, self.fill_tolerance_label], spacing=8),
@@ -548,6 +551,7 @@ class PixelArtEditor:
             self.gradient_overlay_btn, self.opacity_adjust_btn, self.sepia_tone_btn, self.pixelate_btn,
             self.quantize_colors_btn, self.brightness_contrast_region_btn,
             self.text_btn,
+            self.stamp_image_btn,
         ]
         for b in btns:
             try:
@@ -1960,6 +1964,123 @@ class PixelArtEditor:
             logger.debug(f"Opening text dialog, page={page}")
             self._open_dialog(dlg, page)
             update_preview()  # Show previews immediately after dialog is open
+
+    def _open_image_stamp_dialog(self, e):
+        """Open a dialog to pick a small image (PNG or saved JSON icon) and stamp it onto the grid."""
+        page = e.page if hasattr(e, 'page') else None
+        saved_dir = self._ensure_saved_dir()
+        files = []
+        status = ft.Text("")
+        preview = ft.Image(width=64, height=64)
+        if saved_dir:
+            try:
+                sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
+                for fn in os.listdir(sd):
+                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                        files.append(fn)
+            except Exception:
+                logger.exception("Error listing saved icons for stamp dialog")
+
+        if not files:
+            status.value = "No saved small icons found in saved_icons"
+            content = ft.Column([status], spacing=8)
+            dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("OK", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
+            if page:
+                self._open_dialog(dlg, page)
+            return
+
+        dropdown = ft.Dropdown(label="Image file", options=[ft.dropdown.Option(f) for f in files], width=320)
+        pos_x = ft.TextField(label="X (left)", value="0", width=80)
+        pos_y = ft.TextField(label="Y (top)", value="0", width=80)
+        opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
+
+        def on_select(ev):
+            v = dropdown.value
+            if not v:
+                return
+            p = os.path.join(str(saved_dir), v) if saved_dir else v
+            try:
+                if v.lower().endswith('.png'):
+                    preview.src = p
+                    preview.update()
+                else:
+                    # load JSON, attempt to show embedded PNG if present
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+                    if obj and isinstance(obj, dict) and obj.get('png_base64'):
+                        import base64, tempfile
+                        b = base64.b64decode(obj['png_base64'])
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                            tmp.write(b)
+                            preview.src = tmp.name
+                            preview.update()
+                    else:
+                        preview.src = None
+                        preview.update()
+            except Exception as ex:
+                logger.exception(f"Error previewing selected stamp image: {ex}")
+
+        dropdown.on_change = on_select
+
+        def do_stamp(ev):
+            fn = dropdown.value
+            if not fn:
+                status.value = "Select a file"
+                status.update()
+                return
+            p = os.path.join(str(saved_dir), fn) if saved_dir else fn
+            try:
+                pixels = None
+                if fn.lower().endswith('.png'):
+                    img = Image.open(p).convert('RGBA')
+                    pixels = self._image_to_pixels(img)
+                else:
+                    # JSON saved icon
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+                    if isinstance(obj, dict) and 'pixels' in obj:
+                        pixels = obj['pixels']
+                if not pixels:
+                    status.value = "Failed to load pixels from file"
+                    status.update()
+                    return
+                ox = int((pos_x.value or '0').strip())
+                oy = int((pos_y.value or '0').strip())
+                # Build a full-size stamp grid matching editor size, applying offset
+                stamp = [[None for _ in range(self.size)] for _ in range(self.size)]
+                for y in range(min(self.size, len(pixels))):
+                    for x in range(min(self.size, len(pixels[0]))):
+                        v = pixels[y][x]
+                        tx = x + ox
+                        ty = y + oy
+                        if 0 <= tx < self.size and 0 <= ty < self.size:
+                            if opaque_only.value:
+                                # only stamp where pixel is not transparent
+                                if v is not None:
+                                    stamp[ty][tx] = v
+                            else:
+                                stamp[ty][tx] = v
+                self._stamp_pixels(stamp)
+                try:
+                    self._close_dialog(dlg, page)
+                except Exception:
+                    pass
+            except Exception as ex:
+                logger.exception(f"Error stamping image: {ex}")
+                status.value = f"Error: {ex}"
+                status.update()
+
+        content = ft.Column([
+            dropdown,
+            ft.Row([pos_x, pos_y, opaque_only], spacing=8),
+            ft.Row([ft.Column([ft.Text("Preview"), preview])]),
+            status
+        ], spacing=8, width=380)
+
+        dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
+        if page:
+            page.dialog = dlg
+            self._open_dialog(dlg, page)
 
     def on_save_png(self, e):
         page = e.page if hasattr(e, 'page') else None
