@@ -1969,7 +1969,14 @@ class PixelArtEditor:
         """Open a dialog to pick a small image (PNG or saved JSON icon) and stamp it onto the grid."""
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
+        # look for a dedicated prebuilt stamps folder first, then user saved icons
+        prebuilt_dir = None
         files = []
+        try:
+            if saved_dir:
+                prebuilt_dir = os.path.join(str(saved_dir), 'prebuilt_stamps') if hasattr(saved_dir, 'as_posix') else (str(saved_dir) + '/prebuilt_stamps')
+        except Exception:
+            prebuilt_dir = None
         status = ft.Text("")
         preview = ft.Image(width=64, height=64)
         if saved_dir:
@@ -1981,6 +1988,25 @@ class PixelArtEditor:
             except Exception:
                 logger.exception("Error listing saved icons for stamp dialog")
 
+        # gather from prebuilt stamps (if present) and then user saved_icons
+        try:
+            if prebuilt_dir and os.path.isdir(prebuilt_dir):
+                for fn in os.listdir(prebuilt_dir):
+                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                        files.append(os.path.join('prebuilt_stamps', fn))
+        except Exception:
+            pass
+        try:
+            if saved_dir:
+                sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
+                for fn in os.listdir(sd):
+                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                        # avoid duplicates if same file also in prebuilt
+                        if fn not in [os.path.basename(f) for f in files]:
+                            files.append(fn)
+        except Exception:
+            logger.exception("Error listing saved icons for stamp dialog")
+
         if not files:
             status.value = "No saved small icons found in saved_icons"
             content = ft.Column([status], spacing=8)
@@ -1989,7 +2015,17 @@ class PixelArtEditor:
                 self._open_dialog(dlg, page)
             return
 
-        dropdown = ft.Dropdown(label="Image file", options=[ft.dropdown.Option(f) for f in files], width=320)
+        # Show prebuilt stamps with a prefix so users can tell them apart
+        dropdown_options = []
+        for f in files:
+            if str(f).startswith('prebuilt_stamps' + os.sep) or str(f).startswith('prebuilt_stamps/'):
+                label = f"[prebuilt] {os.path.basename(f)}"
+                value = f
+            else:
+                label = os.path.basename(f)
+                value = f
+            dropdown_options.append(ft.dropdown.Option(value, label))
+        dropdown = ft.Dropdown(label="Image file", options=dropdown_options, width=320)
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
         opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
