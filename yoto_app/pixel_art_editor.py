@@ -1215,12 +1215,14 @@ class PixelArtEditor:
             basename = fn + '.json'
             path = os.path.join(str(saved_dir), basename) if hasattr(saved_dir, 'joinpath') else os.path.join(saved_dir, basename)
 
-            try:
+            # actual save operation extracted so overwrite confirm can call it
+            def _perform_save():
+                logger.debug(f"Saving icon to {path}")
                 # build image and base64 PNG
                 img = self._pixels_to_image(self.pixels)
                 import io
                 import base64
-                import json
+                import json as _json
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
                 png_bytes = buf.getvalue()
@@ -1235,7 +1237,7 @@ class PixelArtEditor:
 
                 # write JSON file
                 with open(path, 'w', encoding='utf-8') as fh:
-                    json.dump(obj, fh, ensure_ascii=False, indent=2)
+                    _json.dump(obj, fh, ensure_ascii=False, indent=2)
 
                 # optionally write PNG file as well
                 if save_png_checkbox.value:
@@ -1254,6 +1256,39 @@ class PixelArtEditor:
                     page.update()
                 # close dialog
                 self._close_dialog(dlg, page)
+
+            # If target exists, ask for overwrite confirmation using a dialog
+            if os.path.exists(path):
+                def do_overwrite_confirm(ev2):
+                    logger.debug("User confirmed overwrite")
+                    # user confirmed overwrite: proceed with actual write
+                    try:
+                        _perform_save()
+                        self._close_dialog(overwrite_dlg, page)
+                    except Exception as ex:
+                        logger.exception(f"Error during save overwrite: {ex}")
+                        status.value = f"Save failed: {ex}"
+                        status.update()
+
+                def do_cancel_overwrite(ev2):
+                    logger.debug("User cancelled overwrite")
+                    #overwrite_dlg.open = False
+                    self._close_dialog(overwrite_dlg, page)
+
+                overwrite_dlg = ft.AlertDialog(
+                    title=ft.Text("File exists"),
+                    content=ft.Text(f"'{basename}' already exists. Overwrite?"),
+                    actions=[
+                        ft.TextButton("Yes, overwrite", on_click=do_overwrite_confirm),
+                        ft.TextButton("Cancel", on_click=do_cancel_overwrite),
+                    ],
+                )
+                self._open_dialog(overwrite_dlg, page)
+                return
+
+            # If file did not exist, perform save immediately
+            try:
+                _perform_save()
             except Exception as ex:
                 status.value = f"Save failed: {ex}"
                 status.update()
