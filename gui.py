@@ -849,15 +849,20 @@ def main(page):
                                 continue
                             start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
                             remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
-                            dest = str((temp_dir / Path(p).name).with_suffix(Path(p).suffix + '.trimmed'))
+                            # Keep a normal audio extension so upload logic accepts the file.
+                            src_path = Path(p)
+                            dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
                             trim_audio_file(p, dest, remove_intro_seconds=remove_sec if side=='intro' else 0.0, remove_outro_seconds=remove_sec if side=='outro' else 0.0)
-                            # update row references
-                            for r in list(file_rows_column.controls):
-                                if getattr(r, 'filename', None) == p or getattr(getattr(r, '_fileuploadrow', None), 'original_filepath', None) == p:
-                                    fur = getattr(r, '_fileuploadrow', None)
-                                    if fur:
+                            # update row references: match by FileUploadRow properties when possible
+                            for ctrl in list(file_rows_column.controls):
+                                fur = getattr(ctrl, '_fileuploadrow', None)
+                                try:
+                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
                                         fur.update_file(dest)
                                         fur.set_status('Trimmed intro/outro')
+                                except Exception:
+                                    # ignore problems updating a particular row
+                                    continue
                         except Exception:
                             # ignore per-file errors during trimming and continue
                             continue
@@ -913,6 +918,7 @@ def main(page):
             ft.TextButton("Add Files...", on_click=lambda e: browse_files.pick_files(allow_multiple=True)),
             ft.TextButton("Clear Queue", on_click=clear_queue),
             show_waveforms_btn,
+            analyze_intro_btn,
             ft.IconButton(
                 icon=ft.Icons.HELP_OUTLINE,
                 tooltip="Help: Select a folder or specific files to upload.",

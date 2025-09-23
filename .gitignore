@@ -36,8 +36,6 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
-# Token and secrets
-*.json
 
 # Misc
 *.sqlite3
@@ -52,6 +50,14 @@ tokens.json
 
 .yoto_icon_cache/
 .yotoicons_cache/
+.card_versions/
+.tmp_trim/
+cards/
 saved_icons/
+
+.yoto_api_cache.json
+.yoto_icon_upload_cache.json
+ui_state.json
+waveform_cache.json
 
 docs/site/
