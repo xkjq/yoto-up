@@ -1676,6 +1676,24 @@ class PixelArtEditor:
                     pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}{a:02X}"
         return pixels
 
+    def _image_to_pixels_native(self, img):
+        """Convert a PIL Image to a native-size pixel grid (no resizing).
+        Returns a list-of-rows where each entry is None or a hex color string.
+        """
+        img = img.convert('RGBA')
+        w, h = img.size
+        pixels = [[None for _ in range(w)] for _ in range(h)]
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = img.getpixel((x, y))
+                if a == 0:
+                    pixels[y][x] = None
+                elif a == 255:
+                    pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}"
+                else:
+                    pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}{a:02X}"
+        return pixels
+
 
     def _render_text_to_pixels(self, text, color, scale=1, x_offset=0, y_offset=0, font_name="5x7", compact=False):
         """Return a pixel grid (list of rows) with text stamped at given offset. Does not modify self.pixels."""
@@ -1985,25 +2003,25 @@ class PixelArtEditor:
             update_preview()  # Show previews immediately after dialog is open
 
     def _open_image_stamp_dialog(self, e):
-        """Open a dialog to pick a small image (PNG or saved JSON icon) and stamp it onto the grid."""
+        """Open a dialog to pick a small image (PNG or saved JSON icon) and stamp it onto the grid.
+
+        This dialog now mirrors the text-stamp dialog: it offers quick position
+        buttons, a Scale dropdown (integer nearest-neighbor scaling), an opaque
+        only option, and two previews: the stamp itself and the stamp applied to
+        the current image. The .stamps folder entries are resolved from the
+        project root while user-saved icons come from saved_icons.
+        """
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
-        # look for a dedicated .stamps folder in the project root (not inside saved_dir)
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         prebuilt_dir = os.path.join(project_dir, '.stamps')
+
         files = []
         status = ft.Text("")
-        preview = ft.Image(width=64, height=64)
-        if saved_dir:
-            try:
-                sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
-                for fn in os.listdir(sd):
-                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                        files.append(fn)
-            except Exception:
-                logger.exception("Error listing saved icons for stamp dialog")
+        preview = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+        preview_applied = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
 
-        # gather from .stamps (if present) and then user saved_icons
+        # gather file list: prefer .stamps (project) then saved_dir
         try:
             if prebuilt_dir and os.path.isdir(prebuilt_dir):
                 for fn in os.listdir(prebuilt_dir):
@@ -2023,14 +2041,14 @@ class PixelArtEditor:
             logger.exception("Error listing saved icons for stamp dialog")
 
         if not files:
-            status.value = "No saved small icons found in saved_icons"
+            status.value = "No saved small icons found in .stamps or saved_icons"
             content = ft.Column([status], spacing=8)
             dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("OK", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
             if page:
                 self._open_dialog(dlg, page)
             return
 
-        # Show prebuilt stamps with a prefix so users can tell them apart
+        # build dropdown with label->path mapping
         dropdown_options = []
         option_map = {}
         for f in files:
@@ -2041,70 +2059,244 @@ class PixelArtEditor:
                 label = os.path.basename(f)
                 value = f
             option_map[label] = value
-            # show label as the option text
             dropdown_options.append(ft.dropdown.Option(label))
+
         dropdown = ft.Dropdown(label="Image file", options=dropdown_options, width=320)
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
         opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
+        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,5)], value='1', width=100)
+
+        # position helpers (same positions as text dialog)
+        positions = [
+            "Top Left", "Top Center", "Top Right",
+            "Middle Left", "Center", "Middle Right",
+            "Bottom Left", "Bottom Center", "Bottom Right"
+        ]
+
+        def get_stamp_size_from_pixels(pixels):
+            h = len(pixels)
+            w = max((len(r) for r in pixels), default=0)
+            return w, h
+
+        def set_position(pos):
+            grid_size = self.size
+            # determine stamp size using current selection
+            v = dropdown.value
+            mapped = option_map.get(v, v) if v else None
+            stamp_w = stamp_h = 0
+            try:
+                if mapped:
+                    if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
+                        p = os.path.join(project_dir, mapped)
+                    else:
+                        p = os.path.join(str(saved_dir), mapped) if saved_dir else mapped
+                    if p and os.path.exists(p):
+                        if p.lower().endswith('.png'):
+                            img = Image.open(p).convert('RGBA')
+                            w, h = img.size
+                            stamp_w, stamp_h = w * int(scale_dropdown.value), h * int(scale_dropdown.value)
+                        else:
+                            with open(p, 'r', encoding='utf-8') as fh:
+                                obj = json.load(fh)
+                            if isinstance(obj, dict) and 'pixels' in obj:
+                                w, h = get_stamp_size_from_pixels(obj['pixels'])
+                                stamp_w, stamp_h = w * int(scale_dropdown.value), h * int(scale_dropdown.value)
+            except Exception:
+                stamp_w, stamp_h = 0, 0
+
+            if pos == "Top Left":
+                x = 0
+                y = 0
+            elif pos == "Top Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = 0
+            elif pos == "Top Right":
+                x = max(grid_size - stamp_w, 0)
+                y = 0
+            elif pos == "Middle Left":
+                x = 0
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Middle Right":
+                x = max(grid_size - stamp_w, 0)
+                y = max((grid_size - stamp_h)//2, 0)
+            elif pos == "Bottom Left":
+                x = 0
+                y = max(grid_size - stamp_h, 0)
+            elif pos == "Bottom Center":
+                x = max((grid_size - stamp_w)//2, 0)
+                y = max(grid_size - stamp_h, 0)
+            elif pos == "Bottom Right":
+                x = max(grid_size - stamp_w, 0)
+                y = max(grid_size - stamp_h, 0)
+            else:
+                x = 0
+                y = 0
+            pos_x.value = str(x)
+            pos_y.value = str(y)
+            pos_x.update()
+            pos_y.update()
+            # update preview when we change position
+            try:
+                on_select(None)
+            except Exception:
+                pass
+
+        pos_buttons = ft.Row([
+            ft.TextButton(label, on_click=lambda ev, label=label: set_position(label))
+            for label in positions
+        ], wrap=True, spacing=4)
+
+        def scale_pixel_grid(pixels, factor):
+            if factor == 1:
+                return pixels
+            h = len(pixels)
+            w = max((len(r) for r in pixels), default=0)
+            nh = h * factor
+            nw = w * factor
+            out = [[None for _ in range(nw)] for _ in range(nh)]
+            for y in range(h):
+                for x in range(len(pixels[y])):
+                    v = pixels[y][x]
+                    if v is None:
+                        continue
+                    for dy in range(factor):
+                        for dx in range(factor):
+                            out[y*factor + dy][x*factor + dx] = v
+            return out
 
         def on_select(ev):
             v = dropdown.value
             if not v:
                 return
-            # map displayed label back to actual file path
             try:
                 mapped = option_map.get(v, v)
             except Exception:
                 mapped = v
-            # If the file is from .stamps, resolve from project root
+            # resolve path
             if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
-                project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
                 p = os.path.join(project_dir, mapped)
             else:
-                if saved_dir:
-                    p = os.path.join(str(saved_dir), mapped) if not os.path.isabs(mapped) else mapped
-                else:
-                    p = mapped
-            logger.debug(f"Stamp dialog on_select: selected value={v} mapped={mapped} resolved_path={p} exists={os.path.exists(p) if p else 'N/A'}")
+                p = os.path.join(str(saved_dir), mapped) if saved_dir and not os.path.isabs(mapped) else mapped
+
+            logger.debug(f"Stamp dialog on_select: selected value={v} mapped={mapped} resolved_path={p} exists={os.path.exists(p) if p else 'N/A'} scale={scale_dropdown.value}")
 
             try:
-                if v.lower().endswith('.png'):
-                    preview.src = p
-                    preview.update()
-                    return
+                scale = int(scale_dropdown.value or '1')
+            except Exception:
+                scale = 1
 
-                # JSON file: try embedded png first, else render pixels array to PNG
-                with open(p, 'r', encoding='utf-8') as fh:
-                    obj = json.load(fh)
-
-                # If the JSON contains an embedded PNG, decode and show it
-                if isinstance(obj, dict) and obj.get('png_base64'):
-                    import base64
+            try:
+                if p and os.path.exists(p) and p.lower().endswith('.png'):
+                    img = Image.open(p).convert('RGBA')
+                    # scale image for preview using nearest-neighbor
+                    try:
+                        resample = Image.Resampling.NEAREST
+                    except Exception:
+                        resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                    if scale != 1:
+                        img = img.resize((img.width * scale, img.height * scale), resample)
+                    # convert to pixel grid (native) then render to preview
+                    pixels = self._image_to_pixels_native(img)
                     import tempfile
-                    b = base64.b64decode(obj['png_base64'])
+                    img_out = self._pixels_to_image(pixels)
                     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                        tmp.write(b)
+                        img_out.save(tmp.name)
                         preview.src = tmp.name
                         preview.update()
-                        return
 
-                # If it contains a 'pixels' array, render it using the editor helper
-                if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
+                    # build applied preview
                     try:
-                        img = self._pixels_to_image(obj['pixels'])
+                        import copy
+                        applied_pixels = copy.deepcopy(self.pixels)
+                        ox = int((pos_x.value or '0').strip())
+                        oy = int((pos_y.value or '0').strip())
+                        for y in range(len(pixels)):
+                            for x in range(len(pixels[0])):
+                                vpx = pixels[y][x]
+                                tx = x + ox
+                                ty = y + oy
+                                if 0 <= tx < self.size and 0 <= ty < self.size:
+                                    if opaque_only.value:
+                                        if vpx is not None:
+                                            applied_pixels[ty][tx] = vpx
+                                    else:
+                                        applied_pixels[ty][tx] = vpx
+                        img2 = self._pixels_to_image(applied_pixels)
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
+                            img2.save(tmp2.name)
+                            preview_applied.src = tmp2.name
+                            preview_applied.update()
+                    except Exception:
+                        preview_applied.src = None
+                        preview_applied.update()
+                    return
+
+                # JSON file: try embedded png else pixels
+                if p and os.path.exists(p) and p.lower().endswith('.json'):
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+
+                    # embedded PNG
+                    if isinstance(obj, dict) and obj.get('png_base64'):
+                        import base64
                         import tempfile
+                        b = base64.b64decode(obj['png_base64'])
                         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                            img.save(tmp.name)
+                            tmp.write(b)
                             preview.src = tmp.name
                             preview.update()
+                            # applied preview fallback: just show same image
+                            preview_applied.src = tmp.name
+                            preview_applied.update()
                             return
-                    except Exception:
-                        logger.exception("Failed to render pixels -> image for preview")
 
-                # fallback: clear preview
+                    if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
+                        pixels = obj['pixels']
+                        # apply integer scale to pixel grid
+                        pixels_scaled = scale_pixel_grid(pixels, scale)
+                        import tempfile
+                        img_out = self._pixels_to_image(pixels_scaled)
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                            img_out.save(tmp.name)
+                            preview.src = tmp.name
+                            preview.update()
+
+                        # applied preview
+                        try:
+                            import copy
+                            applied_pixels = copy.deepcopy(self.pixels)
+                            ox = int((pos_x.value or '0').strip())
+                            oy = int((pos_y.value or '0').strip())
+                            for y in range(len(pixels_scaled)):
+                                for x in range(len(pixels_scaled[0])):
+                                    vpx = pixels_scaled[y][x]
+                                    tx = x + ox
+                                    ty = y + oy
+                                    if 0 <= tx < self.size and 0 <= ty < self.size:
+                                        if opaque_only.value:
+                                            if vpx is not None:
+                                                applied_pixels[ty][tx] = vpx
+                                        else:
+                                            applied_pixels[ty][tx] = vpx
+                            img2 = self._pixels_to_image(applied_pixels)
+                            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
+                                img2.save(tmp2.name)
+                                preview_applied.src = tmp2.name
+                                preview_applied.update()
+                        except Exception:
+                            preview_applied.src = None
+                            preview_applied.update()
+                        return
+
+                # fallback: clear previews
                 preview.src = None
                 preview.update()
+                preview_applied.src = None
+                preview_applied.update()
             except Exception as ex:
                 logger.exception(f"Error previewing selected stamp image: {ex}")
 
@@ -2116,31 +2308,34 @@ class PixelArtEditor:
                 status.value = "Select a file"
                 status.update()
                 return
-            # Use same path resolution as on_select
             mapped = option_map.get(fn, fn)
             if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
-                project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
                 p = os.path.join(project_dir, mapped)
             else:
-                if saved_dir:
-                    p = os.path.join(str(saved_dir), mapped) if not os.path.isabs(mapped) else mapped
-                else:
-                    p = mapped
+                p = os.path.join(str(saved_dir), mapped) if saved_dir and not os.path.isabs(mapped) else mapped
+
             try:
                 pixels = None
-                if fn.lower().endswith('.png'):
+                scale = int(scale_dropdown.value or '1')
+                if p and os.path.exists(p) and p.lower().endswith('.png'):
                     img = Image.open(p).convert('RGBA')
-                    pixels = self._image_to_pixels(img)
+                    pixels = self._image_to_pixels_native(img)
                 else:
                     # JSON saved icon
                     with open(p, 'r', encoding='utf-8') as fh:
                         obj = json.load(fh)
                     if isinstance(obj, dict) and 'pixels' in obj:
                         pixels = obj['pixels']
+
                 if not pixels:
                     status.value = "Failed to load pixels from file"
                     status.update()
                     return
+
+                # apply integer scale to input pixels before stamping
+                if scale and int(scale) > 1:
+                    pixels = scale_pixel_grid(pixels, int(scale))
+
                 ox = int((pos_x.value or '0').strip())
                 oy = int((pos_y.value or '0').strip())
                 # Build a full-size stamp grid matching editor size, applying offset
@@ -2152,7 +2347,6 @@ class PixelArtEditor:
                         ty = y + oy
                         if 0 <= tx < self.size and 0 <= ty < self.size:
                             if opaque_only.value:
-                                # only stamp where pixel is not transparent
                                 if v is not None:
                                     stamp[ty][tx] = v
                             else:
@@ -2167,20 +2361,28 @@ class PixelArtEditor:
                 status.value = f"Error: {ex}"
                 status.update()
 
+        # wire scale and position changes to update preview
+        pos_x.on_change = lambda ev: on_select(None)
+        pos_y.on_change = lambda ev: on_select(None)
+        scale_dropdown.on_change = lambda ev: on_select(None)
+
         content = ft.Column([
             dropdown,
-            ft.Row([pos_x, pos_y, opaque_only], spacing=8),
-            ft.Row([ft.Column([ft.Text("Preview"), preview])]),
+            ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
+            pos_buttons,
+            ft.Row([
+                ft.Column([ft.Text("Preview"), preview]),
+                ft.Column([ft.Text("Applied Preview"), preview_applied])
+            ]),
             status
-        ], spacing=8, width=380)
+        ], spacing=8, width=420)
 
         dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(dlg, page))], open=False)
         if page:
             page.dialog = dlg
             self._open_dialog(dlg, page)
-            # Now that the dialog (and its controls) are added to the page, show preview for current selection
+            # pick first option and show preview
             try:
-                # if nothing selected, pick first label
                 if not dropdown.value and dropdown.options:
                     dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)
                 on_select(None)
