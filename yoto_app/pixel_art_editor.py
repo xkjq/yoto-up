@@ -2096,16 +2096,28 @@ class PixelArtEditor:
                     else:
                         p = os.path.join(str(saved_dir), mapped) if saved_dir else mapped
                     if p and os.path.exists(p):
-                        if p.lower().endswith('.png'):
-                            img = Image.open(p).convert('RGBA')
-                            w, h = img.size
-                            stamp_w, stamp_h = w * int(scale_dropdown.value), h * int(scale_dropdown.value)
+                        # use the same loader used for preview/stamping so we measure the
+                        # actual pixel grid size after applying the selected scale
+                        try:
+                            sf = float(scale_dropdown.value)
+                        except Exception:
+                            sf = 1.0
+                        pixels_for_size = load_pixels_for_stamp(p, sf)
+                        if pixels_for_size:
+                            w, h = get_stamp_size_from_pixels(pixels_for_size)
+                            stamp_w, stamp_h = w, h
                         else:
-                            with open(p, 'r', encoding='utf-8') as fh:
-                                obj = json.load(fh)
-                            if isinstance(obj, dict) and 'pixels' in obj:
-                                w, h = get_stamp_size_from_pixels(obj['pixels'])
-                                stamp_w, stamp_h = w * int(scale_dropdown.value), h * int(scale_dropdown.value)
+                            # fallback: open image or json and compute approximate size
+                            if p.lower().endswith('.png'):
+                                img = Image.open(p).convert('RGBA')
+                                w, h = img.size
+                                stamp_w, stamp_h = int(round(w * sf)), int(round(h * sf))
+                            else:
+                                with open(p, 'r', encoding='utf-8') as fh:
+                                    obj = json.load(fh)
+                                if isinstance(obj, dict) and 'pixels' in obj:
+                                    w, h = get_stamp_size_from_pixels(obj['pixels'])
+                                    stamp_w, stamp_h = int(round(w * sf)), int(round(h * sf))
             except Exception:
                 stamp_w, stamp_h = 0, 0
 
