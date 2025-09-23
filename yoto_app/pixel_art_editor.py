@@ -1700,7 +1700,12 @@ class PixelArtEditor:
         def get_stamp_size():
             txt = (text_field.value or '').strip().upper()
             font_name = font_dropdown.value
-            scale = int(scale_dropdown.value)
+            try:
+                scale_val = float(scale_dropdown.value)
+            except Exception:
+                scale_val = 1.0
+            # text rendering needs integer scale; round and ensure at least 1
+            scale = max(1, int(round(scale_val)))
             compact = compact_checkbox.value
             if font_name == "3x5":
                 width = 3
@@ -1778,7 +1783,10 @@ class PixelArtEditor:
         def update_text_preview(ev=None):
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
-            sc = int(scale_dropdown.value)
+            try:
+                sc = max(1, int(round(float(scale_dropdown.value))))
+            except Exception:
+                sc = 1
             font_name = font_dropdown.value
             ox = int((pos_x.value or '0').strip())
             oy = int((pos_y.value or '0').strip())
@@ -1830,7 +1838,9 @@ class PixelArtEditor:
                     status.value = f"Applied preview error: {ex2}"
                     status.update()
         font_dropdown = ft.Dropdown(label="Font", options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")], value="5x7", width=100, on_change=lambda ev: update_preview())
-        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,4)], value='1', width=100)
+        # allow smaller scales for stamping (fractions and integers)
+        scale_options = ['0.25','0.5','0.75','1','2','3','4']
+        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(s) for s in scale_options], value='1', width=100)
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
@@ -1854,7 +1864,10 @@ class PixelArtEditor:
         def update_image_preview(ev=None):
             txt = (text_field.value or '').strip()
             col = (color_field.value or '').strip()
-            sc = int(scale_dropdown.value)
+            try:
+                sc = max(1, int(round(float(scale_dropdown.value))))
+            except Exception:
+                sc = 1
             font_name = font_dropdown.value
             ox = int((pos_x.value or '0').strip())
             oy = int((pos_y.value or '0').strip())
@@ -2034,7 +2047,9 @@ class PixelArtEditor:
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
         opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
-        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,5)], value='1', width=100)
+        # main stamp dialog scale (allow fractional smaller scales)
+        scale_options_main = ['0.25','0.5','0.75','1','2','3','4']
+        scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(s) for s in scale_options_main], value='1', width=100)
         # chroma key controls: choose a color to treat as transparent when stamping
         chroma_checkbox = ft.Checkbox(label="Make chosen color transparent (chroma)", value=False)
         chroma_color_field = ft.TextField(label="Chroma color (hex)", value="#FFFFFF", width=100)
@@ -2166,28 +2181,36 @@ class PixelArtEditor:
 
         def load_pixels_for_stamp(path, scale):
             """Load pixels from a file path (PNG or JSON), apply chroma if enabled,
-            and return an integer-scaled pixel grid ready for preview/stamping.
+            and return a pixel grid (list-of-rows). Scale may be a float; when
+            non-integer scaling is requested we convert JSON pixel grids to an
+            image, resize with nearest-neighbour, and convert back to pixels.
             Returns None on failure.
             """
             if not path or not os.path.exists(path):
                 return None
             try:
+                # normalize scale to float
+                try:
+                    scale_f = float(scale)
+                except Exception:
+                    scale_f = 1.0
+
                 if path.lower().endswith('.png'):
                     img = Image.open(path).convert('RGBA')
                     try:
                         resample = Image.Resampling.NEAREST
                     except Exception:
                         resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
-                    if scale != 1:
-                        img = img.resize((img.width * scale, img.height * scale), resample)
+                    if abs(scale_f - 1.0) > 1e-6:
+                        nw = max(1, int(round(img.width * scale_f)))
+                        nh = max(1, int(round(img.height * scale_f)))
+                        img = img.resize((nw, nh), resample)
                     pixels = self._image_to_pixels_native(img)
                 else:
+                    # JSON file: either contains a pixel grid or an embedded PNG
                     with open(path, 'r', encoding='utf-8') as fh:
                         obj = json.load(fh)
-                    if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
-                        pixels = obj['pixels']
-                        # scaling will be applied below
-                    elif isinstance(obj, dict) and obj.get('png_base64'):
+                    if isinstance(obj, dict) and obj.get('png_base64'):
                         import base64
                         import io
                         b = base64.b64decode(obj['png_base64'])
@@ -2196,9 +2219,35 @@ class PixelArtEditor:
                             resample = Image.Resampling.NEAREST
                         except Exception:
                             resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
-                        if scale != 1:
-                            img = img.resize((img.width * scale, img.height * scale), resample)
+                        if abs(scale_f - 1.0) > 1e-6:
+                            nw = max(1, int(round(img.width * scale_f)))
+                            nh = max(1, int(round(img.height * scale_f)))
+                            img = img.resize((nw, nh), resample)
                         pixels = self._image_to_pixels_native(img)
+                    elif isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
+                        pixels = obj['pixels']
+                        # If non-integer scaling requested, convert pixels->image, resize, ->pixels
+                        if abs(scale_f - 1.0) > 1e-6:
+                            try:
+                                img = self._pixels_to_image(pixels)
+                                try:
+                                    resample = Image.Resampling.NEAREST
+                                except Exception:
+                                    resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                                nw = max(1, int(round(img.width * scale_f)))
+                                nh = max(1, int(round(img.height * scale_f)))
+                                img = img.resize((nw, nh), resample)
+                                pixels = self._image_to_pixels_native(img)
+                            except Exception:
+                                # fallback: if conversion fails, try integer scaling
+                                try:
+                                    if int(scale_f) > 1:
+                                        pixels = scale_pixel_grid(pixels, int(scale_f))
+                                except Exception:
+                                    pass
+                        else:
+                            # integer scale handled below if needed
+                            pass
                     else:
                         return None
 
@@ -2217,10 +2266,14 @@ class PixelArtEditor:
                     except Exception:
                         pass
 
-                # apply integer scale to pixel grid if source was JSON pixels
-                if not path.lower().endswith('.png'):
-                    if scale and int(scale) > 1:
-                        pixels = scale_pixel_grid(pixels, int(scale))
+                # If source was JSON pixels and an integer scale >1 requested, apply integer pixel-scaling
+                try:
+                    if not path.lower().endswith('.png'):
+                        sf_int = int(round(float(scale)))
+                        if sf_int > 1 and abs(float(scale) - sf_int) < 1e-6:
+                            pixels = scale_pixel_grid(pixels, sf_int)
+                except Exception:
+                    pass
 
                 return pixels
             except Exception:
@@ -2585,6 +2638,8 @@ class PixelArtEditor:
             auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
             tile_w_field = ft.TextField(label="Tile width", value="8", width=140)
             tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
+            # add downscale option for import: integer or fractional downscale (e.g., 0.5 to reduce size)
+            downscale_field = ft.TextField(label="Downscale (e.g. 1, 0.5)", value="1", width=140)
             prefix_field = ft.TextField(label="Filename prefix", value="sheet", width=260)
             skip_empty_cb = ft.Checkbox(label="Skip empty tiles", value=True)
             crop_tiles_cb = ft.Checkbox(label="Crop tile blank borders", value=True)
@@ -2989,31 +3044,27 @@ class PixelArtEditor:
                                         pxs.append(row)
                                     return pxs
 
-                                pixels = tile_to_pixels(tile)
-                                if skip_empty_cb.value and all(all(p is None for p in row) for row in pixels):
-                                    continue
-
-                                # optional per-tile cropping
-                                if crop_tiles_cb.value:
-                                    try:
+                                # decide final tile image after optional cropping and transparency
+                                final_tile = tile
+                                try:
+                                    if crop_tiles_cb.value:
                                         tb = tile.getbbox()
                                         if tb:
-                                            tile_cropped = tile.crop(tb)
+                                            final_tile = tile.crop(tb)
                                             if transparent_bg_cb.value:
-                                                # pick background color from corners and make similar pixels transparent
                                                 try:
                                                     from collections import Counter
-                                                    w2, h2 = tile.size
+                                                    w2, h2 = final_tile.size
                                                     corners = []
                                                     for (cx, cy) in [(0,0),(w2-1,0),(0,h2-1),(w2-1,h2-1)]:
                                                         try:
-                                                            corners.append(tuple(int(v) for v in tile.getpixel((cx, cy))))
+                                                            corners.append(tuple(int(v) for v in final_tile.getpixel((cx, cy))))
                                                         except Exception:
                                                             pass
                                                     bgc = Counter(corners).most_common(1)[0][0] if corners else (255,255,255,255)
                                                     def similar_col(a,b,tol=20):
                                                         return ((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2) <= (tol*tol)
-                                                    tc = tile_cropped.copy()
+                                                    tc = final_tile.copy()
                                                     tc_px = tc.load()
                                                     for yy in range(tc.height):
                                                         for xx in range(tc.width):
@@ -3023,16 +3074,33 @@ class PixelArtEditor:
                                                                     tc_px[xx, yy] = (0,0,0,0)
                                                             except Exception:
                                                                 pass
-                                                    pixels = tile_to_pixels(tc)
+                                                    final_tile = tc
                                                 except Exception:
-                                                    # if transparency pass fails, fall back to uncropped pixels
-                                                    pixels = tile_to_pixels(tile)
-                                            else:
-                                                # recalc pixels from cropped tile
-                                                pixels = tile_to_pixels(tile_cropped)
+                                                    final_tile = tile
+                                except Exception:
+                                    # ignore cropping/transparency errors and continue with original tile
+                                    final_tile = tile
+
+                                # apply downscale if requested (supports fractional factors)
+                                try:
+                                    downscale_f = float(downscale_field.value or '1')
+                                except Exception:
+                                    downscale_f = 1.0
+                                if abs(downscale_f - 1.0) > 1e-6:
+                                    try:
+                                        resample = Image.Resampling.NEAREST
                                     except Exception:
-                                        # ignore cropping errors and continue with original pixels
+                                        resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                                    nw = max(1, int(round(final_tile.width * downscale_f)))
+                                    nh = max(1, int(round(final_tile.height * downscale_f)))
+                                    try:
+                                        final_tile = final_tile.resize((nw, nh), resample)
+                                    except Exception:
                                         pass
+
+                                pixels = tile_to_pixels(final_tile)
+                                if skip_empty_cb.value and all(all(p is None for p in row) for row in pixels):
+                                    continue
 
                                 name = f"{pref}_{r}_{c}"
                                 outp = os.path.join(ensure_dir, name + '.json')
@@ -3144,7 +3212,8 @@ class PixelArtEditor:
                 ft.Row([sheet_path_field, choose_btn], spacing=8),
                 ft.Row([clipboard_btn], spacing=8),
                 ft.Row([auto_analyze_btn], spacing=8),
-                ft.Row([tile_w_field, tile_h_field, prefix_field, skip_empty_cb], spacing=8),
+                ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
+                ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
                 warn_preview,
                 ft.Container(content=ft.Row([preview_container], scroll=ft.ScrollMode.AUTO), width=680),
                 status_import
