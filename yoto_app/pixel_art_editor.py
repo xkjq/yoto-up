@@ -2741,12 +2741,98 @@ class PixelArtEditor:
                     return
                 try:
                     img = Image.open(path).convert('RGBA')
-                    # trim transparent border
-                    bbox = img.getbbox()
-                    if bbox:
-                        cropped = img.crop(bbox)
-                    else:
-                        cropped = img
+                    # trim border even when it's not transparent: detect background color from corners/edges
+                    try:
+                        w, h = img.size
+                        px = img.load()
+                        # sample corner pixels and some edge pixels
+                        samples = []
+                        coords = [ (0,0), (w-1,0), (0,h-1), (w-1,h-1) ]
+                        # also sample midpoints on edges
+                        coords += [ (w//2, 0), (w//2, h-1), (0, h//2), (w-1, h//2) ]
+                        for (sx, sy) in coords:
+                            try:
+                                samples.append(px[sx, sy])
+                            except Exception:
+                                pass
+
+                        # pick the most common sample (mode) as background
+                        from collections import Counter
+                        def rgba_to_tuple(c):
+                            try:
+                                return (int(c[0]), int(c[1]), int(c[2]), int(c[3]))
+                            except Exception:
+                                return (0,0,0,0)
+                        samp_norm = [ rgba_to_tuple(s) for s in samples if s is not None ]
+                        if samp_norm:
+                            most = Counter(samp_norm).most_common(1)[0][0]
+                        else:
+                            most = (255,255,255,255)
+
+                        # similarity function (RGB Euclidean, ignore alpha if fully opaque)
+                        def similar(a, b, tol=16):
+                            ar,ag,ab,aa = a
+                            br,bg,bb,ba = b
+                            return ( (ar-br)**2 + (ag-bg)**2 + (ab-bb)**2 ) <= (tol*tol)
+
+                        tol = 16
+                        # find left
+                        left = 0
+                        for x in range(w):
+                            col_diff = False
+                            for y in range(h):
+                                if not similar(px[x,y], most, tol):
+                                    col_diff = True
+                                    break
+                            if col_diff:
+                                left = x
+                                break
+                        # find right
+                        right = w-1
+                        for x in range(w-1, -1, -1):
+                            col_diff = False
+                            for y in range(h):
+                                if not similar(px[x,y], most, tol):
+                                    col_diff = True
+                                    break
+                            if col_diff:
+                                right = x
+                                break
+                        # find top
+                        top = 0
+                        for y in range(h):
+                            row_diff = False
+                            for x in range(w):
+                                if not similar(px[x,y], most, tol):
+                                    row_diff = True
+                                    break
+                            if row_diff:
+                                top = y
+                                break
+                        # find bottom
+                        bottom = h-1
+                        for y in range(h-1, -1, -1):
+                            row_diff = False
+                            for x in range(w):
+                                if not similar(px[x,y], most, tol):
+                                    row_diff = True
+                                    break
+                            if row_diff:
+                                bottom = y
+                                break
+
+                        # make sure bbox valid
+                        if left < right and top < bottom:
+                            cropped = img.crop((left, top, right+1, bottom+1))
+                        else:
+                            cropped = img
+                    except Exception:
+                        # fallback to transparent bbox
+                        bbox = img.getbbox()
+                        if bbox:
+                            cropped = img.crop(bbox)
+                        else:
+                            cropped = img
                     # heuristic: try common tile sizes and pick one with many uniform cell boundaries
                     sw, sh = cropped.size
                     candidates = [8, 16, 24, 32, 48, 64]
@@ -2768,11 +2854,45 @@ class PixelArtEditor:
                         score = non_empty
                         if score > best[2]:
                             best = (s, s, score)
-                    # apply crop to a temp file and set path
+                    # now consider downsampling: try integer scale factors to handle sheets that are scaled up
+                    sw, sh = cropped.size
+                    scales = [1, 2, 3, 4]
+                    base_candidates = [8, 16, 24, 32, 48, 64]
+                    best_combo = (1, 8, -1, None)  # scale, size, score, scaled_image
+                    for scale in scales:
+                        try:
+                            # compute scaled size (integer downsample)
+                            nws = max(1, sw // scale)
+                            nhs = max(1, sh // scale)
+                            img_scaled = cropped.resize((nws, nhs), resample=Image.LANCZOS)
+                        except Exception:
+                            continue
+                        for s in base_candidates:
+                            cols = img_scaled.width // s
+                            rows = img_scaled.height // s
+                            if cols <= 0 or rows <= 0:
+                                continue
+                            non_empty = 0
+                            for r in range(rows):
+                                for c in range(cols):
+                                    box = (c*s, r*s, c*s + s, r*s + s)
+                                    tile = img_scaled.crop(box)
+                                    if tile.getbbox():
+                                        non_empty += 1
+                            score = non_empty
+                            if score > best_combo[2]:
+                                best_combo = (scale, s, score, img_scaled)
+
+                    selected_scale, selected_size, selected_score, selected_img = best_combo
+                    if selected_img is None:
+                        # fallback to previous behavior
+                        selected_img = cropped
+                        selected_size = best[0]
+                    # save selected scaled image to temp file and set fields
                     import tempfile
                     tf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
                     try:
-                        cropped.save(tf.name)
+                        selected_img.save(tf.name)
                         sheet_path_field.value = tf.name
                         try:
                             sheet_path_field.update()
@@ -2780,8 +2900,7 @@ class PixelArtEditor:
                             pass
                     except Exception:
                         pass
-                    # set inferred tile size
-                    inferred_w, inferred_h = best[0], best[1]
+                    inferred_w, inferred_h = selected_size, selected_size
                     tile_w_field.value = str(inferred_w)
                     tile_h_field.value = str(inferred_h)
                     try:
@@ -2789,7 +2908,6 @@ class PixelArtEditor:
                         tile_h_field.update()
                     except Exception:
                         pass
-                    # update preview
                     try:
                         update_preview()
                     except Exception:
@@ -2961,6 +3079,7 @@ class PixelArtEditor:
             content = ft.Column([
                 ft.Row([sheet_path_field, choose_btn], spacing=8),
                 ft.Row([clipboard_btn], spacing=8),
+                ft.Row([auto_analyze_btn], spacing=8),
                 ft.Row([tile_w_field, tile_h_field, prefix_field, skip_empty_cb], spacing=8),
                 warn_preview,
                 ft.Container(content=ft.Row([preview_container], scroll=ft.ScrollMode.AUTO), width=680),

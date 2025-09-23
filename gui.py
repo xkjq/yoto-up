@@ -812,11 +812,34 @@ def main(page):
         thresh = float(similarity_threshold.value or 0.75)
         page.update()
 
+        # Show an analyzing dialog while analysis runs
+        analyzing_dlg = ft.AlertDialog(
+            title=ft.Text('Analyzing...'),
+            content=ft.Row([ft.ProgressRing(), ft.Text('Analyzing files...')], alignment=ft.MainAxisAlignment.CENTER),
+            actions=[],
+        )
+        try:
+            page.open(analyzing_dlg)
+            page.update()
+        except Exception:
+            pass
+
         try:
             result = await asyncio.to_thread(lambda: analyze_files(files, side=side, seconds=seconds, similarity_threshold=thresh))
         except Exception as e:
+            try:
+                page.close(analyzing_dlg)
+                page.update()
+            except Exception:
+                pass
             show_snack(f'Analysis failed: {e}', error=True)
             return
+
+        try:
+            page.close(analyzing_dlg)
+            page.update()
+        except Exception:
+            pass
 
         template = result.get('template')
         matches = result.get('matches', []) or []
@@ -840,19 +863,45 @@ def main(page):
                 except Exception:
                     pass
 
+                # prepare trimming dialog with determinate progress bar
+                total_to_trim = sum(1 for p, cb in checkbox_map.items() if cb.value)
+                trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
+                trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
+                trim_dlg = ft.AlertDialog(
+                    title=ft.Text('Trimming...'),
+                    content=ft.Column([trim_label, trim_progress], tight=False),
+                    actions=[],
+                )
+                try:
+                    page.open(trim_dlg)
+                    page.update()
+                except Exception:
+                    pass
+
                 def _trim_worker():
                     temp_dir = Path('.tmp_trim')
                     temp_dir.mkdir(parents=True, exist_ok=True)
+                    total_to_trim = sum(1 for p, cb in checkbox_map.items() if cb.value)
+                    trimmed_count = 0
                     for p, cb in checkbox_map.items():
+                        if not cb.value:
+                            continue
+                        # indicate in-UI that trimming has started for this file
+                        for ctrl in list(file_rows_column.controls):
+                            fur = getattr(ctrl, '_fileuploadrow', None)
+                            try:
+                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                    fur.set_status('Trimming...')
+                                    fur.set_progress(0.0)
+                            except Exception:
+                                pass
                         try:
-                            if not cb.value:
-                                continue
                             start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
                             remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
-                            # Keep a normal audio extension so upload logic accepts the file.
                             src_path = Path(p)
                             dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
                             trim_audio_file(p, dest, remove_intro_seconds=remove_sec if side=='intro' else 0.0, remove_outro_seconds=remove_sec if side=='outro' else 0.0)
+
                             # update row references: match by FileUploadRow properties when possible
                             for ctrl in list(file_rows_column.controls):
                                 fur = getattr(ctrl, '_fileuploadrow', None)
@@ -860,13 +909,29 @@ def main(page):
                                     if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
                                         fur.update_file(dest)
                                         fur.set_status('Trimmed intro/outro')
+                                        fur.set_progress(1.0)
                                 except Exception:
-                                    # ignore problems updating a particular row
-                                    continue
+                                    pass
+                        except Exception as e:
+                            # surface per-file trimming errors in the UI status
+                            for ctrl in list(file_rows_column.controls):
+                                fur = getattr(ctrl, '_fileuploadrow', None)
+                                try:
+                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                        fur.set_status(f'Trim error: {e}')
+                                except Exception:
+                                    pass
+                        trimmed_count += 1
+                        # update progress dialog via page update (dialog updated by closure variables)
+                        try:
+                            trim_progress.value = (trimmed_count / total_to_trim) if total_to_trim else 1.0
+                            trim_label.value = f'Trimming {trimmed_count}/{total_to_trim}'
+                            page.update()
                         except Exception:
-                            # ignore per-file errors during trimming and continue
-                            continue
+                            pass
+
                     try:
+                        page.close(trim_dlg)
                         page.update()
                     except Exception:
                         pass
