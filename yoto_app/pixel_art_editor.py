@@ -160,32 +160,23 @@ class PixelArtEditor:
             try:
                 # some flet versions accept attributes after construction
                 self.grid_container.on_pointer_down = _grid_pointer_down
-            except Exception:
-                try:
-                    # fallback: set on the content container
-                    if getattr(self.grid_container, 'content', None):
-                        self.grid_container.content.on_pointer_down = _grid_pointer_down
-                except Exception:
-                    pass
-            try:
                 self.grid_container.on_pointer_up = _grid_pointer_up
             except Exception:
                 try:
+                    # fallback: attach handlers to the inner content container if present
                     if getattr(self.grid_container, 'content', None):
-                        self.grid_container.content.on_pointer_up = _grid_pointer_up
+                        try:
+                            self.grid_container.content.on_pointer_down = _grid_pointer_down
+                        except Exception:
+                            pass
+                        try:
+                            self.grid_container.content.on_pointer_up = _grid_pointer_up
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
             pass
-        # Add image adjustment sliders
-        self.brightness_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Brightness", on_change=self.on_adjust_image)
-        self.contrast_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Contrast", on_change=self.on_adjust_image)
-        self.saturation_slider = ft.Slider(min=0.2, max=2.0, value=1.0, divisions=18, label="Saturation", on_change=self.on_adjust_image)
-        self._original_pixels = None
-        self._palette_backup = None
-        # track mouse button state when interacting with the grid (fallback for hover events)
-        self._mouse_down = False
-
         # Fill tolerance slider (used by Fill Similar dialog and as a quick control)
         self.fill_tolerance_slider = ft.Slider(min=0, max=255, value=32, divisions=32, label="Fill tolerance")
         # Small label that shows the current numeric tolerance value
@@ -316,6 +307,23 @@ class PixelArtEditor:
         # Make the main container scrollable so controls remain accessible on small windows
         # right-side controls column (fixed width so its internal rows can wrap)
         # Put the three adjustment sliders into an expandable block
+        # define sliders for image adjustments (brightness/contrast/saturation)
+        self.brightness_slider = ft.Slider(min=0.1, max=2.0, value=1.0, divisions=190, label="Brightness")
+        self.contrast_slider = ft.Slider(min=0.1, max=2.0, value=1.0, divisions=190, label="Contrast")
+        self.saturation_slider = ft.Slider(min=0.0, max=2.0, value=1.0, divisions=200, label="Saturation")
+        try:
+            self.brightness_slider.on_change = self.on_adjust_image
+        except Exception:
+            pass
+        try:
+            self.contrast_slider.on_change = self.on_adjust_image
+        except Exception:
+            pass
+        try:
+            self.saturation_slider.on_change = self.on_adjust_image
+        except Exception:
+            pass
+
         image_adjustments_tile = ft.ExpansionTile(
             title=ft.Text("Colour manipulations", size=12, weight=ft.FontWeight.W_400),
             controls=[
@@ -2202,6 +2210,68 @@ class PixelArtEditor:
                             out[y*factor + dy][x*factor + dx] = v
             return out
 
+        def load_pixels_for_stamp(path, scale):
+            """Load pixels from a file path (PNG or JSON), apply chroma if enabled,
+            and return an integer-scaled pixel grid ready for preview/stamping.
+            Returns None on failure.
+            """
+            if not path or not os.path.exists(path):
+                return None
+            try:
+                if path.lower().endswith('.png'):
+                    img = Image.open(path).convert('RGBA')
+                    try:
+                        resample = Image.Resampling.NEAREST
+                    except Exception:
+                        resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                    if scale != 1:
+                        img = img.resize((img.width * scale, img.height * scale), resample)
+                    pixels = self._image_to_pixels_native(img)
+                else:
+                    with open(path, 'r', encoding='utf-8') as fh:
+                        obj = json.load(fh)
+                    if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
+                        pixels = obj['pixels']
+                        # scaling will be applied below
+                    elif isinstance(obj, dict) and obj.get('png_base64'):
+                        import base64
+                        import io
+                        b = base64.b64decode(obj['png_base64'])
+                        img = Image.open(io.BytesIO(b)).convert('RGBA')
+                        try:
+                            resample = Image.Resampling.NEAREST
+                        except Exception:
+                            resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                        if scale != 1:
+                            img = img.resize((img.width * scale, img.height * scale), resample)
+                        pixels = self._image_to_pixels_native(img)
+                    else:
+                        return None
+
+                # apply chroma
+                if chroma_checkbox.value:
+                    try:
+                        tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
+                        for yy in range(len(pixels)):
+                            for xx in range(len(pixels[yy])):
+                                px = pixels[yy][xx]
+                                if px is None:
+                                    continue
+                                pr, pg, pb, _ = self._hex_to_rgba(px)
+                                if pr == tr and pg == tg and pb == tb:
+                                    pixels[yy][xx] = None
+                    except Exception:
+                        pass
+
+                # apply integer scale to pixel grid if source was JSON pixels
+                if not path.lower().endswith('.png'):
+                    if scale and int(scale) > 1:
+                        pixels = scale_pixel_grid(pixels, int(scale))
+
+                return pixels
+            except Exception:
+                return None
+
         def on_select(ev):
             v = dropdown.value
             if not v:
@@ -2246,20 +2316,11 @@ class PixelArtEditor:
                 return pixels
 
             try:
-                if p and os.path.exists(p) and p.lower().endswith('.png'):
-                    img = Image.open(p).convert('RGBA')
-                    # scale image for preview using nearest-neighbor
-                    try:
-                        resample = Image.Resampling.NEAREST
-                    except Exception:
-                        resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
-                    if scale != 1:
-                        img = img.resize((img.width * scale, img.height * scale), resample)
-                    # convert to pixel grid (native) then render to preview
-                    pixels = self._image_to_pixels_native(img)
-                    pixels = apply_chroma(pixels)
+                # Use shared loader so preview matches stamping
+                pixels_scaled = load_pixels_for_stamp(p, scale)
+                if pixels_scaled is not None:
                     import tempfile
-                    img_out = self._pixels_to_image(pixels)
+                    img_out = self._pixels_to_image(pixels_scaled)
                     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                         img_out.save(tmp.name)
                         preview.src = tmp.name
@@ -2271,9 +2332,9 @@ class PixelArtEditor:
                         applied_pixels = copy.deepcopy(self.pixels)
                         ox = int((pos_x.value or '0').strip())
                         oy = int((pos_y.value or '0').strip())
-                        for y in range(len(pixels)):
-                            for x in range(len(pixels[0])):
-                                vpx = pixels[y][x]
+                        for y in range(len(pixels_scaled)):
+                            for x in range(len(pixels_scaled[0])):
+                                vpx = pixels_scaled[y][x]
                                 tx = x + ox
                                 ty = y + oy
                                 if 0 <= tx < self.size and 0 <= ty < self.size:
@@ -2418,52 +2479,14 @@ class PixelArtEditor:
                 p = os.path.join(str(saved_dir), mapped) if saved_dir and not os.path.isabs(mapped) else mapped
 
             try:
-                pixels = None
                 scale = int(scale_dropdown.value or '1')
-                if p and os.path.exists(p) and p.lower().endswith('.png'):
-                    img = Image.open(p).convert('RGBA')
-                    pixels = self._image_to_pixels_native(img)
-                    if chroma_checkbox.value:
-                        try:
-                            tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
-                            for yy in range(len(pixels)):
-                                for xx in range(len(pixels[yy])):
-                                    px = pixels[yy][xx]
-                                    if px is None:
-                                        continue
-                                    pr, pg, pb, _ = self._hex_to_rgba(px)
-                                    if pr == tr and pg == tg and pb == tb:
-                                        pixels[yy][xx] = None
-                        except Exception:
-                            pass
-                else:
-                    # JSON saved icon
-                    with open(p, 'r', encoding='utf-8') as fh:
-                        obj = json.load(fh)
-                    if isinstance(obj, dict) and 'pixels' in obj:
-                        pixels = obj['pixels']
-                        if chroma_checkbox.value:
-                            try:
-                                tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
-                                for yy in range(len(pixels)):
-                                    for xx in range(len(pixels[yy])):
-                                        px = pixels[yy][xx]
-                                        if px is None:
-                                            continue
-                                        pr, pg, pb, _ = self._hex_to_rgba(px)
-                                        if pr == tr and pg == tg and pb == tb:
-                                            pixels[yy][xx] = None
-                            except Exception:
-                                pass
+                # Use shared loader to get pixels with chroma and scaling applied exactly as preview
+                pixels = load_pixels_for_stamp(p, scale)
 
                 if not pixels:
                     status.value = "Failed to load pixels from file"
                     status.update()
                     return
-
-                # apply integer scale to input pixels before stamping
-                if scale and int(scale) > 1:
-                    pixels = scale_pixel_grid(pixels, int(scale))
 
                 ox = int((pos_x.value or '0').strip())
                 oy = int((pos_y.value or '0').strip())
