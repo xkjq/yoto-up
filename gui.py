@@ -148,6 +148,10 @@ def main(page):
             "concurrency": concurrency.value,
             "strip_leading": strip_leading_checkbox.value,
             "normalize": normalize_checkbox.value,
+            "detect_intro_outro": detect_intro_checkbox.value,
+            "intro_outro_side": intro_outro_side.value,
+            "intro_outro_seconds": intro_seconds.value,
+            "intro_outro_threshold": similarity_threshold.value,
             "upload_mode": upload_mode_dropdown.value,
             "playlist_sort": sort_dropdown.value if sort_dropdown else None,
         }
@@ -164,6 +168,10 @@ def main(page):
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
             normalize_checkbox.value = state.get("normalize", normalize_checkbox.value)
+            detect_intro_checkbox.value = state.get("detect_intro_outro", detect_intro_checkbox.value)
+            intro_outro_side.value = state.get("intro_outro_side", intro_outro_side.value)
+            intro_seconds.value = state.get("intro_outro_seconds", intro_seconds.value)
+            similarity_threshold.value = state.get("intro_outro_threshold", similarity_threshold.value)
             upload_mode_dropdown.value = state.get("upload_mode", upload_mode_dropdown.value)
             sort_dropdown = playlists_ui['sort_dropdown'] if isinstance(playlists_ui, dict) else None
             if sort_dropdown and state.get("playlist_sort"):
@@ -260,6 +268,22 @@ def main(page):
         tooltip="Apply loudness normalization (server-side if supported).",
         on_change=lambda e: save_ui_state(),
     )
+    # Intro/Outro detection controls
+    detect_intro_checkbox = ft.Checkbox(
+        label='Detect & remove common intro/outro',
+        value=False,
+        tooltip='Analyze queued files and optionally trim a shared intro or outro before upload',
+        on_change=lambda e: save_ui_state(),
+    )
+    intro_outro_side = ft.Dropdown(
+        label='Side',
+        value='intro',
+        options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')],
+        width=100,
+        on_change=lambda e: save_ui_state(),
+    )
+    intro_seconds = ft.TextField(label='Segment seconds', value='10.0', width=80, on_change=lambda e: save_ui_state())
+    similarity_threshold = ft.TextField(label='Similarity threshold', value='0.75', width=80, on_change=lambda e: save_ui_state())
     upload_target_dropdown = ft.Dropdown(
         label='Upload target',
         value='Create new card',
@@ -525,6 +549,10 @@ def main(page):
     # store the control so the upload task can read current value at start
     'strip_leading_track_numbers_control': strip_leading_checkbox,
     'normalize_audio_control': normalize_checkbox,
+    'detect_intro_outro_control': detect_intro_checkbox,
+    'intro_outro_side_control': intro_outro_side,
+    'intro_outro_seconds_control': intro_seconds,
+    'intro_outro_threshold_control': similarity_threshold,
     'gain_adjusted_files': gain_adjusted_files,
         'start_btn': start_btn,
         'stop_btn': stop_btn,
@@ -544,6 +572,22 @@ def main(page):
             ctx['normalize_audio'] = bool(normalize_checkbox.value)
         except Exception:
             ctx['normalize_audio'] = False
+        try:
+            ctx['detect_intro_outro'] = bool(detect_intro_checkbox.value)
+        except Exception:
+            ctx['detect_intro_outro'] = False
+        try:
+            ctx['intro_outro_side'] = str(intro_outro_side.value or 'intro')
+        except Exception:
+            ctx['intro_outro_side'] = 'intro'
+        try:
+            ctx['intro_outro_seconds'] = float(intro_seconds.value or 10.0)
+        except Exception:
+            ctx['intro_outro_seconds'] = 10.0
+        try:
+            ctx['intro_outro_threshold'] = float(similarity_threshold.value or 0.75)
+        except Exception:
+            ctx['intro_outro_threshold'] = 0.75
         run_coro_in_thread(upload_start, e, ctx)
 
     start_btn.on_click = _start_click
@@ -761,6 +805,10 @@ def main(page):
             concurrency,
             strip_leading_checkbox,
             normalize_checkbox,
+            detect_intro_checkbox,
+            intro_outro_side,
+            intro_seconds,
+            similarity_threshold,
             upload_mode_dropdown  # Add the new dropdown here
         ]),
         ft.Row([
