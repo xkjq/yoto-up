@@ -792,8 +792,16 @@ def main(page):
     # Analyze/trim button for intro/outro detection
     analyze_intro_btn = ft.ElevatedButton("Analyze intro/outro")
 
-    async def _do_analysis_and_show():
-        # run analysis in a thread to avoid blocking UI
+    async def _do_analysis_and_show_dialog(dialog_controls):
+        """Perform analysis using settings from dialog_controls and update dialog content.
+
+        dialog_controls should contain:
+          - 'intro_outro_side': Dropdown
+          - 'intro_seconds': TextField
+          - 'similarity_threshold': TextField
+          - 'content_column': Column to place results into
+        """
+        # gather files from the UI queue
         files = [getattr(r, 'filename', None) for r in file_rows_column.controls if getattr(r, 'filename', None)]
         files = [f for f in files if f]
         if not files:
@@ -807,153 +815,193 @@ def main(page):
             show_snack('Intro/outro analysis unavailable (missing module)', error=True)
             return
 
-        side = intro_outro_side.value or 'intro'
-        seconds = float(intro_seconds.value or 10.0)
-        thresh = float(similarity_threshold.value or 0.75)
-        page.update()
-
-        # Show an analyzing dialog while analysis runs
-        analyzing_dlg = ft.AlertDialog(
-            title=ft.Text('Analyzing...'),
-            content=ft.Row([ft.ProgressRing(), ft.Text('Analyzing files...')], alignment=ft.MainAxisAlignment.CENTER),
-            actions=[],
-        )
+        # read config from dialog controls
+        side = dialog_controls['intro_outro_side'].value or 'intro'
+        seconds = float(dialog_controls['intro_seconds'].value or 10.0)
+        thresh = float(dialog_controls['similarity_threshold'].value or 0.75)
         try:
-            page.open(analyzing_dlg)
+            padding_seconds = float(dialog_controls.get('padding_seconds').value or 0.25)
+        except Exception:
+            padding_seconds = 0.25
+        padding_ms = int(padding_seconds * 1000)
+
+        # Show spinner in the dialog's content column so the main dialog stays open
+        content_col = dialog_controls['content_column']
+        content_col.controls.clear()
+        content_col.controls.append(ft.Row([ft.ProgressRing(), ft.Text('Analyzing files...')], alignment=ft.MainAxisAlignment.CENTER))
+        try:
             page.update()
         except Exception:
             pass
 
+        # run analysis off the UI thread
         try:
             result = await asyncio.to_thread(lambda: analyze_files(files, side=side, seconds=seconds, similarity_threshold=thresh))
         except Exception as e:
-            try:
-                page.close(analyzing_dlg)
-                page.update()
-            except Exception:
-                pass
+            # analysis failed — update the dialog content column rather than trying
+            # to close a previously-used helper dialog (analyzing_dlg no longer exists)
             show_snack(f'Analysis failed: {e}', error=True)
             return
 
-        try:
-            page.close(analyzing_dlg)
-            page.update()
-        except Exception:
-            pass
-
+        # populate result content in the same dialog content column
         template = result.get('template')
         matches = result.get('matches', []) or []
-        # Build dialog content
-        lines = []
+        content_col.controls.clear()
+
         if not template or not matches:
-            lines.append(ft.Text('No common intro/outro detected'))
-        else:
-            lines.append(ft.Text(f"Template: {template}"))
-            checkbox_map = {}
-            for p, score in matches:
-                cb = ft.Checkbox(label=f"{p} (score={score:.3f})", value=True)
-                checkbox_map[p] = cb
-                lines.append(cb)
+            content_col.controls.append(ft.Text('No common intro/outro detected'))
+            try:
+                page.update()
+            except Exception:
+                pass
+            return
 
-            def do_trim(ev=None):
-                # Run trimming for selected boxes in background
-                try:
-                    page.dialog.open = False
-                    page.update()
-                except Exception:
-                    pass
+        content_col.controls.append(ft.Text(f"Template: {template}"))
+        checkbox_map = {}
+        for p, score in matches:
+            cb = ft.Checkbox(label=f"{p} (score={score:.3f})", value=True)
+            checkbox_map[p] = cb
+            content_col.controls.append(cb)
 
-                # prepare trimming dialog with determinate progress bar
-                total_to_trim = sum(1 for p, cb in checkbox_map.items() if cb.value)
-                trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
-                trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
-                trim_dlg = ft.AlertDialog(
-                    title=ft.Text('Trimming...'),
-                    content=ft.Column([trim_label, trim_progress], tight=False),
-                    actions=[],
-                )
-                try:
-                    page.open(trim_dlg)
-                    page.update()
-                except Exception:
-                    pass
+        # trim handler: shows a trimming dialog and runs trimming in background
+        def do_trim(ev=None):
+            total_to_trim = sum(1 for p, cb in checkbox_map.items() if cb.value)
+            if total_to_trim == 0:
+                show_snack('No files selected for trimming', error=False)
+                return
 
-                def _trim_worker():
-                    temp_dir = Path('.tmp_trim')
-                    temp_dir.mkdir(parents=True, exist_ok=True)
-                    total_to_trim = sum(1 for p, cb in checkbox_map.items() if cb.value)
-                    trimmed_count = 0
-                    for p, cb in checkbox_map.items():
-                        if not cb.value:
-                            continue
-                        # indicate in-UI that trimming has started for this file
-                        for ctrl in list(file_rows_column.controls):
-                            fur = getattr(ctrl, '_fileuploadrow', None)
-                            try:
-                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                    fur.set_status('Trimming...')
-                                    fur.set_progress(0.0)
-                            except Exception:
-                                pass
+            trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
+            trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
+            trim_dlg = ft.AlertDialog(title=ft.Text('Trimming...'), content=ft.Column([trim_label, trim_progress]), actions=[])
+            try:
+                page.open(trim_dlg)
+                page.update()
+            except Exception:
+                pass
+
+            def _trim_worker():
+                temp_dir = Path('.tmp_trim')
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                trimmed_count = 0
+                for p, cb in checkbox_map.items():
+                    if not cb.value:
+                        continue
+
+                    # set row status to trimming
+                    for ctrl in list(file_rows_column.controls):
+                        fur = getattr(ctrl, '_fileuploadrow', None)
                         try:
-                            start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
-                            remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
-                            src_path = Path(p)
-                            dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
-                            trim_audio_file(p, dest, remove_intro_seconds=remove_sec if side=='intro' else 0.0, remove_outro_seconds=remove_sec if side=='outro' else 0.0)
-
-                            # update row references: match by FileUploadRow properties when possible
-                            for ctrl in list(file_rows_column.controls):
-                                fur = getattr(ctrl, '_fileuploadrow', None)
-                                try:
-                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                        fur.update_file(dest)
-                                        fur.set_status('Trimmed intro/outro')
-                                        fur.set_progress(1.0)
-                                except Exception:
-                                    pass
-                        except Exception as e:
-                            # surface per-file trimming errors in the UI status
-                            for ctrl in list(file_rows_column.controls):
-                                fur = getattr(ctrl, '_fileuploadrow', None)
-                                try:
-                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                        fur.set_status(f'Trim error: {e}')
-                                except Exception:
-                                    pass
-                        trimmed_count += 1
-                        # update progress dialog via page update (dialog updated by closure variables)
-                        try:
-                            trim_progress.value = (trimmed_count / total_to_trim) if total_to_trim else 1.0
-                            trim_label.value = f'Trimming {trimmed_count}/{total_to_trim}'
-                            page.update()
+                            if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                fur.set_status('Trimming...')
+                                fur.set_progress(0.0)
                         except Exception:
                             pass
 
                     try:
-                        page.close(trim_dlg)
+                        # find best match position and perform trimming
+                        start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
+                        remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
+                        src_path = Path(p)
+                        dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
+                        # keep a small left padding (in ms) so we don't cut too aggressively
+                        trim_audio_file(
+                            p,
+                            dest,
+                            remove_intro_seconds=remove_sec if side == 'intro' else 0.0,
+                            remove_outro_seconds=remove_sec if side == 'outro' else 0.0,
+                            keep_silence_ms=padding_ms,
+                        )
+
+                        # update matching rows to point to trimmed file
+                        for ctrl in list(file_rows_column.controls):
+                            fur = getattr(ctrl, '_fileuploadrow', None)
+                            try:
+                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                    fur.update_file(dest)
+                                    fur.set_status('Trimmed intro/outro')
+                                    fur.set_progress(1.0)
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        # report error on affected rows
+                        for ctrl in list(file_rows_column.controls):
+                            fur = getattr(ctrl, '_fileuploadrow', None)
+                            try:
+                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                    fur.set_status(f'Trim error: {e}')
+                            except Exception:
+                                pass
+
+                    trimmed_count += 1
+                    # update progress UI
+                    try:
+                        trim_progress.value = (trimmed_count / total_to_trim) if total_to_trim else 1.0
+                        trim_label.value = f'Trimming {trimmed_count}/{total_to_trim}'
                         page.update()
                     except Exception:
                         pass
-                    show_snack('Trim complete')
 
-                threading.Thread(target=_trim_worker, daemon=True).start()
+                try:
+                    page.close(trim_dlg)
+                    page.update()
+                except Exception:
+                    pass
+                show_snack('Trim complete')
 
-            trim_btn = ft.ElevatedButton('Trim selected', on_click=do_trim)
-            lines.append(ft.Row([trim_btn, ft.TextButton('Cancel', on_click=lambda e: page.close(dlg))]))
+            threading.Thread(target=_trim_worker, daemon=True).start()
 
-        dlg = ft.AlertDialog(title=ft.Text('Intro/Outro Analysis'), content=ft.Column(lines, scroll=ft.ScrollMode.AUTO), actions=[ft.TextButton('Close', on_click=lambda e: page.close(dlg))])
+        # add trim button to dialog content
+        content_col.controls.append(ft.Row([ft.ElevatedButton('Trim selected', on_click=do_trim), ft.TextButton('Cancel', on_click=lambda e: None)]))
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def open_analysis_dialog(e=None):
+        # Build dialog controls (local to this dialog)
+        d_detect = ft.Checkbox(label='Detect & remove common intro/outro', value=False)
+        d_side = ft.Dropdown(label='Side', value='intro', options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')], width=120)
+        d_seconds = ft.TextField(label='Segment seconds', value='10.0', width=100)
+        d_thresh = ft.TextField(label='Similarity threshold', value='0.75', width=100)
+        # Small padding to keep at the start when trimming so we don't cut too aggressively
+        d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
+        content_column = ft.Column([], scroll=ft.ScrollMode.AUTO)
+
+        def on_run(ev=None):
+            # Kick off analysis inside the dialog — run the coroutine in a thread
+            dlg_controls = {
+                'intro_outro_side': d_side,
+                'intro_seconds': d_seconds,
+                'similarity_threshold': d_thresh,
+                'padding_seconds': d_padding,
+                'content_column': content_column,
+            }
+
+            def _runner():
+                try:
+                    asyncio.run(_do_analysis_and_show_dialog(dlg_controls))
+                except Exception as ex:
+                    show_snack(f'Analysis error: {ex}', error=True)
+
+            threading.Thread(target=_runner, daemon=True).start()
+
+        run_btn = ft.ElevatedButton('Run analysis', on_click=on_run)
+        close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
+
+        dlg = ft.AlertDialog(
+            title=ft.Text('Analyze intro/outro'),
+            content=ft.Column([
+                ft.Row([d_detect, d_side, d_seconds, d_thresh, d_padding]),
+                ft.Divider(),
+                content_column
+            ], scroll=ft.ScrollMode.AUTO),
+            actions=[run_btn, close_btn],
+        )
+        # expose dlg to inner closures
         page.open(dlg)
         page.update()
 
-    def on_analyze_click(e=None):
-        try:
-            # run the async worker in background thread
-            threading.Thread(target=lambda: asyncio.run(_do_analysis_and_show()), daemon=True).start()
-        except Exception as ex:
-            show_snack(f'Failed to start analysis: {ex}', error=True)
-
-    analyze_intro_btn.on_click = on_analyze_click
+    analyze_intro_btn.on_click = open_analysis_dialog
 
     def update_show_waveforms_btn():
         # Enable if there are any files in the upload queue
@@ -971,10 +1019,6 @@ def main(page):
             concurrency,
             strip_leading_checkbox,
             normalize_checkbox,
-            detect_intro_checkbox,
-            intro_outro_side,
-            intro_seconds,
-            similarity_threshold,
             upload_mode_dropdown  # Add the new dropdown here
         ]),
         ft.Row([
