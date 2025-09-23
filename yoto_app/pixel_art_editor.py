@@ -2152,10 +2152,17 @@ class PixelArtEditor:
             except Exception:
                 pass
 
-        pos_buttons = ft.Row([
-            ft.TextButton(label, on_click=lambda ev, label=label: set_position(label))
-            for label in positions
-        ], wrap=True, spacing=4)
+        # Render position buttons as a 3x3 grid (3 columns x 3 rows)
+        grid_rows = []
+        for r in range(3):
+            row_buttons = []
+            for c in range(3):
+                idx = r * 3 + c
+                label = positions[idx]
+                # capture label in default arg so lambda binds correctly
+                row_buttons.append(ft.TextButton(label, on_click=lambda ev, label=label: set_position(label)))
+            grid_rows.append(ft.Row(row_buttons, spacing=4))
+        pos_buttons = ft.Column(grid_rows, spacing=4)
 
         def scale_pixel_grid(pixels, factor):
             if factor == 1:
