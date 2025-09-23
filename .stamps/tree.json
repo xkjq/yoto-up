@@ -1,0 +1,13 @@
+{
+  "metadata": {"name": "Tree", "author": "generated"},
+  "pixels": [
+    [null, null, "#2E7D32", "#2E7D32", "#2E7D32", null, null, null],
+    [null, "#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", null, null],
+    ["#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", "#2E7D32", null],
+    [null, null, "#2E7D32", "#2E7D32", "#2E7D32", null, null, null],
+    [null, null, null, "#8D6E63", null, null, null, null],
+    [null, null, null, "#8D6E63", null, null, null, null],
+    [null, null, null, "#8D6E63", null, null, null, null],
+    [null, null, null, null, null, null, null, null]
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "metadata": {"name": "Heart", "author": "generated"},
+  "pixels": [
+    [null, "#FF2D55", "#FF2D55", null, "#FF2D55", "#FF2D55", "#FF2D55", null],
+    ["#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", null],
+    ["#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#C81A3A", "#FF2D55", null],
+    [null, "#FF2D55", "#FF2D55", "#FF2D55", "#FF2D55", "#C81A3A", "#FF2D55", null],
+    [null, null, "#FF2D55", "#FF2D55", "#C81A3A", "#FF2D55", null, null],
+    [null, null, null, "#FF2D55", "#FF2D55", null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null]
+  ]
+}

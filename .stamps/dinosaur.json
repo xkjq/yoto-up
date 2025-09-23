@@ -1,0 +1,13 @@
+{
+  "metadata": {"name": "Dinosaur", "author": "generated"},
+  "pixels": [
+    [null, null, "#2E8B3A", "#2E8B3A", "#2E8B3A", null, null, null],
+    [null, "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", null, null],
+    ["#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", null],
+    ["#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", null],
+    [null, "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", "#2E8B3A", null, null],
+    [null, null, null, "#2E8B3A", "#2E8B3A", null, null, null],
+    [null, "#2E8B3A", null, null, null, "#2E8B3A", null, null],
+    [null, null, null, null, null, null, null, null]
+  ]
+}

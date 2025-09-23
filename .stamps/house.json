@@ -1,0 +1,13 @@
+{
+  "metadata": {"name": "House", "author": "generated"},
+  "pixels": [
+    [null, "#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", null, null],
+    ["#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", "#B71C1C", null],
+    [null, "#FFF59D", "#FFF59D", "#FFF59D", "#FFF59D", "#FFF59D", null, null],
+    [null, "#FFF59D", "#FFF59D", "#6D4C41", "#6D4C41", "#FFF59D", null, null],
+    [null, "#FFF59D", "#FFF59D", "#FFF59D", "#FFF59D", "#FFF59D", null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null]
+  ]
+}

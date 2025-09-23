@@ -2029,6 +2029,8 @@ class PixelArtEditor:
             dropdown_options.append(ft.dropdown.Option(label))
 
         dropdown = ft.Dropdown(label="Image file", options=dropdown_options, width=320)
+        # Import sprite sheet button - opens a small dialog to slice a sheet into .stamps
+        import_btn = ft.ElevatedButton("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
         opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
@@ -2522,7 +2524,7 @@ class PixelArtEditor:
         scale_dropdown.on_change = lambda ev: on_select(None)
 
         content = ft.Column([
-            dropdown,
+            ft.Row([dropdown, import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
             ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
             ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
             pos_buttons,
@@ -2544,6 +2546,429 @@ class PixelArtEditor:
                 on_select(None)
             except Exception:
                 pass
+
+        # --- Import sprite sheet dialog/handler ---
+        def open_import_dialog(ev):
+            page_local = ev.page if hasattr(ev, 'page') else None
+            sheet_path_field = ft.TextField(label="Sprite sheet path", width=300)
+            # file picker control (shared pattern used in other parts of the app)
+            file_picker = ft.FilePicker()
+            if page_local and getattr(page_local, 'overlay', None) is not None:
+                try:
+                    page_local.overlay.append(file_picker)
+                except Exception:
+                    pass
+            def on_file_pick(e_pick, target=sheet_path_field):
+                try:
+                    if getattr(e_pick, 'files', None):
+                        fp = e_pick.files[0].path if hasattr(e_pick.files[0], 'path') else (e_pick.files[0].name if hasattr(e_pick.files[0], 'name') else None)
+                        if fp:
+                            try:
+                                target.value = fp
+                                target.update()
+                                try:
+                                    update_preview()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            try:
+                file_picker.on_result = on_file_pick
+            except Exception:
+                try:
+                    file_picker.on_pick = on_file_pick
+                except Exception:
+                    pass
+            choose_btn = ft.TextButton("Choose file", on_click=lambda ev2: file_picker.pick_files())
+            auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
+            tile_w_field = ft.TextField(label="Tile width", value="8", width=140)
+            tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
+            prefix_field = ft.TextField(label="Filename prefix", value="sheet", width=260)
+            skip_empty_cb = ft.Checkbox(label="Skip empty tiles", value=True)
+            status_import = ft.Text("")
+            status_preview = ft.Text("")
+            warn_preview = ft.Text("", color="red")
+            # container to hold thumbnail previews of tiles
+            preview_container = ft.Row(spacing=8)
+
+            # helper to update preview thumbnails and warning
+            def update_preview(ev=None):
+                try:
+                    # clear existing previews
+                    if getattr(preview_container, 'controls', None) is not None:
+                        preview_container.controls.clear()
+                except Exception:
+                    pass
+                path = (sheet_path_field.value or '').strip()
+                try:
+                    tw = int((tile_w_field.value or '8').strip())
+                    th = int((tile_h_field.value or '8').strip())
+                except Exception:
+                    warn_preview.value = "Tile width/height must be integers"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+                    return
+                if not path or not os.path.exists(path):
+                    warn_preview.value = "No valid sprite sheet selected"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    img = Image.open(path)
+                    sw, sh = img.size
+                    cols = max(1, sw // tw)
+                    rows = max(1, sh // th)
+                    total = cols * rows
+                    warn_preview.value = f"{cols} cols x {rows} rows => {total} tiles"
+                    if total > 200:
+                        warn_preview.value = str(warn_preview.value) + " — large import, preview shows first 12"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+                    # show up to 12 thumbnails
+                    max_preview = 12
+                    count = 0
+                    import tempfile
+                    for r in range(rows):
+                        for c in range(cols):
+                            if count >= max_preview:
+                                break
+                            box = (c*tw, r*th, c*tw + tw, r*th + th)
+                            tile = img.crop(box).resize((32, 32))
+                            try:
+                                tmpf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                                tile.save(tmpf.name)
+                                preview_container.controls.append(ft.Image(src=tmpf.name, width=32, height=32))
+                            except Exception:
+                                pass
+                            count += 1
+                        if count >= max_preview:
+                            break
+                    try:
+                        preview_container.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    warn_preview.value = "Failed to read image for preview"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+
+            # wire preview updates
+            try:
+                sheet_path_field.on_change = update_preview
+            except Exception:
+                pass
+            try:
+                tile_w_field.on_change = update_preview
+            except Exception:
+                pass
+            try:
+                tile_h_field.on_change = update_preview
+            except Exception:
+                pass
+            # Clipboard import button: tries to fetch image data from clipboard if available
+            def import_from_clipboard(ev_cb, target=sheet_path_field, status_ctrl=status_import):
+                if not page_local:
+                    status_ctrl.value = "No page available for clipboard"
+                    status_ctrl.update()
+                    return
+                try:
+                    # Some runtimes expose a page.get_clipboard() returning bytes or text
+                    cb = None
+                    try:
+                        cb = page_local.get_clipboard()
+                    except Exception:
+                        # older flet versions may use page.clipboard or not support it
+                        try:
+                            cb = page_local.clipboard
+                        except Exception:
+                            cb = None
+                    if not cb:
+                        status_import.value = "Clipboard empty or unsupported"
+                        status_import.update()
+                        return
+                    # If clipboard returns bytes, attempt to read as PNG; if text, ignore
+                    img_bytes = None
+                    if isinstance(cb, (bytes, bytearray)):
+                        img_bytes = bytes(cb)
+                    elif isinstance(cb, str):
+                        # maybe a data URL
+                        if cb.startswith('data:image') and 'base64,' in cb:
+                            import base64
+                            img_bytes = base64.b64decode(cb.split('base64,', 1)[1])
+                    if not img_bytes:
+                        status_ctrl.value = "Clipboard does not contain image bytes"
+                        status_ctrl.update()
+                        return
+                    import io
+                    img = Image.open(io.BytesIO(img_bytes)).convert('RGBA')
+                    # save to a temp file and set the sheet path
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmpf:
+                        img.save(tmpf.name)
+                        try:
+                            target.value = tmpf.name
+                            target.update()
+                            try:
+                                update_preview()
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                except Exception as ex:
+                    logger.exception(f"Clipboard import failed: {ex}")
+                    status_import.value = f"Clipboard import failed: {ex}"
+                    status_import.update()
+            clipboard_btn = ft.TextButton("Import from clipboard", on_click=import_from_clipboard)
+
+            def auto_analyze():
+                path = (sheet_path_field.value or '').strip()
+                if not path or not os.path.exists(path):
+                    warn_preview.value = "No file to analyze"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    img = Image.open(path).convert('RGBA')
+                    # trim transparent border
+                    bbox = img.getbbox()
+                    if bbox:
+                        cropped = img.crop(bbox)
+                    else:
+                        cropped = img
+                    # heuristic: try common tile sizes and pick one with many uniform cell boundaries
+                    sw, sh = cropped.size
+                    candidates = [8, 16, 24, 32, 48, 64]
+                    best = (8, 8, -1)
+                    for s in candidates:
+                        cols = sw // s
+                        rows = sh // s
+                        if cols <= 0 or rows <= 0:
+                            continue
+                        # score: number of tiles that are not empty (non-transparent)
+                        non_empty = 0
+                        for r in range(rows):
+                            for c in range(cols):
+                                box = (c*s, r*s, c*s + s, r*s + s)
+                                tile = cropped.crop(box)
+                                # quick check: bounding box
+                                if tile.getbbox():
+                                    non_empty += 1
+                        score = non_empty
+                        if score > best[2]:
+                            best = (s, s, score)
+                    # apply crop to a temp file and set path
+                    import tempfile
+                    tf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                    try:
+                        cropped.save(tf.name)
+                        sheet_path_field.value = tf.name
+                        try:
+                            sheet_path_field.update()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    # set inferred tile size
+                    inferred_w, inferred_h = best[0], best[1]
+                    tile_w_field.value = str(inferred_w)
+                    tile_h_field.value = str(inferred_h)
+                    try:
+                        tile_w_field.update()
+                        tile_h_field.update()
+                    except Exception:
+                        pass
+                    # update preview
+                    try:
+                        update_preview()
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    logger.exception(f"Auto analyze failed: {ex}")
+                    warn_preview.value = f"Auto analyze failed: {ex}"
+                    try:
+                        warn_preview.update()
+                    except Exception:
+                        pass
+
+            def perform_import(path, tw, th, pref):
+                try:
+                    img = Image.open(path).convert('RGBA')
+                    sw, sh = img.size
+                    cols = sw // tw
+                    rows = sh // th
+                    ensure_dir = stamps_dir if stamps_dir else os.path.join(project_dir, '.stamps')
+                    try:
+                        os.makedirs(ensure_dir, exist_ok=True)
+                    except Exception:
+                        pass
+                    written = 0
+                    for r in range(rows):
+                        for c in range(cols):
+                            box = (c*tw, r*th, c*tw + tw, r*th + th)
+                            tile = img.crop(box)
+                            # convert tile to pixels using same helper as loader
+                            try:
+                                pixels = self._image_to_pixels_native(tile)
+                            except Exception:
+                                # fallback: convert manually
+                                tile2 = tile.convert('RGBA')
+                                pixels = []
+                                for yy in range(tile2.height):
+                                    row = []
+                                    for xx in range(tile2.width):
+                                        px = tile2.getpixel((xx, yy))
+                                        # normalize pixel tuple
+                                        if isinstance(px, (int, float)):
+                                            r2 = g2 = b2 = int(px)
+                                            a2 = 255
+                                        elif px is None:
+                                            r2 = g2 = b2 = 0
+                                            a2 = 0
+                                        else:
+                                            try:
+                                                r2, g2, b2, a2 = px
+                                            except Exception:
+                                                # fallback to first three
+                                                try:
+                                                    r2, g2, b2 = px[:3]
+                                                    a2 = 255
+                                                except Exception:
+                                                    r2 = g2 = b2 = 0
+                                                    a2 = 0
+                                        if a2 < 128:
+                                            row.append(None)
+                                        else:
+                                            row.append(f"#{r2:02X}{g2:02X}{b2:02X}")
+                                    pixels.append(row)
+                            if skip_empty_cb.value and all(all(p is None for p in row) for row in pixels):
+                                continue
+                            name = f"{pref}_{r}_{c}"
+                            outp = os.path.join(stamps_dir, name + '.json') if stamps_dir else os.path.join(project_dir, '.stamps', name + '.json')
+                            try:
+                                with open(outp, 'w', encoding='utf-8') as fh:
+                                    json.dump({"metadata": {"name": name, "source": os.path.basename(path)}, "pixels": pixels}, fh, indent=2)
+                                written += 1
+                            except Exception as ex:
+                                logger.exception(f"Failed writing stamp file {outp}: {ex}")
+                    status_import.value = f"Wrote {written} stamps to {ensure_dir}"
+                    status_import.update()
+                    # refresh main dropdown list: re-scan stamps_dir and saved_dir
+                    try:
+                        new_files = []
+                        if stamps_dir and os.path.isdir(stamps_dir):
+                            for fn in os.listdir(stamps_dir):
+                                if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                                    new_files.append(os.path.join('.stamps', fn))
+                        if saved_dir:
+                            sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
+                            for fn in os.listdir(sd):
+                                if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                                    if fn not in [os.path.basename(f) for f in new_files]:
+                                        new_files.append(fn)
+                        # rebuild mapping
+                        dropdown.options.clear()
+                        option_map.clear()
+                        for f in new_files:
+                            if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
+                                label = f"[stamps] {os.path.basename(f)}"
+                                value = f
+                            else:
+                                label = os.path.basename(f)
+                                value = f
+                            option_map[label] = value
+                            dropdown.options.append(ft.dropdown.Option(label))
+                        try:
+                            dropdown.update()
+                        except Exception:
+                            pass
+                        # pick first option and preview
+                        try:
+                            if dropdown.options:
+                                dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)
+                            on_select(None)
+                        except Exception:
+                            pass
+                    except Exception:
+                        logger.exception("Failed to refresh stamps after import")
+                    # close the import dialog after a short delay
+                    try:
+                        self._close_dialog(import_dlg, page_local)
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    logger.exception(f"Error importing sprite sheet: {ex}")
+                    status_import.value = f"Import failed: {ex}"
+                    status_import.update()
+
+            def do_import(ev2):
+                path = (sheet_path_field.value or '').strip()
+                try:
+                    tw = int((tile_w_field.value or '8').strip())
+                    th = int((tile_h_field.value or '8').strip())
+                except Exception:
+                    status_import.value = "Tile width/height must be integers"
+                    status_import.update()
+                    return
+                pref = (prefix_field.value or 'sheet').strip() or 'sheet'
+                if not path or not os.path.exists(path):
+                    status_import.value = f"File not found: {path}"
+                    status_import.update()
+                    return
+                try:
+                    img = Image.open(path)
+                    sw, sh = img.size
+                    cols = sw // tw
+                    rows = sh // th
+                    total = cols * rows
+                    WARN_LIMIT = 500
+                    if total > WARN_LIMIT:
+                        # ask for confirmation
+                        def do_confirm(ev3):
+                            try:
+                                self._close_dialog(confirm_dlg, page_local)
+                            except Exception:
+                                pass
+                            perform_import(path, tw, th, pref)
+
+                        def do_cancel(ev3):
+                            try:
+                                self._close_dialog(confirm_dlg, page_local)
+                            except Exception:
+                                pass
+
+                        confirm_dlg = ft.AlertDialog(title=ft.Text("Large import"), content=ft.Text(f"This will create {total} stamps ({cols}x{rows}). Continue?"), actions=[ft.TextButton("Yes, import", on_click=do_confirm), ft.TextButton("Cancel", on_click=do_cancel)])
+                        self._open_dialog(confirm_dlg, page_local)
+                        return
+                    # otherwise proceed immediately
+                    perform_import(path, tw, th, pref)
+                except Exception as ex:
+                    logger.exception(f"Error preparing import: {ex}")
+                    status_import.value = f"Import failed: {ex}"
+                    status_import.update()
+
+            content = ft.Column([
+                ft.Row([sheet_path_field, choose_btn], spacing=8),
+                ft.Row([clipboard_btn], spacing=8),
+                ft.Row([tile_w_field, tile_h_field, prefix_field, skip_empty_cb], spacing=8),
+                warn_preview,
+                ft.Container(content=ft.Row([preview_container], scroll=ft.ScrollMode.AUTO), width=680),
+                status_import
+            ], spacing=8, width=700)
+            import_dlg = ft.AlertDialog(title=ft.Text("Import Sprite Sheet"), content=content, actions=[ft.TextButton("Import", on_click=do_import), ft.TextButton("Cancel", on_click=lambda ev: self._close_dialog(import_dlg, page_local))], open=False)
+            if page_local:
+                self._open_dialog(import_dlg, page_local)
 
     def on_save_png(self, e):
         page = e.page if hasattr(e, 'page') else None

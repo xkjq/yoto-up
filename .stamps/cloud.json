@@ -1,0 +1,13 @@
+{
+  "metadata": {"name": "Cloud", "author": "generated"},
+  "pixels": [
+    [null, null, "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null, null],
+    [null, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null],
+    ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", null],
+    [null, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null]
+  ]
+}
