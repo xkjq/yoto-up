@@ -1345,25 +1345,7 @@ class PixelArtEditor:
             tolerance = 0
         if replacement_color == target_color:
             return
-        w = self.size
-        h = self.size
-        visited = [[False]*w for _ in range(h)]
-        stack = [(sx, sy)]
-        while stack:
-            x, y = stack.pop()
-            if x < 0 or x >= w or y < 0 or y >= h:
-                continue
-            if visited[y][x]:
-                continue
-            visited[y][x] = True
-            cur = self.pixels[y][x]
-            if self._color_distance(cur, target_color) <= tolerance:
-                self.pixels[y][x] = replacement_color
-                # push neighbors
-                stack.append((x+1, y))
-                stack.append((x-1, y))
-                stack.append((x, y+1))
-                stack.append((x, y-1))
+        # ...existing code...
 
     def _open_fill_similar_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
@@ -1608,24 +1590,22 @@ class PixelArtEditor:
         return d
 
     def _pixels_to_image(self, pixels):
-        size = self.size
-        img = Image.new('RGBA', (size, size), (255, 255, 255, 0))
-        for y in range(size):
-            for x in range(size):
+        # Dynamically size output image to pixel array
+        h = len(pixels)
+        w = max(len(row) for row in pixels) if h > 0 else 0
+        img = Image.new('RGBA', (w, h), (255, 255, 255, 0))
+        for y in range(h):
+            for x in range(len(pixels[y])):
                 hexc = pixels[y][x]
                 if hexc is None:
-                    # transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
                 elif isinstance(hexc, str):
-                    # try to parse known formats: #RRGGBB, #RRGGBBAA, rgba(...)
                     try:
-                        # use helper to parse many formats
                         r, g, b, a = self._hex_to_rgba(hexc, alpha=255)
                         img.putpixel((x, y), (r, g, b, a))
                     except Exception:
                         img.putpixel((x, y), (0, 0, 0, 0))
                 else:
-                    # unknown -> transparent
                     img.putpixel((x, y), (0, 0, 0, 0))
         return img
 
@@ -1969,14 +1949,10 @@ class PixelArtEditor:
         """Open a dialog to pick a small image (PNG or saved JSON icon) and stamp it onto the grid."""
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
-        # look for a dedicated prebuilt stamps folder first, then user saved icons
-        prebuilt_dir = None
+        # look for a dedicated .stamps folder in the project root (not inside saved_dir)
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        prebuilt_dir = os.path.join(project_dir, '.stamps')
         files = []
-        try:
-            if saved_dir:
-                prebuilt_dir = os.path.join(str(saved_dir), 'prebuilt_stamps') if hasattr(saved_dir, 'as_posix') else (str(saved_dir) + '/prebuilt_stamps')
-        except Exception:
-            prebuilt_dir = None
         status = ft.Text("")
         preview = ft.Image(width=64, height=64)
         if saved_dir:
@@ -1988,12 +1964,12 @@ class PixelArtEditor:
             except Exception:
                 logger.exception("Error listing saved icons for stamp dialog")
 
-        # gather from prebuilt stamps (if present) and then user saved_icons
+        # gather from .stamps (if present) and then user saved_icons
         try:
             if prebuilt_dir and os.path.isdir(prebuilt_dir):
                 for fn in os.listdir(prebuilt_dir):
                     if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                        files.append(os.path.join('prebuilt_stamps', fn))
+                        files.append(os.path.join('.stamps', fn))
         except Exception:
             pass
         try:
@@ -2017,14 +1993,17 @@ class PixelArtEditor:
 
         # Show prebuilt stamps with a prefix so users can tell them apart
         dropdown_options = []
+        option_map = {}
         for f in files:
-            if str(f).startswith('prebuilt_stamps' + os.sep) or str(f).startswith('prebuilt_stamps/'):
+            if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
                 label = f"[prebuilt] {os.path.basename(f)}"
                 value = f
             else:
                 label = os.path.basename(f)
                 value = f
-            dropdown_options.append(ft.dropdown.Option(value, label))
+            option_map[label] = value
+            # show label as the option text
+            dropdown_options.append(ft.dropdown.Option(label))
         dropdown = ft.Dropdown(label="Image file", options=dropdown_options, width=320)
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
@@ -2034,25 +2013,59 @@ class PixelArtEditor:
             v = dropdown.value
             if not v:
                 return
-            p = os.path.join(str(saved_dir), v) if saved_dir else v
+            # map displayed label back to actual file path
+            try:
+                mapped = option_map.get(v, v)
+            except Exception:
+                mapped = v
+            # If the file is from .stamps, resolve from project root
+            if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
+                project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                p = os.path.join(project_dir, mapped)
+            else:
+                if saved_dir:
+                    p = os.path.join(str(saved_dir), mapped) if not os.path.isabs(mapped) else mapped
+                else:
+                    p = mapped
+            logger.debug(f"Stamp dialog on_select: selected value={v} mapped={mapped} resolved_path={p} exists={os.path.exists(p) if p else 'N/A'}")
+
             try:
                 if v.lower().endswith('.png'):
                     preview.src = p
                     preview.update()
-                else:
-                    # load JSON, attempt to show embedded PNG if present
-                    with open(p, 'r', encoding='utf-8') as fh:
-                        obj = json.load(fh)
-                    if obj and isinstance(obj, dict) and obj.get('png_base64'):
-                        import base64, tempfile
-                        b = base64.b64decode(obj['png_base64'])
+                    return
+
+                # JSON file: try embedded png first, else render pixels array to PNG
+                with open(p, 'r', encoding='utf-8') as fh:
+                    obj = json.load(fh)
+
+                # If the JSON contains an embedded PNG, decode and show it
+                if isinstance(obj, dict) and obj.get('png_base64'):
+                    import base64
+                    import tempfile
+                    b = base64.b64decode(obj['png_base64'])
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                        tmp.write(b)
+                        preview.src = tmp.name
+                        preview.update()
+                        return
+
+                # If it contains a 'pixels' array, render it using the editor helper
+                if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
+                    try:
+                        img = self._pixels_to_image(obj['pixels'])
+                        import tempfile
                         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                            tmp.write(b)
+                            img.save(tmp.name)
                             preview.src = tmp.name
                             preview.update()
-                    else:
-                        preview.src = None
-                        preview.update()
+                            return
+                    except Exception:
+                        logger.exception("Failed to render pixels -> image for preview")
+
+                # fallback: clear preview
+                preview.src = None
+                preview.update()
             except Exception as ex:
                 logger.exception(f"Error previewing selected stamp image: {ex}")
 
@@ -2064,7 +2077,16 @@ class PixelArtEditor:
                 status.value = "Select a file"
                 status.update()
                 return
-            p = os.path.join(str(saved_dir), fn) if saved_dir else fn
+            # Use same path resolution as on_select
+            mapped = option_map.get(fn, fn)
+            if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
+                project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                p = os.path.join(project_dir, mapped)
+            else:
+                if saved_dir:
+                    p = os.path.join(str(saved_dir), mapped) if not os.path.isabs(mapped) else mapped
+                else:
+                    p = mapped
             try:
                 pixels = None
                 if fn.lower().endswith('.png'):
@@ -2117,6 +2139,14 @@ class PixelArtEditor:
         if page:
             page.dialog = dlg
             self._open_dialog(dlg, page)
+            # Now that the dialog (and its controls) are added to the page, show preview for current selection
+            try:
+                # if nothing selected, pick first label
+                if not dropdown.value and dropdown.options:
+                    dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)
+                on_select(None)
+            except Exception:
+                pass
 
     def on_save_png(self, e):
         page = e.page if hasattr(e, 'page') else None
