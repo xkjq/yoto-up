@@ -937,8 +937,16 @@ def main(page):
 
             threading.Thread(target=_trim_worker, daemon=True).start()
 
-        # add trim button to dialog content
-        content_col.controls.append(ft.Row([ft.ElevatedButton('Trim selected', on_click=do_trim), ft.TextButton('Cancel', on_click=lambda e: None)]))
+        # If the opener provided a dialog action button, enable and wire it
+        try:
+            trim_btn = dialog_controls.get('trim_button')
+            if trim_btn is not None:
+                trim_btn.disabled = False
+                trim_btn.on_click = do_trim
+        except Exception:
+            pass
+
+    # Trim control will be provided as a dialog action (wired by the opener)
         try:
             page.update()
         except Exception:
@@ -946,7 +954,6 @@ def main(page):
 
     def open_analysis_dialog(e=None):
         # Build dialog controls (local to this dialog)
-        d_detect = ft.Checkbox(label='Detect & remove common intro/outro', value=False)
         d_side = ft.Dropdown(label='Side', value='intro', options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')], width=120)
         d_seconds = ft.TextField(label='Segment seconds', value='10.0', width=100)
         d_thresh = ft.TextField(label='Similarity threshold', value='0.75', width=100)
@@ -962,6 +969,7 @@ def main(page):
                 'similarity_threshold': d_thresh,
                 'padding_seconds': d_padding,
                 'content_column': content_column,
+                'trim_button': trim_btn,
             }
 
             def _runner():
@@ -973,16 +981,18 @@ def main(page):
             threading.Thread(target=_runner, daemon=True).start()
 
         run_btn = ft.ElevatedButton('Run analysis', on_click=on_run)
+        # Trim action placed as a dialog action, initially disabled until analysis finds matches
+        trim_btn = ft.ElevatedButton('Trim selected', disabled=True)
         close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
 
         dlg = ft.AlertDialog(
             title=ft.Text('Analyze intro/outro'),
             content=ft.Column([
-                ft.Row([d_detect, d_side, d_seconds, d_thresh, d_padding]),
+                ft.Row([d_side, d_seconds, d_thresh, d_padding]),
                 ft.Divider(),
                 content_column
             ], scroll=ft.ScrollMode.AUTO),
-            actions=[run_btn, close_btn],
+            actions=[run_btn, trim_btn, close_btn],
         )
         # expose dlg to inner closures
         page.open(dlg)
