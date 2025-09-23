@@ -7,14 +7,7 @@ from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
 import webbrowser
-from pathlib import Path
-
-# optional intro/outro analysis helper
-try:
-    from yoto_app.intro_outro import analyze_files, sliding_best_match_position, trim_audio_file
-    _INTRO_OUTRO_AVAILABLE = True
-except Exception:
-    _INTRO_OUTRO_AVAILABLE = False
+# (Intro/outro analysis is executed from the UI module when requested.)
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
@@ -402,54 +395,8 @@ async def start_uploads(event, ctx):
         page.update()
         return
 
-    # If requested, analyze and optionally trim common intros/outros before upload
-    detect_intro_outro = bool(ctx.get('detect_intro_outro', False))
-    if detect_intro_outro:
-        if not _INTRO_OUTRO_AVAILABLE:
-            show_snack("Intro/outro detection not available (missing module)", error=True)
-        else:
-            try:
-                status.value = "Analyzing common intros/outros..."
-                page.update()
-                side = str(ctx.get('intro_outro_side', 'intro'))
-                seconds = float(ctx.get('intro_outro_seconds', 10.0))
-                thresh = float(ctx.get('intro_outro_threshold', 0.75))
-                # Run analysis in thread to avoid blocking
-                analysis = await asyncio.to_thread(lambda: analyze_files(files, side=side, seconds=seconds, similarity_threshold=thresh))
-                template = analysis.get('template')
-                matches = [p for p, s in analysis.get('matches', [])]
-                if not template or not matches:
-                    show_snack('No common intro/outro detected', error=False)
-                else:
-                    show_snack(f"Detected common {side} in {len(matches)} of {len(files)} files (template: {Path(template).name})")
-                    # For matched files, find best match position and trim to temp files
-                    temp_dir = Path('.tmp_trim')
-                    temp_dir.mkdir(parents=True, exist_ok=True)
-                    trimmed_map = {}
-                    for p, score in analysis.get('matches', []):
-                        try:
-                            # find best start (search first 60s) and get score
-                            start_sec, best_score = await asyncio.to_thread(lambda: sliding_best_match_position(p, analysis['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5))
-                            # conservative removal: remove up to (start + seconds)
-                            remove_sec = start_sec + float(seconds)
-                            dest = str((temp_dir / Path(p).name).with_suffix(Path(p).suffix + '.trimmed'))
-                            await asyncio.to_thread(lambda: trim_audio_file(p, dest, remove_intro_seconds=remove_sec if side=='intro' else 0.0, remove_outro_seconds=remove_sec if side=='outro' else 0.0))
-                            trimmed_map[p] = dest
-                            # Update corresponding FileUploadRow display to indicate trimmed
-                            for r in getattr(file_rows_column, 'controls', []):
-                                if getattr(r, 'filename', None) == p or getattr(getattr(r, '_fileuploadrow', None), 'original_filepath', None) == p:
-                                    fur = getattr(r, '_fileuploadrow', None)
-                                    if fur:
-                                        fur.update_file(dest)
-                                        fur.set_status('Trimmed intro/outro')
-                        except Exception as e:
-                            logger.error(f"Trim failed for {p}: {e}")
-                    # Replace files list with trimmed paths where applicable
-                    files = [trimmed_map.get(p, p) for p in files]
-                    page.update()
-            except Exception as e:
-                logger.error(f"Intro/outro analysis failed: {e}")
-                traceback.print_exc()
+    # Note: intro/outro analysis is intentionally not run automatically during start_uploads.
+    # Analysis should be run manually from the UI (Analyze button) prior to starting uploads.
 
     status.value = "Initializing API..."
     logger.debug("[start_uploads] Initializing YotoAPI")

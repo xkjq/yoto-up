@@ -19,6 +19,7 @@ import sys
 import traceback
 import json
 import threading
+# typing imported above
 
 import os
 
@@ -35,7 +36,6 @@ from yoto_app.show_waveforms import show_waveforms_popup
 from yoto_app.icon_browser import build_icon_browser_panel
 from yoto_app.pixel_art_editor import PixelArtEditor
 
-from yoto_api import YotoAPI
 
 
 # Prefer a normal import so PyInstaller will detect and include the module.
@@ -56,7 +56,7 @@ except Exception:
                 _sys.modules["audio_adjust_utils"] = audio_adjust_utils
                 _spec.loader.exec_module(audio_adjust_utils)  # type: ignore
         except Exception:
-            audio_adjust_utils = None
+            audio_adjust_utils = cast(Any, None)  # type: ignore
 
 # Supported audio extensions
 AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"}
@@ -789,6 +789,102 @@ def main(page):
         disabled=True
     )
 
+    # Analyze/trim button for intro/outro detection
+    analyze_intro_btn = ft.ElevatedButton("Analyze intro/outro")
+
+    async def _do_analysis_and_show():
+        # run analysis in a thread to avoid blocking UI
+        files = [getattr(r, 'filename', None) for r in file_rows_column.controls if getattr(r, 'filename', None)]
+        files = [f for f in files if f]
+        if not files:
+            show_snack('No files in queue to analyze', error=False)
+            return
+
+        # import here so missing dependency only affects this feature
+        try:
+            from yoto_app.intro_outro import analyze_files, sliding_best_match_position, trim_audio_file
+        except Exception:
+            show_snack('Intro/outro analysis unavailable (missing module)', error=True)
+            return
+
+        side = intro_outro_side.value or 'intro'
+        seconds = float(intro_seconds.value or 10.0)
+        thresh = float(similarity_threshold.value or 0.75)
+        page.update()
+
+        try:
+            result = await asyncio.to_thread(lambda: analyze_files(files, side=side, seconds=seconds, similarity_threshold=thresh))
+        except Exception as e:
+            show_snack(f'Analysis failed: {e}', error=True)
+            return
+
+        template = result.get('template')
+        matches = result.get('matches', []) or []
+        # Build dialog content
+        lines = []
+        if not template or not matches:
+            lines.append(ft.Text('No common intro/outro detected'))
+        else:
+            lines.append(ft.Text(f"Template: {template}"))
+            checkbox_map = {}
+            for p, score in matches:
+                cb = ft.Checkbox(label=f"{p} (score={score:.3f})", value=True)
+                checkbox_map[p] = cb
+                lines.append(cb)
+
+            def do_trim(ev=None):
+                # Run trimming for selected boxes in background
+                try:
+                    page.dialog.open = False
+                    page.update()
+                except Exception:
+                    pass
+
+                def _trim_worker():
+                    temp_dir = Path('.tmp_trim')
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    for p, cb in checkbox_map.items():
+                        try:
+                            if not cb.value:
+                                continue
+                            start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
+                            remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
+                            dest = str((temp_dir / Path(p).name).with_suffix(Path(p).suffix + '.trimmed'))
+                            trim_audio_file(p, dest, remove_intro_seconds=remove_sec if side=='intro' else 0.0, remove_outro_seconds=remove_sec if side=='outro' else 0.0)
+                            # update row references
+                            for r in list(file_rows_column.controls):
+                                if getattr(r, 'filename', None) == p or getattr(getattr(r, '_fileuploadrow', None), 'original_filepath', None) == p:
+                                    fur = getattr(r, '_fileuploadrow', None)
+                                    if fur:
+                                        fur.update_file(dest)
+                                        fur.set_status('Trimmed intro/outro')
+                        except Exception:
+                            # ignore per-file errors during trimming and continue
+                            continue
+                    try:
+                        page.update()
+                    except Exception:
+                        pass
+                    show_snack('Trim complete')
+
+                threading.Thread(target=_trim_worker, daemon=True).start()
+
+            trim_btn = ft.ElevatedButton('Trim selected', on_click=do_trim)
+            lines.append(ft.Row([trim_btn, ft.TextButton('Cancel', on_click=lambda e: page.close(dlg))]))
+
+        dlg = ft.AlertDialog(title=ft.Text('Intro/Outro Analysis'), content=ft.Column(lines, scroll=ft.ScrollMode.AUTO), actions=[ft.TextButton('Close', on_click=lambda e: page.close(dlg))])
+        page.open(dlg)
+        page.update()
+
+    def on_analyze_click(e=None):
+        try:
+            # run the async worker in background thread
+            threading.Thread(target=lambda: asyncio.run(_do_analysis_and_show()), daemon=True).start()
+        except Exception as ex:
+            show_snack(f'Failed to start analysis: {ex}', error=True)
+
+    analyze_intro_btn.on_click = on_analyze_click
+
     def update_show_waveforms_btn():
         # Enable if there are any files in the upload queue
         has_files = any(getattr(row, 'filename', None) for row in file_rows_column.controls)
@@ -890,8 +986,9 @@ def main(page):
         tabs_control.tabs[3].visible = True  # Icons tab
         tabs_control.tabs[4].visible = True  # Editor tab
 
-        api : YotoAPI = api_ref.get("api")
-        api.get_public_icons(show_in_console=False)
+        api = api_ref.get("api")
+        if api:
+            api.get_public_icons(show_in_console=False)
         #api.get_user_icons(show_in_console=False)
         # Always use the local page variable, not the argument
         page.update()
