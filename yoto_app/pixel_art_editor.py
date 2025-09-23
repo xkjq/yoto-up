@@ -2042,6 +2042,120 @@ class PixelArtEditor:
             dropdown_options.append(ft.dropdown.Option(label))
 
         dropdown = ft.Dropdown(label="Image file", options=dropdown_options, width=320)
+        # grid preview of available stamps (built from `files`). Clicking a
+        # thumbnail selects the same value as the dropdown and triggers the
+        # normal preview handler.
+        stamp_grid = ft.Column(spacing=6)
+
+        def select_stamp(label):
+            try:
+                dropdown.value = label
+                try:
+                    dropdown.update()
+                except Exception:
+                    pass
+                try:
+                    on_select(None)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        def build_stamp_grid():
+            try:
+                stamp_grid.controls.clear()
+            except Exception:
+                pass
+            import tempfile
+            per_row = 6
+            row = []
+            for f in files:
+                try:
+                    # resolve actual path like the rest of the code
+                    if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
+                        p = os.path.join(project_dir, f)
+                        label = f"[stamps] {os.path.basename(f)}"
+                    else:
+                        label = os.path.basename(f)
+                        p = os.path.join(str(saved_dir), f) if saved_dir and not os.path.isabs(f) else f
+                    if not p or not os.path.exists(p):
+                        continue
+
+                    # Load image for thumbnail. JSON stamp files may contain an embedded png or a pixels array.
+                    thumb_img = None
+                    try:
+                        if p.lower().endswith('.json'):
+                            with open(p, 'r', encoding='utf-8') as _fh:
+                                _obj = json.load(_fh)
+                            if isinstance(_obj, dict) and _obj.get('png_base64'):
+                                import io, base64
+                                b = base64.b64decode(_obj['png_base64'])
+                                thumb_img = Image.open(io.BytesIO(b)).convert('RGBA')
+                            elif isinstance(_obj, dict) and 'pixels' in _obj and isinstance(_obj['pixels'], list):
+                                try:
+                                    thumb_img = self._pixels_to_image(_obj['pixels']).convert('RGBA')
+                                except Exception:
+                                    thumb_img = None
+                            else:
+                                thumb_img = None
+                        else:
+                            # normal image file
+                            thumb_img = Image.open(p).convert('RGBA')
+                    except Exception:
+                        # fall back to skipping this file
+                        thumb_img = None
+
+                    if thumb_img is None:
+                        # skip files we cannot render as thumbnails
+                        continue
+
+                    try:
+                        resample = Image.Resampling.LANCZOS
+                    except Exception:
+                        resample = Image.BICUBIC if hasattr(Image, 'BICUBIC') else Image.NEAREST
+                    thumb = thumb_img.resize((48, 48), resample)
+                    tmpf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                    thumb.save(tmpf.name)
+
+                    # flet Image in this runtime does not accept on_click; wrap in a clickable Container
+                    img_widget = ft.Image(src=tmpf.name, width=48, height=48, fit=ft.ImageFit.CONTAIN)
+                    try:
+                        # Container supports on_click in most runtimes
+                        img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, l=label: select_stamp(l))
+                    except Exception:
+                        # fallback: use GestureDetector if Container doesn't support on_click
+                        try:
+                            img_ctrl = ft.GestureDetector(content=img_widget, on_tap=lambda ev, l=label: select_stamp(l))
+                        except Exception:
+                            # last resort: non-clickable image
+                            img_ctrl = img_widget
+
+                    col = ft.Column([img_ctrl, ft.Text(label, width=64, max_lines=1)], spacing=2)
+                    row.append(col)
+                    if len(row) >= per_row:
+                        stamp_grid.controls.append(ft.Row(row, spacing=8))
+                        row = []
+                except Exception:
+                    logger.exception(f"Error creating thumbnail for stamp {f}")
+            if row:
+                stamp_grid.controls.append(ft.Row(row, spacing=8))
+            # Do not force an update if the control hasn't been added to the page yet
+            try:
+                if getattr(self, 'page', None) and getattr(self.page, 'dialog', None):
+                    try:
+                        stamp_grid.update()
+                    except Exception:
+                        # ignore update failures when not attached
+                        pass
+            except Exception:
+                # defensive ignore
+                pass
+
+        # build initial grid
+        try:
+            build_stamp_grid()
+        except Exception:
+            pass
         # Import sprite sheet button - opens a small dialog to slice a sheet into .stamps
         import_btn = ft.ElevatedButton("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
@@ -2588,8 +2702,10 @@ class PixelArtEditor:
         pos_y.on_change = lambda ev: on_select(None)
         scale_dropdown.on_change = lambda ev: on_select(None)
 
+        logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
+
         content = ft.Column([
-            ft.Row([dropdown, import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
+            ft.Row([ft.Column([dropdown, stamp_grid]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
             ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
             ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
             pos_buttons,
@@ -3160,6 +3276,11 @@ class PixelArtEditor:
                             if dropdown.options:
                                 dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)
                             on_select(None)
+                        except Exception:
+                            pass
+                        try:
+                            # refresh stamp grid thumbnails as well
+                            build_stamp_grid()
                         except Exception:
                             pass
                     except Exception:
