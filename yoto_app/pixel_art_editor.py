@@ -1981,7 +1981,7 @@ class PixelArtEditor:
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        prebuilt_dir = os.path.join(project_dir, '.stamps')
+        stamps_dir = os.path.join(project_dir, '.stamps')
 
         files = []
         status = ft.Text("")
@@ -1990,8 +1990,8 @@ class PixelArtEditor:
 
         # gather file list: prefer .stamps (project) then saved_dir
         try:
-            if prebuilt_dir and os.path.isdir(prebuilt_dir):
-                for fn in os.listdir(prebuilt_dir):
+            if stamps_dir and os.path.isdir(stamps_dir):
+                for fn in os.listdir(stamps_dir):
                     if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
                         files.append(os.path.join('.stamps', fn))
         except Exception:
@@ -2000,10 +2000,10 @@ class PixelArtEditor:
             if saved_dir:
                 sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
                 for fn in os.listdir(sd):
-                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                        # avoid duplicates if same file also in prebuilt
-                        if fn not in [os.path.basename(f) for f in files]:
-                            files.append(fn)
+                        if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                            # avoid duplicates if same file also in stamps
+                            if fn not in [os.path.basename(f) for f in files]:
+                                files.append(fn)
         except Exception:
             logger.exception("Error listing saved icons for stamp dialog")
 
@@ -2020,7 +2020,7 @@ class PixelArtEditor:
         option_map = {}
         for f in files:
             if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
-                label = f"[prebuilt] {os.path.basename(f)}"
+                label = f"[stamps] {os.path.basename(f)}"
                 value = f
             else:
                 label = os.path.basename(f)
