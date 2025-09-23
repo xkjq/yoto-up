@@ -2090,6 +2090,9 @@ class PixelArtEditor:
             if page_local:
                 self._open_dialog(dialog, page_local)
         chroma_picker_btn = ft.TextButton("Pick", on_click=open_chroma_picker)
+        # refresh preview whenever chroma settings change
+        chroma_checkbox.on_change = lambda ev: on_select(None)
+        chroma_color_field.on_change = lambda ev: on_select(None)
 
         # position helpers (same positions as text dialog)
         positions = [
@@ -2297,15 +2300,60 @@ class PixelArtEditor:
                     # embedded PNG
                     if isinstance(obj, dict) and obj.get('png_base64'):
                         import base64
+                        import io
                         import tempfile
                         b = base64.b64decode(obj['png_base64'])
+                        try:
+                            img = Image.open(io.BytesIO(b)).convert('RGBA')
+                        except Exception:
+                            # fallback to raw file write if PIL cannot read in-memory
+                            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmpf:
+                                tmpf.write(b)
+                                preview.src = tmpf.name
+                                preview.update()
+                                preview_applied.src = tmpf.name
+                                preview_applied.update()
+                                return
+                        # scale if requested
+                        try:
+                            resample = Image.Resampling.NEAREST
+                        except Exception:
+                            resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                        if scale != 1:
+                            img = img.resize((img.width * scale, img.height * scale), resample)
+                        # convert to pixels, apply chroma, render to temp png for preview
+                        pixels = self._image_to_pixels_native(img)
+                        pixels = apply_chroma(pixels)
+                        img_out = self._pixels_to_image(pixels)
                         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                            tmp.write(b)
+                            img_out.save(tmp.name)
                             preview.src = tmp.name
                             preview.update()
-                            # applied preview fallback: just show same image
-                            preview_applied.src = tmp.name
-                            preview_applied.update()
+                            # applied preview: stamp onto current image for visualization
+                            try:
+                                import copy
+                                applied_pixels = copy.deepcopy(self.pixels)
+                                ox = int((pos_x.value or '0').strip())
+                                oy = int((pos_y.value or '0').strip())
+                                for y in range(len(pixels)):
+                                    for x in range(len(pixels[0])):
+                                        vpx = pixels[y][x]
+                                        tx = x + ox
+                                        ty = y + oy
+                                        if 0 <= tx < self.size and 0 <= ty < self.size:
+                                            if opaque_only.value:
+                                                if vpx is not None:
+                                                    applied_pixels[ty][tx] = vpx
+                                            else:
+                                                applied_pixels[ty][tx] = vpx
+                                img2 = self._pixels_to_image(applied_pixels)
+                                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
+                                    img2.save(tmp2.name)
+                                    preview_applied.src = tmp2.name
+                                    preview_applied.update()
+                            except Exception:
+                                preview_applied.src = None
+                                preview_applied.update()
                             return
 
                     if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
