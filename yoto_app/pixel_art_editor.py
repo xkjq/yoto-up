@@ -2587,6 +2587,8 @@ class PixelArtEditor:
             tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
             prefix_field = ft.TextField(label="Filename prefix", value="sheet", width=260)
             skip_empty_cb = ft.Checkbox(label="Skip empty tiles", value=True)
+            crop_tiles_cb = ft.Checkbox(label="Crop tile blank borders", value=True)
+            transparent_bg_cb = ft.Checkbox(label="Make background transparent", value=False)
             status_import = ft.Text("")
             status_preview = ft.Text("")
             warn_preview = ft.Text("", color="red")
@@ -2954,54 +2956,94 @@ class PixelArtEditor:
                     except Exception:
                         pass
                     written = 0
+                    # iterate over grid and write out tiles; keep logic explicit to avoid nested-try issues
                     for r in range(rows):
                         for c in range(cols):
-                            box = (c*tw, r*th, c*tw + tw, r*th + th)
-                            tile = img.crop(box)
-                            # convert tile to pixels using same helper as loader
                             try:
-                                pixels = self._image_to_pixels_native(tile)
-                            except Exception:
-                                # fallback: convert manually
-                                tile2 = tile.convert('RGBA')
-                                pixels = []
-                                for yy in range(tile2.height):
-                                    row = []
-                                    for xx in range(tile2.width):
-                                        px = tile2.getpixel((xx, yy))
-                                        # normalize pixel tuple
-                                        if isinstance(px, (int, float)):
-                                            r2 = g2 = b2 = int(px)
-                                            a2 = 255
-                                        elif px is None:
-                                            r2 = g2 = b2 = 0
-                                            a2 = 0
-                                        else:
+                                box = (c*tw, r*th, c*tw + tw, r*th + th)
+                                tile = img.crop(box).convert('RGBA')
+
+                                def tile_to_pixels(im):
+                                    pxs = []
+                                    for yy in range(im.height):
+                                        row = []
+                                        for xx in range(im.width):
                                             try:
-                                                r2, g2, b2, a2 = px
+                                                pr, pg, pb, pa = im.getpixel((xx, yy))
                                             except Exception:
-                                                # fallback to first three
+                                                val = im.getpixel((xx, yy))
+                                                if isinstance(val, (int, float)):
+                                                    pr = pg = pb = int(val)
+                                                    pa = 255
+                                                else:
+                                                    try:
+                                                        pr, pg, pb = val[:3]
+                                                        pa = val[3] if len(val) > 3 else 255
+                                                    except Exception:
+                                                        pr = pg = pb = 0
+                                                        pa = 255
+                                            if pa < 128:
+                                                row.append(None)
+                                            else:
+                                                row.append(f"#{pr:02X}{pg:02X}{pb:02X}")
+                                        pxs.append(row)
+                                    return pxs
+
+                                pixels = tile_to_pixels(tile)
+                                if skip_empty_cb.value and all(all(p is None for p in row) for row in pixels):
+                                    continue
+
+                                # optional per-tile cropping
+                                if crop_tiles_cb.value:
+                                    try:
+                                        tb = tile.getbbox()
+                                        if tb:
+                                            tile_cropped = tile.crop(tb)
+                                            if transparent_bg_cb.value:
+                                                # pick background color from corners and make similar pixels transparent
                                                 try:
-                                                    r2, g2, b2 = px[:3]
-                                                    a2 = 255
+                                                    from collections import Counter
+                                                    w2, h2 = tile.size
+                                                    corners = []
+                                                    for (cx, cy) in [(0,0),(w2-1,0),(0,h2-1),(w2-1,h2-1)]:
+                                                        try:
+                                                            corners.append(tuple(int(v) for v in tile.getpixel((cx, cy))))
+                                                        except Exception:
+                                                            pass
+                                                    bgc = Counter(corners).most_common(1)[0][0] if corners else (255,255,255,255)
+                                                    def similar_col(a,b,tol=20):
+                                                        return ((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2) <= (tol*tol)
+                                                    tc = tile_cropped.copy()
+                                                    tc_px = tc.load()
+                                                    for yy in range(tc.height):
+                                                        for xx in range(tc.width):
+                                                            try:
+                                                                p = tc_px[xx, yy]
+                                                                if similar_col(p, bgc):
+                                                                    tc_px[xx, yy] = (0,0,0,0)
+                                                            except Exception:
+                                                                pass
+                                                    pixels = tile_to_pixels(tc)
                                                 except Exception:
-                                                    r2 = g2 = b2 = 0
-                                                    a2 = 0
-                                        if a2 < 128:
-                                            row.append(None)
-                                        else:
-                                            row.append(f"#{r2:02X}{g2:02X}{b2:02X}")
-                                    pixels.append(row)
-                            if skip_empty_cb.value and all(all(p is None for p in row) for row in pixels):
-                                continue
-                            name = f"{pref}_{r}_{c}"
-                            outp = os.path.join(stamps_dir, name + '.json') if stamps_dir else os.path.join(project_dir, '.stamps', name + '.json')
-                            try:
-                                with open(outp, 'w', encoding='utf-8') as fh:
-                                    json.dump({"metadata": {"name": name, "source": os.path.basename(path)}, "pixels": pixels}, fh, indent=2)
-                                written += 1
-                            except Exception as ex:
-                                logger.exception(f"Failed writing stamp file {outp}: {ex}")
+                                                    # if transparency pass fails, fall back to uncropped pixels
+                                                    pixels = tile_to_pixels(tile)
+                                            else:
+                                                # recalc pixels from cropped tile
+                                                pixels = tile_to_pixels(tile_cropped)
+                                    except Exception:
+                                        # ignore cropping errors and continue with original pixels
+                                        pass
+
+                                name = f"{pref}_{r}_{c}"
+                                outp = os.path.join(ensure_dir, name + '.json')
+                                try:
+                                    with open(outp, 'w', encoding='utf-8') as fh:
+                                        json.dump({"metadata": {"name": name, "source": os.path.basename(path)}, "pixels": pixels}, fh, indent=2)
+                                    written += 1
+                                except Exception as ex:
+                                    logger.exception(f"Failed writing stamp file {outp}: {ex}")
+                            except Exception:
+                                logger.exception("Error processing tile during import")
                     status_import.value = f"Wrote {written} stamps to {ensure_dir}"
                     status_import.update()
                     # refresh main dropdown list: re-scan stamps_dir and saved_dir
