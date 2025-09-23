@@ -2740,159 +2740,180 @@ class PixelArtEditor:
                         pass
                     return
                 try:
+                    # Use a robust grid detection approach across integer downsample scales
                     img = Image.open(path).convert('RGBA')
-                    # trim border even when it's not transparent: detect background color from corners/edges
-                    try:
-                        w, h = img.size
-                        px = img.load()
-                        # sample corner pixels and some edge pixels
+                    from collections import Counter
+                    import math
+
+                    # helper to pick a background color from edge samples
+                    def pick_background(im):
+                        w, h = im.size
+                        px = im.load()
+                        coords = [(0,0),(w-1,0),(0,h-1),(w-1,h-1),(w//2,0),(w//2,h-1),(0,h//2),(w-1,h//2)]
                         samples = []
-                        coords = [ (0,0), (w-1,0), (0,h-1), (w-1,h-1) ]
-                        # also sample midpoints on edges
-                        coords += [ (w//2, 0), (w//2, h-1), (0, h//2), (w-1, h//2) ]
                         for (sx, sy) in coords:
                             try:
-                                samples.append(px[sx, sy])
+                                samples.append(tuple(int(v) for v in px[sx, sy]))
                             except Exception:
                                 pass
+                        if not samples:
+                            return (255,255,255,255)
+                        most = Counter(samples).most_common(1)[0][0]
+                        return most
 
-                        # pick the most common sample (mode) as background
-                        from collections import Counter
-                        def rgba_to_tuple(c):
-                            try:
-                                return (int(c[0]), int(c[1]), int(c[2]), int(c[3]))
-                            except Exception:
-                                return (0,0,0,0)
-                        samp_norm = [ rgba_to_tuple(s) for s in samples if s is not None ]
-                        if samp_norm:
-                            most = Counter(samp_norm).most_common(1)[0][0]
-                        else:
-                            most = (255,255,255,255)
+                    def similar_color(a, b, tol=18):
+                        ar,ag,ab,aa = a
+                        br,bg,bb,ba = b
+                        return ((ar-br)**2 + (ag-bg)**2 + (ab-bb)**2) <= (tol*tol)
 
-                        # similarity function (RGB Euclidean, ignore alpha if fully opaque)
-                        def similar(a, b, tol=16):
-                            ar,ag,ab,aa = a
-                            br,bg,bb,ba = b
-                            return ( (ar-br)**2 + (ag-bg)**2 + (ab-bb)**2 ) <= (tol*tol)
-
-                        tol = 16
-                        # find left
-                        left = 0
-                        for x in range(w):
-                            col_diff = False
-                            for y in range(h):
-                                if not similar(px[x,y], most, tol):
-                                    col_diff = True
-                                    break
-                            if col_diff:
-                                left = x
-                                break
-                        # find right
-                        right = w-1
-                        for x in range(w-1, -1, -1):
-                            col_diff = False
-                            for y in range(h):
-                                if not similar(px[x,y], most, tol):
-                                    col_diff = True
-                                    break
-                            if col_diff:
-                                right = x
-                                break
-                        # find top
-                        top = 0
+                    def detect_grid(im, bg):
+                        w,h = im.size
+                        px = im.load()
+                        row_proj = [0]*h
+                        col_proj = [0]*w
                         for y in range(h):
-                            row_diff = False
+                            s=0
                             for x in range(w):
-                                if not similar(px[x,y], most, tol):
-                                    row_diff = True
-                                    break
-                            if row_diff:
-                                top = y
-                                break
-                        # find bottom
-                        bottom = h-1
-                        for y in range(h-1, -1, -1):
-                            row_diff = False
-                            for x in range(w):
-                                if not similar(px[x,y], most, tol):
-                                    row_diff = True
-                                    break
-                            if row_diff:
-                                bottom = y
-                                break
+                                try:
+                                    if not similar_color(px[x,y], bg):
+                                        s += 1
+                                except Exception:
+                                    pass
+                            row_proj[y]=s
+                        for x in range(w):
+                            s=0
+                            for y in range(h):
+                                try:
+                                    if not similar_color(px[x,y], bg):
+                                        s += 1
+                                except Exception:
+                                    pass
+                            col_proj[x]=s
 
-                        # make sure bbox valid
-                        if left < right and top < bottom:
-                            cropped = img.crop((left, top, right+1, bottom+1))
-                        else:
-                            cropped = img
+                        # find start positions of content groups (where proj > threshold)
+                        row_thresh = max(1, int(w*0.02))
+                        col_thresh = max(1, int(h*0.02))
+                        def starts_from_proj(proj, thresh):
+                            starts=[]
+                            in_region=False
+                            for i,v in enumerate(proj):
+                                if v>thresh and not in_region:
+                                    starts.append(i)
+                                    in_region=True
+                                elif v<=thresh and in_region:
+                                    in_region=False
+                            return starts
+
+                        row_starts = starts_from_proj(row_proj, row_thresh)
+                        col_starts = starts_from_proj(col_proj, col_thresh)
+                        # compute spacings between starts
+                        row_spacings = [j-i for i,j in zip(row_starts, row_starts[1:])] if len(row_starts)>1 else []
+                        col_spacings = [j-i for i,j in zip(col_starts, col_starts[1:])] if len(col_starts)>1 else []
+
+                        # compute median/gcd candidates
+                        def median_or_zero(arr):
+                            if not arr:
+                                return 0
+                            a=sorted(arr)
+                            return a[len(a)//2]
+                        candidates = []
+                        if col_spacings:
+                            g = math.gcd(*col_spacings)
+                            if g>1:
+                                candidates.append(g)
+                            m = median_or_zero(col_spacings)
+                            if m>1:
+                                candidates.append(m)
+                        if row_spacings:
+                            g = math.gcd(*row_spacings)
+                            if g>1 and g not in candidates:
+                                candidates.append(g)
+                            m = median_or_zero(row_spacings)
+                            if m>1 and m not in candidates:
+                                candidates.append(m)
+
+                        # return candidates and counts
+                        return {
+                            'col_starts': col_starts,
+                            'row_starts': row_starts,
+                            'candidates': candidates,
+                            'cols': len(col_starts),
+                            'rows': len(row_starts),
+                        }
+
+                    # try multiple integer downsample scales and pick the best detection
+                    best_score = -1
+                    best_result = None
+                    best_img = None
+                    # resampling compatibility
+                    try:
+                        resample_filter = Image.Resampling.LANCZOS
                     except Exception:
-                        # fallback to transparent bbox
-                        bbox = img.getbbox()
-                        if bbox:
-                            cropped = img.crop(bbox)
-                        else:
-                            cropped = img
-                    # heuristic: try common tile sizes and pick one with many uniform cell boundaries
-                    sw, sh = cropped.size
-                    candidates = [8, 16, 24, 32, 48, 64]
-                    best = (8, 8, -1)
-                    for s in candidates:
-                        cols = sw // s
-                        rows = sh // s
-                        if cols <= 0 or rows <= 0:
-                            continue
-                        # score: number of tiles that are not empty (non-transparent)
-                        non_empty = 0
-                        for r in range(rows):
-                            for c in range(cols):
-                                box = (c*s, r*s, c*s + s, r*s + s)
-                                tile = cropped.crop(box)
-                                # quick check: bounding box
-                                if tile.getbbox():
-                                    non_empty += 1
-                        score = non_empty
-                        if score > best[2]:
-                            best = (s, s, score)
-                    # now consider downsampling: try integer scale factors to handle sheets that are scaled up
-                    sw, sh = cropped.size
-                    scales = [1, 2, 3, 4]
-                    base_candidates = [8, 16, 24, 32, 48, 64]
-                    best_combo = (1, 8, -1, None)  # scale, size, score, scaled_image
-                    for scale in scales:
                         try:
-                            # compute scaled size (integer downsample)
-                            nws = max(1, sw // scale)
-                            nhs = max(1, sh // scale)
-                            img_scaled = cropped.resize((nws, nhs), resample=Image.LANCZOS)
+                            resample_filter = Image.LANCZOS
+                        except Exception:
+                            resample_filter = Image.BICUBIC
+                    for scale in [1,2,3,4]:
+                        try:
+                            if scale == 1:
+                                im_test = img
+                            else:
+                                new_w = max(1, img.width // scale)
+                                new_h = max(1, img.height // scale)
+                                im_test = img.resize((new_w, new_h), resample=resample_filter)
+                            bg = pick_background(im_test)
+                            result = detect_grid(im_test, bg)
+                            score = result['cols'] * result['rows']
+                            # prefer results with more than 1 col and row
+                            if score > best_score:
+                                best_score = score
+                                best_result = result
+                                best_img = im_test
+                                best_scale = scale
                         except Exception:
                             continue
-                        for s in base_candidates:
-                            cols = img_scaled.width // s
-                            rows = img_scaled.height // s
-                            if cols <= 0 or rows <= 0:
-                                continue
-                            non_empty = 0
-                            for r in range(rows):
-                                for c in range(cols):
-                                    box = (c*s, r*s, c*s + s, r*s + s)
-                                    tile = img_scaled.crop(box)
-                                    if tile.getbbox():
-                                        non_empty += 1
-                            score = non_empty
-                            if score > best_combo[2]:
-                                best_combo = (scale, s, score, img_scaled)
 
-                    selected_scale, selected_size, selected_score, selected_img = best_combo
-                    if selected_img is None:
-                        # fallback to previous behavior
-                        selected_img = cropped
-                        selected_size = best[0]
-                    # save selected scaled image to temp file and set fields
+                    if not best_result:
+                        warn_preview.value = "Failed to detect grid"
+                        try:
+                            warn_preview.update()
+                        except Exception:
+                            pass
+                        return
+
+                    # determine inferred tile size: use median spacing if available
+                    cand_sizes = best_result.get('candidates') or []
+                    inferred = None
+                    if cand_sizes:
+                        inferred = sorted(cand_sizes)[len(cand_sizes)//2]
+                    else:
+                        # fallback to equal division
+                        if best_result['cols']>0:
+                            inferred = max(1, best_img.width // best_result['cols'])
+                        elif best_result['rows']>0:
+                            inferred = max(1, best_img.height // best_result['rows'])
+                        else:
+                            inferred = 8
+
+                    # crop best_img to detected start/end boxes
+                    cs = best_result['col_starts']
+                    rs = best_result['row_starts']
+                    left = cs[0] if cs else 0
+                    top = rs[0] if rs else 0
+                    right = (cs[-1] + inferred) if cs else best_img.width
+                    bottom = (rs[-1] + inferred) if rs else best_img.height
+                    # clamp
+                    left = max(0, left)
+                    top = max(0, top)
+                    right = min(best_img.width, right)
+                    bottom = min(best_img.height, bottom)
+                    cropped = best_img.crop((left, top, right, bottom))
+
+                    # save cropped/scaled image and set fields
                     import tempfile
                     tf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
                     try:
-                        selected_img.save(tf.name)
+                        cropped.save(tf.name)
                         sheet_path_field.value = tf.name
                         try:
                             sheet_path_field.update()
@@ -2900,7 +2921,7 @@ class PixelArtEditor:
                             pass
                     except Exception:
                         pass
-                    inferred_w, inferred_h = selected_size, selected_size
+                    inferred_w = inferred_h = int(inferred)
                     tile_w_field.value = str(inferred_w)
                     tile_h_field.value = str(inferred_h)
                     try:
@@ -2912,6 +2933,7 @@ class PixelArtEditor:
                         update_preview()
                     except Exception:
                         pass
+                    # detection complete; preview already updated
                 except Exception as ex:
                     logger.exception(f"Auto analyze failed: {ex}")
                     warn_preview.value = f"Auto analyze failed: {ex}"
