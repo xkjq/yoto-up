@@ -148,7 +148,6 @@ def main(page):
             "concurrency": concurrency.value,
             "strip_leading": strip_leading_checkbox.value,
             "normalize": normalize_checkbox.value,
-            "detect_intro_outro": detect_intro_checkbox.value,
             "intro_outro_side": intro_outro_side.value,
             "intro_outro_seconds": intro_seconds.value,
             "intro_outro_threshold": similarity_threshold.value,
@@ -168,7 +167,6 @@ def main(page):
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
             normalize_checkbox.value = state.get("normalize", normalize_checkbox.value)
-            detect_intro_checkbox.value = state.get("detect_intro_outro", detect_intro_checkbox.value)
             intro_outro_side.value = state.get("intro_outro_side", intro_outro_side.value)
             intro_seconds.value = state.get("intro_outro_seconds", intro_seconds.value)
             similarity_threshold.value = state.get("intro_outro_threshold", similarity_threshold.value)
@@ -266,13 +264,6 @@ def main(page):
         label='Normalize audio (loudness)',
         value=False,
         tooltip="Apply loudness normalization (server-side if supported).",
-        on_change=lambda e: save_ui_state(),
-    )
-    # Intro/Outro detection controls
-    detect_intro_checkbox = ft.Checkbox(
-        label='Detect & remove common intro/outro',
-        value=False,
-        tooltip='Analyze queued files and optionally trim a shared intro or outro before upload',
         on_change=lambda e: save_ui_state(),
     )
     intro_outro_side = ft.Dropdown(
@@ -549,7 +540,6 @@ def main(page):
     # store the control so the upload task can read current value at start
     'strip_leading_track_numbers_control': strip_leading_checkbox,
     'normalize_audio_control': normalize_checkbox,
-    'detect_intro_outro_control': detect_intro_checkbox,
     'intro_outro_side_control': intro_outro_side,
     'intro_outro_seconds_control': intro_seconds,
     'intro_outro_threshold_control': similarity_threshold,
@@ -572,10 +562,7 @@ def main(page):
             ctx['normalize_audio'] = bool(normalize_checkbox.value)
         except Exception:
             ctx['normalize_audio'] = False
-        try:
-            ctx['detect_intro_outro'] = bool(detect_intro_checkbox.value)
-        except Exception:
-            ctx['detect_intro_outro'] = False
+        # intro/outro analysis is manual via the Analyze dialog; no automatic flag
         try:
             ctx['intro_outro_side'] = str(intro_outro_side.value or 'intro')
         except Exception:
