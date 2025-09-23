@@ -2073,6 +2073,23 @@ class PixelArtEditor:
         pos_y = ft.TextField(label="Y (top)", value="0", width=80)
         opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
         scale_dropdown = ft.Dropdown(label="Scale", options=[ft.dropdown.Option(str(i)) for i in range(1,5)], value='1', width=100)
+        # chroma key controls: choose a color to treat as transparent when stamping
+        chroma_checkbox = ft.Checkbox(label="Make chosen color transparent (chroma)", value=False)
+        chroma_color_field = ft.TextField(label="Chroma color (hex)", value="#FFFFFF", width=100)
+        def open_chroma_picker(ev):
+            page_local = ev.page if hasattr(ev, 'page') else None
+            def on_chroma_selected(hex_color):
+                chroma_color_field.value = hex_color
+                chroma_color_field.update()
+                try:
+                    on_select(None)
+                except Exception:
+                    pass
+            picker = ColourPicker(current_color=chroma_color_field.value, saved_dir=self._ensure_saved_dir(), on_color_selected=on_chroma_selected)
+            dialog = picker.build_dialog(page=page_local, caller_page_dialog=page_local.dialog if page_local else None)
+            if page_local:
+                self._open_dialog(dialog, page_local)
+        chroma_picker_btn = ft.TextButton("Pick", on_click=open_chroma_picker)
 
         # position helpers (same positions as text dialog)
         positions = [
@@ -2203,6 +2220,28 @@ class PixelArtEditor:
             except Exception:
                 scale = 1
 
+            def apply_chroma(pixels):
+                if not chroma_checkbox.value:
+                    return pixels
+                try:
+                    tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
+                except Exception:
+                    return pixels
+                h = len(pixels)
+                for yy in range(h):
+                    row = pixels[yy]
+                    for xx in range(len(row)):
+                        px = row[xx]
+                        if px is None:
+                            continue
+                        try:
+                            pr, pg, pb, _ = self._hex_to_rgba(px)
+                            if pr == tr and pg == tg and pb == tb:
+                                row[xx] = None
+                        except Exception:
+                            continue
+                return pixels
+
             try:
                 if p and os.path.exists(p) and p.lower().endswith('.png'):
                     img = Image.open(p).convert('RGBA')
@@ -2215,6 +2254,7 @@ class PixelArtEditor:
                         img = img.resize((img.width * scale, img.height * scale), resample)
                     # convert to pixel grid (native) then render to preview
                     pixels = self._image_to_pixels_native(img)
+                    pixels = apply_chroma(pixels)
                     import tempfile
                     img_out = self._pixels_to_image(pixels)
                     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
@@ -2270,6 +2310,7 @@ class PixelArtEditor:
 
                     if isinstance(obj, dict) and 'pixels' in obj and isinstance(obj['pixels'], list):
                         pixels = obj['pixels']
+                        pixels = apply_chroma(pixels)
                         # apply integer scale to pixel grid
                         pixels_scaled = scale_pixel_grid(pixels, scale)
                         import tempfile
@@ -2334,12 +2375,38 @@ class PixelArtEditor:
                 if p and os.path.exists(p) and p.lower().endswith('.png'):
                     img = Image.open(p).convert('RGBA')
                     pixels = self._image_to_pixels_native(img)
+                    if chroma_checkbox.value:
+                        try:
+                            tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
+                            for yy in range(len(pixels)):
+                                for xx in range(len(pixels[yy])):
+                                    px = pixels[yy][xx]
+                                    if px is None:
+                                        continue
+                                    pr, pg, pb, _ = self._hex_to_rgba(px)
+                                    if pr == tr and pg == tg and pb == tb:
+                                        pixels[yy][xx] = None
+                        except Exception:
+                            pass
                 else:
                     # JSON saved icon
                     with open(p, 'r', encoding='utf-8') as fh:
                         obj = json.load(fh)
                     if isinstance(obj, dict) and 'pixels' in obj:
                         pixels = obj['pixels']
+                        if chroma_checkbox.value:
+                            try:
+                                tr, tg, tb, _ = self._hex_to_rgba(chroma_color_field.value)
+                                for yy in range(len(pixels)):
+                                    for xx in range(len(pixels[yy])):
+                                        px = pixels[yy][xx]
+                                        if px is None:
+                                            continue
+                                        pr, pg, pb, _ = self._hex_to_rgba(px)
+                                        if pr == tr and pg == tg and pb == tb:
+                                            pixels[yy][xx] = None
+                            except Exception:
+                                pass
 
                 if not pixels:
                     status.value = "Failed to load pixels from file"
@@ -2383,6 +2450,7 @@ class PixelArtEditor:
         content = ft.Column([
             dropdown,
             ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
+            ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
             pos_buttons,
             ft.Row([
                 ft.Column([ft.Text("Preview"), preview]),
