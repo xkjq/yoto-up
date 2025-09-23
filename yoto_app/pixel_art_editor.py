@@ -158,6 +158,13 @@ class PixelArtEditor:
                     pass
 
             try:
+                def _paint_from_event(ev):
+                    # local wrapper delegates to class method if available
+                    try:
+                        return self._paint_from_event(ev)
+                    except Exception:
+                        return
+
                 # some flet versions accept attributes after construction
                 self.grid_container.on_pointer_down = _grid_pointer_down
                 self.grid_container.on_pointer_up = _grid_pointer_up
@@ -1220,40 +1227,15 @@ class PixelArtEditor:
                     display_bg = f"#{r:02X}{g:02X}{b:02X}"
             except Exception:
                 display_bg = val
-        # pointer handlers: set mouse-down state and start/stop drag painting
-        def _on_pointer_down(ev):
-            try:
-                self._mouse_down = True
-                # start painting immediately
-                _apply_paint()
-                self._drag_painting = True
-            except Exception:
-                pass
-
-        def _on_pointer_up(ev):
-            try:
-                self._mouse_down = False
-                self._drag_painting = False
-            except Exception:
-                pass
-
+        # We'll rely on the parent GestureDetector to drive drag painting.
+        # Keep click behavior for single-cell clicks but remove per-cell hover/pointer handlers.
         c = ft.Container(
             width=self.pixel_size,
             height=self.pixel_size,
             content=cell_content,
             bgcolor=display_bg,
             on_click=on_click,
-            on_hover=lambda ev: _on_hover(ev) if True else None,
         )
-        # Some Flet versions support on_pointer_down/up as attributes rather than init args.
-        try:
-            c.on_pointer_down = _on_pointer_down
-        except Exception:
-            pass
-        try:
-            c.on_pointer_up = _on_pointer_up
-        except Exception:
-            pass
         # Helper used by both click and hover to paint the cell
         def _apply_paint():
             try:
@@ -1295,37 +1277,7 @@ class PixelArtEditor:
             except Exception:
                 pass
 
-        def _on_hover(ev):
-            # Flet hover event may include ev.data with button mask; defensively check
-            try:
-                data = getattr(ev, 'data', None)
-                logger.debug(f"_on_hover: pos=({x},{y}) ev.data={data} mouse_down={getattr(self,'_mouse_down',False)}")
-                pressed = False
-                # Only treat ev.data as a press if it's a dict containing a button mask
-                # (many Flet builds send boolean/string hover states which are NOT presses)
-                if isinstance(data, dict):
-                    buttons = data.get('buttons') or data.get('button') or 0
-                    try:
-                        if int(buttons) & 1:
-                            pressed = True
-                    except Exception:
-                        pass
-
-                # Also allow the explicit page/grid-level mouse flag (set by pointer_down handlers)
-                if getattr(self, '_mouse_down', False):
-                    pressed = True
-                # Allow ctrl-drag: if Ctrl is held, treat hover as painting
-                if getattr(self, '_ctrl_down', False):
-                    pressed = True
-
-                if pressed:
-                    _apply_paint()
-                    logger.debug(f"_on_hover: painted ({x},{y})")
-                else:
-                    # not pressed: ensure drag session ends
-                    self._drag_painting = False
-            except Exception:
-                pass
+        # Remove per-cell hover painting now that the GestureDetector drives painting.
         return c
 
     def on_fill_toggle(self, e):
@@ -3206,9 +3158,80 @@ class PixelArtEditor:
                     self.make_pixel(x, y) for x in range(self.size)
                 ], spacing=0) for y in range(self.size)
             ], spacing=0)
+            # Wrap the grid in a GestureDetector to reliably capture pan/drag start and end
+            try:
+                def _gd_pan_start(ev):
+                    try:
+                        self._mouse_down = True
+                        self._drag_painting = True
+                        logger.debug("GestureDetector: pan_start; set _mouse_down=True _drag_painting=True")
+                    except Exception:
+                        pass
+
+                def _gd_pan_update(ev):
+                    try:
+                        # ensure flags remain set during pan updates
+                        self._mouse_down = True
+                        self._drag_painting = True
+                        # Drive painting centrally from pan updates (more reliable than per-cell hover)
+                        try:
+                            self._paint_from_event(ev)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                def _gd_pan_end(ev):
+                    try:
+                        self._mouse_down = False
+                        self._drag_painting = False
+                        logger.debug("GestureDetector: pan_end; cleared _mouse_down/_drag_painting")
+                    except Exception:
+                        pass
+
+                def _gd_tap_down(ev):
+                    try:
+                        self._mouse_down = True
+                        # start a drag session so first hovered cell is painted
+                        self._drag_painting = True
+                        try:
+                            self._paint_from_event(ev)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                def _gd_tap_up(ev):
+                    try:
+                        # treat tap up as end of mouse press
+                        self._mouse_down = False
+                        self._drag_painting = False
+                    except Exception:
+                        pass
+
+                def _gd_exit(ev):
+                    try:
+                        # pointer left the GestureDetector area: clear any lingering flags
+                        self._mouse_down = False
+                        self._drag_painting = False
+                        logger.debug("GestureDetector: on_exit; cleared _mouse_down/_drag_painting")
+                    except Exception:
+                        pass
+
+                gd = ft.GestureDetector(
+                    content=self.grid,
+                    on_pan_start=_gd_pan_start,
+                    on_pan_update=_gd_pan_update,
+                    on_pan_end=_gd_pan_end,
+                    on_tap_down=_gd_tap_down,
+                    on_tap_up=_gd_tap_up,
+                )
+            except Exception:
+                # fallback: if GestureDetector isn't available, use the grid directly
+                gd = self.grid
             grid_width = self.size * self.pixel_size
             grid_height = self.size * self.pixel_size
-            self.grid_container.content = self.grid
+            self.grid_container.content = gd
             try:
                 self.grid_container.width = grid_width
                 self.grid_container.height = grid_height
@@ -3217,6 +3240,88 @@ class PixelArtEditor:
             self._grid_built = True
         except Exception:
             logger.exception("Failed to build pixel grid")
+
+        def _noop():
+            pass
+
+    def _paint_from_event(self, ev):
+        """Map a gesture/hover event to a grid cell and paint it.
+        Supports different event shapes used by Flet across runtimes.
+        """
+        try:
+            # Determine local coordinates within the gesture detector / grid
+            lx = None
+            ly = None
+            # common attributes
+            if hasattr(ev, 'local_x') and hasattr(ev, 'local_y'):
+                lx = getattr(ev, 'local_x')
+                ly = getattr(ev, 'local_y')
+            # some events expose offsetX/offsetY
+            if lx is None and hasattr(ev, 'offsetX') and hasattr(ev, 'offsetY'):
+                lx = getattr(ev, 'offsetX')
+                ly = getattr(ev, 'offsetY')
+            # some runtimes put coords in ev.data
+            data = getattr(ev, 'data', None)
+            if lx is None and isinstance(data, dict):
+                if 'localX' in data and 'localY' in data:
+                    lx = data.get('localX')
+                    ly = data.get('localY')
+                elif 'offsetX' in data and 'offsetY' in data:
+                    lx = data.get('offsetX')
+                    ly = data.get('offsetY')
+            # if still none, try page/global coords (will be less accurate)
+            if lx is None and hasattr(ev, 'x') and hasattr(ev, 'y'):
+                lx = getattr(ev, 'x')
+                ly = getattr(ev, 'y')
+
+            if lx is None or ly is None:
+                return
+
+            # map coordinates to integer pixel coords
+            try:
+                # ensure numeric
+                lx = float(lx)
+                ly = float(ly)
+            except Exception:
+                return
+
+            # Compute cell indices: floor(local / pixel_size)
+            cx = int(lx // self.pixel_size)
+            cy = int(ly // self.pixel_size)
+            if cx < 0 or cy < 0 or cx >= self.size or cy >= self.size:
+                return
+
+            # Paint the cell programmatically (bypass per-cell click)
+            try:
+                # push undo once at drag start
+                if not getattr(self, '_drag_painting', False):
+                    self._push_undo()
+                self._drag_painting = True
+                self._mouse_down = True
+                self.pixels[cy][cx] = self.current_color
+                # update cell control if grid exists
+                try:
+                    cell = self.grid.controls[cy].controls[cx]
+                    if self.current_color is None:
+                        cell.bgcolor = None
+                        try:
+                            chk = str(self._ensure_saved_dir() / '__checker.png')
+                            cell.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                        except Exception:
+                            cell.content = None
+                    else:
+                        cell.content = None
+                        cell.bgcolor = self.current_color
+                    try:
+                        cell.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
 #
 # ...existing code...
     class _SmallDialog:
