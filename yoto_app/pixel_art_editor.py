@@ -2338,14 +2338,33 @@ class PixelArtEditor:
                                 tx = x + ox
                                 ty = y + oy
                                 if 0 <= tx < self.size and 0 <= ty < self.size:
-                                    if opaque_only.value:
-                                        if vpx is not None:
-                                            applied_pixels[ty][tx] = vpx
-                                    else:
+                                    # match actual stamping: only overwrite when stamp pixel is not None
+                                    if vpx is not None:
                                         applied_pixels[ty][tx] = vpx
+                        # debug: count applied_pixels transparency after stamping
+                        try:
+                            total_ap = sum(len(row) for row in applied_pixels)
+                            trans_ap = sum(1 for r in applied_pixels for c in r if c is None)
+                            logger.debug(f"applied_preview: after stamping opaque_only={opaque_only.value} ox={ox} oy={oy} applied_transparent={trans_ap}/{total_ap}")
+                        except Exception:
+                            pass
                         img2 = self._pixels_to_image(applied_pixels)
+                        # bake a checkerboard behind the applied preview so transparency is visible
+                        try:
+                            w2, h2 = img2.size
+                            sq = max(1, min(w2, h2) // 4)
+                            bg = Image.new('RGBA', img2.size, (255, 255, 255, 255))
+                            for yy in range(0, h2, sq):
+                                for xx in range(0, w2, sq):
+                                    c = (200, 200, 200, 255) if ((xx//sq)+(yy//sq)) % 2 == 0 else (240, 240, 240, 255)
+                                    for y2 in range(yy, min(h2, yy+sq)):
+                                        for x2 in range(xx, min(w2, xx+sq)):
+                                            bg.putpixel((x2, y2), c)
+                            composed = Image.alpha_composite(bg, img2.convert('RGBA'))
+                        except Exception:
+                            composed = img2
                         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
-                            img2.save(tmp2.name)
+                            composed.save(tmp2.name)
                             preview_applied.src = tmp2.name
                             preview_applied.update()
                     except Exception:
@@ -2402,14 +2421,30 @@ class PixelArtEditor:
                                         tx = x + ox
                                         ty = y + oy
                                         if 0 <= tx < self.size and 0 <= ty < self.size:
-                                            if opaque_only.value:
-                                                if vpx is not None:
-                                                    applied_pixels[ty][tx] = vpx
-                                            else:
+                                            if vpx is not None:
                                                 applied_pixels[ty][tx] = vpx
+                                try:
+                                    total_ap = sum(len(row) for row in applied_pixels)
+                                    trans_ap = sum(1 for r in applied_pixels for c in r if c is None)
+                                    logger.debug(f"applied_preview(embedded png): opaque_only={opaque_only.value} ox={ox} oy={oy} applied_transparent={trans_ap}/{total_ap}")
+                                except Exception:
+                                    pass
                                 img2 = self._pixels_to_image(applied_pixels)
+                                try:
+                                    w2, h2 = img2.size
+                                    sq = max(1, min(w2, h2) // 4)
+                                    bg = Image.new('RGBA', img2.size, (255, 255, 255, 255))
+                                    for yy in range(0, h2, sq):
+                                        for xx in range(0, w2, sq):
+                                            c = (200, 200, 200, 255) if ((xx//sq)+(yy//sq)) % 2 == 0 else (240, 240, 240, 255)
+                                            for y2 in range(yy, min(h2, yy+sq)):
+                                                for x2 in range(xx, min(w2, xx+sq)):
+                                                    bg.putpixel((x2, y2), c)
+                                    composed = Image.alpha_composite(bg, img2.convert('RGBA'))
+                                except Exception:
+                                    composed = img2
                                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
-                                    img2.save(tmp2.name)
+                                    composed.save(tmp2.name)
                                     preview_applied.src = tmp2.name
                                     preview_applied.update()
                             except Exception:
@@ -2441,14 +2476,30 @@ class PixelArtEditor:
                                     tx = x + ox
                                     ty = y + oy
                                     if 0 <= tx < self.size and 0 <= ty < self.size:
-                                        if opaque_only.value:
-                                            if vpx is not None:
-                                                applied_pixels[ty][tx] = vpx
-                                        else:
+                                        if vpx is not None:
                                             applied_pixels[ty][tx] = vpx
+                            try:
+                                total_ap = sum(len(row) for row in applied_pixels)
+                                trans_ap = sum(1 for r in applied_pixels for c in r if c is None)
+                                logger.debug(f"applied_preview(pixels json): opaque_only={opaque_only.value} ox={ox} oy={oy} applied_transparent={trans_ap}/{total_ap}")
+                            except Exception:
+                                pass
                             img2 = self._pixels_to_image(applied_pixels)
+                            try:
+                                w2, h2 = img2.size
+                                sq = max(1, min(w2, h2) // 4)
+                                bg = Image.new('RGBA', img2.size, (255, 255, 255, 255))
+                                for yy in range(0, h2, sq):
+                                    for xx in range(0, w2, sq):
+                                        c = (200, 200, 200, 255) if ((xx//sq)+(yy//sq)) % 2 == 0 else (240, 240, 240, 255)
+                                        for y2 in range(yy, min(h2, yy+sq)):
+                                            for x2 in range(xx, min(w2, xx+sq)):
+                                                bg.putpixel((x2, y2), c)
+                                composed = Image.alpha_composite(bg, img2.convert('RGBA'))
+                            except Exception:
+                                composed = img2
                             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
-                                img2.save(tmp2.name)
+                                composed.save(tmp2.name)
                                 preview_applied.src = tmp2.name
                                 preview_applied.update()
                         except Exception:
