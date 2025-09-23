@@ -1800,10 +1800,17 @@ class PixelArtEditor:
             "Middle Left", "Center", "Middle Right",
             "Bottom Left", "Bottom Center", "Bottom Right"
         ]
-        pos_buttons = ft.Row([
-            ft.TextButton(label, on_click=lambda ev, label=label: set_position(label))
-            for label in positions
-        ], wrap=True, spacing=4)
+        # Render the position buttons in a 3x3 grid (3 columns x 3 rows)
+        grid_rows = []
+        for row_idx in range(3):
+            row_buttons = []
+            for col_idx in range(3):
+                idx = row_idx * 3 + col_idx
+                label = positions[idx]
+                # capture label in default arg so lambda works correctly
+                row_buttons.append(ft.TextButton(label, on_click=lambda ev, label=label: set_position(label)))
+            grid_rows.append(ft.Row(row_buttons, spacing=4))
+        pos_buttons = ft.Column(grid_rows, spacing=4)
         page = e.page if hasattr(e, 'page') else None
         text_field = ft.TextField(label="Text", value="A", width=200)
         color_field = ft.TextField(label="Color (hex)", value=self.current_color, width=120)
