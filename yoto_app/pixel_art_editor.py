@@ -1343,9 +1343,48 @@ class PixelArtEditor:
         """Flood-fill contiguous area starting at (sx,sy). Colors within tolerance are considered matching."""
         if tolerance < 0:
             tolerance = 0
-        if replacement_color == target_color:
-            return
-        # ...existing code...
+        # Normalize replacement/target values (allow '' -> None)
+        if replacement_color == '':
+            replacement_color = None
+        if target_color == '':
+            target_color = None
+
+        # No-op if replacement equals target
+        try:
+            if replacement_color == target_color:
+                return
+        except Exception:
+            pass
+
+        width = self.size
+        height = self.size
+
+        # Stack-based flood fill
+        stack = [(sx, sy)]
+        visited = set()
+        while stack:
+            x, y = stack.pop()
+            if (x, y) in visited:
+                continue
+            visited.add((x, y))
+            if x < 0 or y < 0 or x >= width or y >= height:
+                continue
+            try:
+                current = self.pixels[y][x]
+            except Exception:
+                continue
+            try:
+                dist = self._color_distance(current, target_color)
+            except Exception:
+                dist = 255
+            if dist <= tolerance:
+                # set pixel (allow None for transparent)
+                self.pixels[y][x] = replacement_color
+                # push neighbors
+                stack.append((x+1, y))
+                stack.append((x-1, y))
+                stack.append((x, y+1))
+                stack.append((x, y-1))
 
     def _open_fill_similar_dialog(self, e):
         page = e.page if hasattr(e, 'page') else None
