@@ -35,6 +35,60 @@ from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as
 from yoto_app.show_waveforms import show_waveforms_popup
 from yoto_app.icon_browser import build_icon_browser_panel
 from yoto_app.pixel_art_editor import PixelArtEditor
+import http.server
+import socketserver
+import socket
+import subprocess
+try:
+    import simpleaudio as _simpleaudio
+    HAS_SIMPLEAUDIO = True
+except Exception:
+    _simpleaudio = None
+    HAS_SIMPLEAUDIO = False
+
+# Simple single-instance HTTP server to serve preview files from .tmp_trim/previews
+_preview_server = None
+_preview_server_base = None
+def start_preview_server_if_needed(directory: str = '.tmp_trim/previews') -> str:
+    """Start a local HTTP server serving `directory` and return the base URL.
+
+    The server is started once per application instance and reused.
+    """
+    global _preview_server, _preview_server_base
+    if _preview_server_base:
+        return _preview_server_base
+    try:
+        # Ensure directory exists
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        class _Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=str(directory), **kwargs)
+            def log_message(self, format, *args):
+                # silence logs
+                return
+
+        # Pick an available port
+        sock = socket.socket()
+        sock.bind(('127.0.0.1', 0))
+        addr, port = sock.getsockname()
+        sock.close()
+
+        httpd = socketserver.TCPServer(('127.0.0.1', port), _Handler)
+        httpd.allow_reuse_address = True
+
+        def _serve():
+            try:
+                httpd.serve_forever()
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_serve, daemon=True)
+        t.start()
+        _preview_server = httpd
+        _preview_server_base = f'http://127.0.0.1:{port}'
+        return _preview_server_base
+    except Exception:
+        return ''
 
 
 
@@ -890,31 +944,93 @@ def main(page):
                             temp_dir = Path('.tmp_trim') / 'previews'
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             preview_path = temp_dir / (Path(src).stem + '.preview' + Path(src).suffix)
-                            segment.export(str(preview_path), format=preview_path.suffix.lstrip('.'))
-
-                            # Try to use embedded HTML audio control if available; otherwise provide a Play button
                             try:
-                                if hasattr(ft, 'Html'):
-                                    audio_html = ft.Html(f'<audio controls preload="auto" style="width:100%" src="file://{preview_path}"></audio>')
-                                    info = ft.Text(f'Preview: {Path(src).name} (score={best_score:.3f})')
-                                    preview_dlg.content.controls.clear()
-                                    preview_dlg.content.controls.append(info)
-                                    preview_dlg.content.controls.append(audio_html)
-                                    page.update()
+                                # Best-effort: write original-format preview
+                                segment.export(str(preview_path), format=preview_path.suffix.lstrip('.'))
+                            except Exception:
+                                # non-fatal
+                                pass
+
+                            # Ensure we create a WAV preview for reliable playback
+                            preview_wav = temp_dir / (Path(src).stem + '.preview.wav')
+                            wav_ok = False
+                            try:
+                                segment.export(str(preview_wav), format='wav')
+                                wav_ok = preview_wav.exists()
+                            except Exception:
+                                wav_ok = False
+
+                            # Fallback: if original-format preview written, try converting that to WAV
+                            if not wav_ok and preview_path.exists():
+                                try:
+                                    tmp_seg = AudioSegment.from_file(str(preview_path))
+                                    tmp_seg.export(str(preview_wav), format='wav')
+                                    wav_ok = preview_wav.exists()
+                                except Exception:
+                                    wav_ok = False
+
+                            # Close the preparing dialog
+                            try:
+                                page.close(preview_dlg)
+                            except Exception:
+                                pass
+
+                            # Build result dialog with Play (enabled only if WAV exists) and Open buttons
+                            def make_result_dialog(wav_available: bool):
+                                items = [ft.Text(f'Preview: {Path(src).name} (score={best_score:.3f})')]
+
+                                if wav_available:
+                                    def _play(e=None, p=preview_wav):
+                                        def _play_thread():
+                                            # Try simpleaudio first
+                                            if HAS_SIMPLEAUDIO and _simpleaudio is not None:
+                                                try:
+                                                    sa_mod = _simpleaudio
+                                                    wave_obj = sa_mod.WaveObject.from_wave_file(str(p))
+                                                    play_obj = wave_obj.play()
+                                                    play_obj.wait_done()
+                                                    return
+                                                except Exception:
+                                                    pass
+                                            # Fallbacks: ffplay, aplay, xdg-open
+                                            cmds = [
+                                                ['ffplay', '-nodisp', '-autoexit', str(p)],
+                                                ['aplay', str(p)],
+                                                ['xdg-open', str(p)],
+                                            ]
+                                            for cmd in cmds:
+                                                try:
+                                                    subprocess.run(cmd, check=True)
+                                                    return
+                                                except Exception:
+                                                    continue
+                                            show_snack('No available player found (ffplay/aplay/xdg-open)', error=True)
+                                        threading.Thread(target=_play_thread, daemon=True).start()
+                                    items.append(ft.ElevatedButton('Play', on_click=_play))
                                 else:
-                                    # Fallback: show a Play button that opens the file with the system player
-                                    def _play(e=None, p=preview_path):
-                                        try:
-                                            webbrowser.open('file://' + str(p))
-                                        except Exception as ex:
-                                            show_snack(f'Failed to open preview: {ex}', error=True)
-                                    preview_dlg.content.controls.clear()
-                                    preview_dlg.content.controls.append(ft.Text(f'Preview ready: {Path(src).name} (score={best_score:.3f})'))
-                                    preview_dlg.content.controls.append(ft.TextButton('Play (external)', on_click=_play))
-                                    page.update()
+                                    items.append(ft.Text('Preview playback not available (conversion failed)'))
+
+                                def _open_external(e=None):
+                                    try:
+                                        target = preview_wav if wav_available and preview_wav.exists() else preview_path
+                                        webbrowser.open(Path(target).resolve().as_uri())
+                                    except Exception as ex:
+                                        show_snack(f'Failed to open preview: {ex}', error=True)
+
+                                items.append(ft.TextButton('Open in external player', on_click=_open_external))
+                                items.append(ft.TextButton('Close', on_click=lambda e: page.close(result_dlg)))
+                                content = ft.Column(items, scroll=ft.ScrollMode.AUTO)
+                                return ft.AlertDialog(title=ft.Text('Preview'), content=content, actions=[items[-1]], modal=True)
+
+                            try:
+                                result_dlg = make_result_dialog(wav_ok)
+                                page.open(result_dlg)
+                                page.update()
                             except Exception:
                                 try:
-                                    webbrowser.open('file://' + str(preview_path))
+                                    # fallback: open any file we have
+                                    target = preview_wav if wav_ok and preview_wav.exists() else preview_path
+                                    webbrowser.open(Path(target).resolve().as_uri())
                                 except Exception:
                                     pass
                         except Exception as ex:
