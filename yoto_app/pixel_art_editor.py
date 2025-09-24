@@ -157,31 +157,13 @@ class PixelArtEditor:
                 except Exception:
                     pass
 
-            try:
-                def _paint_from_event(ev):
-                    # local wrapper delegates to class method if available
-                    try:
-                        return self._paint_from_event(ev)
-                    except Exception:
-                        return
-
-                # some flet versions accept attributes after construction
-                self.grid_container.on_pointer_down = _grid_pointer_down
-                self.grid_container.on_pointer_up = _grid_pointer_up
-            except Exception:
+            def _paint_from_event(ev):
+                # local wrapper delegates to class method if available
                 try:
-                    # fallback: attach handlers to the inner content container if present
-                    if getattr(self.grid_container, 'content', None):
-                        try:
-                            self.grid_container.content.on_pointer_down = _grid_pointer_down
-                        except Exception:
-                            pass
-                        try:
-                            self.grid_container.content.on_pointer_up = _grid_pointer_up
-                        except Exception:
-                            pass
+                    return self._paint_from_event(ev)
                 except Exception:
-                    pass
+                    # if the delegate isn't available or errors, swallow and continue
+                    return None
         except Exception:
             pass
         # Fill tolerance slider (used by Fill Similar dialog and as a quick control)
@@ -2028,19 +2010,9 @@ class PixelArtEditor:
         # track the currently-open gallery dialog so selections can close it
         gallery_dialog = None
 
-        def select_stamp(label):
+        def select_stamp(label, ev=None):
+            # update dropdown/preview first (safer while main dialog may be hidden)
             try:
-                # if a gallery dialog is open, close it first so the main stamp dialog is visible
-                try:
-                    nonlocal gallery_dialog
-                    if gallery_dialog is not None:
-                        # prefer to close using class helper
-                        self._close_dialog(gallery_dialog, self.page)
-                        gallery_dialog = None
-                except Exception:
-                    # older runtimes or scope issues: ignore
-                    pass
-
                 dropdown.value = label
                 try:
                     dropdown.update()
@@ -2048,6 +2020,39 @@ class PixelArtEditor:
                     pass
                 try:
                     on_select(None)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # then close the gallery and refresh the page where it was opened
+            try:
+                nonlocal gallery_dialog
+                page_to_use = getattr(gallery_dialog, '_origin_page', None) if gallery_dialog is not None else getattr(self, 'page', None)
+                if gallery_dialog is not None:
+                    try:
+                        self._close_dialog(gallery_dialog, page_to_use)
+                    except Exception:
+                        try:
+                            gallery_dialog.open = False
+                        except Exception:
+                            pass
+                    gallery_dialog = None
+                if page_to_use:
+                    try:
+                        page_to_use.update()
+                    except Exception:
+                        pass
+                # ensure the main stamp dialog is visible; open it if it's not the active dialog
+                try:
+                    if page_to_use and getattr(page_to_use, 'dialog', None) is not dlg:
+                        try:
+                            self._open_dialog(dlg, page_to_use)
+                        except Exception:
+                            try:
+                                dlg.open = True
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             except Exception:
@@ -2113,11 +2118,11 @@ class PixelArtEditor:
                     img_widget = ft.Image(src=tmpf.name, width=48, height=48, fit=ft.ImageFit.CONTAIN)
                     try:
                         # Container supports on_click in most runtimes
-                        img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, l=label: select_stamp(l))
+                        img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, lbl=label: select_stamp(lbl, ev))
                     except Exception:
                         # fallback: use GestureDetector if Container doesn't support on_click
                         try:
-                            img_ctrl = ft.GestureDetector(content=img_widget, on_tap=lambda ev, l=label: select_stamp(l))
+                            img_ctrl = ft.GestureDetector(content=img_widget, on_tap=lambda ev, lbl=label: select_stamp(lbl, ev))
                         except Exception:
                             # last resort: non-clickable image
                             img_ctrl = img_widget
@@ -2158,9 +2163,18 @@ class PixelArtEditor:
                 build_stamp_grid()
                 gallery_content = ft.Column([stamp_grid], spacing=8, width=420)
                 dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg_gallery, page_local))], open=False)
+                # remember the page the gallery was opened on so selections can reopen the main dialog there
+                try:
+                    dlg_gallery._origin_page = page_local
+                except Exception:
+                    pass
+                # ensure closing the gallery will reopen the main stamp dialog
+                try:
+                    dlg_gallery._parent_dialog = dlg
+                except Exception:
+                    pass
                 gallery_dialog = dlg_gallery
                 if page_local:
-                    page_local.dialog = dlg_gallery
                     self._open_dialog(dlg_gallery, page_local)
             except Exception:
                 logger.exception("Error opening stamp gallery dialog")
