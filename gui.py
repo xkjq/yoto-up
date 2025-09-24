@@ -884,7 +884,7 @@ def main(page):
             show_snack(f'Analysis failed: {e}', error=True)
             return
 
-        # populate result content in the same dialog content column
+    # populate result content in the same dialog content column
         template = result.get('template')
         matches = result.get('matches', []) or []
         content_col.controls.clear()
@@ -896,6 +896,68 @@ def main(page):
             except Exception:
                 pass
             return
+
+        # Find the largest prefix duration `t` (0 < t <= seconds) such that the
+        # start segments of length `t` across all matched files are mutually similar.
+        # For each t in an increasing grid, compute each file's `segment_feature(p, side, t)`,
+        # take their mean as a template, and accept t if the minimum cosine similarity
+        # across files >= thresh. The final `common_removal_end_sec` is the largest accepted t.
+        try:
+            from yoto_app.intro_outro import segment_feature, cosine_similarity
+            import numpy as _np
+            step = 0.25
+            accepted_t = 0.0
+            t = step
+            while t <= float(seconds) + 1e-9:
+                feats = []
+                for p, _ in matches:
+                    try:
+                        f = segment_feature(p, side=side, seconds=float(t))
+                        feats.append(f)
+                    except Exception:
+                        feats.append(None)
+                # if any failed, stop
+                if any(f is None for f in feats):
+                    break
+                # compute template as mean vector
+                try:
+                    stacked = _np.stack([_np.asarray(f, dtype=float) for f in feats])
+                    tmpl = _np.mean(stacked, axis=0)
+                except Exception:
+                    break
+                sims = []
+                for f in feats:
+                    try:
+                        sims.append(float(cosine_similarity(tmpl, f)))
+                    except Exception:
+                        sims.append(0.0)
+                if len(sims) == 0:
+                    break
+                if float(min(sims)) >= float(thresh):
+                    accepted_t = float(t)
+                    t += step
+                    continue
+                else:
+                    break
+            common_removal_end_sec = accepted_t if accepted_t > 0.0 else float(seconds)
+        except Exception:
+            common_removal_end_sec = float(seconds)
+
+        content_col.controls.append(ft.Text(f"Template: {template}"))
+        content_col.controls.append(ft.Text(f"Planned removal: from start up to {common_removal_end_sec:.2f}s (same for all matched files)"))
+        # Persist a small debug JSON so the preview/trim actions can be inspected
+        try:
+            debug_dir = Path('.tmp_trim') / 'previews'
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_path = debug_dir / ('intro_removal.json')
+            try:
+                with open(debug_path, 'w') as _df:
+                    import json as _json
+                    _json.dump({'common_removal_end_sec': common_removal_end_sec}, _df, indent=2)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         content_col.controls.append(ft.Text(f"Template: {template}"))
         checkbox_map = {}
@@ -926,130 +988,25 @@ def main(page):
 
                     def _worker():
                         try:
-                            from yoto_app.intro_outro import sliding_best_match_position
                             from pydub import AudioSegment
                             import webbrowser
                             src = str(path)
-                            # locate the best-matching start position for the template
-                            start_sec, best_score = sliding_best_match_position(src, result['features'][template], seg_seconds=seg_seconds, search_seconds=60.0, hop_seconds=0.5)
-                            seg_start_ms = int(start_sec * 1000)
-                            seg_end_ms = seg_start_ms + int(float(seg_seconds) * 1000)
+                            # For a consistent removal across matched files we use the computed common_removal_end_sec.
                             audio = AudioSegment.from_file(src)
-                            # clamp end
-                            if seg_start_ms < 0:
-                                seg_start_ms = 0
-                            if seg_end_ms > len(audio):
-                                seg_end_ms = len(audio)
-
-                            # Compute the exact audio that will be removed by trimming.
-                            # For intro: trimming will keep audio starting at new_start = min(max(0, remove_ms - padding_ms), len(audio))
-                            # so removed portion is audio[0:new_start].
-                            # For outro: trimming will keep audio ending at new_end = max(0, len(audio) - remove_ms + padding_ms)
-                            # so removed portion is audio[new_end:len(audio)].
-                            remove_sec = start_sec + float(seg_seconds)
-                            remove_ms = int(remove_sec * 1000)
-                            if side == 'intro':
-                                new_start = min(max(0, remove_ms - padding_ms), len(audio))
-                                removed_segment = audio[0:new_start]
-                            else:
-                                new_end = max(0, len(audio) - remove_ms + padding_ms)
-                                removed_segment = audio[new_end:len(audio)]
-                            # Try to narrow the preview to the best-matching sub-window inside the matched window.
-                            # This computes short-frame MFCC summaries inside [seg_start_ms:seg_end_ms]
-                            # and finds the longest contiguous region with high similarity to the template feature.
-                            segment = removed_segment
                             try:
-                                import numpy as _np
-                                import librosa as _librosa
-
-                                # Load mono waveform for the matched window (using librosa for frames)
-                                y_full, sr_full = _librosa.load(src, sr=None, mono=True)
-                                # convert ms to sample indices
-                                match_start_sample = int(seg_start_ms * (sr_full / 1000.0))
-                                match_end_sample = int(seg_end_ms * (sr_full / 1000.0))
-                                match_start_sample = max(0, min(len(y_full), match_start_sample))
-                                match_end_sample = max(0, min(len(y_full), match_end_sample))
-                                y_match = y_full[match_start_sample:match_end_sample]
-
-                                # Frame parameters (in seconds)
-                                sub_win = 0.5
-                                sub_hop = 0.1
-                                win_n = int(sub_win * sr_full)
-                                hop_n = max(1, int(sub_hop * sr_full))
-
-                                if y_match.size > 0 and win_n < len(y_match):
-                                    sims = []
-                                    tmpl = result['features'].get(template)
-                                    # slide over y_match
-                                    for s in range(0, max(1, len(y_match) - win_n + 1), hop_n):
-                                        w = y_match[s : s + win_n]
-                                        feat = None
-                                        try:
-                                            feat = _librosa.feature.mfcc(y=w, sr=sr_full, n_mfcc=20)
-                                            feat = _np.concatenate([_np.mean(feat, axis=1), _np.std(feat, axis=1)])
-                                        except Exception:
-                                            feat = None
-                                        if feat is None or tmpl is None:
-                                            sims.append(0.0)
-                                        else:
-                                            # cosine similarity
-                                            na = _np.linalg.norm(feat)
-                                            nb = _np.linalg.norm(_np.asarray(tmpl))
-                                            if na == 0 or nb == 0:
-                                                sims.append(0.0)
-                                            else:
-                                                sims.append(float(_np.dot(feat, _np.asarray(tmpl)) / (na * nb)))
-
-                                    if sims:
-                                        sims = _np.array(sims)
-                                        peak_idx = int(_np.argmax(sims))
-                                        peak = float(sims[peak_idx])
-                                        # threshold relative to peak
-                                        rel_thresh = max(0.4, peak * 0.6)
-                                        # expand around peak
-                                        left = peak_idx
-                                        while left > 0 and sims[left - 1] >= rel_thresh:
-                                            left -= 1
-                                        right = peak_idx
-                                        while right < len(sims) - 1 and sims[right + 1] >= rel_thresh:
-                                            right += 1
-
-                                        # convert run indices to sample times within y_match
-                                        run_start_sample = left * hop_n
-                                        run_end_sample = min(len(y_match), right * hop_n + win_n)
-
-                                        # cap preview length to max_preview_ms (e.g., 3000ms)
-                                        max_preview_ms = 3000
-                                        run_len_ms = ((run_end_sample - run_start_sample) / sr_full) * 1000
-                                        if run_len_ms > max_preview_ms:
-                                            center_sample = (run_start_sample + run_end_sample) // 2
-                                            half_samples = int((max_preview_ms / 1000.0) * sr_full / 2)
-                                            run_start_sample = max(0, center_sample - half_samples)
-                                            run_end_sample = min(len(y_match), center_sample + half_samples)
-
-                                        # convert match-relative samples back to ms in original audio
-                                        abs_start_sample = match_start_sample + run_start_sample
-                                        abs_end_sample = match_start_sample + run_end_sample
-                                        ms_start = int((abs_start_sample / sr_full) * 1000)
-                                        ms_end = int((abs_end_sample / sr_full) * 1000)
-                                        # ensure within removed_segment bounds
-                                        if side == 'intro':
-                                            rem_start_ms = 0
-                                            rem_end_ms = new_start
-                                        else:
-                                            rem_start_ms = new_end
-                                            rem_end_ms = len(audio)
-                                        ms_start = max(rem_start_ms, min(rem_end_ms, ms_start))
-                                        ms_end = max(rem_start_ms, min(rem_end_ms, ms_end))
-                                        if ms_end > ms_start:
-                                            try:
-                                                best_seg = AudioSegment.from_file(src)[ms_start:ms_end]
-                                                segment = best_seg
-                                            except Exception:
-                                                pass
+                                common_ms = int(common_removal_end_sec * 1000)
                             except Exception:
-                                # if librosa not available or anything failed, keep removed_segment
-                                pass
+                                common_ms = int(float(seg_seconds) * 1000)
+
+                            if side == 'intro':
+                                # preview the start portion that would be removed from all files
+                                segment = audio[0:common_ms]
+                            else:
+                                # preview the tail portion that would be removed from all files
+                                if common_ms <= len(audio):
+                                    segment = audio[-common_ms:]
+                                else:
+                                    segment = audio
                             temp_dir = Path('.tmp_trim') / 'previews'
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             preview_path = temp_dir / (Path(src).stem + '.preview' + Path(src).suffix)
@@ -1086,7 +1043,7 @@ def main(page):
 
                             # Build result dialog with Play (enabled only if WAV exists) and Open buttons
                             def make_result_dialog(wav_available: bool):
-                                items = [ft.Text(f'Preview: {Path(src).name} (score={best_score:.3f})')]
+                                items = [ft.Text(f'Preview: {Path(src).name}')] 
 
                                 if wav_available or segment is not None:
                                     def _play(e=None, p=preview_wav, seg=segment):
@@ -1206,40 +1163,43 @@ def main(page):
                         except Exception:
                             pass
 
-                    try:
-                        # find best match position and perform trimming
-                        start_sec, best_score = sliding_best_match_position(p, result['features'][template], seg_seconds=seconds, search_seconds=60.0, hop_seconds=0.5)
-                        remove_sec = start_sec + float(seconds) if side == 'intro' else start_sec + float(seconds)
-                        src_path = Path(p)
-                        dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
-                        # keep a small left padding (in ms) so we don't cut too aggressively
-                        trim_audio_file(
-                            p,
-                            dest,
-                            remove_intro_seconds=remove_sec if side == 'intro' else 0.0,
-                            remove_outro_seconds=remove_sec if side == 'outro' else 0.0,
-                            keep_silence_ms=padding_ms,
-                        )
+                        try:
+                            # Use the common removal length previously computed so the same section is removed from every file
+                            try:
+                                remove_t = common_removal_end_sec
+                            except NameError:
+                                remove_t = float(seconds)
 
-                        # update matching rows to point to trimmed file
-                        for ctrl in list(file_rows_column.controls):
-                            fur = getattr(ctrl, '_fileuploadrow', None)
-                            try:
-                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                    fur.update_file(dest)
-                                    fur.set_status('Trimmed intro/outro')
-                                    fur.set_progress(1.0)
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        # report error on affected rows
-                        for ctrl in list(file_rows_column.controls):
-                            fur = getattr(ctrl, '_fileuploadrow', None)
-                            try:
-                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                    fur.set_status(f'Trim error: {e}')
-                            except Exception:
-                                pass
+                            src_path = Path(p)
+                            dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
+                            # keep a small left padding (in ms) so we don't cut too aggressively
+                            trim_audio_file(
+                                p,
+                                dest,
+                                remove_intro_seconds=remove_t if side == 'intro' else 0.0,
+                                remove_outro_seconds=remove_t if side == 'outro' else 0.0,
+                                keep_silence_ms=padding_ms,
+                            )
+
+                            # update matching rows to point to trimmed file
+                            for ctrl in list(file_rows_column.controls):
+                                fur = getattr(ctrl, '_fileuploadrow', None)
+                                try:
+                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                        fur.update_file(dest)
+                                        fur.set_status('Trimmed intro/outro')
+                                        fur.set_progress(1.0)
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            # report error on affected rows
+                            for ctrl in list(file_rows_column.controls):
+                                fur = getattr(ctrl, '_fileuploadrow', None)
+                                try:
+                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                        fur.set_status(f'Trim error: {e}')
+                                except Exception:
+                                    pass
 
                     trimmed_count += 1
                     # update progress UI
