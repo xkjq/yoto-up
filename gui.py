@@ -846,9 +846,95 @@ def main(page):
         content_col.controls.append(ft.Text(f"Template: {template}"))
         checkbox_map = {}
         for p, score in matches:
+            # Checkbox for selecting file to trim
             cb = ft.Checkbox(label=f"{p} (score={score:.3f})", value=True)
             checkbox_map[p] = cb
-            content_col.controls.append(cb)
+
+            # Preview button: extract the matched segment into a temp file and play it
+            preview_btn = ft.TextButton('Preview', on_click=None, tooltip='Preview the matched intro/outro segment')
+
+            def make_preview_handler(path, preview_button, seg_seconds, side_label):
+                def _on_preview(ev=None):
+                    try:
+                        preview_button.disabled = True
+                        page.update()
+                    except Exception:
+                        pass
+
+                    # Create a preview dialog so the user sees progress while we extract
+                    preview_content = ft.Column([ft.Row([ft.ProgressRing(), ft.Text('Preparing preview...')], alignment=ft.MainAxisAlignment.CENTER)], scroll=ft.ScrollMode.AUTO)
+                    preview_dlg = ft.AlertDialog(title=ft.Text('Preview'), content=preview_content, actions=[ft.TextButton('Close', on_click=lambda e: page.close(preview_dlg))], modal=True)
+                    try:
+                        page.open(preview_dlg)
+                        page.update()
+                    except Exception:
+                        pass
+
+                    def _worker():
+                        try:
+                            from yoto_app.intro_outro import sliding_best_match_position
+                            from pydub import AudioSegment
+                            import webbrowser
+                            src = str(path)
+                            # locate the best-matching start position for the template
+                            start_sec, best_score = sliding_best_match_position(src, result['features'][template], seg_seconds=seg_seconds, search_seconds=60.0, hop_seconds=0.5)
+                            seg_start_ms = int(start_sec * 1000)
+                            seg_end_ms = seg_start_ms + int(float(seg_seconds) * 1000)
+                            audio = AudioSegment.from_file(src)
+                            # clamp end
+                            if seg_start_ms < 0:
+                                seg_start_ms = 0
+                            if seg_end_ms > len(audio):
+                                seg_end_ms = len(audio)
+                            segment = audio[seg_start_ms:seg_end_ms]
+                            temp_dir = Path('.tmp_trim') / 'previews'
+                            temp_dir.mkdir(parents=True, exist_ok=True)
+                            preview_path = temp_dir / (Path(src).stem + '.preview' + Path(src).suffix)
+                            segment.export(str(preview_path), format=preview_path.suffix.lstrip('.'))
+
+                            # Try to use embedded HTML audio control if available; otherwise provide a Play button
+                            try:
+                                if hasattr(ft, 'Html'):
+                                    audio_html = ft.Html(f'<audio controls preload="auto" style="width:100%" src="file://{preview_path}"></audio>')
+                                    info = ft.Text(f'Preview: {Path(src).name} (score={best_score:.3f})')
+                                    preview_dlg.content.controls.clear()
+                                    preview_dlg.content.controls.append(info)
+                                    preview_dlg.content.controls.append(audio_html)
+                                    page.update()
+                                else:
+                                    # Fallback: show a Play button that opens the file with the system player
+                                    def _play(e=None, p=preview_path):
+                                        try:
+                                            webbrowser.open('file://' + str(p))
+                                        except Exception as ex:
+                                            show_snack(f'Failed to open preview: {ex}', error=True)
+                                    preview_dlg.content.controls.clear()
+                                    preview_dlg.content.controls.append(ft.Text(f'Preview ready: {Path(src).name} (score={best_score:.3f})'))
+                                    preview_dlg.content.controls.append(ft.TextButton('Play (external)', on_click=_play))
+                                    page.update()
+                            except Exception:
+                                try:
+                                    webbrowser.open('file://' + str(preview_path))
+                                except Exception:
+                                    pass
+                        except Exception as ex:
+                            show_snack(f'Preview failed: {ex}', error=True)
+                        finally:
+                            try:
+                                preview_button.disabled = False
+                                page.update()
+                            except Exception:
+                                pass
+
+                    threading.Thread(target=_worker, daemon=True).start()
+
+                return _on_preview
+
+            # attach handler (capture p and seconds)
+            preview_btn.on_click = make_preview_handler(p, preview_btn, seconds, side)
+
+            # Layout: checkbox + preview button on the same row
+            content_col.controls.append(ft.Row([cb, preview_btn], alignment=ft.MainAxisAlignment.START))
 
         # trim handler: shows a trimming dialog and runs trimming in background
         def do_trim(ev=None):
