@@ -940,7 +940,116 @@ def main(page):
                                 seg_start_ms = 0
                             if seg_end_ms > len(audio):
                                 seg_end_ms = len(audio)
-                            segment = audio[seg_start_ms:seg_end_ms]
+
+                            # Compute the exact audio that will be removed by trimming.
+                            # For intro: trimming will keep audio starting at new_start = min(max(0, remove_ms - padding_ms), len(audio))
+                            # so removed portion is audio[0:new_start].
+                            # For outro: trimming will keep audio ending at new_end = max(0, len(audio) - remove_ms + padding_ms)
+                            # so removed portion is audio[new_end:len(audio)].
+                            remove_sec = start_sec + float(seg_seconds)
+                            remove_ms = int(remove_sec * 1000)
+                            if side == 'intro':
+                                new_start = min(max(0, remove_ms - padding_ms), len(audio))
+                                removed_segment = audio[0:new_start]
+                            else:
+                                new_end = max(0, len(audio) - remove_ms + padding_ms)
+                                removed_segment = audio[new_end:len(audio)]
+                            # Try to narrow the preview to the best-matching sub-window inside the matched window.
+                            # This computes short-frame MFCC summaries inside [seg_start_ms:seg_end_ms]
+                            # and finds the longest contiguous region with high similarity to the template feature.
+                            segment = removed_segment
+                            try:
+                                import numpy as _np
+                                import librosa as _librosa
+
+                                # Load mono waveform for the matched window (using librosa for frames)
+                                y_full, sr_full = _librosa.load(src, sr=None, mono=True)
+                                # convert ms to sample indices
+                                match_start_sample = int(seg_start_ms * (sr_full / 1000.0))
+                                match_end_sample = int(seg_end_ms * (sr_full / 1000.0))
+                                match_start_sample = max(0, min(len(y_full), match_start_sample))
+                                match_end_sample = max(0, min(len(y_full), match_end_sample))
+                                y_match = y_full[match_start_sample:match_end_sample]
+
+                                # Frame parameters (in seconds)
+                                sub_win = 0.5
+                                sub_hop = 0.1
+                                win_n = int(sub_win * sr_full)
+                                hop_n = max(1, int(sub_hop * sr_full))
+
+                                if y_match.size > 0 and win_n < len(y_match):
+                                    sims = []
+                                    tmpl = result['features'].get(template)
+                                    # slide over y_match
+                                    for s in range(0, max(1, len(y_match) - win_n + 1), hop_n):
+                                        w = y_match[s : s + win_n]
+                                        feat = None
+                                        try:
+                                            feat = _librosa.feature.mfcc(y=w, sr=sr_full, n_mfcc=20)
+                                            feat = _np.concatenate([_np.mean(feat, axis=1), _np.std(feat, axis=1)])
+                                        except Exception:
+                                            feat = None
+                                        if feat is None or tmpl is None:
+                                            sims.append(0.0)
+                                        else:
+                                            # cosine similarity
+                                            na = _np.linalg.norm(feat)
+                                            nb = _np.linalg.norm(_np.asarray(tmpl))
+                                            if na == 0 or nb == 0:
+                                                sims.append(0.0)
+                                            else:
+                                                sims.append(float(_np.dot(feat, _np.asarray(tmpl)) / (na * nb)))
+
+                                    if sims:
+                                        sims = _np.array(sims)
+                                        peak_idx = int(_np.argmax(sims))
+                                        peak = float(sims[peak_idx])
+                                        # threshold relative to peak
+                                        rel_thresh = max(0.4, peak * 0.6)
+                                        # expand around peak
+                                        left = peak_idx
+                                        while left > 0 and sims[left - 1] >= rel_thresh:
+                                            left -= 1
+                                        right = peak_idx
+                                        while right < len(sims) - 1 and sims[right + 1] >= rel_thresh:
+                                            right += 1
+
+                                        # convert run indices to sample times within y_match
+                                        run_start_sample = left * hop_n
+                                        run_end_sample = min(len(y_match), right * hop_n + win_n)
+
+                                        # cap preview length to max_preview_ms (e.g., 3000ms)
+                                        max_preview_ms = 3000
+                                        run_len_ms = ((run_end_sample - run_start_sample) / sr_full) * 1000
+                                        if run_len_ms > max_preview_ms:
+                                            center_sample = (run_start_sample + run_end_sample) // 2
+                                            half_samples = int((max_preview_ms / 1000.0) * sr_full / 2)
+                                            run_start_sample = max(0, center_sample - half_samples)
+                                            run_end_sample = min(len(y_match), center_sample + half_samples)
+
+                                        # convert match-relative samples back to ms in original audio
+                                        abs_start_sample = match_start_sample + run_start_sample
+                                        abs_end_sample = match_start_sample + run_end_sample
+                                        ms_start = int((abs_start_sample / sr_full) * 1000)
+                                        ms_end = int((abs_end_sample / sr_full) * 1000)
+                                        # ensure within removed_segment bounds
+                                        if side == 'intro':
+                                            rem_start_ms = 0
+                                            rem_end_ms = new_start
+                                        else:
+                                            rem_start_ms = new_end
+                                            rem_end_ms = len(audio)
+                                        ms_start = max(rem_start_ms, min(rem_end_ms, ms_start))
+                                        ms_end = max(rem_start_ms, min(rem_end_ms, ms_end))
+                                        if ms_end > ms_start:
+                                            try:
+                                                best_seg = AudioSegment.from_file(src)[ms_start:ms_end]
+                                                segment = best_seg
+                                            except Exception:
+                                                pass
+                            except Exception:
+                                # if librosa not available or anything failed, keep removed_segment
+                                pass
                             temp_dir = Path('.tmp_trim') / 'previews'
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             preview_path = temp_dir / (Path(src).stem + '.preview' + Path(src).suffix)
@@ -979,20 +1088,25 @@ def main(page):
                             def make_result_dialog(wav_available: bool):
                                 items = [ft.Text(f'Preview: {Path(src).name} (score={best_score:.3f})')]
 
-                                if wav_available:
-                                    def _play(e=None, p=preview_wav):
+                                if wav_available or segment is not None:
+                                    def _play(e=None, p=preview_wav, seg=segment):
                                         def _play_thread():
-                                            # Try simpleaudio first
-                                            if HAS_SIMPLEAUDIO and _simpleaudio is not None:
+                                            # Prefer playing the in-memory pydub segment via simpleaudio so we play exactly the removed segment
+                                            if HAS_SIMPLEAUDIO and _simpleaudio is not None and seg is not None:
                                                 try:
                                                     sa_mod = _simpleaudio
-                                                    wave_obj = sa_mod.WaveObject.from_wave_file(str(p))
+                                                    # pydub AudioSegment stores raw_data, frame_rate, channels, sample_width
+                                                    raw = seg.raw_data
+                                                    channels = seg.channels
+                                                    sample_width = seg.sample_width
+                                                    frame_rate = seg.frame_rate
+                                                    wave_obj = sa_mod.WaveObject(raw, channels, sample_width, frame_rate)
                                                     play_obj = wave_obj.play()
                                                     play_obj.wait_done()
                                                     return
                                                 except Exception:
                                                     pass
-                                            # Fallbacks: ffplay, aplay, xdg-open
+                                            # Fallback to calling an external player on the WAV file we wrote
                                             cmds = [
                                                 ['ffplay', '-nodisp', '-autoexit', str(p)],
                                                 ['aplay', str(p)],
@@ -1018,6 +1132,12 @@ def main(page):
                                         show_snack(f'Failed to open preview: {ex}', error=True)
 
                                 items.append(ft.TextButton('Open in external player', on_click=_open_external))
+                                # Show the absolute path so users can verify which file will be opened/played
+                                try:
+                                    display_target = preview_wav if wav_available and preview_wav.exists() else preview_path
+                                    items.append(ft.Text(str(Path(display_target).resolve()), size=12))
+                                except Exception:
+                                    pass
                                 items.append(ft.TextButton('Close', on_click=lambda e: page.close(result_dlg)))
                                 content = ft.Column(items, scroll=ft.ScrollMode.AUTO)
                                 return ft.AlertDialog(title=ft.Text('Preview'), content=content, actions=[items[-1]], modal=True)
