@@ -590,6 +590,7 @@ class PixelArtEditor:
         """Open dlg, remembering and closing the current parent dialog (if it is the editor dialog).
         When dlg is closed via _close_dialog we'll reopen the parent dialog automatically."""
         page = page or getattr(self, 'page', None)
+        logger.debug(f"PixelArtEditor._open_dialog: Opening dialog {dlg} with page {page}")
         try:
             parent = None
             if page and getattr(page, 'dialog', None):
@@ -624,6 +625,7 @@ class PixelArtEditor:
     def _close_dialog(self, dlg, page=None):
         """Close dlg and reopen any parent dialog that was hidden by _open_dialog."""
         page = page or getattr(self, 'page', None)
+        logger.debug(f"PixelArtEditor._close_dialog: Closing dialog {dlg} with page {page}")
         try:
             try:
                 dlg.open = False
@@ -637,8 +639,10 @@ class PixelArtEditor:
             if page:
                 page.update()
             parent = getattr(dlg, '_parent_dialog', None)
+            logger.debug(f"PixelArtEditor._close_dialog: _parent_dialog to reopen: {parent}")
             if not parent and hasattr(dlg, 'dialog'):
                 parent = getattr(dlg, 'dialog', None)._parent_dialog if getattr(dlg, 'dialog', None) else None
+                logger.debug("PixelArtEditor._close_dialog: Checking dlg.dialog for parent, found: {parent}")
             if parent and page:
                 try:
                     page.open(parent)
@@ -1099,32 +1103,6 @@ class PixelArtEditor:
         )
         if page:
             self._open_dialog(dlg, page)
-
-    def _close_dialog(self, dlg, page=None):
-        """Close dlg and reopen any parent dialog that was hidden by _open_dialog."""
-        page = page or getattr(self, 'page', None)
-        try:
-            try:
-                dlg.open = False
-            except Exception:
-                # some wrappers store nested dialog under dlg.dialog
-                try:
-                    getattr(dlg, 'dialog').open = False
-                except Exception:
-                    pass
-            if page:
-                page.update()
-            parent = getattr(dlg, '_parent_dialog', None)
-            if not parent and hasattr(dlg, 'dialog'):
-                parent = getattr(dlg, 'dialog', None)._parent_dialog if getattr(dlg, 'dialog', None) else None
-            if parent and page:
-                try:
-                    page.open(parent)
-                    page.update()
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
     def make_pixel(self, x, y):
         def on_click(e):
@@ -2047,8 +2025,22 @@ class PixelArtEditor:
         # normal preview handler.
         stamp_grid = ft.Column(spacing=6)
 
+        # track the currently-open gallery dialog so selections can close it
+        gallery_dialog = None
+
         def select_stamp(label):
             try:
+                # if a gallery dialog is open, close it first so the main stamp dialog is visible
+                try:
+                    nonlocal gallery_dialog
+                    if gallery_dialog is not None:
+                        # prefer to close using class helper
+                        self._close_dialog(gallery_dialog, self.page)
+                        gallery_dialog = None
+                except Exception:
+                    # older runtimes or scope issues: ignore
+                    pass
+
                 dropdown.value = label
                 try:
                     dropdown.update()
@@ -2151,11 +2143,27 @@ class PixelArtEditor:
                 # defensive ignore
                 pass
 
-        # build initial grid
+        # build initial grid (populate controls but do not attach to page yet)
         try:
             build_stamp_grid()
         except Exception:
             pass
+
+        # open a separate dialog that displays the stamp grid/gallery
+        def open_stamp_gallery(ev):
+            try:
+                nonlocal gallery_dialog
+                page_local = ev.page if hasattr(ev, 'page') else None
+                # (re)build thumbnails to ensure up-to-date
+                build_stamp_grid()
+                gallery_content = ft.Column([stamp_grid], spacing=8, width=420)
+                dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg_gallery, page_local))], open=False)
+                gallery_dialog = dlg_gallery
+                if page_local:
+                    page_local.dialog = dlg_gallery
+                    self._open_dialog(dlg_gallery, page_local)
+            except Exception:
+                logger.exception("Error opening stamp gallery dialog")
         # Import sprite sheet button - opens a small dialog to slice a sheet into .stamps
         import_btn = ft.ElevatedButton("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
         pos_x = ft.TextField(label="X (left)", value="0", width=80)
@@ -2705,7 +2713,7 @@ class PixelArtEditor:
         logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
 
         content = ft.Column([
-            ft.Row([ft.Column([dropdown, stamp_grid]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
+            ft.Row([ft.Column([dropdown, ft.TextButton("Open Stamp Gallery", on_click=open_stamp_gallery)]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
             ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
             ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
             pos_buttons,
