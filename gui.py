@@ -851,7 +851,7 @@ def main(page):
 
         # import here so missing dependency only affects this feature
         try:
-            from yoto_app.intro_outro import analyze_files, sliding_best_match_position, trim_audio_file
+            from yoto_app.intro_outro import per_window_common_prefix, trim_audio_file
         except Exception:
             show_snack('Intro/outro analysis unavailable (missing module)', error=True)
             return
@@ -877,7 +877,42 @@ def main(page):
 
         # run analysis off the UI thread
         try:
-            result = await asyncio.to_thread(lambda: analyze_files(files, side=side, seconds=seconds, similarity_threshold=thresh))
+            # Use windowed analyzer (configurable window size / sub-second precision)
+            try:
+                fast_mode_ctrl = dialog_controls.get('fast_mode')
+                try:
+                    fast_mode = bool(getattr(fast_mode_ctrl, 'value', True))
+                except Exception:
+                    fast_mode = True
+                sr = 11025 if fast_mode else 22050
+                n_mfcc = 13
+                # read windowed controls
+                ws_ctrl = dialog_controls.get('window_seconds')
+                mx_ctrl = dialog_controls.get('max_seconds_window')
+                sim_ctrl = dialog_controls.get('window_similarity')
+                mf_ctrl = dialog_controls.get('window_min_files')
+                try:
+                    window_seconds = float(getattr(ws_ctrl, 'value', 0.25))
+                except Exception:
+                    window_seconds = 0.25
+                try:
+                    max_seconds = float(getattr(mx_ctrl, 'value', seconds))
+                except Exception:
+                    max_seconds = float(seconds)
+                try:
+                    similarity_threshold = float(getattr(sim_ctrl, 'value', 0.95))
+                except Exception:
+                    similarity_threshold = 0.95
+                try:
+                    min_files_fraction = float(getattr(mf_ctrl, 'value', 0.75))
+                except Exception:
+                    min_files_fraction = 0.75
+
+                result = await asyncio.to_thread(
+                    lambda: per_window_common_prefix(paths=files, side=side, max_seconds=max_seconds, window_seconds=window_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
+                )
+            except Exception as e:
+                raise
         except Exception as e:
             # analysis failed — update the dialog content column rather than trying
             # to close a previously-used helper dialog (analyzing_dlg no longer exists)
@@ -885,11 +920,16 @@ def main(page):
             return
 
     # populate result content in the same dialog content column
-        template = result.get('template')
-        matches = result.get('matches', []) or []
+        # The new windowed analyzer returns per-window similarities and a
+        # contiguous matched window count. Use that to compute the common
+        # removal seconds and per-file match fractions for UI presentation.
         content_col.controls.clear()
+        windows_matched = int(result.get('windows_matched', 0))
+        seconds_matched = float(result.get('seconds_matched', 0.0))
+        per_window_frac = result.get('per_window_frac', [])
+        per_file_per_window = result.get('per_file_per_window', {})
 
-        if not template or not matches:
+        if windows_matched <= 0 or seconds_matched <= 0.0:
             content_col.controls.append(ft.Text('No common intro/outro detected'))
             try:
                 page.update()
@@ -897,54 +937,23 @@ def main(page):
                 pass
             return
 
-        # Find the largest prefix duration `t` (0 < t <= seconds) such that the
-        # start segments of length `t` across all matched files are mutually similar.
-        # For each t in an increasing grid, compute each file's `segment_feature(p, side, t)`,
-        # take their mean as a template, and accept t if the minimum cosine similarity
-        # across files >= thresh. The final `common_removal_end_sec` is the largest accepted t.
+        # Update the computed removal field so the user can tweak it before trimming
         try:
-            from yoto_app.intro_outro import segment_feature, cosine_similarity
-            import numpy as _np
-            step = 0.25
-            accepted_t = 0.0
-            t = step
-            while t <= float(seconds) + 1e-9:
-                feats = []
-                for p, _ in matches:
-                    try:
-                        f = segment_feature(p, side=side, seconds=float(t))
-                        feats.append(f)
-                    except Exception:
-                        feats.append(None)
-                # if any failed, stop
-                if any(f is None for f in feats):
-                    break
-                # compute template as mean vector
+            comp_ctrl = dialog_controls.get('computed_removal')
+            if comp_ctrl is not None:
+                comp_ctrl.value = f"{seconds_matched:.2f}"
                 try:
-                    stacked = _np.stack([_np.asarray(f, dtype=float) for f in feats])
-                    tmpl = _np.mean(stacked, axis=0)
+                    setattr(comp_ctrl, '_computed_by_analysis', True)
                 except Exception:
-                    break
-                sims = []
-                for f in feats:
-                    try:
-                        sims.append(float(cosine_similarity(tmpl, f)))
-                    except Exception:
-                        sims.append(0.0)
-                if len(sims) == 0:
-                    break
-                if float(min(sims)) >= float(thresh):
-                    accepted_t = float(t)
-                    t += step
-                    continue
-                else:
-                    break
-            common_removal_end_sec = accepted_t if accepted_t > 0.0 else float(seconds)
+                    pass
+                try:
+                    page.update()
+                except Exception:
+                    pass
         except Exception:
-            common_removal_end_sec = float(seconds)
+            pass
 
-        content_col.controls.append(ft.Text(f"Template: {template}"))
-        content_col.controls.append(ft.Text(f"Planned removal: from start up to {common_removal_end_sec:.2f}s (same for all matched files)"))
+        content_col.controls.append(ft.Text(f"Planned removal: from start up to {seconds_matched:.2f}s (same for all matched files)"))
         # Persist a small debug JSON so the preview/trim actions can be inspected
         try:
             debug_dir = Path('.tmp_trim') / 'previews'
@@ -953,17 +962,29 @@ def main(page):
             try:
                 with open(debug_path, 'w') as _df:
                     import json as _json
-                    _json.dump({'common_removal_end_sec': common_removal_end_sec}, _df, indent=2)
+                    _json.dump({'common_removal_end_sec': seconds_matched, 'per_window_frac': per_window_frac}, _df, indent=2)
             except Exception:
                 pass
         except Exception:
             pass
 
-        content_col.controls.append(ft.Text(f"Template: {template}"))
+        # build per-file score based on how many of the matched windows each
+        # file satisfied (i.e. per-window similarity >= configured threshold)
         checkbox_map = {}
-        for p, score in matches:
-            # Checkbox for selecting file to trim
-            cb = ft.Checkbox(label=f"{p} (score={score:.3f})", value=True)
+        try:
+            sim_thresh = float(dialog_controls.get('window_similarity').value or 0.95)
+        except Exception:
+            sim_thresh = 0.95
+        for p, perw in per_file_per_window.items():
+            try:
+                # consider only the windows that were accepted
+                relevant = perw[:windows_matched]
+                matched = sum(1 for v in relevant if v >= sim_thresh)
+                score = float(matched) / float(windows_matched) if windows_matched else 0.0
+            except Exception:
+                score = 0.0
+            score_label = f"{score * 100:.2f}%"
+            cb = ft.Checkbox(label=f"{p} (score={score_label})", value=(score >= float(dialog_controls.get('window_min_files').value or 0.75)))
             checkbox_map[p] = cb
 
             # Preview button: extract the matched segment into a temp file and play it
@@ -994,9 +1015,12 @@ def main(page):
                             # For a consistent removal across matched files we use the computed common_removal_end_sec.
                             audio = AudioSegment.from_file(src)
                             try:
-                                common_ms = int(common_removal_end_sec * 1000)
+                                common_ms = int(seconds_matched * 1000)
                             except Exception:
-                                common_ms = int(float(seg_seconds) * 1000)
+                                try:
+                                    common_ms = int(float(seg_seconds) * 1000)
+                                except Exception:
+                                    common_ms = 0
 
                             if side == 'intro':
                                 # preview the start portion that would be removed from all files
@@ -1136,16 +1160,32 @@ def main(page):
                 show_snack('No files selected for trimming', error=False)
                 return
 
-            trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
-            trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
-            trim_dlg = ft.AlertDialog(title=ft.Text('Trimming...'), content=ft.Column([trim_label, trim_progress]), actions=[])
+            # Safety: if the computed removal is non-zero, require explicit confirmation
             try:
-                page.open(trim_dlg)
-                page.update()
+                comp_ctrl = dialog_controls.get('computed_removal')
+                confirm_ctrl = dialog_controls.get('confirm_removal')
+                comp_val = 0.0
+                try:
+                    comp_val = float(getattr(comp_ctrl, 'value', seconds_matched))
+                except Exception:
+                    comp_val = float(seconds_matched) if seconds_matched is not None else 0.0
+                if comp_val > 0.0 and not (confirm_ctrl and getattr(confirm_ctrl, 'value', False)):
+                    show_snack('Computed removal is >0s — check "Confirm removal" to enable trimming.', error=False)
+                    return
             except Exception:
                 pass
-
+            # Define the trimming worker up-front so it can be started from the
+            # confirmation dialog. It will open its own progress dialog.
             def _trim_worker():
+                trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
+                trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
+                trim_dlg = ft.AlertDialog(title=ft.Text('Trimming...'), content=ft.Column([trim_label, trim_progress]), actions=[])
+                try:
+                    page.open(trim_dlg)
+                    page.update()
+                except Exception:
+                    pass
+
                 temp_dir = Path('.tmp_trim')
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 trimmed_count = 0
@@ -1164,14 +1204,46 @@ def main(page):
                             pass
 
                         try:
-                            # Use the common removal length previously computed so the same section is removed from every file
+                            # Use the analysis-computed common_removal_end_sec by default.
+                            # Only honor the user-edited computed_removal field when the
+                            # "Confirm removal" checkbox is checked — this prevents accidental
+                            # trimming of the full inspected window.
+                            remove_t = 0.0
                             try:
-                                remove_t = common_removal_end_sec
-                            except NameError:
-                                remove_t = float(seconds)
+                                confirm_ctrl = dialog_controls.get('confirm_removal')
+                                comp_ctrl = dialog_controls.get('computed_removal')
+                                confirmed = bool(getattr(confirm_ctrl, 'value', False))
+                            except Exception:
+                                confirmed = False
+                                comp_ctrl = None
 
+                            if confirmed and comp_ctrl is not None:
+                                # user explicitly confirmed; try to parse their value
+                                try:
+                                    remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
+                                except Exception:
+                                    remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
+                            else:
+                                # default: use the analysis-computed value (conservative)
+                                try:
+                                    remove_t = float(seconds_matched)
+                                except Exception:
+                                    remove_t = 0.0
                             src_path = Path(p)
                             dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
+                            # Safety: avoid trimming the full inspected window unless the user confirmed
+                            try:
+                                confirm_ctrl = dialog_controls.get('confirm_removal')
+                                if remove_t >= float(seconds) - 1e-6 and not (confirm_ctrl and getattr(confirm_ctrl, 'value', False)):
+                                    try:
+                                        show_snack('Attempt to trim full inspected window detected; skipping trim for safety. Check "Confirm removal" to allow removing the full window.', error=False)
+                                    except Exception:
+                                        pass
+                                    # skip trimming for this file
+                                    continue
+                            except Exception:
+                                pass
+
                             # keep a small left padding (in ms) so we don't cut too aggressively
                             trim_audio_file(
                                 p,
@@ -1217,7 +1289,37 @@ def main(page):
                     pass
                 show_snack('Trim complete')
 
-            threading.Thread(target=_trim_worker, daemon=True).start()
+            # If computed removal is > 0 (and the earlier checkbox guard passed),
+            # show a final confirmation modal summarizing the action. The user
+            # must click "Proceed" to actually start the trimming worker.
+            try:
+                if comp_val > 0.0:
+                    confirm_text = ft.Text(f'You are about to trim {comp_val:.2f}s from {total_to_trim} file(s).\n\nThis will modify the selected files. Proceed?')
+                    def _on_proceed(e=None):
+                        try:
+                            page.close(confirm_dlg)
+                        except Exception:
+                            pass
+                        # start the trimming worker after closing the confirm dialog
+                        threading.Thread(target=_trim_worker, daemon=True).start()
+
+                    def _on_cancel(e=None):
+                        try:
+                            page.close(confirm_dlg)
+                        except Exception:
+                            pass
+
+                    proceed_btn = ft.ElevatedButton('Proceed', on_click=_on_proceed)
+                    cancel_btn = ft.TextButton('Cancel', on_click=_on_cancel)
+                    confirm_dlg = ft.AlertDialog(title=ft.Text('Confirm trimming'), content=confirm_text, actions=[proceed_btn, cancel_btn])
+                    page.open(confirm_dlg)
+                    page.update()
+                else:
+                    # No removal requested (0s) — start trimming immediately
+                    threading.Thread(target=_trim_worker, daemon=True).start()
+            except Exception:
+                # Fallback: start trimming if anything goes wrong showing the modal
+                threading.Thread(target=_trim_worker, daemon=True).start()
 
         # If the opener provided a dialog action button, enable and wire it
         try:
@@ -1241,6 +1343,20 @@ def main(page):
         d_thresh = ft.TextField(label='Similarity threshold', value='0.75', width=100)
         # Small padding to keep at the start when trimming so we don't cut too aggressively
         d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
+        d_fast = ft.Checkbox(label='Fast mode (lower quality, faster)', value=True)
+        d_refine = ft.Checkbox(label='Refine with DTW (slower, stricter)', value=False)
+        d_dtw_thresh = ft.TextField(label='DTW similarity threshold', value='0.5', width=100)
+        # New controls: per-frame agreement tuning
+        d_frame_agree = ft.TextField(label='Frame agreement fraction', value='0.70', width=120)
+        d_min_files_frame = ft.TextField(label='Min files meeting frame agreement', value='0.75', width=120)
+        # Windowed analysis controls (sub-second precision)
+        d_window_seconds = ft.TextField(label='Window seconds', value='0.25', width=120)
+        d_max_seconds = ft.TextField(label='Max inspect seconds', value='10.0', width=120)
+        d_window_similarity = ft.TextField(label='Window similarity threshold', value='0.95', width=120)
+        d_window_min_files = ft.TextField(label='Min files fraction', value='0.75', width=120)
+        # Editable computed removal so user can override before trimming
+        d_computed_removal = ft.TextField(label='Computed removal (s)', value='0.00', width=120)
+        d_confirm_removal = ft.Checkbox(label='Confirm removal', value=False)
         content_column = ft.Column([], scroll=ft.ScrollMode.AUTO)
 
         def on_run(ev=None):
@@ -1250,6 +1366,17 @@ def main(page):
                 'intro_seconds': d_seconds,
                 'similarity_threshold': d_thresh,
                 'padding_seconds': d_padding,
+                'fast_mode': d_fast,
+                'refine_with_dtw': d_refine,
+                'dtw_threshold': d_dtw_thresh,
+                'frame_agreement_fraction': d_frame_agree,
+                'min_files_frame_fraction': d_min_files_frame,
+                'window_seconds': d_window_seconds,
+                'max_seconds_window': d_max_seconds,
+                'window_similarity': d_window_similarity,
+                'window_min_files': d_window_min_files,
+                'computed_removal': d_computed_removal,
+                'confirm_removal': d_confirm_removal,
                 'content_column': content_column,
                 'trim_button': trim_btn,
             }
@@ -1263,6 +1390,73 @@ def main(page):
             threading.Thread(target=_runner, daemon=True).start()
 
         run_btn = ft.ElevatedButton('Run analysis', on_click=on_run)
+        # Windowed analysis runner
+        def on_run_window(ev=None):
+            dlg_controls = {
+                'window_seconds': d_window_seconds,
+                'max_seconds_window': d_max_seconds,
+                'window_similarity': d_window_similarity,
+                'window_min_files': d_window_min_files,
+                'content_column': content_column,
+            }
+
+            def _runner():
+                try:
+                    # import here to avoid circular top-level imports
+                    from yoto_app.intro_outro import per_window_common_prefix
+                    # collect paths from current queued files
+                    paths = [getattr(row, 'filename', None) or getattr(getattr(row, '_fileuploadrow', None), 'original_filepath', None) for row in file_rows_column.controls]
+                    paths = [p for p in paths if p]
+                    if not paths:
+                        show_snack('No files in queue to analyze', error=False)
+                        return
+                    try:
+                        ws = float(getattr(dlg_controls['window_seconds'], 'value', 0.25))
+                    except Exception:
+                        ws = 0.25
+                    try:
+                        mx = float(getattr(dlg_controls['max_seconds_window'], 'value', 10.0))
+                    except Exception:
+                        mx = 10.0
+                    try:
+                        sim = float(getattr(dlg_controls['window_similarity'], 'value', 0.95))
+                    except Exception:
+                        sim = 0.95
+                    try:
+                        mf = float(getattr(dlg_controls['window_min_files'], 'value', 0.75))
+                    except Exception:
+                        mf = 0.75
+
+                    content_column.controls.clear()
+                    content_column.controls.append(ft.Text('Running windowed analysis...'))
+                    page.update()
+
+                    res = per_window_common_prefix(paths=paths, side=getattr(d_side, 'value', 'intro'), max_seconds=mx, window_seconds=ws, sr=11025 if getattr(d_fast, 'value', True) else 22050, n_mfcc=13, similarity_threshold=sim, min_files_fraction=mf)
+
+                    # show summary and add Open Trace button
+                    content_column.controls.clear()
+                    content_column.controls.append(ft.Text(f"Matched seconds: {res.get('seconds_matched', 0.0):.2f} (windows: {res.get('windows_matched',0)})"))
+                    content_column.controls.append(ft.Text(f"Per-window fractions: {res.get('per_window_frac', [])}"))
+
+                    def _open_trace(e=None):
+                        try:
+                            import webbrowser
+                            p = Path('.tmp_trim/previews') / 'per_window_trace.json'
+                            if p.exists():
+                                webbrowser.open(p.resolve().as_uri())
+                            else:
+                                show_snack('Trace not found', error=True)
+                        except Exception as ex:
+                            show_snack(f'Failed to open trace: {ex}', error=True)
+
+                    content_column.controls.append(ft.TextButton('Open trace', on_click=_open_trace))
+                    page.update()
+                except Exception as ex:
+                    show_snack(f'Windowed analysis failed: {ex}', error=True)
+
+            threading.Thread(target=_runner, daemon=True).start()
+
+        run_window_btn = ft.ElevatedButton('Run windowed analysis', on_click=on_run_window)
         # Trim action placed as a dialog action, initially disabled until analysis finds matches
         trim_btn = ft.ElevatedButton('Trim selected', disabled=True)
         close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
@@ -1270,11 +1464,15 @@ def main(page):
         dlg = ft.AlertDialog(
             title=ft.Text('Analyze intro/outro'),
             content=ft.Column([
-                ft.Row([d_side, d_seconds, d_thresh, d_padding]),
+                ft.Row([d_side, d_seconds, d_thresh, d_padding, d_fast]),
+                ft.Row([d_refine, d_dtw_thresh, d_computed_removal]),
+                ft.Row([d_frame_agree, d_min_files_frame]),
+                ft.Row([d_window_seconds, d_max_seconds, d_window_similarity, d_window_min_files]),
+                ft.Row([d_confirm_removal]),
                 ft.Divider(),
                 content_column
             ], scroll=ft.ScrollMode.AUTO),
-            actions=[run_btn, trim_btn, close_btn],
+            actions=[run_btn, run_window_btn, trim_btn, close_btn],
         )
         # expose dlg to inner closures
         page.open(dlg)
