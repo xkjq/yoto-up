@@ -3,6 +3,10 @@ import flet as ft
 import sys
 import os
 from loguru import logger
+try:
+    from yoto_app.stamp_dialog import open_image_stamp_dialog as external_open_image_stamp_dialog
+except Exception:
+    external_open_image_stamp_dialog = None
 from PIL import Image
 import json
 import re
@@ -1951,6 +1955,13 @@ class PixelArtEditor:
         the current image. The .stamps folder entries are resolved from the
         project root while user-saved icons come from saved_icons.
         """
+        # If an external extracted dialog function is available, delegate to it
+        if external_open_image_stamp_dialog:
+            try:
+                return external_open_image_stamp_dialog(self, e)
+            except Exception:
+                logger.exception("external_open_image_stamp_dialog failed, falling back to inline implementation")
+
         page = e.page if hasattr(e, 'page') else None
         saved_dir = self._ensure_saved_dir()
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
