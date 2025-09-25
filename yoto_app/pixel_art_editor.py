@@ -568,14 +568,19 @@ class PixelArtEditor:
             pass
 
     # ----- dialog management helpers so nested dialogs return to editor dialog -----
-    def _open_dialog(self, dlg, page=None):
+    def _open_dialog(self, dlg, page=None, parent=None):
         """Open dlg, remembering and closing the current parent dialog (if it is the editor dialog).
         When dlg is closed via _close_dialog we'll reopen the parent dialog automatically."""
         page = page or getattr(self, 'page', None)
-        logger.debug(f"PixelArtEditor._open_dialog: Opening dialog {dlg} with page {page}")
+        logger.debug(f"PixelArtEditor._open_dialog: Opening dialog {dlg} with page {page}, parent {parent}")
         try:
-            parent = None
-            if page and getattr(page, 'dialog', None):
+            if parent is not None:
+                dlg._parent_dialog = parent
+                try:
+                    parent.open = False
+                except Exception:    
+                    pass
+            elif page and getattr(page, 'dialog', None):
                 parent = page.dialog
                 # Only consider parent if it contains this editor's container
                 try:
@@ -2163,19 +2168,8 @@ class PixelArtEditor:
                 build_stamp_grid()
                 gallery_content = ft.Column([stamp_grid], spacing=8, width=420)
                 dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg_gallery, page_local))], open=False)
-                # remember the page the gallery was opened on so selections can reopen the main dialog there
-                try:
-                    dlg_gallery._origin_page = page_local
-                except Exception:
-                    pass
-                # ensure closing the gallery will reopen the main stamp dialog
-                try:
-                    dlg_gallery._parent_dialog = dlg
-                except Exception:
-                    pass
-                gallery_dialog = dlg_gallery
                 if page_local:
-                    self._open_dialog(dlg_gallery, page_local)
+                    self._open_dialog(dlg_gallery, page_local, parent=getattr(page_local, 'dialog', None))
             except Exception:
                 logger.exception("Error opening stamp gallery dialog")
         # Import sprite sheet button - opens a small dialog to slice a sheet into .stamps
