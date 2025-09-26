@@ -222,7 +222,14 @@ def open_image_stamp_dialog(editor, e):
             filter_dropdown.on_change = on_filter_change
             # initial build with current filter
             build_stamp_grid(filter_dropdown.value)
-            gallery_content = ft.Column([ft.Row([ft.Text('Filter:'), filter_dropdown]), stamp_grid], spacing=8, width=420)
+            # place the stamp_grid inside a scrollable Column so the gallery can scroll
+            grid_container = ft.Column([stamp_grid], scroll=ft.ScrollMode.AUTO, height=480, width=420)
+            # ensure grid_container is updated after building
+            try:
+                grid_container.update()
+            except Exception:
+                pass
+            gallery_content = ft.Column([ft.Row([ft.Text('Filter:'), filter_dropdown]), grid_container], spacing=8, width=420)
             dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: page_local.close(dlg_gallery))], open=False)
             try:
                 dlg_gallery._origin_page = page_local
