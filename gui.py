@@ -1348,7 +1348,7 @@ def main(page):
                 ft.Row([d_computed_removal, d_confirm_removal]),
                 ft.Divider(),
                 content_column
-            ], scroll=ft.ScrollMode.AUTO),
+            ], scroll=ft.ScrollMode.AUTO, width=600),
             actions=[run_btn, trim_btn, close_btn],
         )
         # expose dlg to inner closures
