@@ -14,6 +14,7 @@ STAMP_DIALOG = None
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 stamps_dir = os.path.join(project_dir, '.stamps')
 
+
 def open_image_stamp_dialog(editor, e):
     """Open the stamp image dialog using the provided editor instance.
 
@@ -960,10 +961,7 @@ def open_import_dialog(ev):
                 return ((ar-br)**2 + (ag-bg)**2 + (ab-bb)**2) <= (tol*tol)
 
             def detect_grid(im, bg):
-                """Detect content segments per-row and per-column and return their starts and median lengths.
-                This measures contiguous non-background runs (segments) instead of relying on spacing gcds,
-                which is more robust for sheets with gutters or variable spacing.
-                """
+                # original spacing-based detection: find starts of content groups and use spacings/gcds
                 w,h = im.size
                 px = im.load()
                 row_proj = [0]*h
@@ -987,44 +985,51 @@ def open_import_dialog(ev):
                             pass
                     col_proj[x]=s
 
+                # find start positions of content groups (where proj > threshold)
                 row_thresh = max(1, int(w*0.02))
                 col_thresh = max(1, int(h*0.02))
+                def starts_from_proj(proj, thresh):
+                    starts=[]
+                    in_region=False
+                    for i,v in enumerate(proj):
+                        if v>thresh and not in_region:
+                            starts.append(i)
+                            in_region=True
+                        elif v<=thresh and in_region:
+                            in_region=False
+                    return starts
 
-                def segments_from_proj(proj, thresh):
-                    segs = []
-                    in_region = False
-                    start = 0
-                    for i, v in enumerate(proj):
-                        if v > thresh and not in_region:
-                            in_region = True
-                            start = i
-                        elif v <= thresh and in_region:
-                            in_region = False
-                            segs.append((start, i))
-                    # close final region
-                    if in_region:
-                        segs.append((start, len(proj)))
-                    return segs
+                row_starts = starts_from_proj(row_proj, row_thresh)
+                col_starts = starts_from_proj(col_proj, col_thresh)
+                # compute spacings between starts
+                row_spacings = [j-i for i,j in zip(row_starts, row_starts[1:])] if len(row_starts)>1 else []
+                col_spacings = [j-i for i,j in zip(col_starts, col_starts[1:])] if len(col_starts)>1 else []
 
-                row_segs = segments_from_proj(row_proj, row_thresh)
-                col_segs = segments_from_proj(col_proj, col_thresh)
-
-                row_starts = [s for s,_ in row_segs]
-                col_starts = [s for s,_ in col_segs]
-
-                row_lengths = [e - s for s,e in row_segs]
-                col_lengths = [e - s for s,e in col_segs]
-
-                # choose candidates from median segment lengths if available
+                # compute median/gcd candidates
+                def median_or_zero(arr):
+                    if not arr:
+                        return 0
+                    a=sorted(arr)
+                    return a[len(a)//2]
                 candidates = []
-                if col_lengths:
-                    col_med = sorted(col_lengths)[len(col_lengths)//2]
-                    if col_med > 0:
-                        candidates.append(col_med)
-                if row_lengths:
-                    row_med = sorted(row_lengths)[len(row_lengths)//2]
-                    if row_med > 0 and row_med not in candidates:
-                        candidates.append(row_med)
+                try:
+                    import math
+                    if col_spacings:
+                        g = math.gcd(*col_spacings)
+                        if g>1:
+                            candidates.append(g)
+                        m = median_or_zero(col_spacings)
+                        if m>1:
+                            candidates.append(m)
+                    if row_spacings:
+                        g = math.gcd(*row_spacings)
+                        if g>1 and g not in candidates:
+                            candidates.append(g)
+                        m = median_or_zero(row_spacings)
+                        if m>1 and m not in candidates:
+                            candidates.append(m)
+                except Exception:
+                    pass
 
                 return {
                     'col_starts': col_starts,
@@ -1100,9 +1105,12 @@ def open_import_dialog(ev):
             top = max(0, top)
             right = min(best_img.width, right)
             bottom = min(best_img.height, bottom)
-            cropped = best_img.crop((left, top, right, bottom))
+            try:
+                cropped = best_img.crop((left, top, right, bottom))
+            except Exception:
+                cropped = best_img
 
-            # save cropped/scaled image and set fields
+            # save cropped/scaled image and set fields (preview uses the downsampled crop)
             import tempfile
             tf = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             try:
@@ -1141,12 +1149,15 @@ def open_import_dialog(ev):
             sw, sh = img.size
             cols = sw // tw
             rows = sh // th
-            ensure_dir = stamps_dir if stamps_dir else os.path.join(project_dir, '.stamps')
+            # write imported stamps into an "imported" subfolder under .stamps
+            base_stamps = stamps_dir if stamps_dir else os.path.join(project_dir, '.stamps')
+            ensure_dir = os.path.join(base_stamps, 'imported')
             try:
                 os.makedirs(ensure_dir, exist_ok=True)
             except Exception:
                 pass
             written = 0
+            cropped_tiles = 0
             # iterate over grid and write out tiles; keep logic explicit to avoid nested-try issues
             for r in range(rows):
                 for c in range(cols):
@@ -1184,15 +1195,175 @@ def open_import_dialog(ev):
                         final_tile = tile
                         try:
                             if crop_tiles_cb.value:
-                                tb = tile.getbbox()
+                                # robust bbox detector: supports transparent backgrounds and color tolerance
+                                def tile_bbox(im, tol=16, alpha_thresh=16):
+                                    """Return bounding box (left,top,right,bottom) of content in the tile.
+                                    Handles both images with alpha and opaque images by comparing
+                                    pixel alpha or color distance against corner background.
+                                    """
+                                    w2, h2 = im.size
+                                    px = im.load()
+                                    # detect presence of an alpha channel by sampling corners
+                                    has_alpha = False
+                                    for yy in range(min(4, h2)):
+                                        for xx in range(min(4, w2)):
+                                            try:
+                                                v = px[xx, yy]
+                                                if isinstance(v, tuple) and len(v) > 3:
+                                                    has_alpha = True
+                                                    break
+                                            except Exception:
+                                                pass
+                                        if has_alpha:
+                                            break
+
+                                    if has_alpha:
+                                        top = bottom = left = right = None
+                                        for yy in range(h2):
+                                            row_has = False
+                                            for xx in range(w2):
+                                                try:
+                                                    v = px[xx, yy]
+                                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
+                                                        row_has = True
+                                                        break
+                                                    elif not isinstance(v, tuple):
+                                                        # non-tuple pixel (grayscale) treat as content
+                                                        row_has = True
+                                                        break
+                                                except Exception:
+                                                    pass
+                                            if row_has and top is None:
+                                                top = yy
+                                            if row_has:
+                                                bottom = yy
+                                        for xx in range(w2):
+                                            col_has = False
+                                            for yy in range(h2):
+                                                try:
+                                                    v = px[xx, yy]
+                                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
+                                                        col_has = True
+                                                        break
+                                                    elif not isinstance(v, tuple):
+                                                        col_has = True
+                                                        break
+                                                except Exception:
+                                                    pass
+                                            if col_has and left is None:
+                                                left = xx
+                                            if col_has:
+                                                right = xx
+                                        if top is None:
+                                            return None
+                                        return (left, top, right+1, bottom+1)
+                                    else:
+                                        # opaque image: sample border pixels (top/bottom/left/right) to determine background
+                                        from collections import Counter
+                                        border_samples = []
+                                        # top and bottom rows
+                                        for xx in range(w2):
+                                            try:
+                                                v = px[xx, 0]
+                                                if isinstance(v, tuple):
+                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                                else:
+                                                    border_samples.append((int(v), int(v), int(v)))
+                                            except Exception:
+                                                pass
+                                            try:
+                                                v = px[xx, h2-1]
+                                                if isinstance(v, tuple):
+                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                                else:
+                                                    border_samples.append((int(v), int(v), int(v)))
+                                            except Exception:
+                                                pass
+                                        # left and right columns
+                                        for yy in range(h2):
+                                            try:
+                                                v = px[0, yy]
+                                                if isinstance(v, tuple):
+                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                                else:
+                                                    border_samples.append((int(v), int(v), int(v)))
+                                            except Exception:
+                                                pass
+                                            try:
+                                                v = px[w2-1, yy]
+                                                if isinstance(v, tuple):
+                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                                else:
+                                                    border_samples.append((int(v), int(v), int(v)))
+                                            except Exception:
+                                                pass
+                                        if border_samples:
+                                            bgc = Counter(border_samples).most_common(1)[0][0]
+                                        else:
+                                            bgc = (255, 255, 255)
+
+                                        def color_diff_sq(a, b):
+                                            return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
+
+                                        top = bottom = left = right = None
+                                        for yy in range(h2):
+                                            row_has = False
+                                            for xx in range(w2):
+                                                try:
+                                                    v = px[xx, yy]
+                                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
+                                                    if color_diff_sq(col, bgc) > (tol * tol):
+                                                        row_has = True
+                                                        break
+                                                except Exception:
+                                                    pass
+                                            if row_has and top is None:
+                                                top = yy
+                                            if row_has:
+                                                bottom = yy
+                                        for xx in range(w2):
+                                            col_has = False
+                                            for yy in range(h2):
+                                                try:
+                                                    v = px[xx, yy]
+                                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
+                                                    if color_diff_sq(col, bgc) > (tol * tol):
+                                                        col_has = True
+                                                        break
+                                                except Exception:
+                                                    pass
+                                            if col_has and left is None:
+                                                left = xx
+                                            if col_has:
+                                                right = xx
+                                        if top is None:
+                                            return None
+                                        return (left, top, right+1, bottom+1)
+
+                                tb = None
+                                try:
+                                    tb = tile_bbox(tile, tol=20, alpha_thresh=16)
+                                except Exception:
+                                    tb = None
                                 if tb:
-                                    final_tile = tile.crop(tb)
+                                    try:
+                                        logger.debug(f"Import: cropping tile r={r} c={c} box={tb}")
+                                    except Exception:
+                                        pass
+                                    try:
+                                        # ensure integer box values and clamp
+                                        l, t, rgt, btm = (int(tb[0]), int(tb[1]), int(tb[2]), int(tb[3]))
+                                        l = max(0, l); t = max(0, t); rgt = min(tile.width, rgt); btm = min(tile.height, btm)
+                                        final_tile = tile.crop((l, t, rgt, btm))
+                                        cropped_tiles += 1
+                                    except Exception:
+                                        final_tile = tile
                                     if transparent_bg_cb.value:
                                         try:
                                             from collections import Counter
-                                            w2, h2 = final_tile.size
+                                            w3, h3 = final_tile.size
                                             corners = []
-                                            for (cx, cy) in [(0,0),(w2-1,0),(0,h2-1),(w2-1,h2-1)]:
+                                            for (cx, cy) in [(0,0),(w3-1,0),(0,h3-1),(w3-1,h3-1)]:
                                                 try:
                                                     corners.append(tuple(int(v) for v in final_tile.getpixel((cx, cy))))
                                                 except Exception:
@@ -1257,12 +1428,16 @@ def open_import_dialog(ev):
                     for fn in os.listdir(stamps_dir):
                         if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
                             new_files.append(os.path.join('.stamps', fn))
-                if saved_dir:
-                    sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
-                    for fn in os.listdir(sd):
-                        if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                            if fn not in [os.path.basename(f) for f in new_files]:
-                                new_files.append(fn)
+                # try to find a saved_icons folder in the project as a safe fallback
+                try:
+                    sd_dir = os.path.join(project_dir, 'saved_icons')
+                    if os.path.isdir(sd_dir):
+                        for fn in os.listdir(sd_dir):
+                            if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                                if fn not in [os.path.basename(f) for f in new_files]:
+                                    new_files.append(fn)
+                except Exception:
+                    pass
                 # rebuild mapping
                 dropdown.options.clear()
                 option_map.clear()

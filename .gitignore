@@ -61,3 +61,6 @@ ui_state.json
 waveform_cache.json
 
 docs/site/
+
+# imported/generated stamp files (do not commit)
+.stamps/imported/
