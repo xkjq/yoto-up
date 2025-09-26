@@ -176,7 +176,6 @@ def main(page):
         state = {
             "concurrency": concurrency.value,
             "strip_leading": strip_leading_checkbox.value,
-            "normalize": normalize_checkbox.value,
             "intro_outro_side": intro_outro_side.value,
             "intro_outro_seconds": intro_seconds.value,
             "intro_outro_threshold": similarity_threshold.value,
@@ -195,7 +194,6 @@ def main(page):
                 state = json.load(f)
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
-            normalize_checkbox.value = state.get("normalize", normalize_checkbox.value)
             intro_outro_side.value = state.get("intro_outro_side", intro_outro_side.value)
             intro_seconds.value = state.get("intro_outro_seconds", intro_seconds.value)
             similarity_threshold.value = state.get("intro_outro_threshold", similarity_threshold.value)
@@ -287,12 +285,6 @@ def main(page):
         label='Strip leading track numbers',
         value=True,
         tooltip="Remove common leading track number prefixes from filenames (e.g. '01 - ', '1. ', '01)', '001_')",
-        on_change=lambda e: save_ui_state(),
-    )
-    normalize_checkbox = ft.Checkbox(
-        label='Normalize audio (loudness)',
-        value=False,
-        tooltip="Apply loudness normalization (server-side if supported).",
         on_change=lambda e: save_ui_state(),
     )
     intro_outro_side = ft.Dropdown(
@@ -568,7 +560,6 @@ def main(page):
         'existing_card_map': existing_card_map,
     # store the control so the upload task can read current value at start
     'strip_leading_track_numbers_control': strip_leading_checkbox,
-    'normalize_audio_control': normalize_checkbox,
     'intro_outro_side_control': intro_outro_side,
     'intro_outro_seconds_control': intro_seconds,
     'intro_outro_threshold_control': similarity_threshold,
@@ -587,10 +578,6 @@ def main(page):
             ctx['strip_leading_track_numbers'] = bool(strip_leading_checkbox.value)
         except Exception:
             ctx['strip_leading_track_numbers'] = True
-        try:
-            ctx['normalize_audio'] = bool(normalize_checkbox.value)
-        except Exception:
-            ctx['normalize_audio'] = False
         # intro/outro analysis is manual via the Analyze dialog; no automatic flag
         try:
             ctx['intro_outro_side'] = str(intro_outro_side.value or 'intro')
@@ -1385,7 +1372,6 @@ def main(page):
         ft.Row([
             concurrency,
             strip_leading_checkbox,
-            normalize_checkbox,
             upload_mode_dropdown  # Add the new dropdown here
         ]),
         ft.Row([
