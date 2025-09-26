@@ -12,9 +12,12 @@ authors = [ { name = "xkjq" } ]
 keywords = ["yoto","desktop","flet"]
 license = { text = "MIT" }
 
-# Runtime dependencies used by the GUI app. Adjust versions as required.
+# Runtime dependencies used by the GUI app. We keep a small common set here
+# and expose optional extras for target-specific heavy packages. This allows
+# installing only the dependencies needed for the chosen Flet target (desktop
+# or web) and avoids pulling native/audio packages into the web build.
 dependencies = [
-  "flet[desktop]",
+  "flet",
   "httpx>=0.24.0",
   "loguru>=0.7.0",
   "rich>=12.0.0",
@@ -27,6 +30,12 @@ dependencies = [
   "mutagen>=1.45.1",
   "textual>=0.2.0",
   "pynput>=1.7.3",
+]
+
+[project.optional-dependencies]
+# Desktop target: full feature set (audio libs, numpy, plotting)
+desktop = [
+  "flet[desktop]",
   "numpy>=1.25",
   "matplotlib>=3.7",
   "pydub>=0.25",
@@ -34,7 +43,12 @@ dependencies = [
   "pyloudnorm>=0.1",
 ]
 
-[project.optional-dependencies]
+# Web target: keep minimal/browser-compatible deps. Avoid native audio and
+# heavy scientific packages which are not compatible with the browser runtime.
+web = [
+  "flet[web]",
+]
+
 # additional extras for docs/build or dev
 docs = ["mkdocs-material", "pymdown-extensions"]
 
