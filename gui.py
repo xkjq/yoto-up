@@ -46,6 +46,8 @@ except Exception:
     _simpleaudio = None
     HAS_SIMPLEAUDIO = False
 
+INTRO_OUTRO_DIALOG = None
+
 # Simple single-instance HTTP server to serve preview files from .tmp_trim/previews
 _preview_server = None
 _preview_server_base = None
@@ -946,7 +948,7 @@ def main(page):
             except Exception:
                 score = 0.0
             score_label = f"{score * 100:.2f}%"
-            cb = ft.Checkbox(label=f"{p} (score={score_label})", value=(score >= float(dialog_controls.get('window_min_files').value or 0.75)))
+            cb = ft.Checkbox(label=f"{p.split('/')[-1]} (score={score_label})", value=(score >= float(dialog_controls.get('window_min_files').value or 0.75)), tooltip=f"Include this file in trimming: {p}")
             checkbox_map[p] = cb
 
             # Preview button: extract the matched segment into a temp file and play it
@@ -954,15 +956,22 @@ def main(page):
 
             def make_preview_handler(path, preview_button, seg_seconds, side_label):
                 def _on_preview(ev=None):
+                    logger.debug(f"Previewing {side_label} segment for {path}")
                     try:
                         preview_button.disabled = True
                         page.update()
                     except Exception:
                         pass
 
+                    def open_intro_outro_dialog(ev=None):
+                        logger.debug(f"TEST")
+                        global INTRO_OUTRO_DIALOG
+                        logger.debug(f"open_intro_outro_dialog: reopening dialog: {INTRO_OUTRO_DIALOG}")
+                        page.open(INTRO_OUTRO_DIALOG)
+
                     # Create a preview dialog so the user sees progress while we extract
                     preview_content = ft.Column([ft.Row([ft.ProgressRing(), ft.Text('Preparing preview...')], alignment=ft.MainAxisAlignment.CENTER)], scroll=ft.ScrollMode.AUTO)
-                    preview_dlg = ft.AlertDialog(title=ft.Text('Preview'), content=preview_content, actions=[ft.TextButton('Close', on_click=lambda e: page.close(preview_dlg))], modal=True)
+                    preview_dlg = ft.AlertDialog(title=ft.Text('Preview'), content=preview_content, actions=[ft.TextButton('Close', on_click=lambda e: open_intro_outro_dialog(e))], modal=True)
                     try:
                         page.open(preview_dlg)
                         page.update()
@@ -1081,9 +1090,9 @@ def main(page):
                                     items.append(ft.Text(str(Path(display_target).resolve()), size=12))
                                 except Exception:
                                     pass
-                                items.append(ft.TextButton('Close', on_click=lambda e: page.close(result_dlg)))
+                               
                                 content = ft.Column(items, scroll=ft.ScrollMode.AUTO)
-                                return ft.AlertDialog(title=ft.Text('Preview'), content=content, actions=[items[-1]], modal=True)
+                                return ft.AlertDialog(title=ft.Text('Preview'), content=content, actions=[ ft.TextButton('Close', on_click=lambda e: open_intro_outro_dialog(e))], modal=True)
 
                             try:
                                 result_dlg = make_result_dialog(wav_ok)
@@ -1352,6 +1361,8 @@ def main(page):
             actions=[run_btn, trim_btn, close_btn],
         )
         # expose dlg to inner closures
+        global INTRO_OUTRO_DIALOG
+        INTRO_OUTRO_DIALOG = dlg
         page.open(dlg)
         page.update()
 
