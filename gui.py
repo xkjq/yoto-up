@@ -128,31 +128,6 @@ To authenticate with your Yoto account:
 3. Enter the code and complete the authentication process.
 """
 
-# use utils_mod.find_audio_files when needed
-
-
-#class FileRow(ft.Row):
-#    def __init__(self, filename: str):
-#        super().__init__()
-#        self.filename = filename
-#        pr = ft.ProgressBar(width=300, visible=False)
-#        status = ft.Text("Queued")
-#        def on_preview_click(e=None):
-#            import webbrowser
-#            # Use file:// URI for local files
-#            path = os.path.abspath(filename)
-#            url = f"file://{path}"
-#            try:
-#                webbrowser.open(url)
-#            except Exception as ex:
-#                print(f"[Preview] Failed to open {url}: {ex}")
-#        preview_btn = ft.TextButton("Preview", on_click=on_preview_click, tooltip="Play this audio file before upload")
-#        self.controls = [ft.Text(filename, width=300), preview_btn, pr, status]
-#        try:
-#            setattr(self, 'filename', filename)
-#        except Exception:
-#            pass
-
 
 def main(page):
 
@@ -214,7 +189,7 @@ def main(page):
         except Exception as e:
             print(f"[ui_state] Failed to save: {e}")
 
-    def load_ui_state(playleists_ui):
+    def load_ui_state(playlists_ui):
         try:
             with open(UI_STATE_FILE, "r") as f:
                 state = json.load(f)
@@ -1337,40 +1312,25 @@ def main(page):
             pass
 
     def open_analysis_dialog(e=None):
-        # Build dialog controls (local to this dialog)
+        # Build a simplified dialog focused on the new per-window analyzer.
         d_side = ft.Dropdown(label='Side', value='intro', options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')], width=120)
-        d_seconds = ft.TextField(label='Segment seconds', value='10.0', width=100)
-        d_thresh = ft.TextField(label='Similarity threshold', value='0.75', width=100)
-        # Small padding to keep at the start when trimming so we don't cut too aggressively
-        d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
-        d_fast = ft.Checkbox(label='Fast mode (lower quality, faster)', value=True)
-        d_refine = ft.Checkbox(label='Refine with DTW (slower, stricter)', value=False)
-        d_dtw_thresh = ft.TextField(label='DTW similarity threshold', value='0.5', width=100)
-        # New controls: per-frame agreement tuning
-        d_frame_agree = ft.TextField(label='Frame agreement fraction', value='0.70', width=120)
-        d_min_files_frame = ft.TextField(label='Min files meeting frame agreement', value='0.75', width=120)
-        # Windowed analysis controls (sub-second precision)
-        d_window_seconds = ft.TextField(label='Window seconds', value='0.25', width=120)
         d_max_seconds = ft.TextField(label='Max inspect seconds', value='10.0', width=120)
+        d_window_seconds = ft.TextField(label='Window seconds', value='0.25', width=120)
         d_window_similarity = ft.TextField(label='Window similarity threshold', value='0.95', width=120)
         d_window_min_files = ft.TextField(label='Min files fraction', value='0.75', width=120)
-        # Editable computed removal so user can override before trimming
+        d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
+        d_fast = ft.Checkbox(label='Fast mode (lower quality, faster)', value=True)
         d_computed_removal = ft.TextField(label='Computed removal (s)', value='0.00', width=120)
         d_confirm_removal = ft.Checkbox(label='Confirm removal', value=False)
         content_column = ft.Column([], scroll=ft.ScrollMode.AUTO)
 
         def on_run(ev=None):
-            # Kick off analysis inside the dialog — run the coroutine in a thread
             dlg_controls = {
                 'intro_outro_side': d_side,
-                'intro_seconds': d_seconds,
-                'similarity_threshold': d_thresh,
+                'intro_seconds': d_max_seconds,
+                'similarity_threshold': d_window_similarity,
                 'padding_seconds': d_padding,
                 'fast_mode': d_fast,
-                'refine_with_dtw': d_refine,
-                'dtw_threshold': d_dtw_thresh,
-                'frame_agreement_fraction': d_frame_agree,
-                'min_files_frame_fraction': d_min_files_frame,
                 'window_seconds': d_window_seconds,
                 'max_seconds_window': d_max_seconds,
                 'window_similarity': d_window_similarity,
@@ -1390,89 +1350,19 @@ def main(page):
             threading.Thread(target=_runner, daemon=True).start()
 
         run_btn = ft.ElevatedButton('Run analysis', on_click=on_run)
-        # Windowed analysis runner
-        def on_run_window(ev=None):
-            dlg_controls = {
-                'window_seconds': d_window_seconds,
-                'max_seconds_window': d_max_seconds,
-                'window_similarity': d_window_similarity,
-                'window_min_files': d_window_min_files,
-                'content_column': content_column,
-            }
-
-            def _runner():
-                try:
-                    # import here to avoid circular top-level imports
-                    from yoto_app.intro_outro import per_window_common_prefix
-                    # collect paths from current queued files
-                    paths = [getattr(row, 'filename', None) or getattr(getattr(row, '_fileuploadrow', None), 'original_filepath', None) for row in file_rows_column.controls]
-                    paths = [p for p in paths if p]
-                    if not paths:
-                        show_snack('No files in queue to analyze', error=False)
-                        return
-                    try:
-                        ws = float(getattr(dlg_controls['window_seconds'], 'value', 0.25))
-                    except Exception:
-                        ws = 0.25
-                    try:
-                        mx = float(getattr(dlg_controls['max_seconds_window'], 'value', 10.0))
-                    except Exception:
-                        mx = 10.0
-                    try:
-                        sim = float(getattr(dlg_controls['window_similarity'], 'value', 0.95))
-                    except Exception:
-                        sim = 0.95
-                    try:
-                        mf = float(getattr(dlg_controls['window_min_files'], 'value', 0.75))
-                    except Exception:
-                        mf = 0.75
-
-                    content_column.controls.clear()
-                    content_column.controls.append(ft.Text('Running windowed analysis...'))
-                    page.update()
-
-                    res = per_window_common_prefix(paths=paths, side=getattr(d_side, 'value', 'intro'), max_seconds=mx, window_seconds=ws, sr=11025 if getattr(d_fast, 'value', True) else 22050, n_mfcc=13, similarity_threshold=sim, min_files_fraction=mf)
-
-                    # show summary and add Open Trace button
-                    content_column.controls.clear()
-                    content_column.controls.append(ft.Text(f"Matched seconds: {res.get('seconds_matched', 0.0):.2f} (windows: {res.get('windows_matched',0)})"))
-                    content_column.controls.append(ft.Text(f"Per-window fractions: {res.get('per_window_frac', [])}"))
-
-                    def _open_trace(e=None):
-                        try:
-                            import webbrowser
-                            p = Path('.tmp_trim/previews') / 'per_window_trace.json'
-                            if p.exists():
-                                webbrowser.open(p.resolve().as_uri())
-                            else:
-                                show_snack('Trace not found', error=True)
-                        except Exception as ex:
-                            show_snack(f'Failed to open trace: {ex}', error=True)
-
-                    content_column.controls.append(ft.TextButton('Open trace', on_click=_open_trace))
-                    page.update()
-                except Exception as ex:
-                    show_snack(f'Windowed analysis failed: {ex}', error=True)
-
-            threading.Thread(target=_runner, daemon=True).start()
-
-        run_window_btn = ft.ElevatedButton('Run windowed analysis', on_click=on_run_window)
-        # Trim action placed as a dialog action, initially disabled until analysis finds matches
         trim_btn = ft.ElevatedButton('Trim selected', disabled=True)
         close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
 
         dlg = ft.AlertDialog(
             title=ft.Text('Analyze intro/outro'),
             content=ft.Column([
-                ft.Row([d_side, d_seconds, d_thresh, d_padding, d_fast]),
-                ft.Row([d_refine, d_dtw_thresh, d_computed_removal]),
-                ft.Row([d_frame_agree, d_min_files_frame]),
-                ft.Row([d_window_seconds, d_max_seconds, d_window_similarity, d_window_min_files]),
-                ft.Row([d_confirm_removal]),
+                ft.Row([d_side, d_max_seconds, d_padding, d_fast]),
+                ft.Row([d_window_seconds, d_window_similarity, d_window_min_files]),
+                ft.Row([d_computed_removal, d_confirm_removal]),
                 ft.Divider(),
                 content_column
             ], scroll=ft.ScrollMode.AUTO),
-            actions=[run_btn, run_window_btn, trim_btn, close_btn],
+            actions=[run_btn, trim_btn, close_btn],
         )
         # expose dlg to inner closures
         page.open(dlg)
