@@ -29,12 +29,23 @@ def open_image_stamp_dialog(editor, e):
     preview = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
     preview_applied = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
 
-    # gather file list
+    # gather file list (include .stamps/imported)
     try:
         if stamps_dir and os.path.isdir(stamps_dir):
             for fn in os.listdir(stamps_dir):
                 if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
                     files.append(os.path.join('.stamps', fn))
+            # include imported subfolder contents (if present)
+            try:
+                imported_dir = os.path.join(stamps_dir, 'imported')
+                if os.path.isdir(imported_dir):
+                    for fn in os.listdir(imported_dir):
+                        if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                            rel = os.path.join('.stamps', 'imported', fn)
+                            if rel not in files:
+                                files.append(rel)
+            except Exception:
+                pass
     except Exception:
         pass
     try:
@@ -56,11 +67,15 @@ def open_image_stamp_dialog(editor, e):
             page.open(dlg)
         return
 
-    # build dropdown
+    # build dropdown (labels mark imported vs stamps)
     dropdown_options = []
     option_map = {}
     for f in files:
-        if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
+        fstr = str(f)
+        if fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported'):
+            label = f"[imported] {os.path.basename(f)}"
+            value = f
+        elif fstr.startswith('.stamps' + os.sep) or fstr.startswith('.stamps/'):
             label = f"[stamps] {os.path.basename(f)}"
             value = f
         else:
@@ -93,7 +108,7 @@ def open_image_stamp_dialog(editor, e):
 
         
 
-    def build_stamp_grid():
+    def build_stamp_grid(filter_by=None):
         try:
             stamp_grid.controls.clear()
         except Exception:
@@ -102,10 +117,28 @@ def open_image_stamp_dialog(editor, e):
         per_row = 6
         row = []
         for f in files:
+            # apply gallery filter if requested
+            try:
+                if filter_by and filter_by != 'All':
+                    fstr = str(f)
+                    if filter_by == 'Imported' and not (fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported')):
+                        continue
+                    if filter_by == 'Stamps' and (fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported')):
+                        # skip imported when only showing stamps
+                        continue
+                    if filter_by == 'Saved' and (fstr.startswith('.stamps' + os.sep) or fstr.startswith('.stamps/')):
+                        # skip central .stamps when showing saved
+                        continue
+            except Exception:
+                pass
             try:
                 if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
                     p = os.path.join(project_dir, f)
-                    label = f"[stamps] {os.path.basename(f)}"
+                    # label will show imported when inside imported folder
+                    if str(f).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(f).startswith('.stamps/imported'):
+                        label = f"[imported] {os.path.basename(f)}"
+                    else:
+                        label = f"[stamps] {os.path.basename(f)}"
                 else:
                     label = os.path.basename(f)
                     p = os.path.join(str(saved_dir), f) if saved_dir and not os.path.isabs(f) else f
@@ -179,8 +212,17 @@ def open_image_stamp_dialog(editor, e):
         try:
             nonlocal gallery_dialog
             page_local = ev.page if hasattr(ev, 'page') else None
-            build_stamp_grid()
-            gallery_content = ft.Column([stamp_grid], spacing=8, width=420)
+            # filter dropdown for gallery: All / Imported / Stamps / Saved
+            filter_dropdown = ft.Dropdown(label="Filter", value='All', width=160, options=[ft.dropdown.Option(o) for o in ['All','Imported','Stamps','Saved']])
+            def on_filter_change(ev_filter):
+                try:
+                    build_stamp_grid(filter_dropdown.value)
+                except Exception:
+                    pass
+            filter_dropdown.on_change = on_filter_change
+            # initial build with current filter
+            build_stamp_grid(filter_dropdown.value)
+            gallery_content = ft.Column([ft.Row([ft.Text('Filter:'), filter_dropdown]), stamp_grid], spacing=8, width=420)
             dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: page_local.close(dlg_gallery))], open=False)
             try:
                 dlg_gallery._origin_page = page_local
