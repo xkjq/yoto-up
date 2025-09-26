@@ -20,18 +20,8 @@ Notes / limitations:
 """
 
 from typing import List, Tuple, Dict, Union
-from pydub import AudioSegment
 import os
 import numpy as np
-
-# Delegate analysis helpers to the new module (import with aliases to avoid
-# name shadowing with local stubs).
-from .analysis import (
-    per_window_common_prefix as _analysis_per_window_common_prefix,
-    per_second_common_prefix as _analysis_per_second_common_prefix,
-    _compute_mfcc_sequence as _analysis_compute_mfcc_sequence,
-    _dtw_prefix_similarity as _analysis_dtw_prefix_similarity,
-)
 
 
 def analyze_files(
@@ -126,7 +116,17 @@ def per_second_common_prefix(
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
 ) -> Dict[str, object]:
-    # Delegate to the analysis module's per-second (1s window) implementation.
+    # Lazy import to avoid import-time failures when analysis deps are not present
+    try:
+        from .analysis import per_second_common_prefix as _analysis_per_second_common_prefix
+    except Exception as e:
+        # Analysis unavailable; return a conservative no-match result
+        return {
+            'seconds_matched': 0.0,
+            'per_second_sim': [],
+            'per_file_per_second': {},
+            'max_seconds': int(max_seconds),
+        }
     return _analysis_per_second_common_prefix(paths=paths, side=side, max_seconds=max_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
 
 
@@ -140,16 +140,34 @@ def per_window_common_prefix(
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
 ) -> Dict[str, object]:
-    # Delegate to the analysis module implementation.
+    # Lazy import to avoid import-time failures when analysis deps are not present
+    try:
+        from .analysis import per_window_common_prefix as _analysis_per_window_common_prefix
+    except Exception:
+        return {
+            'seconds_matched': 0.0,
+            'windows_matched': 0,
+            'per_window_frac': [],
+            'per_file_per_window': {},
+            'max_seconds': float(max_seconds),
+            'window_seconds': float(window_seconds),
+        }
     return _analysis_per_window_common_prefix(paths=paths, side=side, max_seconds=max_seconds, window_seconds=window_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
 
 
 def _compute_mfcc_sequence(path: str, side: str, seconds: float, sr: int = 22050, n_mfcc: int = 20, n_fft: int = 2048, hop_length: int = 512) -> np.ndarray:
-    # Re-export the helper from the analysis module for backward compatibility.
+    try:
+        from .analysis import _compute_mfcc_sequence as _analysis_compute_mfcc_sequence
+    except Exception:
+        raise RuntimeError("analysis helpers unavailable")
     return _analysis_compute_mfcc_sequence(path=path, side=side, seconds=seconds, sr=sr, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length)
 
 
 def _dtw_prefix_similarity(a_path: str, b_path: str, side: str, max_seconds: float, sr: int = 22050, n_mfcc: int = 20, hop_length: int = 512, step_seconds: float = 0.25, dtw_threshold: float = 0.5) -> tuple:
+    try:
+        from .analysis import _dtw_prefix_similarity as _analysis_dtw_prefix_similarity
+    except Exception:
+        raise RuntimeError("analysis DTW helper unavailable")
     return _analysis_dtw_prefix_similarity(a_path=a_path, b_path=b_path, side=side, max_seconds=max_seconds, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length, step_seconds=step_seconds, dtw_threshold=dtw_threshold)
 
 def common_prefix_duration(*args, **kwargs):
@@ -176,6 +194,10 @@ def trim_audio_file(
     Saves trimmed file to `dest_path`. Uses pydub which preserves format if the
     destination extension is set accordingly.
     """
+    try:
+        from pydub import AudioSegment
+    except Exception:
+        raise RuntimeError("pydub not available: trimming is unavailable")
     audio = AudioSegment.from_file(src_path)
     start_ms = int(remove_intro_seconds * 1000)
     end_ms = int(remove_outro_seconds * 1000)
