@@ -51,6 +51,10 @@ class PixelArtEditor:
         self._drag_painting = False
         # track ctrl key pressed state
         self._ctrl_down = False
+        # internal state defaults
+        self._mouse_down = False
+        self._original_pixels = None
+        self._palette_backup = None
         # Defer heavy UI construction until the editor is actually shown or used
         self._built = False
 
