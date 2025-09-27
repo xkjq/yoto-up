@@ -70,3 +70,55 @@ def load_icon_as_pixels(path, size=16):
                 row.append('#{:02X}{:02X}{:02X}{:02X}'.format(r, g, b, a))
         pixels.append(row)
     return pixels
+
+
+def path_is_official(path) -> bool:
+    """Return True if the given path (str or Path) points to the official Yoto icon cache.
+
+    Accepts pathlib.Path or str. Handles absolute and relative paths and checks both the
+    configured YOTO_ICON_CACHE_DIR and any path parts containing '.yoto_icon_cache'.
+    """
+    try:
+        p = Path(path)
+    except Exception:
+        return False
+    # If configured cache dir is available, check containment
+    try:
+        if YOTO_ICON_CACHE_DIR and str(p).startswith(str(YOTO_ICON_CACHE_DIR)):
+            return True
+    except Exception:
+        pass
+    # Fallback: check for path part name
+    try:
+        return any(part == '.yoto_icon_cache' for part in p.parts)
+    except Exception:
+        return False
+
+
+def path_is_yotoicons(path) -> bool:
+    """Return True if the given path (str or Path) points to the YotoIcons cache."""
+    try:
+        p = Path(path)
+    except Exception:
+        return False
+    try:
+        if YOTOICONS_CACHE_DIR and str(p).startswith(str(YOTOICONS_CACHE_DIR)):
+            return True
+    except Exception:
+        pass
+    try:
+        return any(part == '.yotoicons_cache' for part in p.parts)
+    except Exception:
+        return False
+
+
+def source_label_for_path(path) -> str:
+    """Return a human-friendly source label for a path: 'Official cache', 'YotoIcons', or 'Local'."""
+    try:
+        if path_is_official(path):
+            return 'Official cache'
+        if path_is_yotoicons(path):
+            return 'YotoIcons'
+    except Exception:
+        pass
+    return 'Local'

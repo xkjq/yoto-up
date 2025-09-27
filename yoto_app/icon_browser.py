@@ -12,7 +12,24 @@ from loguru import logger
 from PIL import Image as PILImage
 from yoto_app.pixel_art_editor import PixelArtEditor
 
-from .icon_import_helpers import load_cached_icons, YOTO_METADATA_FILE, USER_METADATA_FILE, YOTOICONS_CACHE_DIR, YOTOICONS_METADATA_GLOBAL
+import base64
+
+from .icon_import_helpers import (
+    load_cached_icons,
+    YOTO_METADATA_FILE,
+    USER_METADATA_FILE,
+    YOTOICONS_CACHE_DIR,
+    YOTOICONS_METADATA_GLOBAL,
+    path_is_official,
+    path_is_yotoicons,
+    source_label_for_path,
+)
+
+def get_base64_from_path(path: Path) -> str:
+    with path.open('rb') as f:
+        data = f.read()
+        img_data = base64.b64encode(data).decode('utf-8')
+    return img_data
 
 
 def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable, show_snack: Callable):
@@ -106,8 +123,9 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 _meta_by_hash_source[h] = 'Official cache'
                             except Exception:
                                 pass
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.exception(f"Error loading official metadata: {ex}")
+                    
             if user_meta.exists():
                 try:
                     metas = json.loads(user_meta.read_text(encoding='utf-8') or '[]')
@@ -127,8 +145,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 _meta_by_hash_source[h] = 'Official cache'
                             except Exception:
                                 pass
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.exception(f"Error loading official metadata: {ex}")
             # yotoicons cache
             yotoicons_dir = Path('.yotoicons_cache')
             global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
@@ -151,8 +169,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 _meta_by_hash_source[h] = 'YotoIcons'
                             except Exception:
                                 pass
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.exception(f"Error loading YotoIcons metadata: {ex}")
             for mf in yotoicons_dir.glob('*_metadata.json'):
                 if mf.name == global_meta.name:
                     continue
@@ -174,10 +192,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 _meta_by_hash_source[h] = 'YotoIcons'
                             except Exception:
                                 pass
-                except Exception:
+                except Exception as ex:
+                    logger.exception(f"Error loading YotoIcons metadata: {ex}")
                     continue
-        except Exception:
-            pass
+        except Exception as ex:
+            logger.exception(f"Error loading YotoIcons metadata: {ex}")
         _meta_loaded = True
 
     def build_index():
@@ -219,18 +238,12 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     meta = None
                     src = None
                 # if no explicit source from metadata maps, infer from the path
-                # TODO: rework for full Path objects
                 if not src:
-                    if p.startswith('.yoto_icon_cache') or p.startswith('./.yoto_icon_cache'):
-                        src = 'Official cache'
-                    elif p.startswith('.yotoicons_cache') or p.startswith('./.yotoicons_cache'):
-                        src = 'YotoIcons'
-                    else:
-                        src = 'Local'
+                    src = source_label_for_path(p)
                 _meta_map[p] = meta
                 _meta_source[p] = src
 
-                name = os.path.basename(p).lower()
+                name = os.path.basename(str(p)).lower()
                 cand = [name]
                 if meta:
                     if meta.get('title'):
@@ -320,8 +333,12 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     continue
             for m in metas:
                 cp = m.get('cache_path') or m.get('cachePath')
-                if cp and Path(cp).name == pth.name:
-                    return m, 'YotoIcons'
+                if cp:
+                    try:
+                        if Path(cp).name == pth.name:
+                            return m, 'YotoIcons'
+                    except Exception:
+                        pass
                 img_url = m.get('img_url') or m.get('imgUrl')
                 if img_url:
                     try:
@@ -358,8 +375,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         logger.debug(f"show_icon_details: {path}")
         try:
             src = path
-            name = os.path.basename(path)
-            src_label = "Official cache" if path.startswith('.yoto_icon_cache') else ('YotoIcons' if path.startswith('.yotoicons_cache') else 'Local')
+            name = os.path.basename(str(path))
+            src_label = source_label_for_path(path)
 
             # lookup metadata from in-memory index if available (fast), fallback to file lookup
             meta = _meta_map.get(path)
@@ -369,7 +386,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
             # show a larger preview above the smaller one for better inspection
             try:
-                abs_path = src if os.path.isabs(src) else os.path.abspath(src)
+                try:
+                    pp = Path(src)
+                    abs_path = str(pp) if pp.is_absolute() else str(pp.resolve())
+                except Exception:
+                    abs_path = src
             except Exception:
                 abs_path = src
             # try to scale the large preview while preserving aspect ratio (upscale if small, downscale if huge)
@@ -389,11 +410,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         new_w, new_h = (min(160, 160), min(160, 160))
                 else:
                     new_w, new_h = (min(160, 160), min(160, 160))
-                large_preview = ft.Image(src=abs_path, width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
+                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
             except Exception:
                 # final fallback
-                large_preview = ft.Image(src=abs_path, width=160, height=160, fit=ft.ImageFit.CONTAIN)
-            small_preview = ft.Image(src=src, width=16, height=16)
+                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.ImageFit.CONTAIN)
+            small_preview = ft.Image(src_base64=get_base64_from_path(Path(src)), width=16, height=16)
             details_panel.controls.append(large_preview)
             details_panel.controls.append(small_preview)
             # show human-friendly title if available
@@ -544,17 +565,19 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     def render_icons(icons):
         icons_container.controls.clear()
         for path in icons:
+            # Load b64 thumbnail image data for each icon
             try:
-                img = ft.Image(src=path, width=64, height=64)
+
+                img = ft.Image(src_base64=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
                 # attach on_click in the constructor so Flet will register the handler
                 def _on_click(e, p=path):
                     # small debug feedback
                     logger.debug(f"Icon clicked: {p}")
                     show_icon_details(p)
-                btn = ft.Container(content=img, border_radius=6, padding=4, ink=True, on_click=_on_click)
+                btn = ft.Container(content=img, border_radius=6, padding=1, ink=True, on_click=_on_click, border=ft.border.all(1, "#ADACAC"))
                 icons_container.controls.append(btn)
-            except Exception:
-                continue
+            except Exception as ex:
+                logger.exception(f"Failed to load icon {path}: {ex}")
         page.update()
 
     def do_filter():
@@ -572,9 +595,13 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         icons = load_cached_icons()
         filtered = []
         for p in icons:
-            name = p.name
-            is_official = p.startswith('.yoto_icon_cache') or p.startswith('./.yoto_icon_cache')
-            is_yotoicons = p.startswith('.yotoicons_cache') or p.startswith('./.yotoicons_cache')
+            # p is a Path returned by load_cached_icons()
+            try:
+                name = p.name
+            except Exception:
+                name = os.path.basename(str(p))
+            is_official = path_is_official(p)
+            is_yotoicons = path_is_yotoicons(p)
             is_local = not (is_official or is_yotoicons)
 
             if is_official and not include_official:
