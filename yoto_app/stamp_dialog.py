@@ -892,102 +892,122 @@ def open_image_stamp_dialog(editor, e):
             pass
 
     def delete_selected_sheet(ev):
-        try:
-            v = dropdown.value
-            if not v:
-                status.value = "No file selected"
-                status.update()
-                return
-            mapped = option_map.get(v, v)
-        except Exception:
-            mapped = v
-
-        if not (str(mapped).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(mapped).startswith('.stamps/imported')):
-            status.value = "Selected file is not an imported stamp"
-            status.update()
-            return
-
-        p = os.path.join(project_dir, mapped)
-        # determine group using same heuristics as import dialog
-        src_name = None
-        pref = None
-        try:
-            if os.path.exists(p) and p.lower().endswith('.json'):
-                with open(p, 'r', encoding='utf-8') as fh:
-                    obj = json.load(fh)
-                if isinstance(obj, dict):
-                    meta = obj.get('metadata') or {}
-                    src_name = meta.get('source')
-                    nm = meta.get('name')
-                    if not src_name and isinstance(nm, str) and '_' in nm:
-                        pref = nm.rsplit('_', 2)[0]
-        except Exception:
-            pass
-
+        # Build a list of imported sheet groups and show a dialog to pick which sheet to delete.
         imported_dir = os.path.join(project_dir, '.stamps', 'imported')
-        candidates = []
+        groups = {}  # key -> {display: str, files: [fullpath]}
         try:
-            for fn2 in os.listdir(imported_dir):
-                if not (fn2.lower().endswith('.json') or fn2.lower().endswith('.png')):
-                    continue
-                full2 = os.path.join(imported_dir, fn2)
-                if src_name:
-                    try:
-                        if fn2.lower().endswith('.json'):
-                            with open(full2, 'r', encoding='utf-8') as fh2:
-                                obj2 = json.load(fh2)
-                            meta2 = obj2.get('metadata') or {}
-                            if meta2.get('source') == src_name:
-                                candidates.append(full2)
-                    except Exception:
-                        pass
-                elif pref:
-                    if fn2.startswith(pref + '_'):
-                        candidates.append(full2)
-                else:
-                    try:
-                        base = os.path.splitext(os.path.basename(p))[0]
-                        if fn2.startswith(base.rsplit('_', 2)[0] + '_'):
-                            candidates.append(full2)
-                    except Exception:
-                        pass
+            if os.path.isdir(imported_dir):
+                for fn in os.listdir(imported_dir):
+                    if not (fn.lower().endswith('.json') or fn.lower().endswith('.png')):
+                        continue
+                    full = os.path.join(imported_dir, fn)
+                    key = None
+                    display = None
+                    # try metadata.source for json files
+                    if fn.lower().endswith('.json'):
+                        try:
+                            with open(full, 'r', encoding='utf-8') as fh:
+                                obj = json.load(fh)
+                            if isinstance(obj, dict):
+                                meta = obj.get('metadata') or {}
+                                src = meta.get('source')
+                                name = meta.get('name')
+                                if src:
+                                    key = f"src:{src}"
+                                    display = f"Source: {src}"
+                                elif isinstance(name, str) and '_' in name:
+                                    pref = name.rsplit('_', 2)[0]
+                                    key = f"pref:{pref}"
+                                    display = f"Prefix: {pref}"
+                        except Exception:
+                            pass
+                    # fallback to filename prefix
+                    if key is None:
+                        try:
+                            base = os.path.splitext(fn)[0]
+                            if '_' in base:
+                                pref = base.rsplit('_', 2)[0]
+                                key = f"pref:{pref}"
+                                display = f"Prefix: {pref}"
+                            else:
+                                key = f"pref:{base}"
+                                display = f"Prefix: {base}"
+                        except Exception:
+                            key = f"file:{fn}"
+                            display = fn
+                    g = groups.get(key)
+                    if g is None:
+                        groups[key] = {'display': display or key, 'files': [full]}
+                    else:
+                        g['files'].append(full)
         except Exception:
             pass
 
-        if not candidates:
-            status.value = "No grouped files found for selected sheet"
+        if not groups:
+            status.value = "No imported sheets found"
             status.update()
             return
 
-        def _do_delete(confirm_ev):
+        options = [ft.dropdown.Option(f) for f in [groups[k]['display'] for k in groups.keys()]]
+        # map display -> key
+        display_to_key = {groups[k]['display']: k for k in groups.keys()}
+
+        group_dropdown = ft.Dropdown(label="Imported sheet", options=options, width=320)
+        info = ft.Text("")
+
+        def on_group_change(ev2=None):
             try:
-                for fdel in candidates:
+                disp = group_dropdown.value
+                if not disp:
+                    info.value = ""
+                else:
+                    k = display_to_key.get(disp)
+                    files_list = groups.get(k, {}).get('files', [])
+                    info.value = f"Files: {len(files_list)} — {', '.join([os.path.basename(x) for x in files_list[:6]])}{'...' if len(files_list)>6 else ''}"
+                try:
+                    info.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        group_dropdown.on_change = on_group_change
+
+        def _do_delete_group(ev3):
+            try:
+                disp = group_dropdown.value
+                if not disp:
+                    return
+                k = display_to_key.get(disp)
+                files_list = groups.get(k, {}).get('files', [])
+                for fdel in files_list:
                     try:
                         if os.path.exists(fdel):
                             os.remove(fdel)
                     except Exception:
                         pass
-                # update files list and option_map
+                # update files and option_map
                 try:
-                    for c in list(candidates):
-                        relp = os.path.join('.stamps', 'imported', os.path.basename(c))
+                    for fdel in files_list:
+                        relp = os.path.join('.stamps', 'imported', os.path.basename(fdel))
                         if relp in files:
                             try:
                                 files.remove(relp)
                             except Exception:
                                 pass
+                    keys_to_remove = [k2 for k2, v2 in list(option_map.items()) if v2 and v2 in [os.path.join('.stamps','imported', os.path.basename(x)) for x in files_list]]
+                    for k2 in keys_to_remove:
+                        option_map.pop(k2, None)
                 except Exception:
                     pass
                 try:
-                    keys_to_remove = [k for k, v in list(option_map.items()) if v and v in [os.path.join('.stamps','imported', os.path.basename(x)) for x in candidates]]
-                    for k in keys_to_remove:
-                        option_map.pop(k, None)
-                except Exception:
-                    pass
-                try:
-                    dropdown.options = [ft.dropdown.Option(k) for k in option_map.keys()]
-                    if dropdown.value and option_map.get(dropdown.value, None) in [os.path.join('.stamps','imported', os.path.basename(x)) for x in candidates]:
-                        dropdown.value = None
+                    dropdown.options = [ft.dropdown.Option(k3) for k3 in option_map.keys()]
+                    if dropdown.value and option_map.get(dropdown.value, None) and option_map.get(dropdown.value, None).startswith(os.path.join('.stamps', 'imported')):
+                        # if selected value was deleted, clear it
+                        if option_map.get(dropdown.value, None) not in [os.path.join('.stamps','imported', os.path.basename(x)) for x in files_list]:
+                            pass
+                        else:
+                            dropdown.value = None
                     try:
                         dropdown.update()
                     except Exception:
@@ -999,16 +1019,16 @@ def open_image_stamp_dialog(editor, e):
                 except Exception:
                     pass
             except Exception:
-                logger.exception("Error deleting imported sheet files")
+                logger.exception('Error deleting imported sheet group')
             finally:
                 try:
-                    page.close(confirm_dlg)
+                    page.close(group_dlg)
                 except Exception:
                     pass
 
-        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Text(f"Delete {len(candidates)} files from this imported sheet?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(confirm_dlg)), ft.TextButton("Delete", on_click=_do_delete)], open=False)
+        group_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Column([group_dropdown, info], spacing=8), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(group_dlg)), ft.TextButton("Delete", on_click=_do_delete_group)], open=False)
         try:
-            page.open(confirm_dlg)
+            page.open(group_dlg)
         except Exception:
             pass
 
