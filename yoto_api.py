@@ -126,19 +126,28 @@ class YotoAPI:
     TOKEN_URL = "https://login.yotoplay.com/oauth/token"
     MYO_URL = SERVER_URL + "/content/mine"
     CONTENT_URL = SERVER_URL + "/content"
-    TOKEN_FILE = "tokens.json"
-    CACHE_FILE = ".yoto_api_cache.json"
-    UPLOAD_ICON_CACHE_FILE = ".yoto_icon_upload_cache.json"
+    TOKEN_FILE = Path("tokens.json")
+    CACHE_FILE = Path(".yoto_api_cache.json")
+    UPLOAD_ICON_CACHE_FILE = Path(".yoto_icon_upload_cache.json")
     OFFICIAL_ICON_CACHE_DIR = Path(".yoto_icon_cache")
     YOTOICONS_CACHE_DIR: Path = Path(".yotoicons_cache")
     VERSIONS_DIR: Path = Path(".card_versions")
 
-    def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True):
+    def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True, app_path:Path|None=None):
         self.client_id = client_id
         self.debug = debug
         self.cache_requests = cache_requests
         self.cache_max_age_seconds = cache_max_age_seconds
         self._cache_lock = threading.Lock()
+
+        if app_path is not None:
+            self.TOKEN_FILE = str(app_path / self.TOKEN_FILE)
+            self.CACHE_FILE = str(app_path / self.CACHE_FILE)
+            self.UPLOAD_ICON_CACHE_FILE = str(app_path / self.UPLOAD_ICON_CACHE_FILE)
+            self.OFFICIAL_ICON_CACHE_DIR = app_path / self.OFFICIAL_ICON_CACHE_DIR
+            self.YOTOICONS_CACHE_DIR = app_path / self.YOTOICONS_CACHE_DIR
+            self.VERSIONS_DIR = app_path / self.VERSIONS_DIR
+
         self._request_cache = self._load_cache()
         logger.remove()
         logger.add(lambda msg: print(msg, end=""), level="DEBUG" if debug else "WARNING")

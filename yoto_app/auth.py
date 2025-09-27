@@ -3,7 +3,6 @@ import httpx
 import json
 import os
 import time
-from yoto_api import YotoAPI
 from yoto_app.api_manager import ensure_api
 from loguru import logger
 from yoto_app import config
