@@ -22,7 +22,6 @@ import threading
 # typing imported above
 
 import os
-import sqlite3
 
 import flet as ft
 # NOTE: yoto_app modules import heavy native extensions (nltk, sqlite3, pydub, etc.)
