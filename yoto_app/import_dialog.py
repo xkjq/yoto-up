@@ -8,6 +8,10 @@ from collections import Counter
 import flet as ft
 from loguru import logger
 from PIL import Image
+import subprocess
+import sys
+import platform
+import io as _io
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 stamps_dir = os.path.join(project_dir, '.stamps')
@@ -146,11 +150,13 @@ def open_import_dialog(editor, ev):
         pass
 
     def import_from_clipboard(ev_cb, target=sheet_path_field, status_ctrl=status_import):
+        logger.debug("Importing from clipboard")
         if not page_local:
             status_ctrl.value = "No page available for clipboard"
             status_ctrl.update()
             return
         try:
+            # prefer any page-supplied clipboard first (web flows)
             cb = None
             try:
                 cb = page_local.get_clipboard()
@@ -159,23 +165,130 @@ def open_import_dialog(editor, ev):
                     cb = page_local.clipboard
                 except Exception:
                     cb = None
-            if not cb:
-                status_import.value = "Clipboard empty or unsupported"
-                status_import.update()
-                return
+
+            def _bytes_from_data_uri(s):
+                try:
+                    if isinstance(s, str) and s.startswith('data:image') and 'base64,' in s:
+                        import base64 as _b64
+                        return _b64.b64decode(s.split('base64,', 1)[1])
+                except Exception:
+                    return None
+                return None
+
+            def _try_desktop_clipboard():
+                """Attempt several desktop clipboard methods and return raw PNG bytes or None.
+                Order: Pillow ImageGrab, pyperclip/tkinter text (data-uri), wl-paste/xclip/xsel binaries (raw png).
+                """
+                # 1) Pillow ImageGrab.grabclipboard()
+                try:
+                    from PIL import ImageGrab
+                    grabbed = ImageGrab.grabclipboard()
+                    if grabbed is not None:
+                        # grabbed may be an Image.Image or a list of filenames
+                        if hasattr(grabbed, 'tobytes') or hasattr(grabbed, 'save'):
+                            buf = _io.BytesIO()
+                            try:
+                                grabbed.save(buf, format='PNG')
+                                return buf.getvalue()
+                            except Exception:
+                                pass
+                        elif isinstance(grabbed, (list, tuple)) and grabbed:
+                            # list of filenames
+                            for fn in grabbed:
+                                try:
+                                    with open(fn, 'rb') as fh:
+                                        data = fh.read()
+                                        if data:
+                                            return data
+                                except Exception:
+                                    continue
+                except Exception:
+                    pass
+
+                # 2) try pyperclip/tkinter for textual data URIs
+                try:
+                    import pyperclip
+                    txt = pyperclip.paste()
+                    if txt:
+                        b = _bytes_from_data_uri(txt)
+                        if b:
+                            return b
+                except Exception:
+                    pass
+                try:
+                    import tkinter as _tk
+                    root = _tk.Tk()
+                    root.withdraw()
+                    try:
+                        txt = root.clipboard_get()
+                        b = _bytes_from_data_uri(txt)
+                        if b:
+                            return b
+                    except Exception:
+                        pass
+                    try:
+                        root.destroy()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+                # 3) platform tools (Linux: wl-paste / xclip / xsel)
+                sys_plat = platform.system().lower()
+                if sys_plat == 'linux':
+                    # try wl-paste
+                    try:
+                        p = subprocess.run(['wl-paste', '--no-newline', '--type', 'image/png'], capture_output=True)
+                        if p.returncode == 0 and p.stdout:
+                            return p.stdout
+                    except Exception:
+                        pass
+                    # try xclip
+                    try:
+                        p = subprocess.run(['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], capture_output=True)
+                        if p.returncode == 0 and p.stdout:
+                            return p.stdout
+                    except Exception:
+                        pass
+                    # try xsel
+                    try:
+                        p = subprocess.run(['xsel', '--clipboard', '--output', '--mime-type', 'image/png'], capture_output=True)
+                        if p.returncode == 0 and p.stdout:
+                            return p.stdout
+                    except Exception:
+                        pass
+
+                # 4) give up
+                return None
+
             img_bytes = None
-            if isinstance(cb, (bytes, bytearray)):
-                img_bytes = bytes(cb)
-            elif isinstance(cb, str):
-                if cb.startswith('data:image') and 'base64,' in cb:
-                    import base64
-                    img_bytes = base64.b64decode(cb.split('base64,', 1)[1])
+            # first, if page provided something useful
+            if cb:
+                if isinstance(cb, (bytes, bytearray)):
+                    img_bytes = bytes(cb)
+                elif isinstance(cb, str):
+                    img_bytes = _bytes_from_data_uri(cb)
+                elif isinstance(cb, dict):
+                    # some filepicker shapes may include 'bytes' or 'data'
+                    if 'bytes' in cb and isinstance(cb['bytes'], (bytes, bytearray)):
+                        img_bytes = bytes(cb['bytes'])
+                    elif 'data' in cb and isinstance(cb['data'], str):
+                        img_bytes = _bytes_from_data_uri(cb['data'])
+            # if still empty and we're on desktop, try desktop methods
+            if img_bytes is None:
+                try:
+                    desktop_bytes = _try_desktop_clipboard()
+                    if desktop_bytes:
+                        img_bytes = desktop_bytes
+                except Exception:
+                    img_bytes = None
+
             if not img_bytes:
                 status_ctrl.value = "Clipboard does not contain image bytes"
                 status_ctrl.update()
                 return
-            import io
-            img = Image.open(io.BytesIO(img_bytes)).convert('RGBA')
+
+            img = Image.open(_io.BytesIO(img_bytes)).convert('RGBA')
             import tempfile
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmpf:
                 img.save(tmpf.name)
@@ -586,9 +699,12 @@ def open_import_dialog(editor, ev):
                                     except Exception:
                                         pass
                                     try:
-                                        l, t, rgt, btm = (int(tb[0]), int(tb[1]), int(tb[2]), int(tb[3]))
-                                        l = max(0, l); t = max(0, t); rgt = min(tile.width, rgt); btm = min(tile.height, btm)
-                                        final_tile = tile.crop((l, t, rgt, btm))
+                                        left_px, top_px, right_px, bottom_px = (int(tb[0]), int(tb[1]), int(tb[2]), int(tb[3]))
+                                        left_px = max(0, left_px)
+                                        top_px = max(0, top_px)
+                                        right_px = min(tile.width, right_px)
+                                        bottom_px = min(tile.height, bottom_px)
+                                        final_tile = tile.crop((left_px, top_px, right_px, bottom_px))
                                         cropped_tiles += 1
                                     except Exception:
                                         final_tile = tile
