@@ -18,7 +18,7 @@ from yoto_app.card_details import make_show_card_details
 try:
     from pynput import keyboard
     _PYNPUT_AVAILABLE = True
-except ImportError:
+except Exception: # Broad because pyodide etc may raise weird errors
     _PYNPUT_AVAILABLE = False
 
 import httpx

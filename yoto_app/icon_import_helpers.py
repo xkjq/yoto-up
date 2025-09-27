@@ -4,9 +4,7 @@ from pathlib import Path
 import base64
 import json
 
-STORAGE_DIR = os.getenv("FLET_APP_STORAGE_DATA")
-y = Path(".yoto_icon_cache")
-YOTO_ICON_CACHE_DIR = Path(STORAGE_DIR)/y
+YOTO_ICON_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yoto_icon_cache")
 YOTOICONS_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yotoicons_cache")
 
 YOTO_METADATA_FILE = YOTO_ICON_CACHE_DIR / 'icon_metadata.json'
