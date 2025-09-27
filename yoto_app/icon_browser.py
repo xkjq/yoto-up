@@ -37,7 +37,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     - 'Search YotoIcons' button to trigger online search (uses ensure_api/api_ref)
     """
     # top-level panel: header + row with left (scrollable icons) and right (fixed details)
-    panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD)])
+    panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD),
+                           ft.Button("Refresh Index", on_click=lambda e: build_index())])
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())

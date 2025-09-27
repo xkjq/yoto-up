@@ -48,6 +48,8 @@ except Exception:
 
 INTRO_OUTRO_DIALOG = None
 
+os.environ["FLET_SECRET_KEY"] = os.urandom(12).hex()
+
 # Simple single-instance HTTP server to serve preview files from .tmp_trim/previews
 _preview_server = None
 _preview_server_base = None
@@ -525,6 +527,7 @@ def main(page):
 
 
     def on_pick_result(e: ft.FilePickerResultEvent):
+        logger.debug("[on_pick_result] picked folder")
         if e.files:
             # use the first file's folder as the folder path
             first = e.files[0]
@@ -544,21 +547,58 @@ def main(page):
         page.update()
 
     def on_pick_files_result(e: ft.FilePickerResultEvent):
+        logger.debug("[on_pick_files_result] picked files")
+
+        logger.debug(f"[on_pick_files_result] platform: {e.page.platform}")
+        logger.debug(f"[on_pick_files_result] web: {e.page.web}")
+
         if e.files:
-            for f in e.files:
-                # Add each selected file to the file_rows_column if not already present
-                path = getattr(f, "path", None)
-                if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
-                    try:
-                        file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
-                        file_rows_column.controls.append(file_row.row)
-                    except Exception as _:
-                        raise RuntimeError(f"Failed to create FileUploadRow for {path}")
+            logger.debug(f"[on_pick_result] picked {len(e.files)} files")
+            if e.page.web:
+                logger.debug("[on_pick_files_result] running in web mode")
+                # In web mode, we need to save the files to a temp directory
+                temp_dir = os.path.join(tempfile.gettempdir(), "yoto_up_uploads")
+                os.makedirs(temp_dir, exist_ok=True)
+                to_upload = []
+                for f in e.files:
+                    if hasattr(f, "name") and f.name:
+                        upload_url = page.get_upload_url(f"queue/{f.name}", 60)
+                        to_upload.append(ft.FilePickerUploadFile(f.name, upload_url))
+                
+                browse_files.upload(to_upload)
+            else:
+                for f in e.files:
+                    # Add each selected file to the file_rows_column if not already present
+                    logger.debug(f"[on_pick_files_result] processing {f.name}")
+                    path = getattr(f, "path", None)
+                    if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
+                        try:
+                            file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
+                            file_rows_column.controls.append(file_row.row)
+                        except Exception as _:
+                            raise RuntimeError(f"Failed to create FileUploadRow for {path}")
             update_show_waveforms_btn()
             page.update()
 
     browse.on_result = on_pick_result
     browse_files.on_result = on_pick_files_result
+
+    def on_upload_file_result(e: ft.FilePickerUploadEvent):
+        logger.debug(f"[on_upload_file_result] uploaded {e} ")
+        logger.debug(e.progress)
+        
+        if e.progress == 1:
+            temp_path = f"assets/uploads/queue/{e.file_name}"
+
+            try:
+                file_row = FileUploadRow(temp_path, maybe_page=page, maybe_column=file_rows_column)
+                file_rows_column.controls.append(file_row.row)
+            except Exception as _:
+                raise RuntimeError(f"Failed to create FileUploadRow for {temp_path}")
+            update_show_waveforms_btn()
+            page.update()
+
+    browse_files.on_upload = on_upload_file_result
 
     # When the folder TextField is changed (user pastes or types a path), update the file list immediately
     def _on_folder_change(ev=None):
@@ -1590,4 +1630,4 @@ def main(page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="./")
+    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")

@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import base64
+import json
 
 YOTO_ICON_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yoto_icon_cache")
 YOTOICONS_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yotoicons_cache")
@@ -20,6 +21,17 @@ YOTOICONS_METADATA_GLOBAL = YOTOICONS_CACHE_DIR / 'yotoicons_global_metadata.jso
 
 
 def get_base64_from_path(path: Path) -> str:
+    # If the path ends in .json we need to extract the image data
+    if path.suffix.lower() == '.json':
+        with path.open('r') as f:
+            data = json.load(f)
+            if "png_base64" in data:
+                return data["png_base64"]
+            elif "pixels" in data:
+                img_data = data["pixels"]
+                img_data = base64.b64encode(img_data).decode()
+                return img_data
+
     with path.open('rb') as f:
         data = f.read()
         img_data = base64.b64encode(data).decode('utf-8')

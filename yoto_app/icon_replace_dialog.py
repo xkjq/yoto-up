@@ -167,6 +167,7 @@ class IconReplaceDialog:
                     else:
                         for icon in icons:
                             img_src = None
+                            url_src = None
                             try:
                                 if icon.get('mediaId'):
                                     p = self.api.get_icon_cache_path(f"yoto:#{icon.get('mediaId')}")
@@ -175,9 +176,9 @@ class IconReplaceDialog:
                                 if not img_src and icon.get('cache_path') and Path(icon.get('cache_path')).exists():
                                     img_src = Path(icon.get('cache_path'))
                                 if not img_src and icon.get('url'):
-                                    img_src = icon.get('url')
+                                    url_src = icon.get('url')
                                 if not img_src and icon.get('img_url'):
-                                    img_src = icon.get('img_url')
+                                    url_src = icon.get('img_url')
                             except Exception:
                                 img_src = None
 
@@ -218,14 +219,15 @@ class IconReplaceDialog:
                                 threading.Thread(target=use_worker, daemon=True).start()
 
                             row_children = []
-                            if img_src is not None:
+                            if url_src is not None:
+                                img = ft.Image(src=url_src, width=48, height=48)
+                                row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
+                            elif img_src is not None:
                                 try:
-                                    if img_src.startswith('http://') or img_src.startswith('https://'):
-                                        img = ft.Image(src=img_src, width=48, height=48)
-                                    else:
-                                        img = ft.Image(src_base64=get_base64_from_path(img_src), width=48, height=48)
+                                    img = ft.Image(src_base64=get_base64_from_path(img_src), width=48, height=48)
                                     row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
-                                except Exception:
+                                except Exception as ex:
+                                    logger.exception(f"Failed to load icon image: {ex}")
                                     placeholder = ft.Container(width=48, height=48, bgcolor=ft.Colors.GREY_200)
                                     row_children.append(ft.GestureDetector(content=placeholder, on_tap=use_icon, mouse_cursor=ft.MouseCursor.CLICK))
                             else:
@@ -388,7 +390,7 @@ class IconReplaceDialog:
 
                     # visual row for this saved icon
                     try:
-                        preview = ft.Image(src=str(p.resolve()), width=48, height=48)
+                        preview = ft.Image(src_base64=get_base64_from_path(p), width=48, height=48)
                     except Exception:
                         preview = ft.Container(width=48, height=48, bgcolor=ft.Colors.GREY_200)
                     row = ft.Row([
@@ -438,7 +440,7 @@ class IconReplaceDialog:
                         preview_image.src = abs_path
                         show_it = True
                     elif abs_path and os.path.exists(abs_path):
-                        preview_image.src = abs_path
+                        preview_image.src_base64 = get_base64_from_path(abs_path)
                         show_it = True
                     else:
                         preview_image.src = ''

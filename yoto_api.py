@@ -1443,6 +1443,19 @@ class YotoAPI:
                     table.add_row(icon.get("title", ""), tags, display_icon_id, pixel_art)
                     progress.update(render_task, advance=1)
             rprint(table)
+        else:
+            for icon in icons:
+                url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
+                ext = Path(icon["url"]).suffix or ".png"
+                cache_path = cache_dir / f"{url_hash}{ext}"
+                icon["cache_path"] = str(cache_path)
+                if not cache_path.exists() or refresh_cache:
+                    try:
+                        img_resp = httpx.get(icon["url"])
+                        img_resp.raise_for_status()
+                        cache_path.write_bytes(img_resp.content)
+                    except Exception as e:
+                        icon["cache_error"] = str(e)
 
         return icons
 
@@ -1524,6 +1537,19 @@ class YotoAPI:
                     table.add_row(icon.get("title", ""), display_icon_id, pixel_art)
                     progress.update(render_task, advance=1)
             rprint(table)
+        else:
+            for icon in icons:
+                url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
+                ext = Path(icon["url"]).suffix or ".png"
+                cache_path = cache_dir / f"{url_hash}{ext}"
+                icon["cache_path"] = str(cache_path)
+                if not cache_path.exists() or refresh_cache:
+                    try:
+                        img_resp = httpx.get(icon["url"])
+                        img_resp.raise_for_status()
+                        cache_path.write_bytes(img_resp.content)
+                    except Exception as e:
+                        icon["cache_error"] = str(e)
         return icons
 
     def search_cached_icons(self, query: str, fields: Optional[list] = None, show_in_console: bool = True, include_yotoicons: bool = True, include_authors: bool = False):
