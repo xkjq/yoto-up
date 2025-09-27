@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 import tempfile
 import base64
 import io
@@ -7,6 +8,8 @@ import copy
 import flet as ft
 from loguru import logger
 from PIL import Image
+
+from .icon_import_helpers import get_base64_from_path
 
 
 STAMP_DIALOG = None
@@ -176,7 +179,7 @@ def open_image_stamp_dialog(editor, e):
                 tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
                 thumb.save(tmpf.name)
 
-                img_widget = ft.Image(src=tmpf.name, width=48, height=48, fit=ft.ImageFit.CONTAIN)
+                img_widget = ft.Image(src_base64=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.ImageFit.CONTAIN)
                 try:
                     img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, lbl=label: select_stamp(lbl, ev))
                 except Exception:
@@ -511,11 +514,14 @@ def open_image_stamp_dialog(editor, e):
             pixels_scaled = load_pixels_for_stamp(p, scale)
             if pixels_scaled is not None:
                 import tempfile as _tmp
-                img_out = editor._pixels_to_image(pixels_scaled)
-                with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                    img_out.save(tmp.name)
-                    preview.src = tmp.name
-                    preview.update()
+                base64_out = editor._pixels_to_base64(pixels_scaled)
+                #img_out = editor._pixels_to_image(pixels_scaled)
+                #with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                #    img_out.save(tmp.name)
+                #    preview.src = tmp.name
+                #    preview.update()
+                preview.src_base64 = base64_out
+                preview.update()
                 try:
                     applied_pixels = copy.deepcopy(editor.pixels)
                     ox = int((pos_x.value or '0').strip())

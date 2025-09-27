@@ -1561,6 +1561,15 @@ class PixelArtEditor:
                     img.putpixel((x, y), (0, 0, 0, 0))
         return img
 
+
+    def _pixels_to_base64_png(self, pixels):
+        img = self._pixels_to_image(pixels)
+        with io.BytesIO() as output:
+            img.save(output, format="PNG")
+            png_data = output.getvalue()
+        b64 = base64.b64encode(png_data).decode()
+        return b64
+
     def _image_to_pixels(self, img):
         # convert a PIL Image (mode RGB/RGBA) to pixels grid, always downsampling to grid size
         img = img.convert('RGBA')
