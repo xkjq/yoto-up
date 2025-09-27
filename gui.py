@@ -42,6 +42,7 @@ import flet as ft
 from yoto_app import utils as utils_mod
 from yoto_app import ui_helpers as ui_helpers
 from yoto_app import auth as auth_mod
+from yoto_app import config as yoto_config
 from yoto_app.api_manager import ensure_api
 from yoto_app.playlists import build_playlists_panel
 from loguru import logger
@@ -728,18 +729,66 @@ def main(page):
         auth_instructions.controls.append(ft.Text("Preparing authentication..."))
         page.update()
 
-        def _auth_bg_runner(evt, instr):
-            try:
-                logger.debug("[gui] auth background thread started")
-                start_device_auth(evt, instr)
-                logger.debug("[gui] auth background thread finished")
-            except Exception:
-                logger.error("[gui] auth background thread exception:\n", traceback.format_exc())
+        # Prefer browser OAuth via Flet when possible (works for web and desktop)
+        from flet.auth import OAuthProvider
 
-        if not can_start_thread:
-            _auth_bg_runner(e, auth_instructions)
-        else:
-            threading.Thread(target=lambda: _auth_bg_runner(e, auth_instructions), daemon=True).start()
+        def on_login(evt):
+            # evt is a LoginEvent
+            if getattr(evt, 'error', None):
+                show_snack(f"Login error: {evt.error}", error=True)
+                status.value = f"Login error: {evt.error}"
+                page.update()
+                return
+
+            token = page.auth.token
+            access = getattr(token, 'access_token', None)
+            refresh = getattr(token, 'refresh_token', None)
+            if access:
+                # Persist tokens.json
+                tmp = {'access_token': access, 'refresh_token': refresh}
+                try:
+                    with open('tokens.json.tmp', 'w') as f:
+                        json.dump(tmp, f)
+                    os.replace('tokens.json.tmp', 'tokens.json')
+                except Exception:
+                    pass
+                # Initialize API with saved tokens
+                try:
+                    api = ensure_api(api_ref)
+                    api.access_token = access
+                    api.refresh_token = refresh
+                    api_ref['api'] = api
+                    show_snack('Authenticated')
+                    page.auth_complete()
+                    auth_instructions.controls.clear()
+                    auth_instructions.controls.append(ft.Text('Authentication complete', size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN))
+                    page.update()
+                except Exception as e:
+                    show_snack(f'Failed to initialize API: {e}', error=True)
+
+        # Build a generic OAuth provider using Yoto endpoints
+        provider = OAuthProvider(
+            client_id=os.getenv('YOTO_CLIENT_ID') or getattr(yoto_config, 'CLIENT_ID', None),
+            client_secret=os.getenv('YOTO_CLIENT_SECRET', ''),
+            authorization_endpoint='https://login.yotoplay.com/authorize',
+            token_endpoint='https://login.yotoplay.com/oauth/token',
+            user_endpoint='https://api.yotoplay.com/user',
+            user_scopes=['profile'],
+            user_id_fn=lambda u: u.get('sub') or u.get('id') or u.get('email'),
+            redirect_url="http://localhost:8550/oauth_callback",
+        )
+
+        page.on_login = on_login
+        try:
+            # open login; fetch_user=False because we only need tokens
+            page.login(provider, fetch_user=False)
+        except Exception as ex:
+            # fallback to device auth if browser flow fails
+            logger.debug(f"Browser OAuth failed, falling back to device flow: {ex}")
+            if not can_start_thread:
+                start_device_auth(e, auth_instructions)
+            else:
+                threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
 
     auth_btn.on_click = _auth_click
 
