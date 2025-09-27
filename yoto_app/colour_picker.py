@@ -7,6 +7,8 @@ from loguru import logger
 import uuid
 import threading
 
+from .icon_import_helpers import get_base64_from_path
+
 class ColourPicker:
     def __init__(self, current_color='#000000', wheel_size=280, saved_dir=None, on_color_selected=None, loading_dialog=None):
         self.current_color = current_color
@@ -103,7 +105,7 @@ class ColourPicker:
         value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
         # Generate initial wheel image and set src
         initial_wheel_path = self._make_color_wheel_image(value_slider.value)
-        wheel_img = ft.Image(src=initial_wheel_path, width=self.wheel_size, height=self.wheel_size)
+        wheel_img = ft.Image(src_base64=get_base64_from_path(Path(initial_wheel_path)), width=self.wheel_size, height=self.wheel_size)
         # Debounce timer for HSV changes
         self._debounce_timer = None
 

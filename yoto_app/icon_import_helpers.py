@@ -1,6 +1,7 @@
 
 import os
 from pathlib import Path
+import base64
 
 YOTO_ICON_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yoto_icon_cache")
 YOTOICONS_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yotoicons_cache")
@@ -16,6 +17,14 @@ YOTOICONS_METADATA_GLOBAL = YOTOICONS_CACHE_DIR / 'yotoicons_global_metadata.jso
 #        return sorted(files)
 #    except Exception:
 #        return []
+
+
+def get_base64_from_path(path: Path) -> str:
+    with path.open('rb') as f:
+        data = f.read()
+        img_data = base64.b64encode(data).decode('utf-8')
+    return img_data
+
 def load_cached_icons() -> list[Path]:
     icons = []
     # official Yoto cached icons

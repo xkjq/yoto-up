@@ -1449,15 +1449,15 @@ Merging will result in:
                                 break
                         except Exception:
                             pass
-                        # try cached icon path
-                        try:
-                            api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                            tp = api_local.get_icon_cache_path(url_or_field)
-                            if tp and Path(tp).exists():
-                                cover_img = ft.Image(src=str(tp), width=160, height=160)
-                                break
-                        except Exception:
-                            pass
+                        ## try cached icon path
+                        #try:
+                        #    api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
+                        #    tp = api_local.get_icon_cache_path(url_or_field)
+                        #    if tp and Path(tp).exists():
+                        #        cover_img = ft.Image(src=str(tp), width=160, height=160)
+                        #        break
+                        #except Exception:
+                        #    pass
                 except Exception:
                     pass
 

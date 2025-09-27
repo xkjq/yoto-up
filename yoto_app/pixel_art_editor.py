@@ -9,24 +9,30 @@ import re
 import hashlib
 import copy
 
-from yoto_app.icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE
 try:
+    from yoto_app.icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE, get_base64_from_path
     from yoto_app.icon_import_helpers import load_cached_icons, load_icon_as_pixels
     from yoto_app.pixel_fonts import _font_3x5, _font_5x7
     from yoto_app.colour_picker import ColourPicker
     from yoto_app.stamp_dialog import open_image_stamp_dialog
 except ImportError:
+    from icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE, get_base64_from_path
     from icon_import_helpers import load_cached_icons, load_icon_as_pixels
     from pixel_fonts import _font_3x5, _font_5x7
     from colour_picker import ColourPicker
     from stamp_dialog import open_image_stamp_dialog
 import colorsys
-import base64, io
+import base64
+import io
+
+
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-ICON_DIR = "saved_icons"
+ICON_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path("saved_icons")
+
+CHECK_IMAGE = Path(os.getenv("FLET_APP_STORAGE_TEMP")) / Path('__checker.png')
 
 class PixelArtEditor:
     def __init__(self, size=16, pixel_size=24, page=None, loading_dialog=None  ):
@@ -59,6 +65,17 @@ class PixelArtEditor:
         self._palette_backup = None
         # Defer heavy UI construction until the editor is actually shown or used
         self._built = False
+
+        # ensure checker preview exists
+        if not CHECK_IMAGE.exists():
+            from PIL import ImageDraw
+            sq = 8
+            im = Image.new('RGBA', (sq*2, sq*2), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(im)
+            draw.rectangle([0,0,sq-1,sq-1], fill=(200,200,200,255))
+            draw.rectangle([sq,sq,sq*2-1,sq*2-1], fill=(200,200,200,255))
+            im.save(str(CHECK_IMAGE))
+        self.CHECK_IMAGE_BASE64 = get_base64_from_path(CHECK_IMAGE) 
 
     def _build(self):
         # mark built early to avoid recursion if _build triggers ensure_built
@@ -368,8 +385,7 @@ class PixelArtEditor:
                 r = (self.repl_field.value or '').strip() or None
                 if r is None:
                     try:
-                        chk = str(self._ensure_saved_dir() / '__checker.png')
-                        self.repl_preview.content = ft.Image(src=chk, width=20, height=20, fit=ft.ImageFit.COVER)
+                        self.repl_preview.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=20, height=20, fit=ft.ImageFit.COVER)
                         self.repl_preview.bgcolor = None
                     except Exception:
                         self.repl_preview.content = ft.Text('T', size=10)
@@ -807,8 +823,7 @@ class PixelArtEditor:
                     # Transparent -> show checker image as content
                     if hex_color is None:
                         try:
-                            chk = str(self._ensure_saved_dir() / '__checker.png')
-                            self.color_preview.content = ft.Image(src=chk, width=24, height=24, fit=ft.ImageFit.COVER)
+                            self.color_preview.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=24, height=24, fit=ft.ImageFit.COVER)
                         except Exception:
                             # fallback to text marker
                             try:
@@ -955,8 +970,6 @@ class PixelArtEditor:
                             pixels = obj['pixels']
                         elif 'png_base64' in obj:
                             try:
-                                import base64
-                                import io
                                 b = base64.b64decode(obj['png_base64'])
                                 img = Image.open(io.BytesIO(b))
                                 pixels = self._image_to_pixels(img)
@@ -1141,8 +1154,7 @@ class PixelArtEditor:
                     e.control.bgcolor = "#00000000"
                 # show checker image if available
                 try:
-                    chk = str(self._ensure_saved_dir() / '__checker.png')
-                    e.control.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                    e.control.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
                 except Exception:
                     # fallback: no content
                     try:
@@ -1167,8 +1179,7 @@ class PixelArtEditor:
         display_bg = None
         if val is None:
             try:
-                chk = str(self._ensure_saved_dir() / '__checker.png')
-                cell_content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                cell_content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
             except Exception:
                 cell_content = None
             display_bg = None
@@ -1215,8 +1226,7 @@ class PixelArtEditor:
                     except Exception:
                         c.bgcolor = "#00000000"
                     try:
-                        chk = str(self._ensure_saved_dir() / '__checker.png')
-                        c.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                        c.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
                     except Exception:
                         try:
                             c.content = None
@@ -1345,8 +1355,7 @@ class PixelArtEditor:
                 if r is None:
                     # show checker for transparent
                     try:
-                        chk = str(self._ensure_saved_dir() / '__checker.png')
-                        repl_preview.content = ft.Image(src=chk, width=20, height=20, fit=ft.ImageFit.COVER)
+                        repl_preview.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=20, height=20, fit=ft.ImageFit.COVER)
                         repl_preview.bgcolor = None
                     except Exception:
                         repl_preview.content = ft.Text('T', size=10)
@@ -1493,8 +1502,7 @@ class PixelArtEditor:
                     if val is None:
                         # transparent: show checker image
                         try:
-                            chk = str(self._ensure_saved_dir() / '__checker.png')
-                            cell.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                            cell.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
                         except Exception:
                             cell.content = None
                         try:
@@ -1529,21 +1537,8 @@ class PixelArtEditor:
 
     # Helpers for saving/loading
     def _ensure_saved_dir(self):
-        d = Path(ICON_DIR)
+        d = ICON_DIR
         d.mkdir(parents=True, exist_ok=True)
-        # ensure checker preview exists
-        try:
-            chk = d / '__checker.png'
-            if not chk.exists():
-                from PIL import ImageDraw
-                sq = 8
-                im = Image.new('RGBA', (sq*2, sq*2), (255, 255, 255, 0))
-                draw = ImageDraw.Draw(im)
-                draw.rectangle([0,0,sq-1,sq-1], fill=(200,200,200,255))
-                draw.rectangle([sq,sq,sq*2-1,sq*2-1], fill=(200,200,200,255))
-                im.save(str(chk))
-        except Exception:
-            pass
         return d
 
     def _pixels_to_image(self, pixels):
@@ -1982,8 +1977,6 @@ class PixelArtEditor:
                 logger.debug(f"Saving icon to {path}")
                 # build image and base64 PNG
                 img = self._pixels_to_image(self.pixels)
-                import io
-                import base64
                 import json as _json
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
@@ -2111,7 +2104,6 @@ class PixelArtEditor:
                     # if embedded png exists, write a preview file
                     if isinstance(obj, dict) and obj.get('png_base64'):
                         try:
-                            import base64
                             b = base64.b64decode(obj['png_base64'])
                             tmp_path = os.path.join(sd, '__preview.png')
                             with open(tmp_path, 'wb') as pf:
@@ -2168,8 +2160,6 @@ class PixelArtEditor:
                         elif 'png_base64' in obj:
                             # decode embedded PNG and convert to pixels
                             try:
-                                import base64
-                                import io
                                 b = base64.b64decode(obj['png_base64'])
                                 img = Image.open(io.BytesIO(b))
                                 pixels = self._image_to_pixels(img)
@@ -2703,8 +2693,7 @@ class PixelArtEditor:
                     if self.current_color is None:
                         cell.bgcolor = None
                         try:
-                            chk = str(self._ensure_saved_dir() / '__checker.png')
-                            cell.content = ft.Image(src=chk, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
+                            cell.content = ft.Image(src_base64=self.CHECK_IMAGE_BASE64, width=self.pixel_size - 4, height=self.pixel_size - 4, fit=ft.ImageFit.COVER)
                         except Exception:
                             cell.content = None
                     else:

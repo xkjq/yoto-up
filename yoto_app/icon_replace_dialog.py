@@ -8,6 +8,7 @@ import tempfile
 import base64
 
 from models import TrackDisplay, ChapterDisplay
+from yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_app.pixel_art_editor import PixelArtEditor
 
 class IconReplaceDialog:
@@ -170,13 +171,13 @@ class IconReplaceDialog:
                                 if icon.get('mediaId'):
                                     p = self.api.get_icon_cache_path(f"yoto:#{icon.get('mediaId')}")
                                     if p and Path(p).exists():
-                                        img_src = str(p)
+                                        img_src = p
+                                if not img_src and icon.get('cache_path') and Path(icon.get('cache_path')).exists():
+                                    img_src = Path(icon.get('cache_path'))
                                 if not img_src and icon.get('url'):
                                     img_src = icon.get('url')
                                 if not img_src and icon.get('img_url'):
                                     img_src = icon.get('img_url')
-                                if not img_src and icon.get('cache_path') and Path(icon.get('cache_path')).exists():
-                                    img_src = icon.get('cache_path')
                             except Exception:
                                 img_src = None
 
@@ -217,9 +218,12 @@ class IconReplaceDialog:
                                 threading.Thread(target=use_worker, daemon=True).start()
 
                             row_children = []
-                            if img_src:
+                            if img_src is not None:
                                 try:
-                                    img = ft.Image(src=img_src, width=48, height=48)
+                                    if img_src.startswith('http://') or img_src.startswith('https://'):
+                                        img = ft.Image(src=img_src, width=48, height=48)
+                                    else:
+                                        img = ft.Image(src_base64=get_base64_from_path(img_src), width=48, height=48)
                                     row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
                                 except Exception:
                                     placeholder = ft.Container(width=48, height=48, bgcolor=ft.Colors.GREY_200)
@@ -255,7 +259,7 @@ class IconReplaceDialog:
             """Scan saved_icons folder and populate saved_icons_list with preview + actions."""
             saved_icons_list.controls.clear()
             try:
-                saved_dir = Path('saved_icons')
+                saved_dir = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path("saved_icons")
                 if not saved_dir.exists():
                     saved_icons_list.controls.append(ft.Text("No saved_icons folder"))
                     return

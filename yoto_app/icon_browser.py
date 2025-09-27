@@ -23,13 +23,9 @@ from .icon_import_helpers import (
     path_is_official,
     path_is_yotoicons,
     source_label_for_path,
+    get_base64_from_path
 )
 
-def get_base64_from_path(path: Path) -> str:
-    with path.open('rb') as f:
-        data = f.read()
-        img_data = base64.b64encode(data).decode('utf-8')
-    return img_data
 
 
 def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable, show_snack: Callable):

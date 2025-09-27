@@ -4,6 +4,10 @@ from types import SimpleNamespace
 from copy import deepcopy
 from loguru import logger
 
+from yoto_api import YotoAPI
+
+from .icon_import_helpers import get_base64_from_path
+
 # This function is designed to be imported and called from playlists.py
 # It expects the same arguments as the original show_edit closure.
 def show_edit_card_dialog(
@@ -136,10 +140,9 @@ def show_edit_card_dialog(
                     api = ensure_api(api_ref=None, client=CLIENT_ID)
                     try:
                         icon_path = api.get_icon_cache_path(icon_field)
-                        if icon_path:
-                            from pathlib import Path
-                            if Path(icon_path).exists():
-                                ch_icon = ft.Image(src=str(icon_path), width=24, height=24)
+                        if icon_path is not None:
+                            if icon_path.exists():
+                                ch_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=24, height=24)
                     except Exception:
                         pass
             def make_delete_chapter(idx=ci, ch_title=ch_title):
@@ -195,13 +198,12 @@ def show_edit_card_dialog(
                         display = tr.get("display") or {}
                         icon_field = display.get("icon16x16") if isinstance(display, dict) else None
                         if icon_field:
-                            api = ensure_api(api_ref=None, client=CLIENT_ID)
+                            api: YotoAPI = ensure_api(api_ref=None, client=CLIENT_ID)
                             try:
                                 icon_path = api.get_icon_cache_path(icon_field)
-                                if icon_path:
-                                    from pathlib import Path
-                                    if Path(icon_path).exists():
-                                        tr_icon = ft.Image(src=str(icon_path), width=20, height=20)
+                                if icon_path is not None:
+                                    if icon_path.exists():
+                                        tr_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=20, height=20)
                             except Exception:
                                 pass
                     def make_delete_track(ci=ci, ti=ti):
