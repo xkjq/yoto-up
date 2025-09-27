@@ -424,14 +424,87 @@ def main(page):
             logger.error("[populate_file_rows] error")
 
     def start_device_auth(e, instr=None):
-        # Delegate to auth module which will start its own poll thread
+        # Prefer using the YotoAPI device auth flow directly (so we reuse
+        # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
+        # existing auth module on any error.
+        api = ensure_api(api_ref)
         try:
-            auth_mod.start_device_auth(page, instr_container=instr or auth_instructions, api_ref=api_ref, show_snack_fn=show_snack)
-        except Exception as ex:
+            device_info = api.get_device_code()
+        except Exception as e:
+            # If YotoAPI can't get a device code, fallback to auth_mod
+            raise
+
+        verification_uri = device_info.get('verification_uri') or ''
+        verification_uri_complete = device_info.get('verification_uri_complete') or verification_uri
+        user_code = device_info.get('user_code') or ''
+
+        # Populate instructions in the provided container (or page.auth_instructions)
+        try:
+            container = instr or auth_instructions
+            if container is not None:
+                container.controls.clear()
+                container.controls.append(ft.Text(f"Visit: {verification_uri} and enter the code displayed below.", selectable=True))
+                container.controls.append(ft.Text(f"Code: {user_code}", selectable=True))
+                container.controls.append(ft.Row([ft.Text('Alternatively open (click) this direct link: '), ft.TextButton(text=verification_uri_complete, on_click=lambda e, url=verification_uri_complete: __import__('webbrowser').open(url))]))
+                container.controls.append(ft.Row([ft.Text('Doing this links you Yoto account with this app.'), ft.Text('')]))
+                container.controls.append(getattr(page, 'auth_status', ft.Text('')))
+                page.update()
+        except Exception:
+            pass
+
+        # Start background poll using YotoAPI.poll_for_token
+        def _poll_thread():
             try:
-                print(f"[gui] start_device_auth delegate failed: {ex}")
-            except Exception:
-                pass
+                access, refresh = api.poll_for_token(device_info.get('device_code'), device_info.get('interval', 5), device_info.get('expires_in', 300))
+                try:
+                    api.save_tokens(access, refresh)
+                except Exception:
+                    # best-effort save
+                    try:
+                        tmp_path = 'tokens.json.tmp'
+                        with open(tmp_path, 'w') as f:
+                            json.dump({'access_token': access, 'refresh_token': refresh}, f)
+                        os.replace(tmp_path, 'tokens.json')
+                    except Exception:
+                        pass
+                api.access_token = access
+                api.refresh_token = refresh
+                api_ref['api'] = api
+                show_snack('Authenticated')
+                try:
+                    page.auth_complete()
+                except Exception:
+                    pass
+                try:
+                    # update instruction UI
+                    if instr is not None and hasattr(instr, 'controls'):
+                        instr.controls.clear()
+                        instr.controls.append(ft.Text('Authentication complete', size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN))
+                        page.update()
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    show_snack(f'Auth failed: {e}', error=True)
+                except Exception:
+                    pass
+                # fallback: try the existing auth module
+                try:
+                    auth_mod.start_device_auth(page, instr_container=instr or auth_instructions, api_ref=api_ref, show_snack_fn=show_snack)
+                except Exception:
+                    pass
+
+        threading.Thread(target=_poll_thread, daemon=True).start()
+        #except Exception as ex:
+        #    logger.debug(f"[gui] start_device_auth: failed, falling back to auth_mod: {ex}")
+        #    # If anything goes wrong, delegate to the existing auth module
+        #    try:
+        #        auth_mod.start_device_auth(page, instr_container=instr or auth_instructions, api_ref=api_ref, show_snack_fn=show_snack)
+        #    except Exception:
+        #        try:
+        #            print(f"[gui] start_device_auth delegate failed: {ex}")
+        #        except Exception:
+        #            pass
 
     def get_card_id_local(card):
         """Small helper to extract card id from various shapes (model, dict)."""
@@ -622,8 +695,6 @@ def main(page):
 
     auth_btn.on_click = _auth_click
 
-    # Auth page (separate from uploads) — include embedded instructions area
-    # Add reset auth buttons to allow clearing saved tokens and optionally reauthenticating
     def reset_auth_gui(e, reauth: bool = False):
         """Show confirmation, then perform token reset while disabling the reset buttons.
 
@@ -650,8 +721,16 @@ def main(page):
                 page.close(dlg)
             except Exception:
                 pass
-            # Start background reset so the UI remains responsive
-            # threading.Thread(target=_do_reset, daemon=True).start()
+            api = ensure_api(api_ref)  # ensure api_ref has an API instance
+            api.reset_auth()
+            invalidate_authentication()
+            if reauth:
+                # Start re-authentication in a background thread
+                threading.Thread(target=lambda: start_device_auth(None), daemon=True).start()
+
+
+
+            #threading.Thread(target=_do_reset, daemon=True).start()
 
         dlg.actions = [
             ft.TextButton("Cancel", on_click=_cancel),
@@ -1484,8 +1563,10 @@ def main(page):
                     show_snack("Authenticated (from tokens.json)")
                     # Replace instructions with a prominent success message
                     auth_instructions.controls.clear()
-                    auth_instructions.controls.append(
-                        ft.Text("Authenticated (from tokens.json)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN)
+                    auth_instructions.controls.extend([
+                        ft.Text("Authenticated (from tokens.json)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN, ),
+                        ft.Text(api.TOKEN_FILE, size=10)
+                    ]
                     )
                     auth_complete()
                 except Exception as e:

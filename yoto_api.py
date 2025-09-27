@@ -136,19 +136,6 @@ class YotoAPI:
     def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True, app_path:Path|None=None):
         self.client_id = client_id
         self.debug = debug
-        self.cache_requests = cache_requests
-        self.cache_max_age_seconds = cache_max_age_seconds
-        self._cache_lock = threading.Lock()
-
-        if app_path is not None:
-            self.TOKEN_FILE = str(app_path / self.TOKEN_FILE)
-            self.CACHE_FILE = str(app_path / self.CACHE_FILE)
-            self.UPLOAD_ICON_CACHE_FILE = str(app_path / self.UPLOAD_ICON_CACHE_FILE)
-            self.OFFICIAL_ICON_CACHE_DIR = app_path / self.OFFICIAL_ICON_CACHE_DIR
-            self.YOTOICONS_CACHE_DIR = app_path / self.YOTOICONS_CACHE_DIR
-            self.VERSIONS_DIR = app_path / self.VERSIONS_DIR
-
-        self._request_cache = self._load_cache()
         logger.remove()
         logger.add(lambda msg: print(msg, end=""), level="DEBUG" if debug else "WARNING")
         # Intercept standard library logging with loguru
@@ -166,6 +153,22 @@ class YotoAPI:
         httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
         if debug:
             logger.debug("Debug mode enabled for YotoAPI")
+        logger.debug(f"YotoAPI initialized with client_id: {client_id}")
+        logger.debug(f"App path: {app_path}")
+        self.cache_requests = cache_requests
+        self.cache_max_age_seconds = cache_max_age_seconds
+        self._cache_lock = threading.Lock()
+
+        if app_path is not None:
+            logger.debug(f"Using app_path: {app_path}")
+            self.TOKEN_FILE = str(app_path / self.TOKEN_FILE)
+            self.CACHE_FILE = str(app_path / self.CACHE_FILE)
+            self.UPLOAD_ICON_CACHE_FILE = str(app_path / self.UPLOAD_ICON_CACHE_FILE)
+            self.OFFICIAL_ICON_CACHE_DIR = app_path / self.OFFICIAL_ICON_CACHE_DIR
+            self.YOTOICONS_CACHE_DIR = app_path / self.YOTOICONS_CACHE_DIR
+            self.VERSIONS_DIR = app_path / self.VERSIONS_DIR
+
+        self._request_cache = self._load_cache()
         self.access_token, self.refresh_token = self.load_tokens()
         if not self.access_token or not self.refresh_token or self.is_token_expired(self.access_token):
             logger.info("No valid token found, authenticating...")
