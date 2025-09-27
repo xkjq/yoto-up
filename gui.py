@@ -17,10 +17,6 @@ def _can_start_thread() -> bool:
 
 can_start_thread = _can_start_thread()
 
-if not can_start_thread:
-  n_threads = 1
-
-
 # Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
 # PyInstaller unpacks the app to a temporary folder which may be read-only for font cache writes.
 # Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
@@ -740,7 +736,10 @@ def main(page):
             except Exception:
                 logger.error("[gui] auth background thread exception:\n", traceback.format_exc())
 
-        threading.Thread(target=lambda: _auth_bg_runner(e, auth_instructions), daemon=True).start()
+        if not can_start_thread:
+            _auth_bg_runner(e, auth_instructions)
+        else:
+            threading.Thread(target=lambda: _auth_bg_runner(e, auth_instructions), daemon=True).start()
 
     auth_btn.on_click = _auth_click
 
