@@ -51,7 +51,7 @@ try:
             nltk.download('stopwords')
         except Exception:
             pass
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     _HAVE_NLTK = False
     # Minimal fallback tokenizer and stopwords for basic keyword extraction
     def word_tokenize(text: str):
