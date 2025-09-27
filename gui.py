@@ -2,11 +2,22 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
+import platform
 
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
 if os.getenv("FLET_APP_STORAGE_DATA") is None:
     os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
+
+def _can_start_thread() -> bool:
+    if sys.platform == "emscripten":
+        return sys._emscripten_info.pthreads
+    return platform.machine() not in ("wasm32", "wasm64")
+
+can_start_thread = _can_start_thread()
+
+if not can_start_thread:
+  n_threads = 1
 
 
 # Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
@@ -716,11 +727,8 @@ def main(page):
         print("[gui] Authenticate button clicked")
         status.value = "Starting authentication..."
         # show preparing text in the embedded instructions area
-        try:
-            auth_instructions.controls.clear()
-            auth_instructions.controls.append(ft.Text("Preparing authentication..."))
-        except Exception:
-            pass
+        auth_instructions.controls.clear()
+        auth_instructions.controls.append(ft.Text("Preparing authentication..."))
         page.update()
 
         def _auth_bg_runner(evt, instr):
