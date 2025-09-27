@@ -7,10 +7,9 @@ name = "yoto-up"
 version = "0.1.17"
 description = "Yoto Up - desktop tool for managing Yoto cards and playlists"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [ { name = "xkjq" } ]
 keywords = ["yoto","desktop","flet"]
-license = { text = "MIT" }
 
 # Runtime dependencies used by the GUI app. We keep a small common set here
 # and expose optional extras for target-specific heavy packages. This allows
@@ -55,3 +54,9 @@ docs = ["mkdocs-material", "pymdown-extensions"]
 
 [tool.flet]
 app.module = "gui"
+
+
+[tool.uv]
+dev-dependencies = [
+    "flet[all]==0.28.3",
+]
