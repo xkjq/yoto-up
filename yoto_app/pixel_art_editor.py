@@ -1562,7 +1562,7 @@ class PixelArtEditor:
         return img
 
 
-    def _pixels_to_base64_png(self, pixels):
+    def _pixels_to_base64(self, pixels):
         img = self._pixels_to_image(pixels)
         with io.BytesIO() as output:
             img.save(output, format="PNG")
@@ -1597,6 +1597,11 @@ class PixelArtEditor:
                     # preserve partial alpha as 8-digit hex #RRGGBBAA
                     pixels[y][x] = f"#{r:02X}{g:02X}{b:02X}{a:02X}"
         return pixels
+
+    def _image_to_base64(self, image):
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode()
 
     def _image_to_pixels_native(self, img):
         """Convert a PIL Image to a native-size pixel grid (no resizing).

@@ -554,10 +554,8 @@ def open_image_stamp_dialog(editor, e):
                         composed = Image.alpha_composite(bg, img2.convert('RGBA'))
                     except Exception:
                         composed = img2
-                    with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tmp2:
-                        composed.save(tmp2.name)
-                        preview_applied.src = tmp2.name
-                        preview_applied.update()
+                    preview_applied.src_base64 = editor._image_to_base64(composed)
+                    preview_applied.update()
                 except Exception:
                     preview_applied.src = None
                     preview_applied.update()
