@@ -13,6 +13,7 @@ from .icon_import_helpers import get_base64_from_path
 
 
 STAMP_DIALOG = None
+STAMP_GALLERY_DIALOG = None 
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 stamps_dir = os.path.join(project_dir, '.stamps')
@@ -188,7 +189,70 @@ def open_image_stamp_dialog(editor, e):
                     except Exception:
                         img_ctrl = img_widget
 
-                col = ft.Column([img_ctrl, ft.Text(label, width=64, max_lines=1)], spacing=2)
+                # if this is an imported stamp, offer a small Delete button below the thumbnail
+                controls = [img_ctrl, ft.Text(label, width=64, max_lines=1)]
+                try:
+                    fstr = str(f)
+                    if fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported'):
+                        # define deletion callback which removes the file from disk and refreshes the gallery
+                        def _delete_imported(ev, path=p, rel=f, lbl=label):
+                            try:
+                                # confirmation dialog
+                                def _do_delete(confirm_ev):
+                                    try:
+                                        if os.path.exists(path):
+                                            os.remove(path)
+                                        # remove relative entry from files list if present
+                                        try:
+                                            if rel in files:
+                                                files.remove(rel)
+                                        except Exception:
+                                            pass
+                                        # remove from option_map entries that point to this value
+                                        try:
+                                            keys_to_remove = [k for k, v in list(option_map.items()) if v == rel]
+                                            for k in keys_to_remove:
+                                                option_map.pop(k, None)
+                                        except Exception:
+                                            pass
+                                        # rebuild dropdown options
+                                        try:
+                                            dropdown.options = [ft.dropdown.Option(k) for k in option_map.keys()]
+                                            # clear selection if it was the deleted item
+                                            if dropdown.value and option_map.get(dropdown.value, None) == rel:
+                                                dropdown.value = None
+                                            try:
+                                                dropdown.update()
+                                            except Exception:
+                                                pass
+                                        except Exception:
+                                            pass
+                                        # refresh gallery grid
+                                        try:
+                                            build_stamp_grid()
+                                        except Exception:
+                                            pass
+                                    except Exception:
+                                        logger.exception("Error deleting imported stamp")
+                                    finally:
+                                        try:
+                                            page.close(confirm_dlg)
+                                        except Exception:
+                                            pass
+
+                                confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {lbl}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(confirm_dlg)), ft.TextButton("Delete", on_click=_do_delete)], open=False)
+                                try:
+                                    page.open(confirm_dlg)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                logger.exception("Error showing delete confirmation")
+
+                        controls.append(ft.TextButton("Delete", on_click=_delete_imported))
+                except Exception:
+                    pass
+
+                col = ft.Column(controls, spacing=2)
                 row.append(col)
                 if len(row) >= per_row:
                     stamp_grid.controls.append(ft.Row(row, spacing=8))
@@ -234,6 +298,8 @@ def open_image_stamp_dialog(editor, e):
                 pass
             gallery_content = ft.Column([ft.Row([ft.Text('Filter:'), filter_dropdown]), grid_container], spacing=8, width=420)
             dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: page_local.close(dlg_gallery))], open=False)
+            global STAMP_GALLERY_DIALOG
+            STAMP_GALLERY_DIALOG = dlg_gallery
             try:
                 dlg_gallery._origin_page = page_local
             except Exception:
@@ -513,7 +579,6 @@ def open_image_stamp_dialog(editor, e):
         try:
             pixels_scaled = load_pixels_for_stamp(p, scale)
             if pixels_scaled is not None:
-                import tempfile as _tmp
                 base64_out = editor._pixels_to_base64(pixels_scaled)
                 #img_out = editor._pixels_to_image(pixels_scaled)
                 #with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
@@ -761,6 +826,70 @@ def open_image_stamp_dialog(editor, e):
             status.value = f"Error: {ex}"
             status.update()
 
+    def delete_selected_imported(ev):
+        try:
+            v = dropdown.value
+            if not v:
+                status.value = "No file selected"
+                status.update()
+                return
+            mapped = option_map.get(v, v)
+        except Exception:
+            mapped = v
+
+        # only allow deletion of imported items inside .stamps/imported
+        if not (str(mapped).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(mapped).startswith('.stamps/imported')):
+            status.value = "Selected file is not an imported stamp"
+            status.update()
+            return
+
+        p = os.path.join(project_dir, mapped)
+
+        def _do_delete_selected(confirm_ev):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+                try:
+                    if mapped in files:
+                        files.remove(mapped)
+                except Exception:
+                    pass
+                try:
+                    keys_to_remove = [k for k, vv in list(option_map.items()) if vv == mapped]
+                    for k in keys_to_remove:
+                        option_map.pop(k, None)
+                except Exception:
+                    pass
+                try:
+                    dropdown.options = [ft.dropdown.Option(k) for k in option_map.keys()]
+                    if dropdown.value and option_map.get(dropdown.value, None) == mapped:
+                        dropdown.value = None
+                    try:
+                        dropdown.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                try:
+                    build_stamp_grid()
+                except Exception:
+                    pass
+            except Exception:
+                logger.exception("Error deleting selected imported stamp")
+            finally:
+                try:
+                    global STAMP_GALLERY_DIALOG
+                    page.open(STAMP_GALLERY_DIALOG)
+                except Exception:
+                    pass
+
+        global STAMP_GALLERY_DIALOG
+        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {os.path.basename(mapped)}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.open(STAMP_GALLERY_DIALOG)), ft.TextButton("Delete", on_click=_do_delete_selected)], open=False)
+        try:
+            page.open(confirm_dlg)
+        except Exception:
+            pass
+
     pos_x.on_change = lambda ev: on_select(None)
     pos_y.on_change = lambda ev: on_select(None)
     scale_dropdown.on_change = lambda ev: on_select(None)
@@ -768,7 +897,7 @@ def open_image_stamp_dialog(editor, e):
     logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
 
     content = ft.Column([
-        ft.Row([ft.Column([dropdown, ft.TextButton("Open Stamp Gallery", on_click=open_stamp_gallery)]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
+        ft.Row([ft.Column([dropdown, ft.Row([ft.TextButton("Open Stamp Gallery", on_click=open_stamp_gallery), ft.TextButton("Delete Selected", on_click=delete_selected_imported)])]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
         ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
         ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
         pos_buttons,
