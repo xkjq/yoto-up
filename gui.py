@@ -1,6 +1,14 @@
 import asyncio
 import os
 import tempfile
+from pathlib import Path
+
+if os.getenv("FLET_APP_STORAGE_TEMP") is None:
+    os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
+if os.getenv("FLET_APP_STORAGE_DATA") is None:
+    os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
+
+
 # Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
 # PyInstaller unpacks the app to a temporary folder which may be read-only for font cache writes.
 # Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
@@ -14,7 +22,6 @@ except Exception:
 import importlib.util
 from typing import cast, Any
 import sys as _sys
-from pathlib import Path
 import sys
 import traceback
 import json
