@@ -12,14 +12,14 @@ from loguru import logger
 from PIL import Image as PILImage
 from yoto_app.pixel_art_editor import PixelArtEditor
 
-from .icon_import_helpers import list_icon_cache_files
+from .icon_import_helpers import load_cached_icons, YOTO_METADATA_FILE, USER_METADATA_FILE, YOTOICONS_CACHE_DIR, YOTOICONS_METADATA_GLOBAL
 
 
 def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable, show_snack: Callable):
     """Return a dict with 'panel' key containing a Flet Column for the icon browser.
 
     Features:
-    - shows icons from .yoto_icon_cache and .yotoicons_cache
+    - shows icons from yoto_icon_cache and yotoicons_cache
     - search box to filter cached icons
     - 'Search YotoIcons' button to trigger online search (uses ensure_api/api_ref)
     """
@@ -85,8 +85,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         _meta_by_hash_source = {}
         # official cache files
         try:
-            yoto_meta = Path('.yoto_icon_cache') / 'icon_metadata.json'
-            user_meta = Path('.yoto_icon_cache') / 'user_icon_metadata.json'
+            yoto_meta = YOTO_METADATA_FILE
+            user_meta = USER_METADATA_FILE
             if yoto_meta.exists():
                 try:
                     metas = json.loads(yoto_meta.read_text(encoding='utf-8') or '[]')
@@ -219,6 +219,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     meta = None
                     src = None
                 # if no explicit source from metadata maps, infer from the path
+                # TODO: rework for full Path objects
                 if not src:
                     if p.startswith('.yoto_icon_cache') or p.startswith('./.yoto_icon_cache'):
                         src = 'Official cache'
@@ -273,28 +274,13 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         except Exception:
             pass
 
-    def load_cached_icons():
-        icons = []
-        # official Yoto cached icons
-        try:
-            for f in list_icon_cache_files(cache_dir=".yoto_icon_cache"):
-                icons.append(os.path.join(".yoto_icon_cache", f))
-        except Exception:
-            pass
-        # yotoicons cache
-        try:
-            for f in list_icon_cache_files(cache_dir=".yotoicons_cache"):
-                icons.append(os.path.join(".yotoicons_cache", f))
-        except Exception:
-            pass
-        return icons
 
     def find_metadata_for_path(p: str):
         pth = Path(p)
         # official Yoto icons metadata
         try:
-            yoto_meta = Path('.yoto_icon_cache') / 'icon_metadata.json'
-            user_meta = Path('.yoto_icon_cache') / 'user_icon_metadata.json'
+            yoto_meta = YOTO_METADATA_FILE
+            user_meta = USER_METADATA_FILE
             metas = []
             if yoto_meta.exists():
                 metas += json.loads(yoto_meta.read_text(encoding='utf-8') or '[]')
@@ -319,8 +305,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
         # YotoIcons metadata
         try:
-            yotoicons_dir = Path('.yotoicons_cache')
-            global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
+            yotoicons_dir = YOTOICONS_CACHE_DIR
+            global_meta = YOTOICONS_METADATA_GLOBAL
             metas = []
             if global_meta.exists():
                 metas += json.loads(global_meta.read_text(encoding='utf-8') or '[]')

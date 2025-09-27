@@ -1,12 +1,36 @@
 
 import os
+from pathlib import Path
 
-def list_icon_cache_files(cache_dir=".yoto_icon_cache"):
+YOTO_ICON_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yoto_icon_cache")
+YOTOICONS_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yotoicons_cache")
+
+YOTO_METADATA_FILE = YOTO_ICON_CACHE_DIR / 'icon_metadata.json'
+USER_METADATA_FILE = YOTO_ICON_CACHE_DIR / 'user_icon_metadata.json'
+
+YOTOICONS_METADATA_GLOBAL = YOTOICONS_CACHE_DIR / 'yotoicons_global_metadata.json'
+
+#def list_icon_cache_files(cache_dir=".yoto_icon_cache"):
+#    try:
+#        files = [f for f in os.listdir(cache_dir) if f.endswith('.png')]
+#        return sorted(files)
+#    except Exception:
+#        return []
+def load_cached_icons():
+    icons = []
+    # official Yoto cached icons
     try:
-        files = [f for f in os.listdir(cache_dir) if f.endswith('.png')]
-        return sorted(files)
+        for f in YOTO_ICON_CACHE_DIR.glob('*.png'):
+            icons.append(f)
     except Exception:
-        return []
+        pass
+    # yotoicons cache
+    try:
+        for f in YOTOICONS_CACHE_DIR.glob('*.png'):
+            icons.append(f)
+    except Exception:
+        pass
+    return icons
 
 def load_icon_as_pixels(path, size=16):
     from PIL import Image

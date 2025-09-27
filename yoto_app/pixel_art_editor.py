@@ -8,13 +8,15 @@ import json
 import re
 import hashlib
 import copy
+
+from yoto_app.icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE
 try:
-    from yoto_app.icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
+    from yoto_app.icon_import_helpers import load_cached_icons, load_icon_as_pixels
     from yoto_app.pixel_fonts import _font_3x5, _font_5x7
     from yoto_app.colour_picker import ColourPicker
     from yoto_app.stamp_dialog import open_image_stamp_dialog
 except ImportError:
-    from icon_import_helpers import list_icon_cache_files, load_icon_as_pixels
+    from icon_import_helpers import load_cached_icons, load_icon_as_pixels
     from pixel_fonts import _font_3x5, _font_5x7
     from colour_picker import ColourPicker
     from stamp_dialog import open_image_stamp_dialog
@@ -877,17 +879,7 @@ class PixelArtEditor:
     def on_import_icon(self, e):
         print("Importing icon from cache...")
         # look in both caches so users can pick from either
-        icon_files = []
-        try:
-            for f in list_icon_cache_files(cache_dir='.yoto_icon_cache'):
-                icon_files.append(os.path.join('.yoto_icon_cache', f))
-        except Exception:
-            pass
-        try:
-            for f in list_icon_cache_files(cache_dir='.yotoicons_cache'):
-                icon_files.append(os.path.join('.yotoicons_cache', f))
-        except Exception:
-            pass
+        icon_files = load_cached_icons()
         # dedupe while preserving order
         seen = set()
         uniq = []
@@ -988,8 +980,8 @@ class PixelArtEditor:
                     pth = Path(path)
                     # check official cache metadata files
                     meta_found = None
-                    yoto_meta = Path('.yoto_icon_cache') / 'icon_metadata.json'
-                    user_meta = Path('.yoto_icon_cache') / 'user_icon_metadata.json'
+                    yoto_meta = YOTO_METADATA_FILE
+                    user_meta = USER_METADATA_FILE
                     metas = []
                     if yoto_meta.exists():
                         try:

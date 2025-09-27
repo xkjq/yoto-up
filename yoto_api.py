@@ -161,8 +161,8 @@ class YotoAPI:
 
         if app_path is not None:
             logger.debug(f"Using app_path: {app_path}")
-            self.TOKEN_FILE = str(app_path / self.TOKEN_FILE)
-            self.CACHE_FILE = str(app_path / self.CACHE_FILE)
+            self.TOKEN_FILE = app_path / self.TOKEN_FILE
+            self.CACHE_FILE = app_path / self.CACHE_FILE
             self.UPLOAD_ICON_CACHE_FILE = str(app_path / self.UPLOAD_ICON_CACHE_FILE)
             self.OFFICIAL_ICON_CACHE_DIR = app_path / self.OFFICIAL_ICON_CACHE_DIR
             self.YOTOICONS_CACHE_DIR = app_path / self.YOTOICONS_CACHE_DIR
@@ -200,9 +200,9 @@ class YotoAPI:
     def _load_cache(self):
         if not self.cache_requests:
             return {}
-        if os.path.exists(self.CACHE_FILE):
+        if self.CACHE_FILE.exists():
             try:
-                with open(self.CACHE_FILE, "r") as f:
+                with self.CACHE_FILE.open("r") as f:
                     return json.load(f)
             except Exception:
                 return {}
@@ -212,7 +212,7 @@ class YotoAPI:
         if not self.cache_requests:
             return
         with self._cache_lock:
-            with open(self.CACHE_FILE, "w") as f:
+            with self.CACHE_FILE.open("w") as f:
                 json.dump(self._request_cache, f)
 
     def _ensure_versions_dir(self):
@@ -442,14 +442,14 @@ class YotoAPI:
 
     def save_tokens(self, access_token, refresh_token):
         logger.debug(f"Saving tokens to {self.TOKEN_FILE}")
-        with open(self.TOKEN_FILE, "w") as f:
+        with self.TOKEN_FILE.open("w") as f:
             json.dump({"access_token": access_token, "refresh_token": refresh_token}, f)
 
     def load_tokens(self):
-        if not os.path.exists(self.TOKEN_FILE):
+        if not self.TOKEN_FILE.exists():
             logger.debug(f"Token file {self.TOKEN_FILE} does not exist.")
             return None, None
-        with open(self.TOKEN_FILE, "r") as f:
+        with self.TOKEN_FILE.open("r") as f:
             data = json.load(f)
             logger.debug(f"Loaded tokens from file: {data}")
             return data.get("access_token"), data.get("refresh_token")
@@ -469,6 +469,9 @@ class YotoAPI:
             device_info.get("expires_in", 300)
         )
         self.save_tokens(self.access_token, self.refresh_token)
+
+    def is_authenticated(self):
+        return self.access_token is not None and not self.is_token_expired(self.access_token)
 
     def generate_card_chapter_and_track_icon_fields(self, card: Card):
         """
@@ -1961,7 +1964,7 @@ class YotoAPI:
         if result.get("url"):
             self.save_icon_image_to_yoto_icon_cache(icon_path, icon_bytes, hashlib.sha256(result.get("url").encode()).hexdigest())
 
-        # Save the icon file into .yoto_icon_cache for local reference
+        # Save the icon file into yoto_icon_cache for local reference
         logger.info(f"Icon uploaded and cached with mediaId: {result.get('mediaId')}")
         return result
 
@@ -2367,9 +2370,9 @@ class YotoAPI:
         self.refresh_token = None
         self.token_expiry = None
         # Remove token cache file
-        if self.TOKEN_CACHE_PATH.exists():
+        if self.TOKEN_FILE.exists():
             try:
-                self.TOKEN_CACHE_PATH.unlink()
+                self.TOKEN_FILE.unlink()
             except Exception:
                 pass
         # Optionally clear other caches if needed

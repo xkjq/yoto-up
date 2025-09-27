@@ -11,12 +11,14 @@ def ensure_api(api_ref, client=None):
     - api_ref: dict-like container where the instance is stored under 'api'
     - client: optional client id to pass to YotoAPI when creating
     """
+    logger.debug("api_manager.ensure_api called")
     # prefer dict-like container
     try:
         api = api_ref.get('api') if isinstance(api_ref, dict) else None
     except Exception:
         api = None
     if api:
+        logger.debug("Using existing API instance")
         return api
     cid = None
     try:

@@ -6,7 +6,7 @@ import tempfile
 # Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
 # and avoids FileNotFoundError when matplotlib tries to access a bundled source file path.
 try:
-    mpl_cfg = os.path.join(tempfile.gettempdir(), "yoto_up_matplotlib")
+    mpl_cfg = os.path.join(os.getenv("FLET_APP_STORAGE_TEMP"), "yoto_up_matplotlib")
     os.environ.setdefault("MPLCONFIGDIR", mpl_cfg)
     os.makedirs(mpl_cfg, exist_ok=True)
 except Exception:
@@ -484,15 +484,8 @@ def main(page):
                 except Exception:
                     pass
             except Exception as e:
-                try:
-                    show_snack(f'Auth failed: {e}', error=True)
-                except Exception:
-                    pass
-                # fallback: try the existing auth module
-                try:
-                    auth_mod.start_device_auth(page, instr_container=instr or auth_instructions, api_ref=api_ref, show_snack_fn=show_snack)
-                except Exception:
-                    pass
+                logger.error(f"start_device_auth: auth failed: {e}")
+                show_snack(f'Auth failed: {e}', error=True)
 
         threading.Thread(target=_poll_thread, daemon=True).start()
         #except Exception as ex:
@@ -1538,7 +1531,7 @@ def main(page):
     show_dev_warning()
 
     def auth_complete():
-        print("Auth complete")
+        logger.debug("Auth complete")
         tabs_control.tabs[1].visible = True
         tabs_control.tabs[2].visible = True
         tabs_control.tabs[3].visible = True  # Icons tab
@@ -1547,35 +1540,51 @@ def main(page):
         api = api_ref.get("api")
         if api:
             api.get_public_icons(show_in_console=False)
-        #api.get_user_icons(show_in_console=False)
+            api.get_user_icons(show_in_console=False)
         # Always use the local page variable, not the argument
         page.update()
     page.auth_complete = auth_complete
 
     # Now that the UI controls are added to the page, try to reuse tokens.json (if present)
     try:
-        tokens_path = Path("tokens.json")
-        if tokens_path.exists():
-            def _init_api_from_tokens():
-                try:
-                    api = ensure_api(api_ref)
-                    api_ref["api"] = api
-                    show_snack("Authenticated (from tokens.json)")
-                    # Replace instructions with a prominent success message
-                    auth_instructions.controls.clear()
-                    auth_instructions.controls.extend([
-                        ft.Text("Authenticated (from tokens.json)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN, ),
-                        ft.Text(api.TOKEN_FILE, size=10)
-                    ]
-                    )
-                    auth_complete()
-                except Exception as e:
-                    status.value = f"Tokens present but API init failed: {e}"
-                    show_snack(f"API init from tokens.json failed: {e}", error=True)
-                    print("[gui] init_api_from_tokens failed:", e)
-                page.update()
+        api = ensure_api(api_ref)
 
-            threading.Thread(target=_init_api_from_tokens, daemon=True).start()
+        logger.debug("Checking for existing tokens...")
+        logger.debug(f"api: {api}")
+
+        if api and api.is_authenticated():
+            show_snack("Authenticated (from existing tokens)", error=False)
+            auth_instructions.controls.clear()
+            auth_instructions.controls.extend([
+                ft.Text("Authenticated (from existing tokens)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN, ),
+                ft.Text(api.TOKEN_FILE, size=10)
+            ]
+            )
+            auth_complete()
+            page.update()
+        #tokens_path = Path("tokens.json")
+        #logger.debug(f"Checking for existing tokens.json at {tokens_path.resolve()}")
+        #if tokens_path.exists():
+        #    def _init_api_from_tokens():
+        #        try:
+        #            api = ensure_api(api_ref)
+        #            api_ref["api"] = api
+        #            show_snack("Authenticated (from tokens.json)")
+        #            # Replace instructions with a prominent success message
+        #            auth_instructions.controls.clear()
+        #            auth_instructions.controls.extend([
+        #                ft.Text("Authenticated (from tokens.json)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN, ),
+        #                ft.Text(api.TOKEN_FILE, size=10)
+        #            ]
+        #            )
+        #            auth_complete()
+        #        except Exception as e:
+        #            status.value = f"Tokens present but API init failed: {e}"
+        #            show_snack(f"API init from tokens.json failed: {e}", error=True)
+        #            print("[gui] init_api_from_tokens failed:", e)
+        #        page.update()
+
+        #    threading.Thread(target=_init_api_from_tokens, daemon=True).start()
     except Exception as e:
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
