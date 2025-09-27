@@ -24,18 +24,18 @@ dependencies = [
   "pydantic>=1.10",
   "pillow>=9.0.0",
   "beautifulsoup4>=4.9.0",
-  #"rapidfuzz>=2.0.0",
   "mutagen>=1.45.1",
   "textual>=0.2.0",
   "pynput",
+  "numpy>=1.25",
+  "matplotlib>=3.7",
 ]
 
 [project.optional-dependencies]
 # Desktop target: full feature set (audio libs, numpy, plotting)
 desktop = [
   "flet[desktop]",
-  "numpy>=1.25",
-  "matplotlib>=3.7",
+  "rapidfuzz>=2.0.0",
   "pydub>=0.25",
   "librosa>=0.10",
   "pyloudnorm>=0.1",
