@@ -29,6 +29,7 @@ dependencies = [
   "pynput",
   "numpy>=1.25",
   "matplotlib>=3.7",
+
 ]
 
 [project.optional-dependencies]
@@ -47,6 +48,7 @@ desktop = [
 # heavy scientific packages which are not compatible with the browser runtime.
 web = [
   "flet[web]",
+  "oauthlib"
 ]
 
 # additional extras for docs/build or dev
