@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 import platform
 import sys
+from flet.auth import OAuthProvider
 
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
@@ -730,9 +731,9 @@ def main(page):
         page.update()
 
         # Prefer browser OAuth via Flet when possible (works for web and desktop)
-        from flet.auth import OAuthProvider
 
         def on_login(evt):
+            logger.debug(f"[on_login] evt: {evt}; page.auth: {getattr(page, 'auth', None)}")
             # evt is a LoginEvent
             if getattr(evt, 'error', None):
                 show_snack(f"Login error: {evt.error}", error=True)
@@ -778,6 +779,8 @@ def main(page):
             redirect_url="http://localhost:8550/oauth_callback",
         )
 
+        logger.debug(f"[on_auth_click] using OAuthProvider: {provider}")
+
         page.on_login = on_login
         try:
             # open login; fetch_user=False because we only need tokens
@@ -789,6 +792,7 @@ def main(page):
                 start_device_auth(e, auth_instructions)
             else:
                 threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
+        logger.debug("[on_auth_click] _auth_click done")
 
     auth_btn.on_click = _auth_click
 
