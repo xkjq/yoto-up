@@ -24,12 +24,17 @@ import threading
 import os
 
 import flet as ft
-# NOTE: yoto_app modules import heavy native extensions (nltk, sqlite3, pydub, etc.)
-# which can fail or block when running inside Pyodide / the browser. To avoid
-# import-time failures during the web build we lazy-import yoto_app submodules
-# inside `main()` where we can provide graceful fallbacks. See the import
-# block at the top of `main()` for details.
+from yoto_app import utils as utils_mod
+from yoto_app import ui_helpers as ui_helpers
+from yoto_app import auth as auth_mod
+from yoto_app.api_manager import ensure_api
+from yoto_app.playlists import build_playlists_panel
 from loguru import logger
+from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
+
+from yoto_app.show_waveforms import show_waveforms_popup
+from yoto_app.icon_browser import build_icon_browser_panel
+from yoto_app.pixel_art_editor import PixelArtEditor
 import http.server
 import socketserver
 import socket
@@ -129,66 +134,6 @@ To authenticate with your Yoto account:
 
 
 def main(page):
-
-    # Lazy-import application modules that may pull in native extensions
-    # (nltk, sqlite3, pydub, etc.). When running in a browser/Pyodide these
-    # imports can fail; provide lightweight fallbacks so the UI can still
-    # initialize and show an informative message instead of crashing at
-    # module import time.
-    try:
-        from yoto_app import utils as utils_mod
-        from yoto_app import ui_helpers as ui_helpers
-        from yoto_app import auth as auth_mod
-        from yoto_app.api_manager import ensure_api
-        from yoto_app.playlists import build_playlists_panel
-        from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
-        from yoto_app.show_waveforms import show_waveforms_popup
-        from yoto_app.icon_browser import build_icon_browser_panel
-        from yoto_app.pixel_art_editor import PixelArtEditor
-    except Exception as _import_err:
-        # Fallbacks: minimal no-op implementations so the UI can boot.
-        utils_mod = None
-        ui_helpers = None
-        auth_mod = None
-        def ensure_api(api_ref=None):
-            # placeholder: do nothing and return None
-            return None
-        def build_playlists_panel(page, api_ref, show_snack, ensure_api_fn, status, overall_bar, overall_text, file_rows_column):
-            # return a minimal playlists_ui dict the rest of the GUI expects
-            empty_col = ft.Column([ft.Text("Playlists unavailable in this build")])
-            return {
-                'playlists_column': empty_col,
-                'playlists_list': None,
-                'existing_card_dropdown': ft.Dropdown(options=[]),
-                'existing_card_map': {},
-                'fetch_playlists': lambda *a, **k: None,
-                'fetch_playlists_sync': lambda *a, **k: None,
-                'fetch_btn': None,
-                'multi_select_btn': None,
-                'delete_selected_btn': None,
-                'export_selected_btn': None,
-                'sort_dropdown': None,
-                'show_card_details': lambda *a, **k: None,
-            }
-        def upload_start(e, ctx):
-            print('[upload_start] Uploads unavailable in this build')
-        def upload_stop(e, ctx):
-            print('[upload_stop] Uploads unavailable in this build')
-        class FileUploadRow:
-            def __init__(self, *a, **k):
-                self.row = ft.Text('Upload row unavailable')
-                self.filename = None
-            def set_status(self, *a, **k):
-                pass
-            def set_progress(self, *a, **k):
-                pass
-            def update_file(self, *a, **k):
-                pass
-        def show_waveforms_popup(*a, **k):
-            print('[show_waveforms_popup] unavailable in this build')
-        def build_icon_browser_panel(*a, **k):
-            return {'panel': ft.Text('Icon browser unavailable')}
-        PixelArtEditor = None
 
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     waveform_cache = {}

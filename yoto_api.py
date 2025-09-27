@@ -26,41 +26,19 @@ except (AssertionError, ModuleNotFoundError):
         @staticmethod
         def ratio(a, b):
             return 100 if a == b else 0
-# NLTK is optional: in web/Pyodide builds native extensions or data downloads
-# may not be available. Try to import and fall back to lightweight
-# alternatives so the module can still be imported.
-try:
-    import nltk
-    from nltk.corpus import stopwords as nltk_stopwords
-    from nltk.tokenize import word_tokenize
-    # Attempt to ensure common datasets are present; ignore failures
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except Exception:
-        try:
-            nltk.download('punkt')
-        except Exception:
-            pass
-    try:
-        nltk.data.find('corpora/stopwords')
-    except Exception:
-        try:
-            nltk.download('stopwords')
-        except Exception:
-            pass
-except Exception:
-    nltk = None
-    class _NLTKStopwordsFallback:
-        @staticmethod
-        def words(lang='english'):
-            return set()
-    nltk_stopwords = _NLTKStopwordsFallback()
-
-    def word_tokenize(text: str):
-        import re
-        return [t for t in re.split(r"\W+", text) if t]
-
+import nltk
+from nltk.corpus import stopwords as nltk_stopwords
+from nltk.tokenize import word_tokenize
 from icons import render_icon
+
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console
