@@ -26,7 +26,6 @@ dependencies = [
   "pillow>=9.0.0",
   "beautifulsoup4>=4.9.0",
   #"rapidfuzz>=2.0.0",
-  "nltk>=3.8.0",
   "mutagen>=1.45.1",
   "textual>=0.2.0",
   "pynput",
@@ -41,6 +40,8 @@ desktop = [
   "pydub>=0.25",
   "librosa>=0.10",
   "pyloudnorm>=0.1",
+  # Optional NLP tools useful for desktop keyword extraction
+  "nltk>=3.8.0",
 ]
 
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and

@@ -6,7 +6,6 @@ rich
 pillow
 beautifulsoup4
 rapidfuzz
-nltk
 textual
 pynput
 mutagen

@@ -26,19 +26,50 @@ except (AssertionError, ModuleNotFoundError):
         @staticmethod
         def ratio(a, b):
             return 100 if a == b else 0
-import nltk
-from nltk.corpus import stopwords as nltk_stopwords
-from nltk.tokenize import word_tokenize
-from icons import render_icon
+# Make NLTK optional: prefer it when available, but provide a tiny fallback
+# for environments (like web builds) where NLTK isn't installed or data
+# downloads are undesirable.
+try:
+    import nltk
+    from nltk.corpus import stopwords as nltk_stopwords
+    from nltk.tokenize import word_tokenize
+    _HAVE_NLTK = True
+    # Try to ensure resources are present when running in desktop environments
+    # where downloads are possible. If downloads fail, keep going — fallbacks
+    # will be used where necessary.
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except Exception:
+        try:
+            nltk.download('punkt')
+        except Exception:
+            pass
+    try:
+        nltk.data.find('corpora/stopwords')
+    except Exception:
+        try:
+            nltk.download('stopwords')
+        except Exception:
+            pass
+except ImportError:
+    _HAVE_NLTK = False
+    # Minimal fallback tokenizer and stopwords for basic keyword extraction
+    def word_tokenize(text: str):
+        return re.findall(r"\w+", text)
 
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+    class _FallbackStopwords:
+        @staticmethod
+        def words(lang: str = 'english'):
+            return [
+                "the", "and", "a", "an", "of", "in", "on", "at", "to", "for", "by", "with",
+                "is", "it", "as", "from", "that", "this", "be", "are", "was", "were", "or",
+                "but", "not", "so", "if", "then", "than", "too", "very", "can", "will", "just",
+                "do", "does", "did", "has", "have", "had", "you", "your", "my", "our", "their",
+                "his", "her", "its", "episode", "chapter"
+            ]
+
+    nltk_stopwords = _FallbackStopwords
+from icons import render_icon
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console
