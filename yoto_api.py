@@ -1362,6 +1362,7 @@ class YotoAPI:
         """
         Fetches and caches both public and user icons, optionally displaying them in the console.
         """
+        logger.debug("Refreshing public and user icons...")
         self.get_public_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
         self.get_user_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
 
@@ -2071,6 +2072,31 @@ class YotoAPI:
         cache_file_path = icons_cache_dir / f"{sha256}{ext}"
         if not cache_file_path.exists():
             cache_file_path.write_bytes(icon_bytes)
+    
+    def get_icon_b64_data(self, icon_field: str) -> str | None:
+        """
+        Given an icon field (e.g. "yoto:#<mediaId>"), return a base64 data URI string for the icon image.
+        Returns None if the icon cannot be found or loaded.
+        """
+        cache_path = self.get_icon_cache_path(icon_field)
+        if not cache_path or not cache_path.exists():
+            logger.debug(f"No cached icon found for field: {icon_field}")
+            return None
+        try:
+            mime_type = "image/png"  # Default mime type
+            ext = cache_path.suffix.lower()
+            if ext == ".jpg" or ext == ".jpeg":
+                mime_type = "image/jpeg"
+            elif ext == ".svg":
+                mime_type = "image/svg+xml"
+            elif ext == ".gif":
+                mime_type = "image/gif"
+            img_bytes = cache_path.read_bytes()
+            b64_data = base64.b64encode(img_bytes).decode()
+            return b64_data
+        except Exception as ex:
+            logger.error(f"Error loading icon image from {cache_path}: {ex}")
+            return None
 
     def get_icon_cache_path(self, icon_field: str) -> Path | None:
         """
@@ -2079,6 +2105,7 @@ class YotoAPI:
         is known in the metadata, try to download and cache it, then return the path.
         Returns None if no cache path can be determined.
         """
+        logger.debug(f"Getting icon cache path for field: {icon_field}")
         if not icon_field:
             logger.debug("No icon_field provided")
             return None
@@ -2092,11 +2119,13 @@ class YotoAPI:
             for meta_name in ("icon_metadata.json", "user_icon_metadata.json"):
                 meta_path = cache_dir / meta_name
                 if not meta_path.exists():
+                    logger.debug(f"Metadata file not found: {meta_path}")
                     continue
                 try:
                     with meta_path.open("r") as f:
                         icons = json.load(f)
-                except Exception:
+                except Exception as ex:
+                    logger.error(f"Error loading icon metadata from {meta_path}: {ex}")
                     continue
                 for icon in icons:
                     if str(icon.get("mediaId")) == media_id:
@@ -2104,6 +2133,7 @@ class YotoAPI:
                         if icon.get("cache_path"):
                             p = Path(icon.get("cache_path"))
                             if p.exists():
+                                logger.debug(f"Found cached icon (from cache_path) at: {p}")
                                 return p
                         # Otherwise try to use the url field
                         url = icon.get("url") or icon.get("img_url")
@@ -2113,6 +2143,7 @@ class YotoAPI:
                         ext = Path(url).suffix or ".png"
                         p = cache_dir / f"{url_hash}{ext}"
                         if p.exists():
+                            logger.debug(f"Found cached icon at: {p}")
                             return p
                         # Try to download now
                         try:
@@ -2120,10 +2151,12 @@ class YotoAPI:
                             resp.raise_for_status()
                             p.write_bytes(resp.content)
                             return p
-                        except Exception:
+                        except Exception as ex:
+                            logger.error(f"Error downloading icon from {url}: {ex}")
                             return p if p.exists() else None
 
             # Check upload cache (icons uploaded via this tool)
+            logger.debug("Checking upload cache for icon")
             upload_cache = self._load_icon_upload_cache()
             for sha, data in (upload_cache or {}).items():
                 if str(data.get("mediaId")) == media_id:
@@ -2140,10 +2173,13 @@ class YotoAPI:
                         resp.raise_for_status()
                         p.write_bytes(resp.content)
                         return p
-                    except Exception:
+                    except Exception as ex:
+                        logger.error(f"Error getting icon cache path for {icon_field}: {ex}")
                         return p if p.exists() else None
-        except Exception:
-            logger.error("Error getting icon cache path", exc_info=True)
+            
+            logger.debug(f"No matching icon found for mediaId: {media_id}")
+        except Exception as ex:
+            logger.error(f"Error getting icon cache path: {ex}")
             return None
         return None
 

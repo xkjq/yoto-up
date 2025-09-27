@@ -16,7 +16,7 @@ YOTOICONS_METADATA_GLOBAL = YOTOICONS_CACHE_DIR / 'yotoicons_global_metadata.jso
 #        return sorted(files)
 #    except Exception:
 #        return []
-def load_cached_icons():
+def load_cached_icons() -> list[Path]:
     icons = []
     # official Yoto cached icons
     try:

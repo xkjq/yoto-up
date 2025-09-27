@@ -40,8 +40,8 @@ def make_show_card_details(
             api = api_ref.get("api")
             try:
                 api.refresh_public_and_user_icons()
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug(f"Failed to refresh icon cache: {ex}")
 
         def fmt_sec(s):
             try:
@@ -227,12 +227,14 @@ def make_show_card_details(
                                 show_snack(f"Downloaded to {dest}")
                             except Exception as ex:
                                 show_snack(f"Download failed: {ex}", error=True)
+                        tr_img = None
                         try:
                             api = api_ref.get("api")
                             if api and tr_icon_field:
-                                tp = api.get_icon_cache_path(tr_icon_field)
-                                if tp and Path(tp).exists():
-                                    img = ft.Image(src=str(tp), width=20, height=20)
+                                #tp = api.get_icon_cache_path(tr_icon_field)
+                                based_image = api.get_icon_b64_data(tr_icon_field)
+                                if based_image is not None:
+                                    img = ft.Image(src_base64=based_image, width=20, height=20, tooltip=f"Click to replace icon")
                                     tr_img = ft.GestureDetector(
                                         content=img,
                                         on_tap=lambda ev,
@@ -240,57 +242,16 @@ def make_show_card_details(
                                         tr_index=t_idx - 1: _on_tap_tr(
                                             ev, ch_index, tr_index
                                         ),
+                                        width=20, height=20
                                     )
                                 else:
-                                    def fetch_icon_worker(
-                                        icon_field=tr_icon_field,
-                                        ch_index=ch_index,
-                                        tr_index=t_idx - 1,
-                                    ):
-                                        try:
-                                            api_local = ensure_api(api_ref, CLIENT_ID)
-                                            api_local.get_icon_cache_path(icon_field)
-                                            try:
-                                                loop = asyncio.get_event_loop()
-                                                loop.call_soon_threadsafe(
-                                                    lambda: (
-                                                        page.open(dialog),
-                                                        page.update(),
-                                                    )
-                                                )
-                                            except Exception:
-                                                try:
-                                                    page.open(dialog)
-                                                    page.update()
-                                                except Exception:
-                                                    pass
-                                        except Exception:
-                                            pass
-
-                                    tr_img = ft.IconButton(
-                                        icon=ft.Icons.IMAGE,
-                                        tooltip="Fetch icon",
-                                        on_click=lambda ev,
-                                        f=tr_icon_field,
-                                        ci=ch_index,
-                                        ti=t_idx - 1: threading.Thread(
-                                            target=lambda: _on_tap_tr(ev, ci, ti),
-                                            daemon=True,
-                                        ).start(),
-                                    )
+                                    pass
                             else:
-                                tr_img = ft.IconButton(
-                                    icon=ft.Icons.IMAGE,
-                                    tooltip="Fetch icon",
-                                    on_click=lambda ev,
-                                    f=tr_icon_field,
-                                    ci=ch_index,
-                                    ti=t_idx - 1: threading.Thread(
-                                        target=lambda: _on_tap_tr(ev, ci, ti),
-                                        daemon=True,
-                                    ).start(),
-                                )
-                        except Exception:
+                                pass
+                        except Exception as ex:
+                            logger.exception(f"Error fetching track icon: {ex}")
+                        
+                        if tr_img is None:
                             tr_img = ft.IconButton(
                                 icon=ft.Icons.IMAGE,
                                 tooltip="Fetch icon",
@@ -612,9 +573,9 @@ def make_show_card_details(
                     try:
                         api = api_ref.get("api")
                         if api and icon_field:
-                            p = api.get_icon_cache_path(icon_field)
-                            if p and Path(p).exists():
-                                img = ft.Image(src=str(p), width=24, height=24)
+                            icon_base64 = api.get_icon_b64_data(icon_field)
+                            if icon_base64 is not None:
+                                img = ft.Image(src_base64=icon_base64, width=24, height=24)
                                 img_control = ft.GestureDetector(content=img, on_tap=_on_tap_ch)
                             else:
                                 img_control = ft.IconButton(icon=ft.Icons.ERROR, tooltip="Click to refresh icon cache", on_click=refresh_icon_cache)

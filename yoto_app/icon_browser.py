@@ -572,7 +572,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         icons = load_cached_icons()
         filtered = []
         for p in icons:
-            name = os.path.basename(p).lower()
+            name = p.name
             is_official = p.startswith('.yoto_icon_cache') or p.startswith('./.yoto_icon_cache')
             is_yotoicons = p.startswith('.yotoicons_cache') or p.startswith('./.yotoicons_cache')
             is_local = not (is_official or is_yotoicons)
