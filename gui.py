@@ -3,6 +3,7 @@ import os
 import tempfile
 from pathlib import Path
 import platform
+import sys
 
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
