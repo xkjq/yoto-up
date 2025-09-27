@@ -249,6 +249,7 @@ def open_image_stamp_dialog(editor, e):
                                 logger.exception("Error showing delete confirmation")
 
                         controls.append(ft.TextButton("Delete", on_click=_delete_imported))
+                        # (Delete Sheet functionality removed from per-thumbnail UI to avoid deep nesting)
                 except Exception:
                     pass
 
@@ -890,6 +891,127 @@ def open_image_stamp_dialog(editor, e):
         except Exception:
             pass
 
+    def delete_selected_sheet(ev):
+        try:
+            v = dropdown.value
+            if not v:
+                status.value = "No file selected"
+                status.update()
+                return
+            mapped = option_map.get(v, v)
+        except Exception:
+            mapped = v
+
+        if not (str(mapped).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(mapped).startswith('.stamps/imported')):
+            status.value = "Selected file is not an imported stamp"
+            status.update()
+            return
+
+        p = os.path.join(project_dir, mapped)
+        # determine group using same heuristics as import dialog
+        src_name = None
+        pref = None
+        try:
+            if os.path.exists(p) and p.lower().endswith('.json'):
+                with open(p, 'r', encoding='utf-8') as fh:
+                    obj = json.load(fh)
+                if isinstance(obj, dict):
+                    meta = obj.get('metadata') or {}
+                    src_name = meta.get('source')
+                    nm = meta.get('name')
+                    if not src_name and isinstance(nm, str) and '_' in nm:
+                        pref = nm.rsplit('_', 2)[0]
+        except Exception:
+            pass
+
+        imported_dir = os.path.join(project_dir, '.stamps', 'imported')
+        candidates = []
+        try:
+            for fn2 in os.listdir(imported_dir):
+                if not (fn2.lower().endswith('.json') or fn2.lower().endswith('.png')):
+                    continue
+                full2 = os.path.join(imported_dir, fn2)
+                if src_name:
+                    try:
+                        if fn2.lower().endswith('.json'):
+                            with open(full2, 'r', encoding='utf-8') as fh2:
+                                obj2 = json.load(fh2)
+                            meta2 = obj2.get('metadata') or {}
+                            if meta2.get('source') == src_name:
+                                candidates.append(full2)
+                    except Exception:
+                        pass
+                elif pref:
+                    if fn2.startswith(pref + '_'):
+                        candidates.append(full2)
+                else:
+                    try:
+                        base = os.path.splitext(os.path.basename(p))[0]
+                        if fn2.startswith(base.rsplit('_', 2)[0] + '_'):
+                            candidates.append(full2)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        if not candidates:
+            status.value = "No grouped files found for selected sheet"
+            status.update()
+            return
+
+        def _do_delete(confirm_ev):
+            try:
+                for fdel in candidates:
+                    try:
+                        if os.path.exists(fdel):
+                            os.remove(fdel)
+                    except Exception:
+                        pass
+                # update files list and option_map
+                try:
+                    for c in list(candidates):
+                        relp = os.path.join('.stamps', 'imported', os.path.basename(c))
+                        if relp in files:
+                            try:
+                                files.remove(relp)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                try:
+                    keys_to_remove = [k for k, v in list(option_map.items()) if v and v in [os.path.join('.stamps','imported', os.path.basename(x)) for x in candidates]]
+                    for k in keys_to_remove:
+                        option_map.pop(k, None)
+                except Exception:
+                    pass
+                try:
+                    dropdown.options = [ft.dropdown.Option(k) for k in option_map.keys()]
+                    if dropdown.value and option_map.get(dropdown.value, None) in [os.path.join('.stamps','imported', os.path.basename(x)) for x in candidates]:
+                        dropdown.value = None
+                    try:
+                        dropdown.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                try:
+                    build_stamp_grid()
+                except Exception:
+                    pass
+            except Exception:
+                logger.exception("Error deleting imported sheet files")
+            finally:
+                try:
+                    page.close(confirm_dlg)
+                except Exception:
+                    pass
+
+        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Text(f"Delete {len(candidates)} files from this imported sheet?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(confirm_dlg)), ft.TextButton("Delete", on_click=_do_delete)], open=False)
+        try:
+            page.open(confirm_dlg)
+        except Exception:
+            pass
+
     pos_x.on_change = lambda ev: on_select(None)
     pos_y.on_change = lambda ev: on_select(None)
     scale_dropdown.on_change = lambda ev: on_select(None)
@@ -897,7 +1019,7 @@ def open_image_stamp_dialog(editor, e):
     logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
 
     content = ft.Column([
-        ft.Row([ft.Column([dropdown, ft.Row([ft.TextButton("Open Stamp Gallery", on_click=open_stamp_gallery), ft.TextButton("Delete Selected", on_click=delete_selected_imported)])]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
+        ft.Row([ft.Column([dropdown, ft.Row([ft.TextButton("Open Stamp Gallery", on_click=open_stamp_gallery), ft.TextButton("Delete Selected", on_click=delete_selected_imported), ft.TextButton("Delete Sheet", on_click=delete_selected_sheet)])]), import_btn], alignment=ft.MainAxisAlignment.START, spacing=8),
         ft.Row([pos_x, pos_y, scale_dropdown, opaque_only], spacing=8),
         ft.Row([chroma_checkbox, chroma_color_field, chroma_picker_btn], spacing=8),
         pos_buttons,
