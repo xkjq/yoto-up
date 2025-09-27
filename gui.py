@@ -768,7 +768,7 @@ def main(page):
 
         # Build a generic OAuth provider using Yoto endpoints
         provider = OAuthProvider(
-            client_id=os.getenv('YOTO_CLIENT_ID') or getattr(yoto_config, 'CLIENT_ID', None),
+            client_id="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5",
             client_secret=os.getenv('YOTO_CLIENT_SECRET', ''),
             authorization_endpoint='https://login.yotoplay.com/authorize',
             token_endpoint='https://login.yotoplay.com/oauth/token',
