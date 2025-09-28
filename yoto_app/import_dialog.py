@@ -371,6 +371,15 @@ def open_import_dialog(editor, ev):
                     update_preview()
                 except Exception:
                     pass
+                try:
+                    # update the sheet crop status indicator in the main dialog
+                    sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+                    try:
+                        sheet_crop_status.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -383,6 +392,15 @@ def open_import_dialog(editor, ev):
                 pass
             try:
                 update_preview()
+            except Exception:
+                pass
+            try:
+                # reflect reset in the status indicator
+                sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+                try:
+                    sheet_crop_status.update()
+                except Exception:
+                    pass
             except Exception:
                 pass
         # build dialog content showing source and cropped preview side-by-side
@@ -900,6 +918,38 @@ def open_import_dialog(editor, ev):
             try:
                 sheet_crop_override = (ol, ot, orr, ob)
                 logger.debug(f"Auto analyze detected sheet_crop_override={sheet_crop_override} for path={path}")
+                try:
+                    # populate main dialog crop fields so the user sees the detected values
+                    left_field_main.value = str(ol)
+                    top_field_main.value = str(ot)
+                    right_field_main.value = str(orr)
+                    bottom_field_main.value = str(ob)
+                    try:
+                        left_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        top_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        right_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        bottom_field_main.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                try:
+                    sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+                    try:
+                        sheet_crop_status.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             except Exception:
                 sheet_crop_override = None
             tile_w_field.value = str(inferred)
@@ -1252,15 +1302,145 @@ def open_import_dialog(editor, ev):
             status_import.value = f"Import failed: {ex}"
             status_import.update()
 
+    # group sheet-cropping controls into an expandable panel
+    # a small status control for current override state
+    # main dialog crop controls so user can edit values without opening the crop dialog
+    left_field_main = ft.TextField(label='Left (px)', width=100)
+    top_field_main = ft.TextField(label='Top (px)', width=100)
+    right_field_main = ft.TextField(label='Right (px)', width=100)
+    bottom_field_main = ft.TextField(label='Bottom (px)', width=100)
+
+    def _update_sheet_override_from_main_fields(ev=None):
+        nonlocal sheet_crop_override
+        try:
+            lf = (left_field_main.value or '').strip()
+            tf = (top_field_main.value or '').strip()
+            rf = (right_field_main.value or '').strip()
+            bf = (bottom_field_main.value or '').strip()
+            if lf == '' and tf == '' and rf == '' and bf == '':
+                sheet_crop_override = None
+            else:
+                try:
+                    lvi = int(lf) if lf != '' else 0
+                    tvi = int(tf) if tf != '' else 0
+                    # attempt to clamp to the actual image if available
+                    path_now = (sheet_path_field.value or '').strip()
+                    if path_now and os.path.exists(path_now):
+                        try:
+                            im_tmp = Image.open(path_now)
+                            iw, ih = im_tmp.size
+                        except Exception:
+                            iw = ih = None
+                    else:
+                        iw = ih = None
+                    rvi = int(rf) if rf != '' else (iw if iw is not None else 0)
+                    bvi = int(bf) if bf != '' else (ih if ih is not None else 0)
+                    if iw is not None:
+                        lvi = max(0, min(iw, lvi))
+                        tvi = max(0, min(ih, tvi))
+                        rvi = max(0, min(iw, rvi))
+                        bvi = max(0, min(ih, bvi))
+                    if rvi <= lvi or bvi <= tvi:
+                        sheet_crop_override = None
+                    else:
+                        sheet_crop_override = (lvi, tvi, rvi, bvi)
+                except Exception:
+                    sheet_crop_override = None
+        except Exception:
+            pass
+        try:
+            sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+            try:
+                sheet_crop_status.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            update_preview()
+        except Exception:
+            pass
+
+    def _main_reset(ev=None):
+        try:
+            left_field_main.value = ''
+            top_field_main.value = ''
+            right_field_main.value = ''
+            bottom_field_main.value = ''
+            try:
+                try:
+                    left_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    top_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    right_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    bottom_field_main.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            nonlocal sheet_crop_override
+            sheet_crop_override = None
+        except Exception:
+            pass
+        try:
+            sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+            try:
+                sheet_crop_status.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            update_preview()
+        except Exception:
+            pass
+
+    # wire main fields to update the override live
+    try:
+        left_field_main.on_change = _update_sheet_override_from_main_fields
+        top_field_main.on_change = _update_sheet_override_from_main_fields
+        right_field_main.on_change = _update_sheet_override_from_main_fields
+        bottom_field_main.on_change = _update_sheet_override_from_main_fields
+    except Exception:
+        pass
+
+    sheet_crop_status = ft.Text('none')
+    try:
+        sheet_crop_expander = ft.ExpansionTile(
+            title=ft.Text('Sheet cropping'),
+            controls=[
+                ft.Container(content=ft.Row([edit_sheet_crop_btn, ft.Text('Status:'), warn_preview], spacing=8), padding=0),
+                ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
+                ft.Container(content=ft.Row([
+                    ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
+                    ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
+                ], spacing=12), padding=0),
+            ],
+        )
+    except Exception:
+        # fallback if ExpansionTile isn't available in this flet version
+        sheet_crop_expander = ft.Column([ft.Row([auto_analyze_btn, edit_sheet_crop_btn], spacing=8), warn_preview])
+
     content = ft.Column([
         ft.Row([sheet_path_field, choose_btn], spacing=8),
     ft.Row([clipboard_btn], spacing=8),
-    ft.Row([auto_analyze_btn, edit_sheet_crop_btn], spacing=8),
+        sheet_crop_expander,
+        ft.Container(content=ft.Row([auto_analyze_btn, ])),
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
         ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
-        warn_preview,
         status_import,
-        ft.Container(content=ft.Column([preview_container], scroll=ft.ScrollMode.AUTO), width=680, height=360),
+        ft.Container(content=ft.Column([preview_container], scroll=ft.ScrollMode.AUTO, height=360), width=680),
     ], spacing=8, width=700, height=600)
     import_dlg = ft.AlertDialog(title=ft.Text("Import Sprite Sheet"), content=content, actions=[ft.TextButton("Import", on_click=do_import), ft.TextButton("Cancel", on_click=lambda ev: page_local.close(import_dlg))], open=False)
     global IMPORT_DIALOG
