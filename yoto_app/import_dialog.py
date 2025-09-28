@@ -16,6 +16,9 @@ import io as _io
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 stamps_dir = os.path.join(project_dir, '.stamps')
 
+IMPORT_DIALOG = None
+CROP_SHEET_DIALOG = None
+
 
 def open_import_dialog(editor, ev):
     """Show the import sprite-sheet dialog. This is extracted from stamp_dialog so it can be used independently.
@@ -58,6 +61,40 @@ def open_import_dialog(editor, ev):
 
     choose_btn = ft.TextButton("Choose file", on_click=lambda ev2: file_picker.pick_files())
     auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
+    edit_sheet_crop_btn = ft.TextButton("Edit sheet crop", on_click=lambda ev: None)
+
+    def _open_sheet_crop_from_fields(ev):
+        try:
+            path_now = (sheet_path_field.value or '').strip()
+            if not path_now or not os.path.exists(path_now):
+                warn_preview.value = "No sheet loaded to edit crop"
+                try:
+                    warn_preview.update()
+                except Exception:
+                    pass
+                return
+            try:
+                tw = int((tile_w_field.value or '8').strip())
+                th = int((tile_h_field.value or '8').strip())
+            except Exception:
+                tw = th = 8
+            try:
+                img_full = Image.open(path_now)
+            except Exception:
+                # fallback: open full image and use a small placeholder
+                try:
+                    img_full = Image.open(path_now)
+                except Exception:
+                    img_full = Image.new('RGBA', (tw, th), (255,255,255,255))
+            # pass the full sheet image to the sheet crop dialog so the override is sheet-relative
+            open_sheet_crop_dialog(img_full)
+        except Exception:
+            pass
+
+    try:
+        edit_sheet_crop_btn.on_click = _open_sheet_crop_from_fields
+    except Exception:
+        pass
     tile_w_field = ft.TextField(label="Tile width", value="8", width=140)
     tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
     downscale_field = ft.TextField(label="Downscale (e.g. 1, 0.5)", value="1", width=140)
@@ -73,13 +110,14 @@ def open_import_dialog(editor, ev):
     # single sheet-level manual cropping override: (left, top, right, bottom) or None
     sheet_crop_override = None
 
-    def open_sheet_crop_dialog(sample_tile):
-        """Show a dialog to edit a sheet-level crop override. sample_tile is a Pillow Image used for preview."""
+    def open_sheet_crop_dialog(sample_image):
+        """Show a dialog to edit a sheet-level crop override. sample_image is a Pillow Image (preferably the full sheet) used for preview."""
         try:
             import tempfile as _temp
             _tempf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
             try:
-                sample_tile.save(_tempf.name)
+                # save a preview of the provided image (may be large)
+                sample_image.save(_tempf.name)
                 preview_src = _tempf.name
             except Exception:
                 preview_src = None
@@ -163,7 +201,7 @@ def open_import_dialog(editor, ev):
                             return (left, top, right+1, bottom+1)
                         else:
                             return None
-                    tb = _tile_bbox_local(sample_tile)
+                    tb = _tile_bbox_local(sample_image)
                 except Exception:
                     tb = None
                 if tb:
@@ -196,13 +234,13 @@ def open_import_dialog(editor, ev):
                     try:
                         lvi = int(lf) if lf != '' else 0
                         tvi = int(tf) if tf != '' else 0
-                        rvi = int(rf) if rf != '' else sample_tile.width
-                        bvi = int(bf) if bf != '' else sample_tile.height
-                        # clamp
-                        lvi = max(0, min(sample_tile.width, lvi))
-                        tvi = max(0, min(sample_tile.height, tvi))
-                        rvi = max(0, min(sample_tile.width, rvi))
-                        bvi = max(0, min(sample_tile.height, bvi))
+                        rvi = int(rf) if rf != '' else sample_image.width
+                        bvi = int(bf) if bf != '' else sample_image.height
+                        # clamp to the provided image
+                        lvi = max(0, min(sample_image.width, lvi))
+                        tvi = max(0, min(sample_image.height, tvi))
+                        rvi = max(0, min(sample_image.width, rvi))
+                        bvi = max(0, min(sample_image.height, bvi))
                         if rvi <= lvi or bvi <= tvi:
                             sheet_crop_override = None
                         else:
@@ -210,7 +248,7 @@ def open_import_dialog(editor, ev):
                     except Exception:
                         pass
                 try:
-                    page_local.close(dlg)
+                    page_local.open(IMPORT_DIALOG)
                 except Exception:
                     pass
                 try:
@@ -224,7 +262,7 @@ def open_import_dialog(editor, ev):
             nonlocal sheet_crop_override
             sheet_crop_override = None
             try:
-                page_local.close(dlg)
+                page_local.open(IMPORT_DIALOG)
             except Exception:
                 pass
             try:
@@ -233,7 +271,9 @@ def open_import_dialog(editor, ev):
                 pass
 
         img_ctrl = ft.Image(src=preview_src, width=300) if preview_src else ft.Text('Preview unavailable')
-        dlg = ft.AlertDialog(title=ft.Text('Edit sheet crop override'), content=ft.Column([img_ctrl, info_text, ft.Row([left_field, top_field, right_field, bottom_field], spacing=8)]), actions=[ft.TextButton('Auto', on_click=do_auto), ft.TextButton('Save', on_click=do_save), ft.TextButton('Reset', on_click=do_reset), ft.TextButton('Close', on_click=lambda e: page_local.close(dlg))])
+        dlg = ft.AlertDialog(title=ft.Text('Edit sheet crop override'), content=ft.Column([img_ctrl, info_text, ft.Row([left_field, top_field, right_field, bottom_field], spacing=8)]), actions=[ft.TextButton('Auto', on_click=do_auto), ft.TextButton('Save', on_click=do_save), ft.TextButton('Reset', on_click=do_reset), ft.TextButton('Close', on_click=lambda e: page_local.open(IMPORT_DIALOG))])
+        global CROP_SHEET_DIALOG
+        CROP_SHEET_DIALOG = dlg
         try:
             page_local.open(dlg)
         except Exception:
@@ -265,6 +305,12 @@ def open_import_dialog(editor, ev):
             return
         try:
             img = Image.open(path)
+            # if a sheet-level crop override is set, apply it to the whole sheet
+            try:
+                if sheet_crop_override:
+                    img = img.crop(sheet_crop_override)
+            except Exception:
+                pass
             sw, sh = img.size
             cols = max(1, sw // tw)
             rows = max(1, sh // th)
@@ -320,9 +366,8 @@ def open_import_dialog(editor, ev):
                 def _open_sheet_crop(ev):
                     # open dialog using first tile as sample
                     try:
-                        sample_box = (0, 0, tw, th)
-                        sample_tile = img.crop(sample_box)
-                        open_sheet_crop_dialog(sample_tile)
+                        # pass the full sheet image to the crop dialog
+                        open_sheet_crop_dialog(img)
                     except Exception as ex:
                         logger.exception(f"Failed to open sheet crop dialog: {ex}")
                 caption_text = 'Sheet crop: set' if sheet_crop_override else 'Sheet crop: none'
@@ -715,6 +760,12 @@ def open_import_dialog(editor, ev):
         """
         try:
             img = Image.open(path).convert('RGBA')
+            # apply sheet-level crop override to the whole sheet before slicing into tiles
+            try:
+                if sheet_crop_override:
+                    img = img.crop(sheet_crop_override)
+            except Exception:
+                pass
             sw, sh = img.size
             cols = sw // tw
             rows = sh // th
@@ -893,11 +944,9 @@ def open_import_dialog(editor, ev):
                                         return (left, top, right+1, bottom+1)
                                 tb = None
                                 try:
-                                    # if a sheet-level override exists, use it (coords relative to tile)
-                                    if sheet_crop_override:
-                                        tb = sheet_crop_override
-                                    else:
-                                        tb = tile_bbox(tile, tol=20, alpha_thresh=16)
+                                    # sheet-level override has already been applied to the source image,
+                                    # so compute bbox per-tile normally when requested
+                                    tb = tile_bbox(tile, tol=20, alpha_thresh=16)
                                 except Exception:
                                     tb = None
                                 if tb:
@@ -1039,8 +1088,8 @@ def open_import_dialog(editor, ev):
 
     content = ft.Column([
         ft.Row([sheet_path_field, choose_btn], spacing=8),
-        ft.Row([clipboard_btn], spacing=8),
-        ft.Row([auto_analyze_btn], spacing=8),
+    ft.Row([clipboard_btn], spacing=8),
+    ft.Row([auto_analyze_btn, edit_sheet_crop_btn], spacing=8),
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
         ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
         warn_preview,
@@ -1048,5 +1097,7 @@ def open_import_dialog(editor, ev):
         status_import
     ], spacing=8, width=700)
     import_dlg = ft.AlertDialog(title=ft.Text("Import Sprite Sheet"), content=content, actions=[ft.TextButton("Import", on_click=do_import), ft.TextButton("Cancel", on_click=lambda ev: page_local.close(import_dlg))], open=False)
+    global IMPORT_DIALOG
+    IMPORT_DIALOG = import_dlg
     if page_local:
         page_local.open(import_dlg)
