@@ -29,6 +29,7 @@ dependencies = [
   "pynput",
   "numpy>=1.25",
   "matplotlib>=3.7",
+  "typer>=0.19.0"
 
 ]
 
