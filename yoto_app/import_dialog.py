@@ -497,6 +497,10 @@ def open_import_dialog(editor, ev):
         edge_mode_field.on_change = update_preview
     except Exception:
         pass
+    try:
+        sheet_crop_mode_field.on_change = lambda ev: apply_sheet_crop_method()
+    except Exception:
+        pass
 
     def import_from_clipboard(ev_cb, target=sheet_path_field, status_ctrl=status_import):
         logger.debug("Importing from clipboard")
@@ -804,188 +808,187 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             return
+        img = Image.open(path).convert('RGBA')
+        best_score = -1
+        best_result = None
+        best_img = None
         try:
-            img = Image.open(path).convert('RGBA')
-            best_score = -1
-            best_result = None
-            best_img = None
+            resample_filter = Image.Resampling.LANCZOS
+        except Exception:
             try:
-                resample_filter = Image.Resampling.LANCZOS
+                resample_filter = Image.LANCZOS
             except Exception:
-                try:
-                    resample_filter = Image.LANCZOS
-                except Exception:
-                    resample_filter = Image.BICUBIC
-            for scale in [1,2,3,4]:
-                try:
-                    if scale == 1:
-                        im_test = img
-                    else:
-                        new_w = max(1, img.width // scale)
-                        new_h = max(1, img.height // scale)
-                        im_test = img.resize((new_w, new_h), resample=resample_filter)
-                    bg = pick_background(im_test)
-                    result = detect_grid(im_test, bg)
-                    score = result['cols'] * result['rows']
-                    if score > best_score:
-                        best_score = score
-                        best_result = result
-                        best_img = im_test
-                except Exception:
-                    continue
-
-            if not best_result:
-                warn_preview.value = "Failed to detect grid"
-                try:
-                    warn_preview.update()
-                except Exception:
-                    pass
-                return
-
-            cand_sizes = best_result.get('candidates') or []
-            inferred = None
-            # map inferred tile size back to original image coordinates
+                resample_filter = Image.BICUBIC
+        for scale in [1,2,3,4]:
             try:
-                scale_w = float(img.width) / float(best_img.width) if best_img.width else 1.0
-                scale_h = float(img.height) / float(best_img.height) if best_img.height else 1.0
-            except Exception:
-                scale_w = scale_h = 1.0
-            if cand_sizes:
-                # choose median candidate in best_img coords and scale up
-                cand = sorted(cand_sizes)[len(cand_sizes)//2]
-                inferred = max(1, int(round(cand * scale_w)))
-            else:
-                if best_result['cols']>0:
-                    inferred = max(1, int(round(img.width / max(1, best_result['cols']))))
-                elif best_result['rows']>0:
-                    inferred = max(1, int(round(img.height / max(1, best_result['rows']))))
+                if scale == 1:
+                    im_test = img
                 else:
-                    inferred = 8
-
-            cs = best_result['col_starts']
-            rs = best_result['row_starts']
-            left = cs[0] if cs else 0
-            # coordinates are currently in best_img (possibly scaled) coords; map back to original image
-            left = cs[0] if cs else 0
-            top = rs[0] if rs else 0
-            right = (cs[-1] + (cand if cand_sizes else inferred)) if cs else best_img.width
-            bottom = (rs[-1] + (cand if cand_sizes else inferred)) if rs else best_img.height
-            left = max(0, left)
-            top = max(0, top)
-            right = min(best_img.width, right)
-            bottom = min(best_img.height, bottom)
-            try:
-                # scale coordinates to original image size
-                ol = int(round(left * scale_w))
-                ot = int(round(top * scale_h))
-                orr = int(round(right * scale_w))
-                ob = int(round(bottom * scale_h))
-                # clamp to original
-                ol = max(0, min(img.width, ol))
-                ot = max(0, min(img.height, ot))
-                orr = max(0, min(img.width, orr))
-                ob = max(0, min(img.height, ob))
-                try:
-                    _cropped = img.crop((ol, ot, orr, ob))
-                except Exception:
-                    _cropped = img
+                    new_w = max(1, img.width // scale)
+                    new_h = max(1, img.height // scale)
+                    im_test = img.resize((new_w, new_h), resample=resample_filter)
+                bg = pick_background(im_test)
+                result = detect_grid(im_test, bg)
+                score = result['cols'] * result['rows']
+                if score > best_score:
+                    best_score = score
+                    best_result = result
+                    best_img = im_test
             except Exception:
-                try:
-                    _cropped = best_img.crop((left, top, right, bottom))
-                except Exception:
-                    _cropped = best_img
+                continue
 
-            # store the detected crop as a sheet-level override using original-image coords
+        if not best_result:
+            warn_preview.value = "Failed to detect grid"
             try:
-                # snap the detected crop to tile boundaries so defaults align with tile grid
-                try:
-                    # prefer explicit tile fields if valid integers
-                    tw_try = int((tile_w_field.value or '').strip())
-                except Exception:
-                    tw_try = None
-                try:
-                    th_try = int((tile_h_field.value or '').strip())
-                except Exception:
-                    th_try = None
-                tw_use = tw_try if (tw_try and tw_try > 0) else (int(inferred) if inferred else 1)
-                th_use = th_try if (th_try and th_try > 0) else (int(inferred) if inferred else 1)
+                warn_preview.update()
+            except Exception:
+                pass
+            return
 
-                def _snap_crop_to_tiles(l, t, r, b, tw, th, iw, ih):
-                    try:
-                        if tw <= 0 or th <= 0:
-                            return (l, t, r, b)
-                        nl = max(0, (l // tw) * tw)
-                        nt = max(0, (t // th) * th)
-                        # ceil for right/bottom to include full tiles
-                        nr = min(iw, ((r + tw - 1) // tw) * tw)
-                        nb = min(ih, ((b + th - 1) // th) * th)
-                        # ensure we still have a positive area
-                        if nr <= nl or nb <= nt:
-                            return (l, t, r, b)
-                        return (nl, nt, nr, nb)
-                    except Exception:
+        cand_sizes = best_result.get('candidates') or []
+        inferred = None
+        # map inferred tile size back to original image coordinates
+        try:
+            scale_w = float(img.width) / float(best_img.width) if best_img.width else 1.0
+            scale_h = float(img.height) / float(best_img.height) if best_img.height else 1.0
+        except Exception:
+            scale_w = scale_h = 1.0
+        if cand_sizes:
+            # choose median candidate in best_img coords and scale up
+            cand = sorted(cand_sizes)[len(cand_sizes)//2]
+            inferred = max(1, int(round(cand * scale_w)))
+        else:
+            if best_result['cols']>0:
+                inferred = max(1, int(round(img.width / max(1, best_result['cols']))))
+            elif best_result['rows']>0:
+                inferred = max(1, int(round(img.height / max(1, best_result['rows']))))
+            else:
+                inferred = 8
+
+        cs = best_result['col_starts']
+        rs = best_result['row_starts']
+        left = cs[0] if cs else 0
+        # coordinates are currently in best_img (possibly scaled) coords; map back to original image
+        left = cs[0] if cs else 0
+        top = rs[0] if rs else 0
+        right = (cs[-1] + (cand if cand_sizes else inferred)) if cs else best_img.width
+        bottom = (rs[-1] + (cand if cand_sizes else inferred)) if rs else best_img.height
+        left = max(0, left)
+        top = max(0, top)
+        right = min(best_img.width, right)
+        bottom = min(best_img.height, bottom)
+        try:
+            # scale coordinates to original image size
+            ol = int(round(left * scale_w))
+            ot = int(round(top * scale_h))
+            orr = int(round(right * scale_w))
+            ob = int(round(bottom * scale_h))
+            # clamp to original
+            ol = max(0, min(img.width, ol))
+            ot = max(0, min(img.height, ot))
+            orr = max(0, min(img.width, orr))
+            ob = max(0, min(img.height, ob))
+            try:
+                _cropped = img.crop((ol, ot, orr, ob))
+            except Exception:
+                _cropped = img
+        except Exception:
+            try:
+                _cropped = best_img.crop((left, top, right, bottom))
+            except Exception:
+                _cropped = best_img
+
+        # store the detected crop as a sheet-level override using original-image coords
+        try:
+            # snap the detected crop to tile boundaries so defaults align with tile grid
+            try:
+                # prefer explicit tile fields if valid integers
+                tw_try = int((tile_w_field.value or '').strip())
+            except Exception:
+                tw_try = None
+            try:
+                th_try = int((tile_h_field.value or '').strip())
+            except Exception:
+                th_try = None
+            tw_use = tw_try if (tw_try and tw_try > 0) else (int(inferred) if inferred else 1)
+            th_use = th_try if (th_try and th_try > 0) else (int(inferred) if inferred else 1)
+
+            def _snap_crop_to_tiles(l, t, r, b, tw, th, iw, ih):
+                try:
+                    if tw <= 0 or th <= 0:
                         return (l, t, r, b)
+                    nl = max(0, (l // tw) * tw)
+                    nt = max(0, (t // th) * th)
+                    # ceil for right/bottom to include full tiles
+                    nr = min(iw, ((r + tw - 1) // tw) * tw)
+                    nb = min(ih, ((b + th - 1) // th) * th)
+                    # ensure we still have a positive area
+                    if nr <= nl or nb <= nt:
+                        return (l, t, r, b)
+                    return (nl, nt, nr, nb)
+                except Exception:
+                    return (l, t, r, b)
 
-                try:
-                    ol_snapped, ot_snapped, orr_snapped, ob_snapped = _snap_crop_to_tiles(ol, ot, orr, ob, tw_use, th_use, img.width, img.height)
-                except Exception:
-                    ol_snapped, ot_snapped, orr_snapped, ob_snapped = ol, ot, orr, ob
+            try:
+                ol_snapped, ot_snapped, orr_snapped, ob_snapped = _snap_crop_to_tiles(ol, ot, orr, ob, tw_use, th_use, img.width, img.height)
+            except Exception:
+                ol_snapped, ot_snapped, orr_snapped, ob_snapped = ol, ot, orr, ob
 
-                sheet_crop_override = (ol_snapped, ot_snapped, orr_snapped, ob_snapped)
-                logger.debug(f"Auto analyze detected sheet_crop_override={sheet_crop_override} (snapped by tile {tw_use}x{th_use}) for path={path}")
+            sheet_crop_override = (ol_snapped, ot_snapped, orr_snapped, ob_snapped)
+            logger.debug(f"Auto analyze detected sheet_crop_override={sheet_crop_override} (snapped by tile {tw_use}x{th_use}) for path={path}")
+            try:
+                # populate main dialog crop fields so the user sees the detected snapped values
+                left_field_main.value = str(ol_snapped)
+                top_field_main.value = str(ot_snapped)
+                right_field_main.value = str(orr_snapped)
+                bottom_field_main.value = str(ob_snapped)
                 try:
-                    # populate main dialog crop fields so the user sees the detected snapped values
-                    left_field_main.value = str(ol_snapped)
-                    top_field_main.value = str(ot_snapped)
-                    right_field_main.value = str(orr_snapped)
-                    bottom_field_main.value = str(ob_snapped)
-                    try:
-                        left_field_main.update()
-                    except Exception:
-                        pass
-                    try:
-                        top_field_main.update()
-                    except Exception:
-                        pass
-                    try:
-                        right_field_main.update()
-                    except Exception:
-                        pass
-                    try:
-                        bottom_field_main.update()
-                    except Exception:
-                        pass
+                    left_field_main.update()
                 except Exception:
                     pass
                 try:
-                    sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
-                    try:
-                        sheet_crop_status.update()
-                    except Exception:
-                        pass
+                    top_field_main.update()
                 except Exception:
                     pass
-            except Exception:
-                sheet_crop_override = None
-            tile_w_field.value = str(inferred)
-            tile_h_field.value = str(inferred)
-            try:
-                tile_w_field.update()
-                tile_h_field.update()
-            except Exception:
-                pass
-            try:
-                # suggest a downscale so the imported tiles aim for 16x16
                 try:
-                    _suggest_downscale_to_16()
+                    right_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    bottom_field_main.update()
                 except Exception:
                     pass
             except Exception:
                 pass
             try:
-                update_preview()
+                sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
+                try:
+                    sheet_crop_status.update()
+                except Exception:
+                    pass
             except Exception:
                 pass
+        except Exception:
+            sheet_crop_override = None
+        tile_w_field.value = str(inferred)
+        tile_h_field.value = str(inferred)
+        try:
+            tile_w_field.update()
+            tile_h_field.update()
+        except Exception:
+            pass
+        try:
+            # suggest a downscale so the imported tiles aim for 16x16
+            try:
+                _suggest_downscale_to_16()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            update_preview()
+        except Exception:
+            pass
 
     def apply_sheet_crop_method():
         """Apply the selected sheet crop method and populate the main crop fields and preview.
@@ -994,6 +997,7 @@ def open_import_dialog(editor, ev):
          - Detect by border color: detect a single-colour border and set crop to the inner bounds.
         """
         nonlocal sheet_crop_override
+
         path = (sheet_path_field.value or '').strip()
         if not path or not os.path.exists(path):
             warn_preview.value = "No valid sprite sheet selected"
@@ -1002,12 +1006,59 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             return
-        try:
-            mode = (sheet_crop_mode_field.value or '').lower()
-        except Exception:
-            mode = 'snap to tiles'
 
-        if mode.startswith('detect'):
+        mode = (sheet_crop_mode_field.value or '').strip()
+        mode_l = mode.lower()
+
+        try:
+            warn_preview.value = f"Sheet crop method: {mode}"
+            try:
+                warn_preview.update()
+            except Exception:
+                pass
+            logger.debug(f"apply_sheet_crop_method selected mode={mode}")
+        except Exception:
+            pass
+
+        # explicit 'None' clears the override
+        if mode_l == 'none':
+            sheet_crop_override = None
+            try:
+                left_field_main.value = ''
+                top_field_main.value = ''
+                right_field_main.value = ''
+                bottom_field_main.value = ''
+                try:
+                    left_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    top_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    right_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    bottom_field_main.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            try:
+                sheet_crop_status.value = 'none'
+                sheet_crop_status.update()
+            except Exception:
+                pass
+            try:
+                update_preview()
+            except Exception:
+                pass
+            return
+
+        # detect by border color
+        if mode_l.startswith('detect'):
             crop = detect_sheet_border_crop(path)
             if crop:
                 sheet_crop_override = crop
@@ -1052,79 +1103,97 @@ def open_import_dialog(editor, ev):
                     pass
                 return
 
-        # default/snap to tiles
-        # ensure we have a detected/synthesised crop from auto_analyze, then snap to tile boundaries
+        # default: snap to tiles
         try:
-            # trigger auto_analyze which will set sheet_crop_override where possible
             auto_analyze()
         except Exception:
             pass
-        if sheet_crop_override:
+
+        if not sheet_crop_override:
+            warn_preview.value = 'No crop available to snap'
             try:
-                # prefer explicit tile fields
+                warn_preview.update()
+            except Exception:
+                pass
+            return
+
+        # prefer explicit tile fields if valid
+        try:
+            tw_try = int((tile_w_field.value or '').strip())
+        except Exception:
+            tw_try = None
+        try:
+            th_try = int((tile_h_field.value or '').strip())
+        except Exception:
+            th_try = None
+        tw_use = tw_try if (tw_try and tw_try > 0) else 1
+        th_use = th_try if (th_try and th_try > 0) else 1
+
+        try:
+            l, t, r, b = sheet_crop_override
+        except Exception:
+            warn_preview.value = 'Invalid detected crop'
+            try:
+                warn_preview.update()
+            except Exception:
+                pass
+            return
+
+        def snap_box(lv, tv, rv, bv, tw, th, iw, ih):
+            try:
+                nl = max(0, (lv // tw) * tw)
+                nt = max(0, (tv // th) * th)
+                nr = min(iw, ((rv + tw - 1) // tw) * tw)
+                nb = min(ih, ((bv + th - 1) // th) * th)
+                if nr <= nl or nb <= nt:
+                    return (lv, tv, rv, bv)
+                return (nl, nt, nr, nb)
+            except Exception:
+                return (lv, tv, rv, bv)
+
+        try:
+            img = Image.open(path).convert('RGBA')
+            iw, ih = img.size
+        except Exception:
+            iw = ih = None
+
+        if iw and ih:
+            try:
+                new_box = snap_box(l, t, r, b, tw_use, th_use, iw, ih)
+                sheet_crop_override = new_box
+                left_field_main.value = str(new_box[0])
+                top_field_main.value = str(new_box[1])
+                right_field_main.value = str(new_box[2])
+                bottom_field_main.value = str(new_box[3])
                 try:
-                    tw_try = int((tile_w_field.value or '').strip())
+                    left_field_main.update()
                 except Exception:
-                    tw_try = None
+                    pass
                 try:
-                    th_try = int((tile_h_field.value or '').strip())
+                    top_field_main.update()
                 except Exception:
-                    th_try = None
-                tw_use = tw_try if (tw_try and tw_try > 0) else 1
-                th_use = th_try if (th_try and th_try > 0) else 1
-                l, t, r, b = sheet_crop_override
-                def snap_box(l, t, r, b, tw, th, iw, ih):
-                    try:
-                        nl = max(0, (l // tw) * tw)
-                        nt = max(0, (t // th) * th)
-                        nr = min(iw, ((r + tw - 1) // tw) * tw)
-                        nb = min(ih, ((b + th - 1) // th) * th)
-                        if nr <= nl or nb <= nt:
-                            return (l, t, r, b)
-                        return (nl, nt, nr, nb)
-                    except Exception:
-                        return (l, t, r, b)
+                    pass
                 try:
-                    img = Image.open(path).convert('RGBA')
-                    iw, ih = img.size
+                    right_field_main.update()
                 except Exception:
-                    iw = ih = None
-                if iw and ih:
-                    try:
-                        new_box = snap_box(l, t, r, b, tw_use, th_use, iw, ih)
-                        sheet_crop_override = new_box
-                        left_field_main.value = str(new_box[0])
-                        top_field_main.value = str(new_box[1])
-                        right_field_main.value = str(new_box[2])
-                        bottom_field_main.value = str(new_box[3])
-                        try:
-                            left_field_main.update()
-                        except Exception:
-                            pass
-                        try:
-                            top_field_main.update()
-                        except Exception:
-                            pass
-                        try:
-                            right_field_main.update()
-                        except Exception:
-                            pass
-                        try:
-                            bottom_field_main.update()
-                        except Exception:
-                            pass
-                        try:
-                            sheet_crop_status.value = 'set'
-                            sheet_crop_status.update()
-                        except Exception:
-                            pass
-                        try:
-                            update_preview()
-                        except Exception:
-                            pass
-                        return
-                    except Exception:
-                        pass
+                    pass
+                try:
+                    bottom_field_main.update()
+                except Exception:
+                    pass
+                try:
+                    sheet_crop_status.value = 'set'
+                    sheet_crop_status.update()
+                except Exception:
+                    pass
+                try:
+                    update_preview()
+                except Exception:
+                    pass
+                return
+            except Exception:
+                pass
+
         warn_preview.value = 'No crop available to snap'
         try:
             warn_preview.update()
@@ -1602,6 +1671,7 @@ def open_import_dialog(editor, ev):
         pass
 
     sheet_crop_status = ft.Text('none')
+    # Put crop controls and sheet-crop method selector inside the expander
     sheet_crop_expander = ft.ExpansionTile(
             title=ft.Text('Sheet cropping'),
             controls=[
@@ -1611,13 +1681,14 @@ def open_import_dialog(editor, ev):
                     ft.Column([ft.Row([edge_mode_field], spacing=8)]),
                     ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
                 ], spacing=12), padding=0),
+                ft.Container(content=ft.Row([sheet_crop_mode_field, apply_sheet_crop_btn], spacing=8), padding=0),
             ],
         )
 
     content = ft.Column([
-        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn, sheet_crop_mode_field, apply_sheet_crop_btn], spacing=8),
-    ft.Row([clipboard_btn], spacing=8),
-    sheet_crop_expander,
+        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn], spacing=8),
+        ft.Row([clipboard_btn], spacing=8),
+        sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
         ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
         ft.Container(content=ft.Row([ft.Text('Status:'), warn_preview], spacing=8), padding=0),
