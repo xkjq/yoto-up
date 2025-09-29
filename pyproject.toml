@@ -28,7 +28,7 @@ dependencies = [
   "pynput",
   "numpy>=1.25",
   "matplotlib>=3.7",
-  "typer>=0.19.0"
+  "typer>=0.19.0",
   "rapidfuzz>=2.0.0",
   # Optional NLP tools useful for desktop keyword extraction
   "nltk>=3.8.0",
@@ -64,7 +64,6 @@ gui = [
 # heavy scientific packages which are not compatible with the browser runtime.
 web = [
   "flet[web]",
-  "oauthlib"
 ]
 
 # additional extras for docs/build or dev
