@@ -1036,17 +1036,17 @@ def main(page):
                 sim_ctrl = dialog_controls.get('window_similarity')
                 mf_ctrl = dialog_controls.get('window_min_files')
                 try:
-                    window_seconds = float(getattr(ws_ctrl, 'value', 0.25))
+                    window_seconds = float(getattr(ws_ctrl, 'value', 0.1))
                 except Exception:
-                    window_seconds = 0.25
+                    window_seconds = 0.1
                 try:
                     max_seconds = float(getattr(mx_ctrl, 'value', seconds))
                 except Exception:
                     max_seconds = float(seconds)
                 try:
-                    similarity_threshold = float(getattr(sim_ctrl, 'value', 0.95))
+                    similarity_threshold = float(getattr(sim_ctrl, 'value', 0.98))
                 except Exception:
-                    similarity_threshold = 0.95
+                    similarity_threshold = 0.98
                 try:
                     min_files_fraction = float(getattr(mf_ctrl, 'value', 0.75))
                 except Exception:
