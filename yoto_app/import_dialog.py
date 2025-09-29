@@ -781,6 +781,29 @@ def open_import_dialog(editor, ev):
 
     clipboard_btn = ft.TextButton("Import from clipboard", on_click=import_from_clipboard)
 
+    def show_help(ev=None):
+        """Open a small help dialog explaining the import dialog controls."""
+        help_lines = [
+            "How the Import dialog works:\n",
+            "- Choose file: select a sprite sheet image file to import.",
+            "- Import from clipboard: paste an image from your clipboard (desktop or web).",
+            "- Auto Analyze: heuristic grid detection; suggests tile size and sheet crop.",
+            "- Sheet cropping: set a sheet-level crop (applied once before slicing).", 
+            "  Modes: None, Snap to tiles (aligns to tile grid), Detect by border color.",
+            "- Edge handling: Trim / Pad / Include partial tiles when sheet isn't exact multiple.",
+            "- Crop tile blank borders: trims empty pixel borders per tile before saving.",
+            "- Make background transparent: clears border-connected background pixels only.",
+            "- Skip empty tiles: do not import tiles that contain no non-transparent pixels.",
+            "- Downscale: applied to the final tile image (affects preview and output).",
+            "- Preview: shows the final tiles as they will be written (wraps and shows first 100).",
+        ]
+        help_text = "\n".join(help_lines)
+        help_dlg = ft.AlertDialog(title=ft.Text("Import dialog help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page_local.open(IMPORT_DIALOG))])
+        if page_local:
+            page_local.open(help_dlg)
+
+    help_btn = ft.TextButton("Help", on_click=show_help)
+
     def pick_background(im):
         w, h = im.size
         px = im.load()
@@ -1648,7 +1671,7 @@ def open_import_dialog(editor, ev):
         )
 
     content = ft.Column([
-        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn], spacing=8),
+        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn, help_btn], spacing=8),
         ft.Row([clipboard_btn], spacing=8),
         sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),

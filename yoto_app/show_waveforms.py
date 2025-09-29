@@ -9,6 +9,8 @@ import wave
 import os
 import tempfile
 
+WAVEFORM_DIALOG = None
+
 def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files, audio_adjust_utils, waveform_cache):
     files = [getattr(row, 'filename', None) for row in file_rows_column.controls if getattr(row, 'filename', None)]
     if not files:
@@ -230,6 +232,21 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=global_gain['value'], label="Global Gain: {value} dB", width=320)
     global_gain_slider.on_change_end = on_global_gain_change
 
+    def show_gain_help(ev=None):
+        """Open a small help dialog explaining gain controls and recommended workflow."""
+        help_lines = [
+            "Adjusting audio gain (dB):",
+            "- Gain sliders change track level in decibels (dB). +6 dB ≈ doubling the amplitude; -6 dB ≈ halving.",
+            "- Use the Global Gain to set a common level for all tracks, then fine-tune individual tracks.",
+            "- LUFS is a loudness metric; aim for ~-16 to -14 LUFS for general use, avoid values above -9 dB (may be too loud).",
+            "- Changes shown in the waveform preview reflect the gain in the UI; use Save Adjusted Audio to write a temp file for upload.",
+            "- Small adjustments (±1–3 dB) are common for balancing; larger changes may clip if the original is already hot.",
+            "- If you need to normalize loudness precisely, consider using LUFS-based normalisation tools outside this dialog.",
+        ]
+        help_text = "\n\n".join(help_lines)
+        help_dlg = ft.AlertDialog(title=ft.Text("Gain adjustment help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page.open(WAVEFORM_DIALOG))])
+        page.open(help_dlg)
+
     save_btn = None
     if n_images > 0:
         def on_save_adjusted_audio_all_click(e):
@@ -281,7 +298,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             for s in skipped_files:
                 msg += f"\n- {s}"
         images = [ft.Text(msg, color=ft.Colors.RED)]
-        dlg_actions = [ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+        dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
     else:
         images.append(global_gain_slider)
         images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
@@ -294,7 +311,10 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             else:
                 images.append(col)
         images.insert(0, ft.Text(f"Generated {n_images} waveform(s) for {len(files)} file(s).", color=ft.Colors.GREEN))
-        dlg_actions = [save_btn, ft.TextButton("Close", on_click=lambda e: page.close(dlg))] if save_btn else [ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+        if save_btn:
+            dlg_actions = [save_btn, ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+        else:
+            dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
 
     dlg = ft.AlertDialog(
         title=ft.Text("Waveforms for files to be uploaded"),
@@ -302,6 +322,8 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         actions=dlg_actions,
         scrollable=True
     )
+    global WAVEFORM_DIALOG
+    WAVEFORM_DIALOG = dlg
     page.close(progress_dlg)
     page.open(dlg)
     page.update()

@@ -7,10 +7,6 @@ A multipurpose set of command-line, terminal UI, and graphical tools for managin
 
 Features include content organization, device management, and easy integration with Yoto services.
 
-## Features
-
-- **Integration with Yoto Services**: Simplified access to Yoto's API and services.
-- **Content Organization**: Easily manage and organize your Yoto cards and files.
    # 🚀 Yoto-UP
 
    A toolbox for managing Yoto content from the command line, a terminal UI, or a GUI.
@@ -26,6 +22,8 @@ Features include content organization, device management, and easy integration w
       - 🖌️ Cover management — set, import, or auto-search cover art; embed into card metadata
       - 📤 Export / 📥 Import cards
    - 🖥️ Interfaces — CLI, TUI (terminal UI) and a small graphical UI
+   - 🔊 Audio preparation — normalize volume levels, auto-trim silence, and apply basic level adjustments before upload
+   - 🖼️ Icon editor — feature rich editor with text and image stamping
 
    For full docs and examples see the project site: https://xkjq.github.io/yoto-up/
 
