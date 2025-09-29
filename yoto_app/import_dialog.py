@@ -17,7 +17,6 @@ project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 stamps_dir = os.path.join(project_dir, '.stamps')
 
 IMPORT_DIALOG = None
-CROP_SHEET_DIALOG = None
 
 
 def open_import_dialog(editor, ev):
@@ -61,40 +60,9 @@ def open_import_dialog(editor, ev):
 
     choose_btn = ft.TextButton("Choose file", on_click=lambda ev2: file_picker.pick_files())
     auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
-    edit_sheet_crop_btn = ft.TextButton("Edit sheet crop", on_click=lambda ev: None)
+    # Edit sheet crop dialog removed; main dialog contains inline edit controls now
 
-    def _open_sheet_crop_from_fields(ev):
-        try:
-            path_now = (sheet_path_field.value or '').strip()
-            if not path_now or not os.path.exists(path_now):
-                warn_preview.value = "No sheet loaded to edit crop"
-                try:
-                    warn_preview.update()
-                except Exception:
-                    pass
-                return
-            try:
-                tw = int((tile_w_field.value or '8').strip())
-                th = int((tile_h_field.value or '8').strip())
-            except Exception:
-                tw = th = 8
-            try:
-                img_full = Image.open(path_now)
-            except Exception:
-                # fallback: open full image and use a small placeholder
-                try:
-                    img_full = Image.open(path_now)
-                except Exception:
-                    img_full = Image.new('RGBA', (tw, th), (255,255,255,255))
-            # pass the full sheet image to the sheet crop dialog so the override is sheet-relative
-            open_sheet_crop_dialog(img_full)
-        except Exception:
-            pass
-
-    try:
-        edit_sheet_crop_btn.on_click = _open_sheet_crop_from_fields
-    except Exception:
-        pass
+    # edit_sheet_crop_btn is unused; main dialog fields replace the separate dialog
     tile_w_field = ft.TextField(label="Tile width", value="8", width=140)
     tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
     downscale_field = ft.TextField(label="Downscale (e.g. 1, 0.5)", value="1", width=140)
@@ -103,328 +71,14 @@ def open_import_dialog(editor, ev):
     crop_tiles_cb = ft.Checkbox(label="Crop tile blank borders", value=True)
     transparent_bg_cb = ft.Checkbox(label="Make background transparent", value=False)
     status_import = ft.Text("")
-    status_preview = ft.Text("")
     warn_preview = ft.Text("", color="red")
     # preview_container will hold a Column of Rows (we build a simple grid manually)
     preview_container = ft.Column(spacing=6)
     # single sheet-level manual cropping override: (left, top, right, bottom) or None
     sheet_crop_override = None
-    # remember the original sheet path chosen by the user so the crop dialog can always show the uncropped source
-    sheet_original_path = None
+    # remember the original sheet path chosen by the user (not currently used)
 
-    def open_sheet_crop_dialog(sample_image):
-        """Show a dialog to edit a sheet-level crop override. sample_image is a Pillow Image (preferably the full sheet) used for preview."""
-        # prefer to show the original sheet file if available (prevents showing an already-cropped working image)
-        try:
-            path_now = (sheet_path_field.value or '').strip()
-            if path_now and os.path.exists(path_now):
-                try:
-                    sample_image = Image.open(path_now).convert('RGBA')
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # (we build a resized source preview later as `src_preview`)
-
-        left_field = ft.TextField(label='Left (px)', width=120)
-        top_field = ft.TextField(label='Top (px)', width=120)
-        right_field = ft.TextField(label='Right (px)', width=120)
-        bottom_field = ft.TextField(label='Bottom (px)', width=120)
-        info_text = ft.Text('Define a sheet-level crop applied to every tile; leave empty to disable')
-
-        # preview controls: prefer showing the original sheet file if available
-        src_preview = None
-        src_img_for_preview = None
-        try:
-            import tempfile as _temp
-            tmp_src = _temp.NamedTemporaryFile(suffix='.png', delete=False)
-            try:
-                # prefer original file for context so the crop dialog always shows uncropped source
-                try:
-                    path_now = (sheet_path_field.value or '').strip()
-                    if path_now and os.path.exists(path_now):
-                        src_img_for_preview = Image.open(path_now)
-                except Exception:
-                    src_img_for_preview = None
-                if src_img_for_preview is None:
-                    src_img_for_preview = sample_image
-                wsrc = min(800, src_img_for_preview.width)
-                hsrc = int(src_img_for_preview.height * (wsrc / float(src_img_for_preview.width))) if src_img_for_preview.width else src_img_for_preview.height
-                try:
-                    preview_img = src_img_for_preview.resize((wsrc, max(1, hsrc)))
-                except Exception:
-                    preview_img = src_img_for_preview
-                preview_img.save(tmp_src.name)
-                src_preview = tmp_src.name
-            except Exception:
-                src_preview = None
-        except Exception:
-            src_preview = None
-
-            # debug: record what source we are showing and any existing override
-            try:
-                cur_path = (sheet_path_field.value or '').strip()
-                logger.debug(f"Opening crop dialog; sheet_path_field={cur_path!r}, sheet_crop_override={sheet_crop_override}")
-            except Exception:
-                pass
-        src_img_ctrl = ft.Image(src=src_preview, width=400) if src_preview else ft.Text('Preview unavailable')
-        cropped_img_ctrl = ft.Image(src=None, width=300)
-
-        def _save_cropped_preview():
-            # compute crop rect from fields and save cropped preview
-            try:
-                lf = (left_field.value or '').strip()
-                tf = (top_field.value or '').strip()
-                rf = (right_field.value or '').strip()
-                bf = (bottom_field.value or '').strip()
-                if lf == '' and tf == '' and rf == '' and bf == '':
-                    cropped_img_ctrl.src = None
-                    return
-                lvi = int(lf) if lf != '' else 0
-                tvi = int(tf) if tf != '' else 0
-                src_for_crop = src_img_for_preview if src_img_for_preview is not None else sample_image
-                rvi = int(rf) if rf != '' else src_for_crop.width
-                bvi = int(bf) if bf != '' else src_for_crop.height
-                lvi = max(0, min(src_for_crop.width, lvi))
-                tvi = max(0, min(src_for_crop.height, tvi))
-                rvi = max(0, min(src_for_crop.width, rvi))
-                bvi = max(0, min(src_for_crop.height, bvi))
-                if rvi <= lvi or bvi <= tvi:
-                    cropped_img_ctrl.src = None
-                    return
-                try:
-                    cropped = src_for_crop.crop((lvi, tvi, rvi, bvi))
-                except Exception:
-                    cropped = None
-                if cropped is None:
-                    cropped_img_ctrl.src = None
-                    return
-                import tempfile as _temp2
-                tfp = _temp2.NamedTemporaryFile(suffix='.png', delete=False)
-                try:
-                    # scale cropped preview down to reasonable size
-                    maxw = 400
-                    scale = min(1.0, float(maxw) / float(max(1, cropped.width)))
-                    if scale < 1.0:
-                        nw = max(1, int(round(cropped.width * scale)))
-                        nh = max(1, int(round(cropped.height * scale)))
-                        try:
-                            cropped = cropped.resize((nw, nh))
-                        except Exception:
-                            pass
-                    cropped.save(tfp.name)
-                    cropped_img_ctrl.src = tfp.name
-                except Exception:
-                    cropped_img_ctrl.src = None
-            except Exception:
-                try:
-                    cropped_img_ctrl.src = None
-                except Exception:
-                    pass
-
-        def _on_field_change(ev=None):
-            try:
-                _save_cropped_preview()
-                try:
-                    # update cropped preview as well
-                    _save_cropped_preview()
-                except Exception:
-                    pass
-                try:
-                    dlg.update()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-        # wire up live updates
-        try:
-            left_field.on_change = _on_field_change
-            top_field.on_change = _on_field_change
-            right_field.on_change = _on_field_change
-            bottom_field.on_change = _on_field_change
-        except Exception:
-            pass
-
-        if sheet_crop_override:
-            try:
-                left_field.value = str(sheet_crop_override[0])
-                top_field.value = str(sheet_crop_override[1])
-                right_field.value = str(sheet_crop_override[2])
-                bottom_field.value = str(sheet_crop_override[3])
-            except Exception:
-                pass
-
-        def do_auto(ev):
-            try:
-                # try to compute an automatic bbox from the sample tile
-                tb = None
-                try:
-                    # reuse local tile_bbox logic from earlier
-                    def _tile_bbox_local(im, tol=16, alpha_thresh=16):
-                        w2, h2 = im.size
-                        px = im.load()
-                        has_alpha = False
-                        for yy in range(min(4, h2)):
-                            for xx in range(min(4, w2)):
-                                try:
-                                    v = px[xx, yy]
-                                    if isinstance(v, tuple) and len(v) > 3:
-                                        has_alpha = True
-                                        break
-                                except Exception:
-                                    pass
-                            if has_alpha:
-                                break
-                        if has_alpha:
-                            top = bottom = left = right = None
-                            for yy in range(h2):
-                                row_has = False
-                                for xx in range(w2):
-                                    try:
-                                        v = px[xx, yy]
-                                        if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                            row_has = True
-                                            break
-                                        elif not isinstance(v, tuple):
-                                            row_has = True
-                                            break
-                                    except Exception:
-                                        pass
-                                if row_has and top is None:
-                                    top = yy
-                                if row_has:
-                                    bottom = yy
-                            for xx in range(w2):
-                                col_has = False
-                                for yy in range(h2):
-                                    try:
-                                        v = px[xx, yy]
-                                        if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                            col_has = True
-                                            break
-                                        elif not isinstance(v, tuple):
-                                            col_has = True
-                                            break
-                                    except Exception:
-                                        pass
-                                if col_has and left is None:
-                                    left = xx
-                                if col_has:
-                                    right = xx
-                            if top is None:
-                                return None
-                            return (left, top, right+1, bottom+1)
-                        else:
-                            return None
-                    tb = _tile_bbox_local(sample_image)
-                except Exception:
-                    tb = None
-                if tb:
-                    left_field.value = str(int(tb[0]))
-                    top_field.value = str(int(tb[1]))
-                    right_field.value = str(int(tb[2]))
-                    bottom_field.value = str(int(tb[3]))
-                else:
-                    left_field.value = ''
-                    top_field.value = ''
-                    right_field.value = ''
-                    bottom_field.value = ''
-                try:
-                    dlg.update()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-        def do_save(ev):
-            nonlocal sheet_crop_override
-            try:
-                lf = (left_field.value or '').strip()
-                tf = (top_field.value or '').strip()
-                rf = (right_field.value or '').strip()
-                bf = (bottom_field.value or '').strip()
-                if lf == '' and tf == '' and rf == '' and bf == '':
-                    sheet_crop_override = None
-                else:
-                    try:
-                        lvi = int(lf) if lf != '' else 0
-                        tvi = int(tf) if tf != '' else 0
-                        rvi = int(rf) if rf != '' else sample_image.width
-                        bvi = int(bf) if bf != '' else sample_image.height
-                        # clamp to the provided image
-                        lvi = max(0, min(sample_image.width, lvi))
-                        tvi = max(0, min(sample_image.height, tvi))
-                        rvi = max(0, min(sample_image.width, rvi))
-                        bvi = max(0, min(sample_image.height, bvi))
-                        if rvi <= lvi or bvi <= tvi:
-                            sheet_crop_override = None
-                        else:
-                            sheet_crop_override = (lvi, tvi, rvi, bvi)
-                    except Exception:
-                        pass
-                try:
-                    page_local.open(IMPORT_DIALOG)
-                except Exception:
-                    pass
-                try:
-                    update_preview()
-                except Exception:
-                    pass
-                try:
-                    # update the sheet crop status indicator in the main dialog
-                    sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
-                    try:
-                        sheet_crop_status.update()
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-        def do_reset(ev):
-            nonlocal sheet_crop_override
-            sheet_crop_override = None
-            try:
-                page_local.open(IMPORT_DIALOG)
-            except Exception:
-                pass
-            try:
-                update_preview()
-            except Exception:
-                pass
-            try:
-                # reflect reset in the status indicator
-                sheet_crop_status.value = 'set' if sheet_crop_override else 'none'
-                try:
-                    sheet_crop_status.update()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        # build dialog content showing source and cropped preview side-by-side
-        try:
-            preview_row = ft.Row([src_img_ctrl, cropped_img_ctrl], spacing=12)
-        except Exception:
-            preview_row = src_img_ctrl if src_img_ctrl else ft.Text('Preview unavailable')
-
-        dlg = ft.AlertDialog(
-            title=ft.Text('Edit sheet crop override'),
-            content=ft.Column([preview_row, info_text, ft.Row([left_field, top_field, right_field, bottom_field], spacing=8)]),
-            actions=[ft.TextButton('Auto', on_click=do_auto), ft.TextButton('Save', on_click=do_save), ft.TextButton('Reset', on_click=do_reset), ft.TextButton('Close', on_click=lambda e: page_local.close(dlg))]
-        )
-        global CROP_SHEET_DIALOG
-        CROP_SHEET_DIALOG = dlg
-        try:
-            # initialize preview from any existing values
-            _save_cropped_preview()
-        except Exception:
-            pass
-        try:
-            page_local.open(dlg)
-        except Exception:
-            pass
+    # sheet crop dialog implementation removed — all crop editing is now inline in the main dialog
 
     def update_preview(ev=None):
         try:
@@ -433,12 +87,6 @@ def open_import_dialog(editor, ev):
         except Exception:
             pass
         path = (sheet_path_field.value or '').strip()
-            # record the original path so dialogs can prefer it
-        try:
-            if path and os.path.exists(path):
-                sheet_original_path = path
-        except Exception:
-            pass
         try:
             tw = int((tile_w_field.value or '8').strip())
             th = int((tile_h_field.value or '8').strip())
@@ -515,28 +163,12 @@ def open_import_dialog(editor, ev):
                 preview_container.update()
             except Exception:
                 pass
-            # add sheet crop editor button / indicator
+            # show sheet crop status (editing happens inline in the main dialog now)
             try:
-                def _open_sheet_crop(ev):
-                    # open dialog using a fresh load of the original sheet file (avoid any working cropped image)
-                    try:
-                        path_now_local = (sheet_path_field.value or '').strip()
-                        if path_now_local and os.path.exists(path_now_local):
-                            try:
-                                fresh = Image.open(path_now_local).convert('RGBA')
-                                open_sheet_crop_dialog(fresh)
-                                return
-                            except Exception:
-                                pass
-                        # fallback to the img_full we already have
-                        open_sheet_crop_dialog(img_full)
-                    except Exception as ex:
-                        logger.exception(f"Failed to open sheet crop dialog: {ex}")
                 caption_text = 'Sheet crop: set' if sheet_crop_override else 'Sheet crop: none'
-                preview_container.controls.append(ft.Row([ft.Text(caption_text), ft.TextButton('Edit sheet crop', on_click=_open_sheet_crop)]))
-                logger.debug("Added sheet crop editor button")
+                preview_container.controls.append(ft.Row([ft.Text(caption_text)]))
             except Exception as ex:
-                logger.exception(f"Failed to add sheet crop editor button: {ex}")
+                logger.exception(f"Failed to add sheet crop status: {ex}")
         except Exception as ex:
             logger.exception(f"Failed to process image for preview: {ex}")
             warn_preview.value = "Failed to read image for preview"
@@ -1420,7 +1052,7 @@ def open_import_dialog(editor, ev):
         sheet_crop_expander = ft.ExpansionTile(
             title=ft.Text('Sheet cropping'),
             controls=[
-                ft.Container(content=ft.Row([edit_sheet_crop_btn, ft.Text('Status:'), warn_preview], spacing=8), padding=0),
+                ft.Container(content=ft.Row([auto_analyze_btn, ft.Text('Status:'), warn_preview], spacing=8), padding=0),
                 ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
                 ft.Container(content=ft.Row([
                     ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
@@ -1430,13 +1062,12 @@ def open_import_dialog(editor, ev):
         )
     except Exception:
         # fallback if ExpansionTile isn't available in this flet version
-        sheet_crop_expander = ft.Column([ft.Row([auto_analyze_btn, edit_sheet_crop_btn], spacing=8), warn_preview])
+        sheet_crop_expander = ft.Column([ft.Row([auto_analyze_btn], spacing=8), warn_preview])
 
     content = ft.Column([
         ft.Row([sheet_path_field, choose_btn], spacing=8),
     ft.Row([clipboard_btn], spacing=8),
-        sheet_crop_expander,
-        ft.Container(content=ft.Row([auto_analyze_btn, ])),
+    sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
         ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
         status_import,
