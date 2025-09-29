@@ -48,9 +48,9 @@ Homepage = "https://github.com/xkjq/yoto-up"
 Source = "https://github.com/xkjq/yoto-up"
 BugTracker = "https://github.com/xkjq/yoto-up/issues"
 
-[project.gui]
+[project.optional-dependencies]
 # Desktop target: full feature set (audio libs, numpy, plotting)
-desktop = [
+gui = [
   "flet[desktop]>=0.28.3",
   "rapidfuzz>=2.0.0",
   "pydub>=0.25",
