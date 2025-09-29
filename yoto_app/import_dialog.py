@@ -236,12 +236,17 @@ def open_import_dialog(editor, ev):
 
     def _make_bg_transparent(im, tol=20):
         """Return a copy of im with pixels similar to the corner/background color set transparent.
+        Only pixels connected to the image border that are similar to the detected background
+        colour will be made transparent. This prevents internal pixels that happen to match
+        the background colour from becoming transparent.
         The function is resilient to pixel formats.
         """
         try:
             if im is None:
                 return im
             w3, h3 = im.size
+
+            # collect corner samples then pick the most common as background colour
             pts = [(0, 0), (w3 - 1, 0), (0, h3 - 1), (w3 - 1, h3 - 1)] if w3 > 0 and h3 > 0 else []
             corners = []
             for (cx, cy) in pts:
@@ -255,14 +260,71 @@ def open_import_dialog(editor, ev):
             def similar_col_rgb(a, b, tol=tol):
                 return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) <= (tol * tol)
 
-            tc = im.copy()
+            # Work on an RGBA copy
+            tc = im.convert('RGBA').copy()
             tc_px = tc.load()
-            for yy in range(tc.height):
-                for xx in range(tc.width):
+
+            # visited mask for flood-fill (0 = unseen, 1 = background-connected)
+            visited = [[0] * w3 for _ in range(h3)]
+
+            # stack for flood-fill; seed with border pixels that match bgc
+            stack = []
+            for x in range(w3):
+                try:
+                    col = _to_rgb3_from_value(tc_px[x, 0])
+                    if similar_col_rgb(col, bgc):
+                        stack.append((x, 0))
+                        visited[0][x] = 1
+                except Exception:
+                    pass
+                try:
+                    col = _to_rgb3_from_value(tc_px[x, h3 - 1])
+                    if similar_col_rgb(col, bgc) and visited[h3 - 1][x] == 0:
+                        stack.append((x, h3 - 1))
+                        visited[h3 - 1][x] = 1
+                except Exception:
+                    pass
+            for y in range(h3):
+                try:
+                    col = _to_rgb3_from_value(tc_px[0, y])
+                    if similar_col_rgb(col, bgc) and visited[y][0] == 0:
+                        stack.append((0, y))
+                        visited[y][0] = 1
+                except Exception:
+                    pass
+                try:
+                    col = _to_rgb3_from_value(tc_px[w3 - 1, y])
+                    if similar_col_rgb(col, bgc) and visited[y][w3 - 1] == 0:
+                        stack.append((w3 - 1, y))
+                        visited[y][w3 - 1] = 1
+                except Exception:
+                    pass
+
+            # 4-connected flood-fill
+            while stack:
+                x, y = stack.pop()
+                # examine neighbours
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx = x + dx
+                    ny = y + dy
+                    if nx < 0 or ny < 0 or nx >= w3 or ny >= h3:
+                        continue
+                    if visited[ny][nx]:
+                        continue
                     try:
-                        p = tc_px[xx, yy]
-                        col = _to_rgb3_from_value(p)
-                        if similar_col_rgb(col, bgc):
+                        ncol = _to_rgb3_from_value(tc_px[nx, ny])
+                        if similar_col_rgb(ncol, bgc):
+                            visited[ny][nx] = 1
+                            stack.append((nx, ny))
+                    except Exception:
+                        pass
+
+            # Set background-connected pixels to transparent only
+            for yy in range(h3):
+                for xx in range(w3):
+                    try:
+                        if visited[yy][xx]:
+                            # preserve existing alpha if any by writing full transparent pixel
                             tc_px[xx, yy] = (0, 0, 0, 0)
                     except Exception:
                         pass
