@@ -609,5 +609,36 @@ def expand_all_tracks(card_id: str):
     card = API.create_or_update_content(card, return_card=True)
     rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
 
+@app.command()
+def gui():
+    """Launch the GUI application."""
+    # Try to start the Flet GUI by importing the local `gui` module and
+    # invoking ft.app with its `main` target. If that fails (missing deps
+    # or running in an environment where direct import is problematic),
+    # fall back to launching the script with the current Python interpreter.
+    try:
+        import importlib
+        gui_mod = importlib.import_module('gui')
+        try:
+            import flet as ft
+            # Use the same assets/upload dirs as gui.py
+            ft.app(target=gui_mod.main, assets_dir="assets", upload_dir="assets/uploads")
+            return
+        except Exception as e:
+            # Flet import or app start failed; fall back to subprocess
+            print(f"Failed to start GUI via flet API: {e}; falling back to running gui.py")
+    except Exception:
+        # Importing gui failed; fall back to running the script directly
+        pass
+
+    # Subprocess fallback
+    try:
+        import subprocess
+        import sys
+        script_path = Path(__file__).parent / 'gui.py'
+        subprocess.run([sys.executable, str(script_path)])
+    except Exception as e:
+        print(f"Failed to launch GUI subprocess: {e}")
+
 if __name__ == "__main__":
     app()

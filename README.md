@@ -98,10 +98,19 @@ Features include content organization, device management, and easy integration w
    python yoto.py edit-card <CARD_ID>
    ```
 
+   [![asciicast](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC.svg)](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC)
+   [![asciicast](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB.svg)](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB)
+
    ### GUI
 
    ```bash
    python gui.py
+   ```
+
+   or 
+
+   ```bash
+   flet run gui.py
    ```
 
    ## Want a pip installable package?
