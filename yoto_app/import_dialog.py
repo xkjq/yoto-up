@@ -548,14 +548,48 @@ def open_import_dialog(editor, ev):
 
             # store the detected crop as a sheet-level override using original-image coords
             try:
-                sheet_crop_override = (ol, ot, orr, ob)
-                logger.debug(f"Auto analyze detected sheet_crop_override={sheet_crop_override} for path={path}")
+                # snap the detected crop to tile boundaries so defaults align with tile grid
                 try:
-                    # populate main dialog crop fields so the user sees the detected values
-                    left_field_main.value = str(ol)
-                    top_field_main.value = str(ot)
-                    right_field_main.value = str(orr)
-                    bottom_field_main.value = str(ob)
+                    # prefer explicit tile fields if valid integers
+                    tw_try = int((tile_w_field.value or '').strip())
+                except Exception:
+                    tw_try = None
+                try:
+                    th_try = int((tile_h_field.value or '').strip())
+                except Exception:
+                    th_try = None
+                tw_use = tw_try if (tw_try and tw_try > 0) else (int(inferred) if inferred else 1)
+                th_use = th_try if (th_try and th_try > 0) else (int(inferred) if inferred else 1)
+
+                def _snap_crop_to_tiles(l, t, r, b, tw, th, iw, ih):
+                    try:
+                        if tw <= 0 or th <= 0:
+                            return (l, t, r, b)
+                        nl = max(0, (l // tw) * tw)
+                        nt = max(0, (t // th) * th)
+                        # ceil for right/bottom to include full tiles
+                        nr = min(iw, ((r + tw - 1) // tw) * tw)
+                        nb = min(ih, ((b + th - 1) // th) * th)
+                        # ensure we still have a positive area
+                        if nr <= nl or nb <= nt:
+                            return (l, t, r, b)
+                        return (nl, nt, nr, nb)
+                    except Exception:
+                        return (l, t, r, b)
+
+                try:
+                    ol_snapped, ot_snapped, orr_snapped, ob_snapped = _snap_crop_to_tiles(ol, ot, orr, ob, tw_use, th_use, img.width, img.height)
+                except Exception:
+                    ol_snapped, ot_snapped, orr_snapped, ob_snapped = ol, ot, orr, ob
+
+                sheet_crop_override = (ol_snapped, ot_snapped, orr_snapped, ob_snapped)
+                logger.debug(f"Auto analyze detected sheet_crop_override={sheet_crop_override} (snapped by tile {tw_use}x{th_use}) for path={path}")
+                try:
+                    # populate main dialog crop fields so the user sees the detected snapped values
+                    left_field_main.value = str(ol_snapped)
+                    top_field_main.value = str(ot_snapped)
+                    right_field_main.value = str(orr_snapped)
+                    bottom_field_main.value = str(ob_snapped)
                     try:
                         left_field_main.update()
                     except Exception:
