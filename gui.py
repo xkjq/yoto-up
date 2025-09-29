@@ -1491,9 +1491,9 @@ def main(page):
         # Build a simplified dialog focused on the new per-window analyzer.
         d_side = ft.Dropdown(label='Side', value='intro', options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')], width=120)
         d_max_seconds = ft.TextField(label='Max inspect seconds', value='10.0', width=120)
-        d_window_seconds = ft.TextField(label='Window seconds', value='0.25', width=120)
+        d_window_seconds = ft.TextField(label='Window seconds', value='0.1', width=120)
         d_window_similarity = ft.TextField(label='Window similarity threshold', value='0.95', width=120)
-        d_window_min_files = ft.TextField(label='Min files fraction', value='0.75', width=120)
+        d_window_min_files = ft.TextField(label='Min files fraction', value='1.0', width=120)
         d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
         d_fast = ft.Checkbox(label='Fast mode (lower quality, faster)', value=True)
         d_computed_removal = ft.TextField(label='Computed removal (s)', value='0.00', width=120)

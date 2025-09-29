@@ -48,13 +48,13 @@ def analyze_files(
 
     # use a conservative window and thresholds derived from the requested
     try:
-        window_seconds = min(0.25, float(seconds))
+        window_seconds = min(0.10, float(seconds))
     except Exception:
-        window_seconds = 0.25
+        window_seconds = 0.10
     try:
-        sim_thresh = float(similarity_threshold or 0.75)
+        sim_thresh = float(similarity_threshold or 0.85)
     except Exception:
-        sim_thresh = 0.75
+        sim_thresh = 0.85
 
     res = _analysis_per_window_common_prefix(paths=paths, side=side, max_seconds=seconds, window_seconds=window_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=sim_thresh, min_files_fraction=0.5)
 
@@ -134,7 +134,7 @@ def per_window_common_prefix(
     paths: List[str],
     side: str = 'intro',
     max_seconds: float = 10.0,
-    window_seconds: float = 0.25,
+    window_seconds: float = 0.1,
     sr: int = 22050,
     n_mfcc: int = 13,
     similarity_threshold: float = 0.95,

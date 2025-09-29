@@ -61,6 +61,8 @@ def open_import_dialog(editor, ev):
 
     choose_btn = ft.TextButton("Choose file", on_click=lambda ev2: file_picker.pick_files())
     auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
+    sheet_crop_mode_field = ft.Dropdown(label="Sheet crop method", options=[ft.dropdown.Option("None"), ft.dropdown.Option("Snap to tiles"), ft.dropdown.Option("Detect by border color")], value="Snap to tiles", width=220)
+    apply_sheet_crop_btn = ft.TextButton("Apply sheet crop", on_click=lambda ev: apply_sheet_crop_method())
     # Edit sheet crop dialog removed; main dialog contains inline edit controls now
 
     # edit_sheet_crop_btn is unused; main dialog fields replace the separate dialog
@@ -673,6 +675,45 @@ def open_import_dialog(editor, ev):
         most = Counter(samples).most_common(1)[0][0]
         return most
 
+    def detect_sheet_border_crop(path, tol=18):
+        """Detect a single-colour border around the sprite sheet and return a crop box in original coordinates or None.
+        The detection chooses the most common border colour and finds the tight bbox of pixels that differ from it.
+        """
+        try:
+            if not path or not os.path.exists(path):
+                return None
+            im = Image.open(path).convert('RGBA')
+            bg = pick_background(im)
+            px = im.load()
+            w, h = im.size
+            min_x = w
+            min_y = h
+            max_x = 0
+            max_y = 0
+            found = False
+            for y in range(h):
+                for x in range(w):
+                    try:
+                        p = px[x, y]
+                        if not similar_color(p, bg, tol=tol):
+                            found = True
+                            if x < min_x:
+                                min_x = x
+                            if y < min_y:
+                                min_y = y
+                            if x > max_x:
+                                max_x = x
+                            if y > max_y:
+                                max_y = y
+                    except Exception:
+                        pass
+            if not found:
+                return None
+            # bounding box is inclusive [min_x, max_x], convert to crop box (left, top, right+1, bottom+1)
+            return (max(0, min_x), max(0, min_y), min(w, max_x+1), min(h, max_y+1))
+        except Exception:
+            return None
+
     def similar_color(a, b, tol=18):
         ar,ag,ab,aa = a
         br,bg,bb,ba = b
@@ -945,13 +986,150 @@ def open_import_dialog(editor, ev):
                 update_preview()
             except Exception:
                 pass
-        except Exception as ex:
-            logger.exception(f"Auto analyze failed: {ex}")
-            warn_preview.value = f"Auto analyze failed: {ex}"
+
+    def apply_sheet_crop_method():
+        """Apply the selected sheet crop method and populate the main crop fields and preview.
+        Modes:
+         - Snap to tiles: attempt to run auto_analyze (if needed) and snap the detected crop to tile multiples.
+         - Detect by border color: detect a single-colour border and set crop to the inner bounds.
+        """
+        nonlocal sheet_crop_override
+        path = (sheet_path_field.value or '').strip()
+        if not path or not os.path.exists(path):
+            warn_preview.value = "No valid sprite sheet selected"
             try:
                 warn_preview.update()
             except Exception:
                 pass
+            return
+        try:
+            mode = (sheet_crop_mode_field.value or '').lower()
+        except Exception:
+            mode = 'snap to tiles'
+
+        if mode.startswith('detect'):
+            crop = detect_sheet_border_crop(path)
+            if crop:
+                sheet_crop_override = crop
+                try:
+                    left_field_main.value = str(crop[0])
+                    top_field_main.value = str(crop[1])
+                    right_field_main.value = str(crop[2])
+                    bottom_field_main.value = str(crop[3])
+                    try:
+                        left_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        top_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        right_field_main.update()
+                    except Exception:
+                        pass
+                    try:
+                        bottom_field_main.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                try:
+                    sheet_crop_status.value = 'set'
+                    sheet_crop_status.update()
+                except Exception:
+                    pass
+                try:
+                    update_preview()
+                except Exception:
+                    pass
+                return
+            else:
+                warn_preview.value = "Border detection failed"
+                try:
+                    warn_preview.update()
+                except Exception:
+                    pass
+                return
+
+        # default/snap to tiles
+        # ensure we have a detected/synthesised crop from auto_analyze, then snap to tile boundaries
+        try:
+            # trigger auto_analyze which will set sheet_crop_override where possible
+            auto_analyze()
+        except Exception:
+            pass
+        if sheet_crop_override:
+            try:
+                # prefer explicit tile fields
+                try:
+                    tw_try = int((tile_w_field.value or '').strip())
+                except Exception:
+                    tw_try = None
+                try:
+                    th_try = int((tile_h_field.value or '').strip())
+                except Exception:
+                    th_try = None
+                tw_use = tw_try if (tw_try and tw_try > 0) else 1
+                th_use = th_try if (th_try and th_try > 0) else 1
+                l, t, r, b = sheet_crop_override
+                def snap_box(l, t, r, b, tw, th, iw, ih):
+                    try:
+                        nl = max(0, (l // tw) * tw)
+                        nt = max(0, (t // th) * th)
+                        nr = min(iw, ((r + tw - 1) // tw) * tw)
+                        nb = min(ih, ((b + th - 1) // th) * th)
+                        if nr <= nl or nb <= nt:
+                            return (l, t, r, b)
+                        return (nl, nt, nr, nb)
+                    except Exception:
+                        return (l, t, r, b)
+                try:
+                    img = Image.open(path).convert('RGBA')
+                    iw, ih = img.size
+                except Exception:
+                    iw = ih = None
+                if iw and ih:
+                    try:
+                        new_box = snap_box(l, t, r, b, tw_use, th_use, iw, ih)
+                        sheet_crop_override = new_box
+                        left_field_main.value = str(new_box[0])
+                        top_field_main.value = str(new_box[1])
+                        right_field_main.value = str(new_box[2])
+                        bottom_field_main.value = str(new_box[3])
+                        try:
+                            left_field_main.update()
+                        except Exception:
+                            pass
+                        try:
+                            top_field_main.update()
+                        except Exception:
+                            pass
+                        try:
+                            right_field_main.update()
+                        except Exception:
+                            pass
+                        try:
+                            bottom_field_main.update()
+                        except Exception:
+                            pass
+                        try:
+                            sheet_crop_status.value = 'set'
+                            sheet_crop_status.update()
+                        except Exception:
+                            pass
+                        try:
+                            update_preview()
+                        except Exception:
+                            pass
+                        return
+                    except Exception:
+                        pass
+        warn_preview.value = 'No crop available to snap'
+        try:
+            warn_preview.update()
+        except Exception:
+            pass
 
     def perform_import(path, tw, th, pref):
         """Import tiles and write them to .stamps/imported; do not touch stamp dialog UI controls here.
@@ -1437,7 +1615,7 @@ def open_import_dialog(editor, ev):
         )
 
     content = ft.Column([
-        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn], spacing=8),
+        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn, sheet_crop_mode_field, apply_sheet_crop_btn], spacing=8),
     ft.Row([clipboard_btn], spacing=8),
     sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
