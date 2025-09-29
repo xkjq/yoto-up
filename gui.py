@@ -1337,42 +1337,42 @@ def main(page):
 
                 temp_dir = Path('.tmp_trim')
                 temp_dir.mkdir(parents=True, exist_ok=True)
-                trimmed_count = 0
-                trimmed_paths: set[str] = set()
+                # Collect selected, canonicalized source paths and dedupe
+                selected_paths = []
+                seen = set()
                 for p, cb in checkbox_map.items():
                     if not cb.value:
                         continue
-                    # skip duplicate sources trimmed earlier in this run
-                    if p in trimmed_paths:
-                        logger.debug(f"Skipping duplicate trim for {p}")
-                        continue
-
-                    # set row status to trimming
-                    for ctrl in list(file_rows_column.controls):
-                        fur = getattr(ctrl, '_fileuploadrow', None)
-                        try:
-                            if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                fur.set_status('Trimming...')
-                                fur.set_progress(0.0)
-                        except Exception:
-                            pass
-
                     try:
-                        # Use the analysis-computed common_removal_end_sec by default.
-                        # Honor the user-edited computed_removal field when present.
+                        norm = str(Path(p).resolve())
+                    except Exception:
+                        norm = str(p)
+                    if norm in seen:
+                        logger.debug(f"Skipping duplicate selection for {norm}")
+                        continue
+                    seen.add(norm)
+                    selected_paths.append((p, norm))
+
+                total_selected = len(selected_paths)
+                trimmed_count = 0
+                trimmed_paths: set[str] = set()
+                lock = threading.Lock()
+
+                # Worker that trims a single file. Returns (orig_path, dest, error_or_none)
+                def _trim_one(orig_p, norm_p):
+                    try:
+                        # compute remove_t
                         try:
                             comp_ctrl = dialog_controls.get('computed_removal')
                             remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
                         except Exception:
                             remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
-                        src_path = Path(p)
-                        dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
-                        # No per-file safety skip here; the final confirmation dialog
-                        # will ask the user to proceed before trimming starts.
 
-                        # keep a small left padding (in ms) so we don't cut too aggressively
+                        src_path = Path(orig_p)
+                        dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
+
                         trim_audio_file(
-                            p,
+                            orig_p,
                             dest,
                             remove_intro_seconds=remove_t if side == 'intro' else 0.0,
                             remove_outro_seconds=remove_t if side == 'outro' else 0.0,
@@ -1383,35 +1383,93 @@ def main(page):
                         for ctrl in list(file_rows_column.controls):
                             fur = getattr(ctrl, '_fileuploadrow', None)
                             try:
-                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                if fur and (getattr(fur, 'original_filepath', None) == orig_p or getattr(fur, 'filepath', None) == orig_p or getattr(ctrl, 'filename', None) == orig_p):
                                     fur.update_file(dest)
                                     fur.set_status('Trimmed intro/outro')
                                     fur.set_progress(1.0)
                             except Exception:
                                 pass
-                        # record that we've trimmed this source path
-                        try:
-                            trimmed_paths.add(p)
-                        except Exception:
-                            pass
+
+                        return (orig_p, dest, None)
                     except Exception as e:
-                        # report error on affected rows
-                        for ctrl in list(file_rows_column.controls):
-                            fur = getattr(ctrl, '_fileuploadrow', None)
+                        return (orig_p, None, str(e))
+
+                # Run trims in parallel but limit concurrency using ThreadPoolExecutor
+                try:
+                    import concurrent.futures
+                except Exception:
+                    concurrent = None
+                    concurrent_futures = None
+
+                # Determine max workers from UI control or fallback to 4
+                try:
+                    max_workers = max(1, int(concurrency.value))
+                except Exception:
+                    max_workers = 4
+
+                futures = []
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        for orig_p, norm_p in selected_paths:
+                            futures.append(executor.submit(_trim_one, orig_p, norm_p))
+
+                        # iterate as futures complete and update UI
+                        for fut in concurrent.futures.as_completed(futures):
+                            orig_p, dest, err = fut.result()
+                            with lock:
+                                trimmed_count += 1
+                                try:
+                                    trim_progress.value = (trimmed_count / total_selected) if total_selected else 1.0
+                                    trim_label.value = f'Trimming {trimmed_count}/{total_selected}'
+                                except Exception:
+                                    pass
+                            # update UI rows for this file
+                            if err:
+                                for ctrl in list(file_rows_column.controls):
+                                    fur = getattr(ctrl, '_fileuploadrow', None)
+                                    try:
+                                        if fur and (getattr(fur, 'original_filepath', None) == orig_p or getattr(fur, 'filepath', None) == orig_p or getattr(ctrl, 'filename', None) == orig_p):
+                                            fur.set_status(f'Trim error: {err}')
+                                    except Exception:
+                                        pass
+                            else:
+                                try:
+                                    for ctrl in list(file_rows_column.controls):
+                                        fur = getattr(ctrl, '_fileuploadrow', None)
+                                        try:
+                                            if fur and (getattr(fur, 'original_filepath', None) == orig_p or getattr(fur, 'filepath', None) == orig_p or getattr(ctrl, 'filename', None) == orig_p):
+                                                fur.update_file(dest)
+                                                fur.set_status('Trimmed intro/outro')
+                                                fur.set_progress(1.0)
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
                             try:
-                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                    fur.set_status(f'Trim error: {e}')
+                                page.update()
                             except Exception:
                                 pass
-
-                    trimmed_count += 1
-                    # update progress UI
-                    try:
-                        trim_progress.value = (trimmed_count / total_to_trim) if total_to_trim else 1.0
-                        trim_label.value = f'Trimming {trimmed_count}/{total_to_trim}'
-                        page.update()
-                    except Exception:
-                        pass
+                            # record trimmed path
+                            try:
+                                trimmed_paths.add(orig_p)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    # If executor failed for some reason, fall back to sequential loop
+                    logger.exception('Parallel trimming failed, falling back to sequential')
+                    for orig_p, norm_p in selected_paths:
+                        _orig, _dest, _err = _trim_one(orig_p, norm_p)
+                        with lock:
+                            trimmed_count += 1
+                            try:
+                                trim_progress.value = (trimmed_count / total_selected) if total_selected else 1.0
+                                trim_label.value = f'Trimming {trimmed_count}/{total_selected}'
+                            except Exception:
+                                pass
+                        try:
+                            page.update()
+                        except Exception:
+                            pass
 
                 try:
                     page.close(trim_dlg)
