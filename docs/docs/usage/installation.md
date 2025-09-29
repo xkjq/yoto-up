@@ -6,6 +6,8 @@ Follow these steps to install **Yoto Up**:
 ## Binary installation
 Pre built binaries (Linux/Windows/MacOs) are provided for the flet based gui, these can be found under the "releases" section on github.
 
+**Please note these binaries are unsigned and so may raise errors on a some platforms. Whilst they are built directly from the source code if this concerns you please run from source.**
+
 
 ## Installing from git
 

@@ -39,13 +39,7 @@ Features include content organization, device management, and easy integration w
 
    ## 🛠️ Installation
 
-   ### GUI (binary)
-
-   Pre-built binaries are published on the releases page: https://github.com/xkjq/yoto-up/releases
-
-   If there's no binary for your platform, run from source using the steps below.
-
-   ### From source (recommended for advanced users)
+   ### From source
 
    1. Clone the repository and change into it:
 
