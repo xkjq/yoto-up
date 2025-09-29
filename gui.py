@@ -1311,20 +1311,18 @@ def main(page):
                 show_snack('No files selected for trimming', error=False)
                 return
 
-            # Safety: if the computed removal is non-zero, require explicit confirmation
+            # Compute planned removal (use computed_removal field if present,
+            # otherwise fall back to analysis result). The final confirmation
+            # modal below will ask the user to proceed before any files are
+            # modified, so we don't require a separate confirm checkbox here.
             try:
                 comp_ctrl = dialog_controls.get('computed_removal')
-                confirm_ctrl = dialog_controls.get('confirm_removal')
-                comp_val = 0.0
                 try:
                     comp_val = float(getattr(comp_ctrl, 'value', seconds_matched))
                 except Exception:
                     comp_val = float(seconds_matched) if seconds_matched is not None else 0.0
-                if comp_val > 0.0 and not (confirm_ctrl and getattr(confirm_ctrl, 'value', False)):
-                    show_snack('Computed removal is >0s — check "Confirm removal" to enable trimming.', error=False)
-                    return
             except Exception:
-                pass
+                comp_val = float(seconds_matched) if seconds_matched is not None else 0.0
             # Define the trimming worker up-front so it can be started from the
             # confirmation dialog. It will open its own progress dialog.
             def _trim_worker():
@@ -1356,44 +1354,16 @@ def main(page):
 
                         try:
                             # Use the analysis-computed common_removal_end_sec by default.
-                            # Only honor the user-edited computed_removal field when the
-                            # "Confirm removal" checkbox is checked — this prevents accidental
-                            # trimming of the full inspected window.
-                            remove_t = 0.0
+                            # Honor the user-edited computed_removal field when present.
                             try:
-                                confirm_ctrl = dialog_controls.get('confirm_removal')
                                 comp_ctrl = dialog_controls.get('computed_removal')
-                                confirmed = bool(getattr(confirm_ctrl, 'value', False))
+                                remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
                             except Exception:
-                                confirmed = False
-                                comp_ctrl = None
-
-                            if confirmed and comp_ctrl is not None:
-                                # user explicitly confirmed; try to parse their value
-                                try:
-                                    remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
-                                except Exception:
-                                    remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
-                            else:
-                                # default: use the analysis-computed value (conservative)
-                                try:
-                                    remove_t = float(seconds_matched)
-                                except Exception:
-                                    remove_t = 0.0
+                                remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
                             src_path = Path(p)
                             dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
-                            # Safety: avoid trimming the full inspected window unless the user confirmed
-                            try:
-                                confirm_ctrl = dialog_controls.get('confirm_removal')
-                                if remove_t >= float(seconds) - 1e-6 and not (confirm_ctrl and getattr(confirm_ctrl, 'value', False)):
-                                    try:
-                                        show_snack('Attempt to trim full inspected window detected; skipping trim for safety. Check "Confirm removal" to allow removing the full window.', error=False)
-                                    except Exception:
-                                        pass
-                                    # skip trimming for this file
-                                    continue
-                            except Exception:
-                                pass
+                            # No per-file safety skip here; the final confirmation dialog
+                            # will ask the user to proceed before trimming starts.
 
                             # keep a small left padding (in ms) so we don't cut too aggressively
                             trim_audio_file(
@@ -1497,7 +1467,7 @@ def main(page):
         d_padding = ft.TextField(label='Left padding (s)', value='0.25', width=100)
         d_fast = ft.Checkbox(label='Fast mode (lower quality, faster)', value=True)
         d_computed_removal = ft.TextField(label='Computed removal (s)', value='0.00', width=120)
-        d_confirm_removal = ft.Checkbox(label='Confirm removal', value=False)
+    # confirm removal checkbox removed — rely on final confirmation dialog
         content_column = ft.Column([], scroll=ft.ScrollMode.AUTO)
 
         def on_run(ev=None):
@@ -1512,7 +1482,6 @@ def main(page):
                 'window_similarity': d_window_similarity,
                 'window_min_files': d_window_min_files,
                 'computed_removal': d_computed_removal,
-                'confirm_removal': d_confirm_removal,
                 'content_column': content_column,
                 'trim_button': trim_btn,
             }
@@ -1534,7 +1503,7 @@ def main(page):
             content=ft.Column([
                 ft.Row([d_side, d_max_seconds, d_padding, d_fast]),
                 ft.Row([d_window_seconds, d_window_similarity, d_window_min_files]),
-                ft.Row([d_computed_removal, d_confirm_removal]),
+                ft.Row([d_computed_removal]),
                 ft.Divider(),
                 content_column
             ], scroll=ft.ScrollMode.AUTO, width=600),
