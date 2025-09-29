@@ -81,11 +81,15 @@ def open_import_dialog(editor, ev):
     # sheet crop dialog implementation removed — all crop editing is now inline in the main dialog
 
     def update_preview(ev=None):
+        """Build a preview that matches the import pipeline: apply sheet crop, per-tile crop (if enabled), transparency filling and downscale.
+        The preview thumbnails show the final tiles as they will be written (but limited to a reasonable display size).
+        """
         try:
             if getattr(preview_container, 'controls', None) is not None:
                 preview_container.controls.clear()
         except Exception:
             pass
+
         path = (sheet_path_field.value or '').strip()
         try:
             tw = int((tile_w_field.value or '8').strip())
@@ -97,6 +101,7 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             return
+
         if not path or not os.path.exists(path):
             warn_preview.value = "No valid sprite sheet selected"
             try:
@@ -104,9 +109,9 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             return
+
         try:
-            img_full = Image.open(path)
-            # working copy used for thumbnails: apply sheet-level crop override if any
+            img_full = Image.open(path).convert('RGBA')
             try:
                 if sheet_crop_override:
                     img = img_full.crop(sheet_crop_override)
@@ -114,6 +119,7 @@ def open_import_dialog(editor, ev):
                     img = img_full
             except Exception:
                 img = img_full
+
             sw, sh = img.size
             cols = max(1, sw // tw)
             rows = max(1, sh // th)
@@ -125,34 +131,268 @@ def open_import_dialog(editor, ev):
                 warn_preview.update()
             except Exception:
                 pass
-            # show up to 100 thumbnails in the preview (keeps UI responsive but gives a good overview)
+
             max_preview = min(100, total)
             count = 0
-            # grid params
             cols_per_row = 10
             current_row = ft.Row(spacing=6)
             import tempfile as _temp
+
+            try:
+                downscale_f = float((downscale_field.value or '1').strip())
+            except Exception:
+                downscale_f = 1.0
+
+            # helper to find tile bbox (same logic as import)
+            def tile_bbox(im, tol=20, alpha_thresh=16):
+                try:
+                    w2, h2 = im.size
+                    px = im.load()
+                    has_alpha = False
+                    for yy in range(min(4, h2)):
+                        for xx in range(min(4, w2)):
+                            try:
+                                v = px[xx, yy]
+                                if isinstance(v, tuple) and len(v) > 3:
+                                    has_alpha = True
+                                    break
+                            except Exception:
+                                pass
+                        if has_alpha:
+                            break
+                    if has_alpha:
+                        top = bottom = left = right = None
+                        for yy in range(h2):
+                            row_has = False
+                            for xx in range(w2):
+                                try:
+                                    v = px[xx, yy]
+                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
+                                        row_has = True
+                                        break
+                                    elif not isinstance(v, tuple):
+                                        row_has = True
+                                        break
+                                except Exception:
+                                    pass
+                            if row_has and top is None:
+                                top = yy
+                            if row_has:
+                                bottom = yy
+                        for xx in range(w2):
+                            col_has = False
+                            for yy in range(h2):
+                                try:
+                                    v = px[xx, yy]
+                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
+                                        col_has = True
+                                        break
+                                    elif not isinstance(v, tuple):
+                                        col_has = True
+                                        break
+                                except Exception:
+                                    pass
+                            if col_has and left is None:
+                                left = xx
+                            if col_has:
+                                right = xx
+                        if top is None:
+                            return None
+                        return (left, top, right+1, bottom+1)
+                    else:
+                        border_samples = []
+                        for xx in range(w2):
+                            try:
+                                v = px[xx, 0]
+                                if isinstance(v, tuple):
+                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                else:
+                                    border_samples.append((int(v), int(v), int(v)))
+                            except Exception:
+                                pass
+                            try:
+                                v = px[xx, h2-1]
+                                if isinstance(v, tuple):
+                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                else:
+                                    border_samples.append((int(v), int(v), int(v)))
+                            except Exception:
+                                pass
+                        for yy in range(h2):
+                            try:
+                                v = px[0, yy]
+                                if isinstance(v, tuple):
+                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                else:
+                                    border_samples.append((int(v), int(v), int(v)))
+                            except Exception:
+                                pass
+                            try:
+                                v = px[w2-1, yy]
+                                if isinstance(v, tuple):
+                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
+                                else:
+                                    border_samples.append((int(v), int(v), int(v)))
+                            except Exception:
+                                pass
+                        if border_samples:
+                            bgc = Counter(border_samples).most_common(1)[0][0]
+                        else:
+                            bgc = (255, 255, 255)
+                        def color_diff_sq(a, b):
+                            return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
+                        top = bottom = left = right = None
+                        for yy in range(h2):
+                            row_has = False
+                            for xx in range(w2):
+                                try:
+                                    v = px[xx, yy]
+                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
+                                    if color_diff_sq(col, bgc) > (tol * tol):
+                                        row_has = True
+                                        break
+                                except Exception:
+                                    pass
+                            if row_has and top is None:
+                                top = yy
+                            if row_has:
+                                bottom = yy
+                        for xx in range(w2):
+                            col_has = False
+                            for yy in range(h2):
+                                try:
+                                    v = px[xx, yy]
+                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
+                                    if color_diff_sq(col, bgc) > (tol * tol):
+                                        col_has = True
+                                        break
+                                except Exception:
+                                    pass
+                            if col_has and left is None:
+                                left = xx
+                            if col_has:
+                                right = xx
+                        if top is None:
+                            return None
+                        return (left, top, right+1, bottom+1)
+                except Exception:
+                    return None
+
+            # build preview rows using the final tile output as in import
             for r in range(rows):
                 for c in range(cols):
                     if count >= max_preview:
                         break
                     box = (c*tw, r*th, c*tw + tw, r*th + th)
-                    pil_tile = img.crop(box)
                     try:
-                        thumb = pil_tile.resize((32, 32))
-                        tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
-                        thumb.save(tmpf.name)
-                        # append to current row
-                        current_row.controls.append(ft.Container(content=ft.Image(src=tmpf.name, width=32, height=32)))
-                        if len(current_row.controls) >= cols_per_row:
-                            preview_container.controls.append(current_row)
-                            current_row = ft.Row(spacing=6)
+                        tile = img.crop(box).convert('RGBA')
+                    except Exception:
+                        tile = None
+                    final_tile = tile
+                    try:
+                        if tile is not None and crop_tiles_cb.value:
+                            tb = tile_bbox(tile, tol=20, alpha_thresh=16)
+                            if tb:
+                                lpx, tpx, rpx, bpx = (int(tb[0]), int(tb[1]), int(tb[2]), int(tb[3]))
+                                lpx = max(0, lpx)
+                                tpx = max(0, tpx)
+                                rpx = min(tile.width, rpx)
+                                bpx = min(tile.height, bpx)
+                                try:
+                                    final_tile = tile.crop((lpx, tpx, rpx, bpx))
+                                except Exception:
+                                    final_tile = tile
+                        # apply transparent background treatment same as import
+                        if final_tile is not None and transparent_bg_cb.value:
+                            try:
+                                w3, h3 = final_tile.size
+                                corners = []
+                                if w3 > 0 and h3 > 0:
+                                    pts = [(0,0), (w3-1,0), (0,h3-1), (w3-1,h3-1)]
+                                else:
+                                    pts = []
+                                for (cx, cy) in pts:
+                                    try:
+                                        corners.append(tuple(int(v) for v in final_tile.getpixel((cx, cy))))
+                                    except Exception:
+                                        pass
+                                bgc = Counter(corners).most_common(1)[0][0] if corners else (255,255,255,255)
+                                def similar_col(a,b,tol=20):
+                                    return ((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2) <= (tol*tol)
+                                tc = final_tile.copy()
+                                tc_px = tc.load()
+                                for yy in range(tc.height):
+                                    for xx in range(tc.width):
+                                        try:
+                                            p = tc_px[xx, yy]
+                                            if similar_col(p, bgc):
+                                                tc_px[xx, yy] = (0,0,0,0)
+                                        except Exception:
+                                            pass
+                                final_tile = tc
+                            except Exception:
+                                final_tile = final_tile
+
+                        # apply downscale exactly as import
+                        if final_tile is not None:
+                            try:
+                                df = float(downscale_field.value or '1')
+                            except Exception:
+                                df = 1.0
+                            if abs(df - 1.0) > 1e-6:
+                                try:
+                                    resample = Image.Resampling.NEAREST
+                                except Exception:
+                                    resample = Image.NEAREST if hasattr(Image, 'NEAREST') else 0
+                                nw = max(1, int(round(final_tile.width * df)))
+                                nh = max(1, int(round(final_tile.height * df)))
+                                try:
+                                    final_tile = final_tile.resize((nw, nh), resample)
+                                except Exception:
+                                    pass
+
+                        # decide display size: use actual final_tile size but clamp for UI
+                        if final_tile is None:
+                            display_img = None
+                        else:
+                            disp_w = final_tile.width
+                            disp_h = final_tile.height
+                            max_display = 64
+                            if disp_w > max_display or disp_h > max_display:
+                                # scale down for UI only, keep aspect
+                                scale = max_display / float(max(disp_w, disp_h))
+                                try:
+                                    rdw = max(1, int(round(disp_w * scale)))
+                                    rdh = max(1, int(round(disp_h * scale)))
+                                    try:
+                                        resamp = Image.Resampling.BICUBIC
+                                    except Exception:
+                                        resamp = Image.BICUBIC if hasattr(Image, 'BICUBIC') else 1
+                                    display_img = final_tile.resize((rdw, rdh), resamp)
+                                except Exception:
+                                    display_img = final_tile
+                            else:
+                                display_img = final_tile
+
+                        if display_img is not None:
+                            try:
+                                tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
+                                display_img.save(tmpf.name)
+                                current_row.controls.append(ft.Container(content=ft.Image(src=tmpf.name, width=display_img.width, height=display_img.height)))
+                            except Exception:
+                                pass
+                        else:
+                            # placeholder if tile missing
+                            try:
+                                current_row.controls.append(ft.Container(content=ft.Text('n/a')))
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                     count += 1
                 if count >= max_preview:
                     break
-            # flush remaining row
+
             try:
                 if getattr(current_row, 'controls', None):
                     if len(current_row.controls) > 0:
@@ -163,7 +403,7 @@ def open_import_dialog(editor, ev):
                 preview_container.update()
             except Exception:
                 pass
-            # show sheet crop status (editing happens inline in the main dialog now)
+
             try:
                 caption_text = 'Sheet crop: set' if sheet_crop_override else 'Sheet crop: none'
                 preview_container.controls.append(ft.Row([ft.Text(caption_text)]))
@@ -181,12 +421,45 @@ def open_import_dialog(editor, ev):
         sheet_path_field.on_change = update_preview
     except Exception:
         pass
+    def _suggest_downscale_to_16():
+        try:
+            try:
+                tw_now = int((tile_w_field.value or '8').strip())
+            except Exception:
+                tw_now = None
+            try:
+                th_now = int((tile_h_field.value or '8').strip())
+            except Exception:
+                th_now = None
+            if not tw_now and not th_now:
+                return
+            max_dim = max(tw_now or 0, th_now or 0) or 1
+            suggested = min(1.0, 16.0 / float(max_dim))
+            val = f"{suggested:.3f}".rstrip('0').rstrip('.')
+            downscale_field.value = val
+            try:
+                downscale_field.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_tile_size_change(ev=None):
+        try:
+            _suggest_downscale_to_16()
+        except Exception:
+            pass
+        try:
+            update_preview()
+        except Exception:
+            pass
+
     try:
-        tile_w_field.on_change = update_preview
+        tile_w_field.on_change = _on_tile_size_change
     except Exception:
         pass
     try:
-        tile_h_field.on_change = update_preview
+        tile_h_field.on_change = _on_tile_size_change
     except Exception:
         pass
 
@@ -623,6 +896,14 @@ def open_import_dialog(editor, ev):
             try:
                 tile_w_field.update()
                 tile_h_field.update()
+            except Exception:
+                pass
+            try:
+                # suggest a downscale so the imported tiles aim for 16x16
+                try:
+                    _suggest_downscale_to_16()
+                except Exception:
+                    pass
             except Exception:
                 pass
             try:
