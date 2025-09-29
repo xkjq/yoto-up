@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "yoto-up"
 version = "0.1.17"
 description = "Yoto Up - desktop tool for managing Yoto cards and playlists"
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.13"
 authors = [ { name = "xkjq" } ]
 keywords = ["yoto","desktop","flet"]
@@ -31,6 +31,22 @@ dependencies = [
   "matplotlib>=3.7",
 
 ]
+
+license = "MIT"
+license-files = ["LICENSE"]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Topic :: Software Development :: User Interfaces",
+]
+
+[project.urls]
+Homepage = "https://github.com/xkjq/yoto-up"
+Source = "https://github.com/xkjq/yoto-up"
+BugTracker = "https://github.com/xkjq/yoto-up/issues"
 
 [project.optional-dependencies]
 # Desktop target: full feature set (audio libs, numpy, plotting)
@@ -62,3 +78,12 @@ app.module = "gui"
 dev-dependencies = [
     "flet[all]==0.28.3",
 ]
+
+[tool.setuptools]
+py-modules = ["yoto", "gui"]
+
+[tool.setuptools.packages.find]
+include = ["yoto_app*"]
+
+[project.scripts]
+yoto = "yoto:app"
