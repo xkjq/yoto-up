@@ -42,6 +42,7 @@ def open_import_dialog(editor, ev):
                         target.value = fp
                         target.update()
                         try:
+                            auto_analyze()
                             update_preview()
                         except Exception:
                             pass
@@ -135,7 +136,7 @@ def open_import_dialog(editor, ev):
             max_preview = min(100, total)
             count = 0
             cols_per_row = 10
-            current_row = ft.Row(spacing=6)
+            current_row = ft.Row(spacing=6, wrap=True, height=400)
             import tempfile as _temp
 
             try:
@@ -351,17 +352,18 @@ def open_import_dialog(editor, ev):
                                 except Exception:
                                     pass
 
-                        # decide display size: use actual final_tile size but clamp for UI
+                        # decide display size: show the final tile size 1:1 so preview matches import
+                        # do NOT upscale small tiles; only downscale very large tiles for UI
                         if final_tile is None:
                             display_img = None
                         else:
                             disp_w = final_tile.width
                             disp_h = final_tile.height
                             max_display = 64
-                            if disp_w > max_display or disp_h > max_display:
-                                # scale down for UI only, keep aspect
-                                scale = max_display / float(max(disp_w, disp_h))
+                            # If the tile is larger than max_display on its largest side, downscale for UI
+                            if max(disp_w, disp_h) > max_display:
                                 try:
+                                    scale = max_display / float(max(disp_w, disp_h))
                                     rdw = max(1, int(round(disp_w * scale)))
                                     rdh = max(1, int(round(disp_h * scale)))
                                     try:
@@ -372,13 +374,16 @@ def open_import_dialog(editor, ev):
                                 except Exception:
                                     display_img = final_tile
                             else:
+                                # show actual final pixels, no upscaling
                                 display_img = final_tile
 
                         if display_img is not None:
                             try:
-                                tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
-                                display_img.save(tmpf.name)
-                                current_row.controls.append(ft.Container(content=ft.Image(src=tmpf.name, width=display_img.width, height=display_img.height)))
+                                buf = _io.BytesIO()
+                                display_img.save(buf, format='PNG')
+                                b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+                                # ft.Image.src_base64 expects raw base64 (no data: prefix)
+                                current_row.controls.append(ft.Container(content=ft.Image(src_base64=b64, width=display_img.width, height=display_img.height)))
                             except Exception:
                                 pass
                         else:
@@ -460,6 +465,10 @@ def open_import_dialog(editor, ev):
         pass
     try:
         tile_h_field.on_change = _on_tile_size_change
+    except Exception:
+        pass
+    try:
+        downscale_field.on_change = update_preview
     except Exception:
         pass
 
@@ -611,6 +620,8 @@ def open_import_dialog(editor, ev):
                     target.value = tmpf.name
                     target.update()
                     try:
+                        auto_analyze()
+                        auto_analyze()
                         update_preview()
                     except Exception:
                         pass
