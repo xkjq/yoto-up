@@ -82,6 +82,194 @@ def open_import_dialog(editor, ev):
     sheet_crop_override = None
     # remember the original sheet path chosen by the user (not currently used)
 
+    def _tile_bbox(im, tol=20, alpha_thresh=16):
+        """Shared helper: return tight bbox (left,top,right,bottom) for non-empty pixels in image `im`,
+        supporting multiple pixel formats and alpha handling. Returns None if tile appears empty.
+        """
+        try:
+            w2, h2 = im.size
+            px = im.load()
+
+            def to_rgba(v):
+                try:
+                    if isinstance(v, tuple):
+                        if len(v) >= 4:
+                            return (int(v[0]), int(v[1]), int(v[2]), int(v[3]))
+                        elif len(v) == 3:
+                            return (int(v[0]), int(v[1]), int(v[2]), 255)
+                        elif len(v) == 2:
+                            return (int(v[0]), int(v[0]), int(v[0]), int(v[1]))
+                    elif isinstance(v, (int, float)):
+                        iv = int(v)
+                        return (iv, iv, iv, 255)
+                except Exception:
+                    pass
+                return (0, 0, 0, 255)
+
+            def to_rgb3(v):
+                r, g, b, a = to_rgba(v)
+                return (r, g, b)
+
+            # quick alpha detection
+            has_alpha = False
+            for yy in range(min(4, h2)):
+                for xx in range(min(4, w2)):
+                    try:
+                        if to_rgba(px[xx, yy])[3] < 255:
+                            has_alpha = True
+                            break
+                    except Exception:
+                        pass
+                if has_alpha:
+                    break
+
+            if has_alpha:
+                top = bottom = left = right = None
+                for yy in range(h2):
+                    row_has = False
+                    for xx in range(w2):
+                        try:
+                            r, g, b, a = to_rgba(px[xx, yy])
+                            if a >= alpha_thresh:
+                                row_has = True
+                                break
+                        except Exception:
+                            pass
+                    if row_has and top is None:
+                        top = yy
+                    if row_has:
+                        bottom = yy
+                for xx in range(w2):
+                    col_has = False
+                    for yy in range(h2):
+                        try:
+                            r, g, b, a = to_rgba(px[xx, yy])
+                            if a >= alpha_thresh:
+                                col_has = True
+                                break
+                        except Exception:
+                            pass
+                    if col_has and left is None:
+                        left = xx
+                    if col_has:
+                        right = xx
+                if top is None:
+                    return None
+                return (left, top, right + 1, bottom + 1)
+
+            # no alpha path: sample border colour and find differing pixels
+            border_samples = []
+            for xx in range(w2):
+                try:
+                    border_samples.append(to_rgb3(px[xx, 0]))
+                except Exception:
+                    pass
+                try:
+                    border_samples.append(to_rgb3(px[xx, h2 - 1]))
+                except Exception:
+                    pass
+            for yy in range(h2):
+                try:
+                    border_samples.append(to_rgb3(px[0, yy]))
+                except Exception:
+                    pass
+                try:
+                    border_samples.append(to_rgb3(px[w2 - 1, yy]))
+                except Exception:
+                    pass
+            if border_samples:
+                bgc = Counter(border_samples).most_common(1)[0][0]
+            else:
+                bgc = (255, 255, 255)
+
+            def color_diff_sq(a, b):
+                return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+
+            top = bottom = left = right = None
+            for yy in range(h2):
+                row_has = False
+                for xx in range(w2):
+                    try:
+                        col = to_rgb3(px[xx, yy])
+                        if color_diff_sq(col, bgc) > (tol * tol):
+                            row_has = True
+                            break
+                    except Exception:
+                        pass
+                if row_has and top is None:
+                    top = yy
+                if row_has:
+                    bottom = yy
+            for xx in range(w2):
+                col_has = False
+                for yy in range(h2):
+                    try:
+                        col = to_rgb3(px[xx, yy])
+                        if color_diff_sq(col, bgc) > (tol * tol):
+                            col_has = True
+                            break
+                    except Exception:
+                        pass
+                if col_has and left is None:
+                    left = xx
+                if col_has:
+                    right = xx
+            if top is None:
+                return None
+            return (left, top, right + 1, bottom + 1)
+        except Exception:
+            return None
+
+    def _to_rgb3_from_value(v):
+        try:
+            if isinstance(v, tuple):
+                if len(v) >= 3:
+                    return (int(v[0]), int(v[1]), int(v[2]))
+                elif len(v) == 2:
+                    return (int(v[0]), int(v[0]), int(v[0]))
+            elif isinstance(v, (int, float)):
+                iv = int(v)
+                return (iv, iv, iv)
+        except Exception:
+            pass
+        return (255, 255, 255)
+
+    def _make_bg_transparent(im, tol=20):
+        """Return a copy of im with pixels similar to the corner/background color set transparent.
+        The function is resilient to pixel formats.
+        """
+        try:
+            if im is None:
+                return im
+            w3, h3 = im.size
+            pts = [(0, 0), (w3 - 1, 0), (0, h3 - 1), (w3 - 1, h3 - 1)] if w3 > 0 and h3 > 0 else []
+            corners = []
+            for (cx, cy) in pts:
+                try:
+                    val = im.getpixel((cx, cy))
+                    corners.append(_to_rgb3_from_value(val))
+                except Exception:
+                    pass
+            bgc = Counter(corners).most_common(1)[0][0] if corners else (255, 255, 255)
+
+            def similar_col_rgb(a, b, tol=tol):
+                return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) <= (tol * tol)
+
+            tc = im.copy()
+            tc_px = tc.load()
+            for yy in range(tc.height):
+                for xx in range(tc.width):
+                    try:
+                        p = tc_px[xx, yy]
+                        col = _to_rgb3_from_value(p)
+                        if similar_col_rgb(col, bgc):
+                            tc_px[xx, yy] = (0, 0, 0, 0)
+                    except Exception:
+                        pass
+            return tc
+        except Exception:
+            return im
+
     # sheet crop dialog implementation removed — all crop editing is now inline in the main dialog
 
     def update_preview(ev=None):
@@ -171,140 +359,8 @@ def open_import_dialog(editor, ev):
             except Exception:
                 downscale_f = 1.0
 
-            # helper to find tile bbox (same logic as import)
-            def tile_bbox(im, tol=20, alpha_thresh=16):
-                try:
-                    w2, h2 = im.size
-                    px = im.load()
-                    has_alpha = False
-                    for yy in range(min(4, h2)):
-                        for xx in range(min(4, w2)):
-                            try:
-                                v = px[xx, yy]
-                                if isinstance(v, tuple) and len(v) > 3:
-                                    has_alpha = True
-                                    break
-                            except Exception:
-                                pass
-                        if has_alpha:
-                            break
-                    if has_alpha:
-                        top = bottom = left = right = None
-                        for yy in range(h2):
-                            row_has = False
-                            for xx in range(w2):
-                                try:
-                                    v = px[xx, yy]
-                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                        row_has = True
-                                        break
-                                    elif not isinstance(v, tuple):
-                                        row_has = True
-                                        break
-                                except Exception:
-                                    pass
-                            if row_has and top is None:
-                                top = yy
-                            if row_has:
-                                bottom = yy
-                        for xx in range(w2):
-                            col_has = False
-                            for yy in range(h2):
-                                try:
-                                    v = px[xx, yy]
-                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                        col_has = True
-                                        break
-                                    elif not isinstance(v, tuple):
-                                        col_has = True
-                                        break
-                                except Exception:
-                                    pass
-                            if col_has and left is None:
-                                left = xx
-                            if col_has:
-                                right = xx
-                        if top is None:
-                            return None
-                        return (left, top, right+1, bottom+1)
-                    else:
-                        border_samples = []
-                        for xx in range(w2):
-                            try:
-                                v = px[xx, 0]
-                                if isinstance(v, tuple):
-                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                else:
-                                    border_samples.append((int(v), int(v), int(v)))
-                            except Exception:
-                                pass
-                            try:
-                                v = px[xx, h2-1]
-                                if isinstance(v, tuple):
-                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                else:
-                                    border_samples.append((int(v), int(v), int(v)))
-                            except Exception:
-                                pass
-                        for yy in range(h2):
-                            try:
-                                v = px[0, yy]
-                                if isinstance(v, tuple):
-                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                else:
-                                    border_samples.append((int(v), int(v), int(v)))
-                            except Exception:
-                                pass
-                            try:
-                                v = px[w2-1, yy]
-                                if isinstance(v, tuple):
-                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                else:
-                                    border_samples.append((int(v), int(v), int(v)))
-                            except Exception:
-                                pass
-                        if border_samples:
-                            bgc = Counter(border_samples).most_common(1)[0][0]
-                        else:
-                            bgc = (255, 255, 255)
-                        def color_diff_sq(a, b):
-                            return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
-                        top = bottom = left = right = None
-                        for yy in range(h2):
-                            row_has = False
-                            for xx in range(w2):
-                                try:
-                                    v = px[xx, yy]
-                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
-                                    if color_diff_sq(col, bgc) > (tol * tol):
-                                        row_has = True
-                                        break
-                                except Exception:
-                                    pass
-                            if row_has and top is None:
-                                top = yy
-                            if row_has:
-                                bottom = yy
-                        for xx in range(w2):
-                            col_has = False
-                            for yy in range(h2):
-                                try:
-                                    v = px[xx, yy]
-                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
-                                    if color_diff_sq(col, bgc) > (tol * tol):
-                                        col_has = True
-                                        break
-                                except Exception:
-                                    pass
-                            if col_has and left is None:
-                                left = xx
-                            if col_has:
-                                right = xx
-                        if top is None:
-                            return None
-                        return (left, top, right+1, bottom+1)
-                except Exception:
-                    return None
+            # use shared tile bbox helper for preview and import
+            # (defined below as _tile_bbox)
 
             # build preview using the final tile output as in import
             for r in range(rows):
@@ -319,7 +375,7 @@ def open_import_dialog(editor, ev):
                     final_tile = tile
                     try:
                         if tile is not None and crop_tiles_cb.value:
-                            tb = tile_bbox(tile, tol=20, alpha_thresh=16)
+                            tb = _tile_bbox(tile, tol=20, alpha_thresh=16)
                             if tb:
                                 lpx, tpx, rpx, bpx = (int(tb[0]), int(tb[1]), int(tb[2]), int(tb[3]))
                                 lpx = max(0, lpx)
@@ -333,31 +389,7 @@ def open_import_dialog(editor, ev):
                         # apply transparent background treatment same as import
                         if final_tile is not None and transparent_bg_cb.value:
                             try:
-                                w3, h3 = final_tile.size
-                                corners = []
-                                if w3 > 0 and h3 > 0:
-                                    pts = [(0,0), (w3-1,0), (0,h3-1), (w3-1,h3-1)]
-                                else:
-                                    pts = []
-                                for (cx, cy) in pts:
-                                    try:
-                                        corners.append(tuple(int(v) for v in final_tile.getpixel((cx, cy))))
-                                    except Exception:
-                                        pass
-                                bgc = Counter(corners).most_common(1)[0][0] if corners else (255,255,255,255)
-                                def similar_col(a,b,tol=20):
-                                    return ((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2) <= (tol*tol)
-                                tc = final_tile.copy()
-                                tc_px = tc.load()
-                                for yy in range(tc.height):
-                                    for xx in range(tc.width):
-                                        try:
-                                            p = tc_px[xx, yy]
-                                            if similar_col(p, bgc):
-                                                tc_px[xx, yy] = (0,0,0,0)
-                                        except Exception:
-                                            pass
-                                final_tile = tc
+                                final_tile = _make_bg_transparent(final_tile, tol=20)
                             except Exception:
                                 final_tile = final_tile
 
@@ -378,6 +410,16 @@ def open_import_dialog(editor, ev):
                                     final_tile = final_tile.resize((nw, nh), resample)
                                 except Exception:
                                     pass
+
+                        # optionally skip empty tiles from preview
+                        if skip_empty_cb.value:
+                            try:
+                                tb_check = _tile_bbox(final_tile if final_tile is not None else tile, tol=20, alpha_thresh=16)
+                                if tb_check is None:
+                                    # don't display empty tiles in preview
+                                    continue
+                            except Exception:
+                                pass
 
                         # decide display size: show the final tile size 1:1 so preview matches import
                         # do NOT upscale small tiles; only downscale very large tiles for UI
@@ -499,6 +541,19 @@ def open_import_dialog(editor, ev):
         pass
     try:
         sheet_crop_mode_field.on_change = lambda ev: apply_sheet_crop_method()
+    except Exception:
+        pass
+    # ensure toggling these options updates the preview immediately
+    try:
+        crop_tiles_cb.on_change = update_preview
+    except Exception:
+        pass
+    try:
+        transparent_bg_cb.on_change = update_preview
+    except Exception:
+        pass
+    try:
+        skip_empty_cb.on_change = update_preview
     except Exception:
         pass
 
@@ -1283,141 +1338,11 @@ def open_import_dialog(editor, ev):
                         final_tile = tile
                         try:
                             if crop_tiles_cb.value:
-                                def tile_bbox(im, tol=16, alpha_thresh=16):
-                                    w2, h2 = im.size
-                                    px = im.load()
-                                    has_alpha = False
-                                    for yy in range(min(4, h2)):
-                                        for xx in range(min(4, w2)):
-                                            try:
-                                                v = px[xx, yy]
-                                                if isinstance(v, tuple) and len(v) > 3:
-                                                    has_alpha = True
-                                                    break
-                                            except Exception:
-                                                pass
-                                        if has_alpha:
-                                            break
-                                    if has_alpha:
-                                        top = bottom = left = right = None
-                                        for yy in range(h2):
-                                            row_has = False
-                                            for xx in range(w2):
-                                                try:
-                                                    v = px[xx, yy]
-                                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                                        row_has = True
-                                                        break
-                                                    elif not isinstance(v, tuple):
-                                                        row_has = True
-                                                        break
-                                                except Exception:
-                                                    pass
-                                            if row_has and top is None:
-                                                top = yy
-                                            if row_has:
-                                                bottom = yy
-                                        for xx in range(w2):
-                                            col_has = False
-                                            for yy in range(h2):
-                                                try:
-                                                    v = px[xx, yy]
-                                                    if isinstance(v, tuple) and len(v) > 3 and v[3] >= alpha_thresh:
-                                                        col_has = True
-                                                        break
-                                                    elif not isinstance(v, tuple):
-                                                        col_has = True
-                                                        break
-                                                except Exception:
-                                                    pass
-                                            if col_has and left is None:
-                                                left = xx
-                                            if col_has:
-                                                right = xx
-                                        if top is None:
-                                            return None
-                                        return (left, top, right+1, bottom+1)
-                                    else:
-                                        border_samples = []
-                                        for xx in range(w2):
-                                            try:
-                                                v = px[xx, 0]
-                                                if isinstance(v, tuple):
-                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                                else:
-                                                    border_samples.append((int(v), int(v), int(v)))
-                                            except Exception:
-                                                pass
-                                            try:
-                                                v = px[xx, h2-1]
-                                                if isinstance(v, tuple):
-                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                                else:
-                                                    border_samples.append((int(v), int(v), int(v)))
-                                            except Exception:
-                                                pass
-                                        for yy in range(h2):
-                                            try:
-                                                v = px[0, yy]
-                                                if isinstance(v, tuple):
-                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                                else:
-                                                    border_samples.append((int(v), int(v), int(v)))
-                                            except Exception:
-                                                pass
-                                            try:
-                                                v = px[w2-1, yy]
-                                                if isinstance(v, tuple):
-                                                    border_samples.append((int(v[0]), int(v[1]), int(v[2])))
-                                                else:
-                                                    border_samples.append((int(v), int(v), int(v)))
-                                            except Exception:
-                                                pass
-                                        if border_samples:
-                                            bgc = Counter(border_samples).most_common(1)[0][0]
-                                        else:
-                                            bgc = (255, 255, 255)
-                                        def color_diff_sq(a, b):
-                                            return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2
-                                        top = bottom = left = right = None
-                                        for yy in range(h2):
-                                            row_has = False
-                                            for xx in range(w2):
-                                                try:
-                                                    v = px[xx, yy]
-                                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
-                                                    if color_diff_sq(col, bgc) > (tol * tol):
-                                                        row_has = True
-                                                        break
-                                                except Exception:
-                                                    pass
-                                            if row_has and top is None:
-                                                top = yy
-                                            if row_has:
-                                                bottom = yy
-                                        for xx in range(w2):
-                                            col_has = False
-                                            for yy in range(h2):
-                                                try:
-                                                    v = px[xx, yy]
-                                                    col = (int(v[0]), int(v[1]), int(v[2])) if isinstance(v, tuple) else (int(v), int(v), int(v))
-                                                    if color_diff_sq(col, bgc) > (tol * tol):
-                                                        col_has = True
-                                                        break
-                                                except Exception:
-                                                    pass
-                                            if col_has and left is None:
-                                                left = xx
-                                            if col_has:
-                                                right = xx
-                                        if top is None:
-                                            return None
-                                        return (left, top, right+1, bottom+1)
                                 tb = None
                                 try:
                                     # sheet-level override has already been applied to the source image,
                                     # so compute bbox per-tile normally when requested
-                                    tb = tile_bbox(tile, tol=20, alpha_thresh=16)
+                                    tb = _tile_bbox(tile, tol=20, alpha_thresh=16)
                                 except Exception:
                                     tb = None
                                 if tb:
@@ -1437,32 +1362,7 @@ def open_import_dialog(editor, ev):
                                         final_tile = tile
                                     if transparent_bg_cb.value:
                                         try:
-                                            # ensure we have the final tile size
-                                            w3, h3 = final_tile.size if hasattr(final_tile, 'size') else (0, 0)
-                                            corners = []
-                                            if w3 > 0 and h3 > 0:
-                                                pts = [(0,0), (w3-1,0), (0,h3-1), (w3-1,h3-1)]
-                                            else:
-                                                pts = []
-                                            for (cx, cy) in pts:
-                                                try:
-                                                    corners.append(tuple(int(v) for v in final_tile.getpixel((cx, cy))))
-                                                except Exception:
-                                                    pass
-                                            bgc = Counter(corners).most_common(1)[0][0] if corners else (255,255,255,255)
-                                            def similar_col(a,b,tol=20):
-                                                return ((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2) <= (tol*tol)
-                                            tc = final_tile.copy()
-                                            tc_px = tc.load()
-                                            for yy in range(tc.height):
-                                                for xx in range(tc.width):
-                                                    try:
-                                                        p = tc_px[xx, yy]
-                                                        if similar_col(p, bgc):
-                                                            tc_px[xx, yy] = (0,0,0,0)
-                                                    except Exception:
-                                                        pass
-                                            final_tile = tc
+                                            final_tile = _make_bg_transparent(final_tile, tol=20)
                                         except Exception:
                                             final_tile = tile
                         except Exception:
