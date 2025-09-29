@@ -67,14 +67,15 @@ def open_import_dialog(editor, ev):
     tile_w_field = ft.TextField(label="Tile width", value="8", width=140)
     tile_h_field = ft.TextField(label="Tile height", value="8", width=140)
     downscale_field = ft.TextField(label="Downscale (e.g. 1, 0.5)", value="1", width=140)
+    edge_mode_field = ft.Dropdown(label="Edge handling", options=[ft.dropdown.Option("Trim to whole tiles"), ft.dropdown.Option("Pad to whole tiles"), ft.dropdown.Option("Include partial tiles")], value="Trim to whole tiles", width=260)
     prefix_field = ft.TextField(label="Filename prefix", value="sheet", width=260)
     skip_empty_cb = ft.Checkbox(label="Skip empty tiles", value=True)
     crop_tiles_cb = ft.Checkbox(label="Crop tile blank borders", value=True)
     transparent_bg_cb = ft.Checkbox(label="Make background transparent", value=False)
     status_import = ft.Text("")
     warn_preview = ft.Text("", color="red")
-    # preview_container will hold a Column of Rows (we build a simple grid manually)
-    preview_container = ft.Column(spacing=6)
+    # preview_container will hold a Row with wrap enabled so thumbnails naturally wrap
+    preview_container = ft.Row(spacing=6, wrap=True)
     # single sheet-level manual cropping override: (left, top, right, bottom) or None
     sheet_crop_override = None
     # remember the original sheet path chosen by the user (not currently used)
@@ -122,8 +123,34 @@ def open_import_dialog(editor, ev):
                 img = img_full
 
             sw, sh = img.size
-            cols = max(1, sw // tw)
-            rows = max(1, sh // th)
+            # decide how to handle edges when sheet is not an exact multiple of tile size
+            try:
+                mode = (edge_mode_field.value or '').lower()
+            except Exception:
+                mode = 'trim to whole tiles'
+            import math
+            if mode.startswith('trim'):
+                cols = max(1, sw // tw)
+                rows = max(1, sh // th)
+                work_img = img
+            elif mode.startswith('pad'):
+                cols = max(1, math.ceil(sw / tw))
+                rows = max(1, math.ceil(sh / th))
+                # create a padded backing image of whole tiles
+                try:
+                    pad_bg = (0,0,0,0) if transparent_bg_cb.value else (255,255,255,255)
+                except Exception:
+                    pad_bg = (0,0,0,0)
+                work_img = Image.new('RGBA', (cols*tw, rows*th), pad_bg)
+                try:
+                    work_img.paste(img, (0,0))
+                except Exception:
+                    pass
+            else:
+                # include partial tiles: iterate ceil sw/tw and sh/th but use original image (may crop smaller tiles)
+                cols = max(1, math.ceil(sw / tw))
+                rows = max(1, math.ceil(sh / th))
+                work_img = img
             total = cols * rows
             warn_preview.value = f"{cols} cols x {rows} rows => {total} tiles"
             if total > 200:
@@ -135,9 +162,7 @@ def open_import_dialog(editor, ev):
 
             max_preview = min(100, total)
             count = 0
-            cols_per_row = 10
-            current_row = ft.Row(spacing=6, wrap=True, height=400)
-            import tempfile as _temp
+            # no local tempfile use here
 
             try:
                 downscale_f = float((downscale_field.value or '1').strip())
@@ -279,14 +304,14 @@ def open_import_dialog(editor, ev):
                 except Exception:
                     return None
 
-            # build preview rows using the final tile output as in import
+            # build preview using the final tile output as in import
             for r in range(rows):
                 for c in range(cols):
                     if count >= max_preview:
                         break
                     box = (c*tw, r*th, c*tw + tw, r*th + th)
                     try:
-                        tile = img.crop(box).convert('RGBA')
+                        tile = work_img.crop(box).convert('RGBA')
                     except Exception:
                         tile = None
                     final_tile = tile
@@ -382,14 +407,14 @@ def open_import_dialog(editor, ev):
                                 buf = _io.BytesIO()
                                 display_img.save(buf, format='PNG')
                                 b64 = base64.b64encode(buf.getvalue()).decode('ascii')
-                                # ft.Image.src_base64 expects raw base64 (no data: prefix)
-                                current_row.controls.append(ft.Container(content=ft.Image(src_base64=b64, width=display_img.width, height=display_img.height)))
+                                # append directly to wrap container so items wrap automatically
+                                preview_container.controls.append(ft.Container(content=ft.Image(src_base64=b64, width=display_img.width, height=display_img.height)))
                             except Exception:
                                 pass
                         else:
                             # placeholder if tile missing
                             try:
-                                current_row.controls.append(ft.Container(content=ft.Text('n/a')))
+                                preview_container.controls.append(ft.Container(content=ft.Text('n/a')))
                             except Exception:
                                 pass
                     except Exception:
@@ -398,12 +423,7 @@ def open_import_dialog(editor, ev):
                 if count >= max_preview:
                     break
 
-            try:
-                if getattr(current_row, 'controls', None):
-                    if len(current_row.controls) > 0:
-                        preview_container.controls.append(current_row)
-            except Exception:
-                pass
+            # no row flushing needed with Wrap
             try:
                 preview_container.update()
             except Exception:
@@ -469,6 +489,10 @@ def open_import_dialog(editor, ev):
         pass
     try:
         downscale_field.on_change = update_preview
+    except Exception:
+        pass
+    try:
+        edge_mode_field.on_change = update_preview
     except Exception:
         pass
 
@@ -941,8 +965,31 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             sw, sh = img.size
-            cols = sw // tw
-            rows = sh // th
+            try:
+                mode = (edge_mode_field.value or '').lower()
+            except Exception:
+                mode = 'trim to whole tiles'
+            import math
+            if mode.startswith('trim'):
+                cols = sw // tw
+                rows = sh // th
+                work_img = img
+            elif mode.startswith('pad'):
+                cols = max(1, math.ceil(sw / tw))
+                rows = max(1, math.ceil(sh / th))
+                try:
+                    pad_bg = (0,0,0,0) if transparent_bg_cb.value else (255,255,255,255)
+                except Exception:
+                    pad_bg = (0,0,0,0)
+                work_img = Image.new('RGBA', (cols*tw, rows*th), pad_bg)
+                try:
+                    work_img.paste(img, (0,0))
+                except Exception:
+                    pass
+            else:
+                cols = max(1, math.ceil(sw / tw))
+                rows = max(1, math.ceil(sh / th))
+                work_img = img
             base_stamps = stamps_dir if stamps_dir else os.path.join(project_dir, '.stamps')
             ensure_dir = os.path.join(base_stamps, 'imported')
             try:
@@ -955,7 +1002,10 @@ def open_import_dialog(editor, ev):
                 for c in range(cols):
                     try:
                         box = (c*tw, r*th, c*tw + tw, r*th + th)
-                        tile = img.crop(box).convert('RGBA')
+                        try:
+                            tile = work_img.crop(box).convert('RGBA')
+                        except Exception:
+                            tile = None
 
                         def tile_to_pixels(im):
                             pxs = []
@@ -1374,21 +1424,17 @@ def open_import_dialog(editor, ev):
         pass
 
     sheet_crop_status = ft.Text('none')
-    try:
-        sheet_crop_expander = ft.ExpansionTile(
-                title=ft.Text('Sheet cropping'),
-                controls=[
-                    ft.Container(content=ft.Row([ft.Text('Status:'), warn_preview], spacing=8), padding=0),
-                    ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
-                    ft.Container(content=ft.Row([
-                        ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
-                        ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
-                    ], spacing=12), padding=0),
-                ],
-            )
-    except Exception:
-        # fallback if ExpansionTile isn't available in this flet version
-        sheet_crop_expander = ft.Column([ft.Row([ft.Text('Status:'), warn_preview], spacing=8)])
+    sheet_crop_expander = ft.ExpansionTile(
+            title=ft.Text('Sheet cropping'),
+            controls=[
+                ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
+                ft.Container(content=ft.Row([
+                    ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
+                    ft.Column([ft.Row([edge_mode_field], spacing=8)]),
+                    ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
+                ], spacing=12), padding=0),
+            ],
+        )
 
     content = ft.Column([
         ft.Row([sheet_path_field, choose_btn, auto_analyze_btn], spacing=8),
@@ -1396,6 +1442,7 @@ def open_import_dialog(editor, ev):
     sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
         ft.Row([downscale_field, skip_empty_cb, crop_tiles_cb, transparent_bg_cb], spacing=8),
+        ft.Container(content=ft.Row([ft.Text('Status:'), warn_preview], spacing=8), padding=0),
         status_import,
         ft.Container(content=ft.Column([preview_container], scroll=ft.ScrollMode.AUTO, height=360), width=680),
     ], spacing=8, width=700, height=600)
