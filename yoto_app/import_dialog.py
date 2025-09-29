@@ -1050,22 +1050,22 @@ def open_import_dialog(editor, ev):
     sheet_crop_status = ft.Text('none')
     try:
         sheet_crop_expander = ft.ExpansionTile(
-            title=ft.Text('Sheet cropping'),
-            controls=[
-                ft.Container(content=ft.Row([auto_analyze_btn, ft.Text('Status:'), warn_preview], spacing=8), padding=0),
-                ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
-                ft.Container(content=ft.Row([
-                    ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
-                    ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
-                ], spacing=12), padding=0),
-            ],
-        )
+                title=ft.Text('Sheet cropping'),
+                controls=[
+                    ft.Container(content=ft.Row([ft.Text('Status:'), warn_preview], spacing=8), padding=0),
+                    ft.Container(content=ft.Row([ft.Text('Current override:'), sheet_crop_status], spacing=8), padding=0),
+                    ft.Container(content=ft.Row([
+                        ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
+                        ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
+                    ], spacing=12), padding=0),
+                ],
+            )
     except Exception:
         # fallback if ExpansionTile isn't available in this flet version
-        sheet_crop_expander = ft.Column([ft.Row([auto_analyze_btn], spacing=8), warn_preview])
+        sheet_crop_expander = ft.Column([ft.Row([ft.Text('Status:'), warn_preview], spacing=8)])
 
     content = ft.Column([
-        ft.Row([sheet_path_field, choose_btn], spacing=8),
+        ft.Row([sheet_path_field, choose_btn, auto_analyze_btn], spacing=8),
     ft.Row([clipboard_btn], spacing=8),
     sheet_crop_expander,
         ft.Row([tile_w_field, tile_h_field, prefix_field], spacing=8),
