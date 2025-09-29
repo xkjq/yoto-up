@@ -52,7 +52,7 @@ BugTracker = "https://github.com/xkjq/yoto-up/issues"
 [project.optional-dependencies]
 # Desktop target: full feature set (audio libs, numpy, plotting)
 desktop = [
-  "flet[desktop]",
+  "flet[desktop]>=0.28.3",
   "rapidfuzz>=2.0.0",
   "pydub>=0.25",
   "librosa>=0.10",
