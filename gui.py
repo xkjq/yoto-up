@@ -1338,8 +1338,13 @@ def main(page):
                 temp_dir = Path('.tmp_trim')
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 trimmed_count = 0
+                trimmed_paths: set[str] = set()
                 for p, cb in checkbox_map.items():
                     if not cb.value:
+                        continue
+                    # skip duplicate sources trimmed earlier in this run
+                    if p in trimmed_paths:
+                        logger.debug(f"Skipping duplicate trim for {p}")
                         continue
 
                     # set row status to trimming
@@ -1352,47 +1357,52 @@ def main(page):
                         except Exception:
                             pass
 
+                    try:
+                        # Use the analysis-computed common_removal_end_sec by default.
+                        # Honor the user-edited computed_removal field when present.
                         try:
-                            # Use the analysis-computed common_removal_end_sec by default.
-                            # Honor the user-edited computed_removal field when present.
+                            comp_ctrl = dialog_controls.get('computed_removal')
+                            remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
+                        except Exception:
+                            remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
+                        src_path = Path(p)
+                        dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
+                        # No per-file safety skip here; the final confirmation dialog
+                        # will ask the user to proceed before trimming starts.
+
+                        # keep a small left padding (in ms) so we don't cut too aggressively
+                        trim_audio_file(
+                            p,
+                            dest,
+                            remove_intro_seconds=remove_t if side == 'intro' else 0.0,
+                            remove_outro_seconds=remove_t if side == 'outro' else 0.0,
+                            keep_silence_ms=padding_ms,
+                        )
+
+                        # update matching rows to point to trimmed file
+                        for ctrl in list(file_rows_column.controls):
+                            fur = getattr(ctrl, '_fileuploadrow', None)
                             try:
-                                comp_ctrl = dialog_controls.get('computed_removal')
-                                remove_t = float(getattr(comp_ctrl, 'value', seconds_matched))
+                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                    fur.update_file(dest)
+                                    fur.set_status('Trimmed intro/outro')
+                                    fur.set_progress(1.0)
                             except Exception:
-                                remove_t = float(seconds_matched) if seconds_matched is not None else 0.0
-                            src_path = Path(p)
-                            dest = str(temp_dir / (src_path.stem + '.trimmed' + src_path.suffix))
-                            # No per-file safety skip here; the final confirmation dialog
-                            # will ask the user to proceed before trimming starts.
-
-                            # keep a small left padding (in ms) so we don't cut too aggressively
-                            trim_audio_file(
-                                p,
-                                dest,
-                                remove_intro_seconds=remove_t if side == 'intro' else 0.0,
-                                remove_outro_seconds=remove_t if side == 'outro' else 0.0,
-                                keep_silence_ms=padding_ms,
-                            )
-
-                            # update matching rows to point to trimmed file
-                            for ctrl in list(file_rows_column.controls):
-                                fur = getattr(ctrl, '_fileuploadrow', None)
-                                try:
-                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                        fur.update_file(dest)
-                                        fur.set_status('Trimmed intro/outro')
-                                        fur.set_progress(1.0)
-                                except Exception:
-                                    pass
-                        except Exception as e:
-                            # report error on affected rows
-                            for ctrl in list(file_rows_column.controls):
-                                fur = getattr(ctrl, '_fileuploadrow', None)
-                                try:
-                                    if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
-                                        fur.set_status(f'Trim error: {e}')
-                                except Exception:
-                                    pass
+                                pass
+                        # record that we've trimmed this source path
+                        try:
+                            trimmed_paths.add(p)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        # report error on affected rows
+                        for ctrl in list(file_rows_column.controls):
+                            fur = getattr(ctrl, '_fileuploadrow', None)
+                            try:
+                                if fur and (getattr(fur, 'original_filepath', None) == p or getattr(fur, 'filepath', None) == p or getattr(ctrl, 'filename', None) == p):
+                                    fur.set_status(f'Trim error: {e}')
+                            except Exception:
+                                pass
 
                     trimmed_count += 1
                     # update progress UI
