@@ -16,7 +16,6 @@ keywords = ["yoto","desktop","flet"]
 # installing only the dependencies needed for the chosen Flet target (desktop
 # or web) and avoids pulling native/audio packages into the web build.
 dependencies = [
-  "flet",
   "httpx>=0.24.0",
   "loguru>=0.7.0",
   "rich>=12.0.0",
@@ -49,7 +48,7 @@ Homepage = "https://github.com/xkjq/yoto-up"
 Source = "https://github.com/xkjq/yoto-up"
 BugTracker = "https://github.com/xkjq/yoto-up/issues"
 
-[project.optional-dependencies]
+[project.gui]
 # Desktop target: full feature set (audio libs, numpy, plotting)
 desktop = [
   "flet[desktop]>=0.28.3",
