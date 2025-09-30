@@ -1977,8 +1977,30 @@ def main(page):
 
         api = api_ref.get("api")
         if api:
-            api.get_public_icons(show_in_console=False)
-            api.get_user_icons(show_in_console=False)
+            # Run icon cache refresh in a background thread so the UI doesn't hang.
+            def _refresh_icons_bg():
+                try:
+                    try:
+                        if hasattr(page, 'set_icon_refreshing'):
+                            page.set_icon_refreshing(True, "Refreshing icon caches...")
+                    except Exception:
+                        pass
+                    try:
+                        api.get_public_icons(show_in_console=False)
+                    except Exception as e:
+                        logger.exception(f"get_public_icons failed: {e}")
+                    try:
+                        api.get_user_icons(show_in_console=False)
+                    except Exception as e:
+                        logger.exception(f"get_user_icons failed: {e}")
+                finally:
+                    try:
+                        if hasattr(page, 'set_icon_refreshing'):
+                            page.set_icon_refreshing(False)
+                    except Exception:
+                        pass
+
+            threading.Thread(target=_refresh_icons_bg, daemon=True).start()
         # Always use the local page variable, not the argument
         page.update()
     page.auth_complete = auth_complete

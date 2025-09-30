@@ -1563,12 +1563,12 @@ class YotoAPI:
             import concurrent.futures as _cf
             with _cf.ThreadPoolExecutor(max_workers=max_workers) as ex:
                 list(ex.map(_download_icon_noprint, icons))
-            # Persist metadata including computed cache_path values
-            try:
-                with metadata_path.open("w") as f:
-                    json.dump(icons, f, indent=2)
-            except Exception:
-                pass
+        # Persist metadata including computed cache_path values
+        try:
+            with metadata_path.open("w") as f:
+                json.dump(icons, f, indent=2)
+        except Exception:
+            pass
 
         return icons
 
@@ -1668,6 +1668,14 @@ class YotoAPI:
                         cache_path.write_bytes(img_resp.content)
                     except Exception as e:
                         icon["cache_error"] = str(e)
+
+        # Persist metadata including computed cache_path values
+        try:
+            with metadata_path.open("w") as f:
+                json.dump(icons, f, indent=2)
+        except Exception:
+            pass
+                    
         return icons
 
     def search_cached_icons(self, query: str, fields: Optional[list] = None, show_in_console: bool = True, include_yotoicons: bool = True, include_authors: bool = False):
