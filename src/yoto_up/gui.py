@@ -65,6 +65,7 @@ import http.server
 import socketserver
 import socket
 import subprocess
+import shutil
 try:
     import simpleaudio as _simpleaudio
     HAS_SIMPLEAUDIO = True
@@ -230,6 +231,7 @@ def main(page):
             ),
             ft.Text("\nYoto Up is not affiliated with Yoto Ltd.\n"),
             ft.Text("License: see LICENSE file in the project root."),
+            ft.Row([ft.TextButton("Clear All User Data", on_click=lambda e: clear_all_user_data_gui(e), style=ft.ButtonStyle(color=ft.Colors.RED))]),
         ]
 
         dlg = ft.AlertDialog(
@@ -924,6 +926,108 @@ def main(page):
 
     reset_btn = ft.TextButton("Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False))
     reset_and_reauth_btn = ft.TextButton("Reset & Reauth", on_click=lambda e: reset_auth_gui(e, reauth=True))
+
+    def clear_all_user_data_gui(e=None):
+        """Show confirmation and clear local user data (tokens, ui state, caches, icon caches, versions)."""
+        try:
+            import yoto_up.paths as paths_mod
+        except Exception:
+            paths_mod = None
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Confirm Clear All User Data"),
+            content=ft.Text("This will DELETE local tokens, UI state, caches, icon caches and saved versions. This cannot be undone. Continue?"),
+            actions=[],
+        )
+
+        def _cancel(ev=None):
+            try:
+                page.close(dlg)
+            except Exception:
+                pass
+
+        def _confirm(ev=None):
+            try:
+                page.close(dlg)
+            except Exception:
+                pass
+
+            def _worker():
+                removed = {'files': [], 'dirs': [], 'errors': []}
+                try:
+                    # tokens and ui state
+                    try:
+                        if TOKENS_FILE and Path(TOKENS_FILE).exists():
+                            Path(TOKENS_FILE).unlink()
+                            removed['files'].append(str(TOKENS_FILE))
+                    except Exception as ex:
+                        removed['errors'].append(f"tokens: {ex}")
+                    try:
+                        if UI_STATE_PATH and Path(UI_STATE_PATH).exists():
+                            Path(UI_STATE_PATH).unlink()
+                            removed['files'].append(str(UI_STATE_PATH))
+                    except Exception as ex:
+                        removed['errors'].append(f"ui_state: {ex}")
+
+                    # other paths from paths_mod if available
+                    if paths_mod:
+                        for p in (getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None), getattr(paths_mod, 'API_CACHE_FILE', None)):
+                            try:
+                                if p and Path(p).exists():
+                                    Path(p).unlink()
+                                    removed['files'].append(str(p))
+                            except Exception as ex:
+                                removed['errors'].append(f"file {p}: {ex}")
+                        for d in (getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None), getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None), getattr(paths_mod, 'VERSIONS_DIR', None)):
+                            try:
+                                if d and Path(d).exists():
+                                    shutil.rmtree(d)
+                                    removed['dirs'].append(str(d))
+                            except Exception as ex:
+                                removed['errors'].append(f"dir {d}: {ex}")
+
+                except Exception as ex:
+                    removed['errors'].append(str(ex))
+
+                # post-delete UI updates
+                try:
+                    invalidate_authentication()
+                except Exception:
+                    pass
+                try:
+                    clear_queue()
+                except Exception:
+                    pass
+
+                summary = []
+                for r in removed['files']:
+                    summary.append(f"file: {r}")
+                for r in removed['dirs']:
+                    summary.append(f"dir: {r}")
+                for err in removed['errors']:
+                    summary.append(f"ERROR: {err}")
+                msg = "Cleared user data" if not removed['errors'] else "Cleared user data (with errors)"
+                try:
+                    show_snack(msg)
+                except Exception:
+                    pass
+                # also log/print a short summary
+                try:
+                    for line in summary[:10]:
+                        print(line)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        dlg.actions = [
+            ft.TextButton("Cancel", on_click=_cancel),
+            ft.TextButton("Confirm", on_click=_confirm),
+        ]
+        page.open(dlg)
+        page.update()
+
+    # clear_data_btn removed; Clear action is available from the About dialog
 
     auth_column = ft.Column([
         ft.Row([auth_btn, reset_btn, reset_and_reauth_btn]),

@@ -13,6 +13,7 @@ from rich.prompt import Confirm
 from pathlib import Path
 import asyncio
 from typing import Optional
+import shutil
 
 app = typer.Typer()
 console = Console()
@@ -221,6 +222,8 @@ def import_card(path: str):
 @app.command()
 def paths(
     json_out: bool = typer.Option(False, "--json", help="Output paths as JSON")
+    ,
+    clear: bool = typer.Option(False, "--clear", help="Delete all user data (tokens, caches, UI state, icon caches, versions).")
 ):
     """Show the resolved per-user/config/cache paths used by the application."""
     try:
@@ -242,6 +245,52 @@ def paths(
         "API_CACHE_FILE": str(getattr(paths_mod, 'API_CACHE_FILE', '')),
         "VERSIONS_DIR": str(getattr(paths_mod, 'VERSIONS_DIR', '')),
     }
+    # If requested, clear the user data paths
+    if clear:
+        if not Confirm.ask("Are you sure you want to DELETE ALL user data (tokens, ui state, caches, icon caches, versions)?", default=False):
+            typer.echo("Cancelled.")
+            return
+        # Files to remove (best-effort)
+        files = [
+            getattr(paths_mod, 'TOKENS_FILE', None),
+            getattr(paths_mod, 'UI_STATE_FILE', None),
+            getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None),
+            getattr(paths_mod, 'API_CACHE_FILE', None),
+        ]
+        dirs = [
+            getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None),
+            getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None),
+            getattr(paths_mod, 'VERSIONS_DIR', None),
+        ]
+        removed = { 'files': [], 'dirs': [], 'errors': [] }
+        for f in files:
+            try:
+                if f is None:
+                    continue
+                p = Path(f)
+                if p.exists():
+                    p.unlink()
+                    removed['files'].append(str(p))
+            except Exception as e:
+                removed['errors'].append(f"failed to remove file {f}: {e}")
+        for d in dirs:
+            try:
+                if d is None:
+                    continue
+                p = Path(d)
+                if p.exists() and p.is_dir():
+                    shutil.rmtree(p)
+                    removed['dirs'].append(str(p))
+            except Exception as e:
+                removed['errors'].append(f"failed to remove dir {d}: {e}")
+        typer.echo("Clear operation complete. Removed:")
+        for r in removed['files']:
+            typer.echo(f"  file: {r}")
+        for r in removed['dirs']:
+            typer.echo(f"  dir: {r}")
+        for e in removed['errors']:
+            typer.echo(f"  ERROR: {e}")
+        return
 
     if json_out:
         typer.echo(json.dumps(data, indent=2))
