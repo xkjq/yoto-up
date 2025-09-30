@@ -5,18 +5,19 @@ from pathlib import Path
 import platform
 import sys
 from flet.auth import OAuthProvider
+# Prefer centralized paths when available (new src/ layout). Fall back
+# to the previous behaviour when the package isn't importable (dev/legacy
+# execution or before an editable install).
+try:
+    import yoto_up.paths as paths
+except Exception:
+    paths = None
 
-from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents
-
-# Ensure FLET storage env vars are set to a sane default if not provided by the host.
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
 if os.getenv("FLET_APP_STORAGE_DATA") is None:
-    # If the environment didn't provide a Flet storage path, prefer the
-    # platform-specific per-user data directory. UI code historically used
-    # storage/data under the project; switch to the centralized value.
-    if FLET_APP_STORAGE_DATA:
-        os.environ["FLET_APP_STORAGE_DATA"] = str(FLET_APP_STORAGE_DATA)
+    if paths and getattr(paths, "FLET_APP_STORAGE_DATA", None):
+        os.environ["FLET_APP_STORAGE_DATA"] = paths.FLET_APP_STORAGE_DATA
     else:
         os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
 
@@ -49,18 +50,18 @@ import threading
 import os
 
 import flet as ft
-from yoto_up.yoto_app import utils as utils_mod
-from yoto_up.yoto_app import ui_helpers as ui_helpers
-from yoto_up.yoto_app import auth as auth_mod
-from yoto_up.yoto_app import config as yoto_config
-from yoto_up.yoto_app.api_manager import ensure_api
-from yoto_up.yoto_app.playlists import build_playlists_panel
+from yoto_app import utils as utils_mod
+from yoto_app import ui_helpers as ui_helpers
+from yoto_app import auth as auth_mod
+from yoto_app import config as yoto_config
+from yoto_app.api_manager import ensure_api
+from yoto_app.playlists import build_playlists_panel
 from loguru import logger
-from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
+from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 
-from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
-from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
-from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_app.show_waveforms import show_waveforms_popup
+from yoto_app.icon_browser import build_icon_browser_panel
+from yoto_app.pixel_art_editor import PixelArtEditor
 import http.server
 import socketserver
 import socket
@@ -200,8 +201,9 @@ def main(page):
         page.open(dlg)
         page.update()
     # --- UI State Persistence ---
-    # UI_STATE_PATH is a pathlib.Path pointing at the persisted UI state file.
-    # save_ui_state/load_ui_state will use it directly.
+    # Use the centralized UI state file when the paths module is available.
+    UI_STATE_PATH = Path(paths.UI_STATE_FILE) if paths and getattr(paths, 'UI_STATE_FILE', None) else Path("ui_state.json")
+
     def save_ui_state():
         sort_dropdown = playlists_ui['sort_dropdown'] if isinstance(playlists_ui, dict) else None
         state = {
@@ -214,18 +216,32 @@ def main(page):
             "playlist_sort": sort_dropdown.value if sort_dropdown else None,
         }
         try:
+            p = UI_STATE_PATH
+            # ensure parent directory exists
             try:
-                UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                if paths and getattr(paths, 'ensure_parents', None):
+                    paths.ensure_parents(p)
+                else:
+                    p.parent.mkdir(parents=True, exist_ok=True)
             except Exception:
                 pass
-            with UI_STATE_PATH.open("w") as f:
-                json.dump(state, f)
+
+            # Prefer atomic write helper when available
+            try:
+                if paths and getattr(paths, 'atomic_write', None):
+                    paths.atomic_write(p, json.dumps(state))
+                else:
+                    with open(p, "w") as f:
+                        json.dump(state, f)
+            except Exception as e:
+                print(f"[ui_state] Failed to save: {e}")
         except Exception as e:
-            print(f"[ui_state] Failed to save: {e}")
+            print(f"[ui_state] Failed to save (outer): {e}")
 
     def load_ui_state(playlists_ui):
         try:
-            with UI_STATE_PATH.open("r") as f:
+            p = UI_STATE_PATH
+            with open(p, "r") as f:
                 state = json.load(f)
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
@@ -240,36 +256,12 @@ def main(page):
                 playlists_ui['current_sort']['key'] = sort_dropdown.value
         except Exception as e:
             logger.error(f"load_ui_state: failed to read or parse state file: {e}")
-            # Create a default UI state file so subsequent runs have a persisted
-            # baseline. Use current control values when available, otherwise
-            # fall back to sensible defaults.
+            # If loading fails, create and persist a default UI state so the app
+            # has a reproducible starting point rather than repeatedly erroring.
             try:
-                default_state = {
-                    "concurrency": (concurrency.value if 'concurrency' in locals() else "4"),
-                    "strip_leading": (strip_leading_checkbox.value if 'strip_leading_checkbox' in locals() else True),
-                    "intro_outro_side": (intro_outro_side.value if 'intro_outro_side' in locals() else 'intro'),
-                    "intro_outro_seconds": (intro_seconds.value if 'intro_seconds' in locals() else '10.0'),
-                    "intro_outro_threshold": (similarity_threshold.value if 'similarity_threshold' in locals() else '0.75'),
-                    "upload_mode": (upload_mode_dropdown.value if 'upload_mode_dropdown' in locals() else 'Create new card'),
-                    "playlist_sort": None,
-                }
-                # Write atomically to UI_STATE_PATH
-                try:
-                    UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-                except Exception:
-                    pass
-                tmp = UI_STATE_PATH.with_suffix('.tmp')
-                with tmp.open('w') as f:
-                    json.dump(default_state, f)
-                try:
-                    tmp.replace(UI_STATE_PATH)
-                except Exception:
-                    # Fallback if atomic replace not available
-                    with UI_STATE_PATH.open('w') as f:
-                        json.dump(default_state, f)
-                logger.info("Created default UI state file: %s", UI_STATE_PATH)
-            except Exception as ex:
-                logger.error(f"Failed to create default UI state file: {ex}")
+                save_ui_state()
+            except Exception:
+                pass
 
     # Controls must be created before loading state
     def show_dev_warning():
@@ -522,10 +514,27 @@ def main(page):
                 try:
                     api.save_tokens(access, refresh)
                 except Exception:
-                    # best-effort save into centralized TOKENS_FILE
+                    # best-effort save using centralized paths when available
                     try:
-                        ensure_parents(TOKENS_FILE)
-                        atomic_write(TOKENS_FILE, json.dumps({'access_token': access, 'refresh_token': refresh}), text_mode=True)
+                        tok = {'access_token': access, 'refresh_token': refresh}
+                        if paths and getattr(paths, 'atomic_write', None):
+                            try:
+                                paths.ensure_parents(paths.TOKENS_FILE)
+                            except Exception:
+                                pass
+                            try:
+                                paths.atomic_write(paths.TOKENS_FILE, json.dumps(tok))
+                            except Exception:
+                                # fallback to simple write
+                                tmp_path = str(Path(paths.TOKENS_FILE).with_suffix(paths.TOKENS_FILE.suffix + '.tmp')) if hasattr(paths.TOKENS_FILE, 'suffix') else 'tokens.json.tmp'
+                                with open(tmp_path, 'w') as f:
+                                    json.dump(tok, f)
+                                os.replace(tmp_path, str(paths.TOKENS_FILE))
+                        else:
+                            tmp_path = 'tokens.json.tmp'
+                            with open(tmp_path, 'w') as f:
+                                json.dump({'access_token': access, 'refresh_token': refresh}, f)
+                            os.replace(tmp_path, 'tokens.json')
                     except Exception:
                         pass
                 api.access_token = access
@@ -790,8 +799,26 @@ def main(page):
                 # Persist tokens.json
                 tmp = {'access_token': access, 'refresh_token': refresh}
                 try:
-                    ensure_parents(TOKENS_FILE)
-                    atomic_write(TOKENS_FILE, json.dumps(tmp))
+                    if paths and getattr(paths, 'atomic_write', None):
+                        try:
+                            paths.ensure_parents(paths.TOKENS_FILE)
+                        except Exception:
+                            pass
+                        try:
+                            paths.atomic_write(paths.TOKENS_FILE, json.dumps(tmp))
+                        except Exception:
+                            # fallback: write tmp file next to tokens file
+                            try:
+                                tp = Path(paths.TOKENS_FILE).with_suffix(Path(paths.TOKENS_FILE).suffix + '.tmp')
+                                with open(tp, 'w') as f:
+                                    json.dump(tmp, f)
+                                os.replace(str(tp), str(paths.TOKENS_FILE))
+                            except Exception:
+                                pass
+                    else:
+                        with open('tokens.json.tmp', 'w') as f:
+                            json.dump(tmp, f)
+                        os.replace('tokens.json.tmp', 'tokens.json')
                 except Exception:
                     pass
                 # Initialize API with saved tokens
@@ -846,9 +873,10 @@ def main(page):
 
 
         # Confirmation dialog handlers
+        tokens_label = paths.TOKENS_FILE.name if paths and getattr(paths, 'TOKENS_FILE', None) else 'tokens.json'
         dlg = ft.AlertDialog(
             title=ft.Text("Confirm Reset Authentication"),
-            content=ft.Text(f"This will remove saved authentication tokens ({TOKENS_FILE.name}) and sign out. Continue?"),
+            content=ft.Text(f"This will remove saved authentication tokens ({tokens_label}) and sign out. Continue?"),
             actions=[],
         )
 

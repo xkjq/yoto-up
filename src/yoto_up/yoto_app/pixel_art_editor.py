@@ -11,12 +11,19 @@ import copy
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA
 
 try:
-    from yoto_app.icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE, get_base64_from_path
-    from yoto_app.icon_import_helpers import load_cached_icons, load_icon_as_pixels
-    from yoto_app.pixel_fonts import _font_3x5, _font_5x7
-    from yoto_app.colour_picker import ColourPicker
-    from yoto_app.stamp_dialog import open_image_stamp_dialog
+    from yoto_up.yoto_app.icon_import_helpers import (
+        USER_METADATA_FILE,
+        YOTO_METADATA_FILE,
+        YOTOICONS_CACHE_DIR,
+        get_base64_from_path,
+        load_cached_icons,
+        load_icon_as_pixels,
+    )
+    from yoto_up.yoto_app.pixel_fonts import _font_3x5, _font_5x7
+    from yoto_up.yoto_app.colour_picker import ColourPicker
+    from yoto_up.yoto_app.stamp_dialog import open_image_stamp_dialog
 except ImportError:
+    # fallback for legacy local imports
     from icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE, get_base64_from_path
     from icon_import_helpers import load_cached_icons, load_icon_as_pixels
     from pixel_fonts import _font_3x5, _font_5x7
@@ -912,7 +919,7 @@ class PixelArtEditor:
         print(f"Found icon files: {icon_files}")
         page = e.page if hasattr(e, 'page') else None
         if not icon_files:
-            dlg = ft.AlertDialog(title=ft.Text("No icons found in .yoto_icon_cache"), actions=[ft.TextButton("OK", on_click=lambda ev: self._close_dialog(dlg, page))])
+            dlg = ft.AlertDialog(title=ft.Text(ft.Text(f"No icons found in {OFFICIAL_ICON_CACHE_DIR.name}")), actions=[ft.TextButton("OK", on_click=lambda ev: self._close_dialog(dlg, page))])
             if page:
                 page.dialog = dlg
                 dlg.open = True
@@ -1028,7 +1035,7 @@ class PixelArtEditor:
                                 pass
                     # check yotoicons metadata files
                     if not meta_found:
-                        yotoicons_dir = Path('.yotoicons_cache')
+                        yotoicons_dir = YOTOICONS_CACHE_DIR
                         global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
                         metas2 = []
                         if global_meta.exists():
