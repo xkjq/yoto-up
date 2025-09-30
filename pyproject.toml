@@ -83,7 +83,7 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["yoto_up*", "yoto_app*"]
+include = ["yoto_up*"]
 
 [project.scripts]
 yoto = "yoto_up.yoto:app"
