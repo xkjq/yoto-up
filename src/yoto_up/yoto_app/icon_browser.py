@@ -204,6 +204,30 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 except Exception as ex:
                     logger.exception(f"Error loading YotoIcons metadata: {ex}")
                     continue
+            # If some YotoIcons metadata entries don't include an explicit cache_path
+            # try to resolve them to actual files under the YOTOICONS cache dir by
+            # matching the url hash to filenames. This makes metadata searchable even
+            # when cache_path wasn't persisted in the metadata files.
+            try:
+                yc = yotoicons_dir
+                if yc.exists():
+                    for h, m in list(_meta_by_hash.items()):
+                        try:
+                            # look for a file in the yotoicons cache whose stem starts
+                            # with the 16-char url hash; if found, register the
+                            # filename -> metadata mapping so search/display works.
+                            found = None
+                            for f in yc.iterdir():
+                                if f.is_file() and f.stem.startswith(h):
+                                    found = f
+                                    break
+                            if found:
+                                _meta_by_filename[found.name] = m
+                                _meta_by_filename_source[found.name] = 'YotoIcons'
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         except Exception as ex:
             logger.exception(f"Error loading YotoIcons metadata: {ex}")
         _meta_loaded = True
@@ -483,6 +507,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     details_panel.controls.append(ft.Text(f"DisplayIconId: {meta.get('displayIconId')}"))
                 if meta.get('id'):
                     details_panel.controls.append(ft.Text(f"ID: {meta.get('id')}"))
+                if meta.get('category'):
+                    details_panel.controls.append(ft.Text(f"Category: {meta.get('category')}"))
                 # short description if present
                 desc = meta.get('description') or meta.get('info')
                 if desc:
@@ -757,14 +783,14 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                     # if the path is like '.yotoicons_cache/xxx.png' normalize to local path
                                     try:
                                         if not cand_path.exists():
-                                            # try under .yotoicons_cache with just the filename
-                                                cand_path2 = YOTOICONS_CACHE_DIR / Path(cp).name
-                                                if cand_path2.exists():
-                                                    cand_path = cand_path2
+                                            # try under configured YOTOICONS_CACHE_DIR with just the filename
+                                            cand_path2 = YOTOICONS_CACHE_DIR / Path(cp).name
+                                            if cand_path2.exists():
+                                                cand_path = cand_path2
                                     except Exception:
                                         pass
                                     if cand_path.exists():
-                                        pth = str(cand_path)
+                                        pth = cand_path
                                 # fallback: if we have a url hash, find any file in .yotoicons_cache starting with that hash
                                 if not pth and url:
                                     try:
@@ -773,16 +799,17 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                         if yc.exists():
                                             for f in yc.iterdir():
                                                 if f.stem.startswith(h):
-                                                    pth = str(f)
+                                                    pth = f
                                                     break
                                     except Exception:
                                         pass
-
-                                if pth and os.path.exists(pth):
+                                if pth and pth.exists():
                                     discovered += 1
-                                    _meta_map[pth] = m
+                                    # Normalize to Path object (match load_cached_icons)
+                                    ppath = Path(pth)
+                                    _meta_map[ppath] = m
                                     # build candidate list similar to build_index()
-                                    cand = [Path(pth).name.lower()]
+                                    cand = [ppath.name.lower()]
                                     if m.get('title'):
                                         cand.append(str(m.get('title')).lower())
                                     if m.get('author'):
@@ -812,7 +839,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                         if s not in seen:
                                             seen.add(s)
                                             ordered.append(s)
-                                    _candidates[pth] = ordered
+                                    _candidates[ppath] = ordered
                             except Exception as e:
                                 logger.error(f"do_online_search: failed to integrate metadata for one icon: {e}")
                     # If any new files were discovered on disk, force metadata reload before rebuilding index
