@@ -226,6 +226,32 @@ def main(page):
                 playlists_ui['current_sort']['key'] = sort_dropdown.value
         except Exception as e:
             logger.error(f"load_ui_state: failed to read or parse state file: {e}")
+            # Create a default UI state file so subsequent runs have a persisted
+            # baseline. Use current control values when available, otherwise
+            # fall back to sensible defaults.
+            try:
+                default_state = {
+                    "concurrency": (concurrency.value if 'concurrency' in locals() else "4"),
+                    "strip_leading": (strip_leading_checkbox.value if 'strip_leading_checkbox' in locals() else True),
+                    "intro_outro_side": (intro_outro_side.value if 'intro_outro_side' in locals() else 'intro'),
+                    "intro_outro_seconds": (intro_seconds.value if 'intro_seconds' in locals() else '10.0'),
+                    "intro_outro_threshold": (similarity_threshold.value if 'similarity_threshold' in locals() else '0.75'),
+                    "upload_mode": (upload_mode_dropdown.value if 'upload_mode_dropdown' in locals() else 'Create new card'),
+                    "playlist_sort": None,
+                }
+                # Write atomically
+                tmp = UI_STATE_FILE + '.tmp'
+                with open(tmp, 'w') as f:
+                    json.dump(default_state, f)
+                try:
+                    os.replace(tmp, UI_STATE_FILE)
+                except Exception:
+                    # Fallback if atomic replace not available
+                    with open(UI_STATE_FILE, 'w') as f:
+                        json.dump(default_state, f)
+                logger.info("Created default UI state file: %s", UI_STATE_FILE)
+            except Exception as ex:
+                logger.error(f"Failed to create default UI state file: {ex}")
 
     # Controls must be created before loading state
     def show_dev_warning():
