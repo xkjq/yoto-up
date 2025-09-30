@@ -6,6 +6,7 @@ from PIL import Image
 from loguru import logger
 import uuid
 import threading
+from pathlib import Path
 
 from .icon_import_helpers import get_base64_from_path
 
