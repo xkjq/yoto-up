@@ -70,7 +70,7 @@ web = [
 docs = ["mkdocs-material", "pymdown-extensions"]
 
 [tool.flet]
-app.module = "gui"
+app.module = "yoto_up.gui"
 
 
 [tool.uv]
@@ -79,12 +79,11 @@ dev-dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["yoto", "gui", "models", "yoto_api", "tui", "icons"]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
-include = ["yoto_app*"]
 where = ["src"]
+include = ["yoto_up*", "yoto_app*"]
 
 [project.scripts]
-yoto = "yoto:app"
+yoto = "yoto_up.yoto:app"
