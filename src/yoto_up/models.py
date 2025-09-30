@@ -1,7 +1,7 @@
 from asyncio.log import logger
 from typing import Optional, List, Literal
 from pydantic import BaseModel
-from icons import render_icon
+from yoto_up.icons import render_icon
 
 class Ambient(BaseModel):
     defaultTrackDisplay: Optional[str] = None

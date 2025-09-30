@@ -1,6 +1,6 @@
 from pathlib import Path
-from yoto_api import YotoAPI
-from yoto_app import config
+from yoto_up.yoto_api import YotoAPI
+from yoto_up.yoto_app import config
 from loguru import logger
 import os
 

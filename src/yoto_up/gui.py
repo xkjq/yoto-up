@@ -40,18 +40,18 @@ import threading
 import os
 
 import flet as ft
-from yoto_app import utils as utils_mod
-from yoto_app import ui_helpers as ui_helpers
-from yoto_app import auth as auth_mod
-from yoto_app import config as yoto_config
-from yoto_app.api_manager import ensure_api
-from yoto_app.playlists import build_playlists_panel
+from yoto_up.yoto_app import utils as utils_mod
+from yoto_up.yoto_app import ui_helpers as ui_helpers
+from yoto_up.yoto_app import auth as auth_mod
+from yoto_up.yoto_app import config as yoto_config
+from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.playlists import build_playlists_panel
 from loguru import logger
-from yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
+from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 
-from yoto_app.show_waveforms import show_waveforms_popup
-from yoto_app.icon_browser import build_icon_browser_panel
-from yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
+from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
+from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 import http.server
 import socketserver
 import socket

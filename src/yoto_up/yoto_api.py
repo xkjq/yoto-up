@@ -11,7 +11,7 @@ import threading
 from typing import Optional, Callable
 
 from loguru import logger
-from models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig
+from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn
 from rich.table import Table
@@ -69,7 +69,7 @@ except (ImportError, ModuleNotFoundError):
             ]
 
     nltk_stopwords = _FallbackStopwords
-from icons import render_icon
+from yoto_up.icons import render_icon
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console

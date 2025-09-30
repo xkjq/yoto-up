@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import re
 import typer
-from models import Card, CardContent, CardMetadata, Chapter
-from tui import EditCardApp
-from yoto_api import YotoAPI
+from yoto_up.models import Card, CardContent, CardMetadata, Chapter
+from yoto_up.tui import EditCardApp
+from yoto_up.yoto_api import YotoAPI
 from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel

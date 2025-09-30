@@ -3,9 +3,9 @@ import httpx
 import json
 import os
 import time
-from yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.api_manager import ensure_api
 from loguru import logger
-from yoto_app import config
+from yoto_up.yoto_app import config
 
 def delete_tokens_file():
     """Delete the tokens.json file if it exists."""

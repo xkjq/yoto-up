@@ -12,8 +12,8 @@ import re
 from pathlib import Path
 import hashlib
 import logging
-from models import Card, CardContent
-from icons import render_icon
+from yoto_up.models import Card, CardContent
+from yoto_up.icons import render_icon
 
 logging.basicConfig(handlers=[TextualHandler()], level=logging.INFO)
 logging.debug("TEST")
