@@ -37,6 +37,28 @@ Features include content organization, device management, and easy integration w
 
    ## 🛠️ Installation
 
+   ### With uvx
+
+   1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+   
+   2. Run with uvx
+
+      Command line
+      ```bash
+      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up" yoto
+      ```
+
+      GUI
+      ```bash
+      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]" yoto gui
+      ```
+
+   3. If you like it, install with uv tool
+      ```bash
+      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
+      ```
+      
+
    ### From source
 
    1. Clone the repository and change into it:
