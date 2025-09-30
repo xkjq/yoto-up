@@ -1455,7 +1455,34 @@ class YotoAPI:
             table.add_column("Tags", style="green")
             table.add_column("displayIconId", style="cyan")
             table.add_column("Pixel Art", style="white")
-            # Download/cache images with progress
+            # Download/cache images with progress. Use a ThreadPoolExecutor to
+            # download multiple icons concurrently which considerably speeds up
+            # the I/O-bound work compared to a sequential loop.
+            import concurrent.futures
+
+            def _download_icon(icon_item):
+                try:
+                    url = icon_item.get("url")
+                    if not url:
+                        return icon_item
+                    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+                    ext = Path(url).suffix or ".png"
+                    cache_path = cache_dir / f"{url_hash}{ext}"
+                    icon_item["cache_path"] = str(cache_path)
+                    if not cache_path.exists() or refresh_cache:
+                        try:
+                            resp = httpx.get(url)
+                            resp.raise_for_status()
+                            cache_path.write_bytes(resp.content)
+                        except Exception as e:
+                            icon_item["cache_error"] = str(e)
+                except Exception as e:
+                    try:
+                        icon_item["cache_error"] = str(e)
+                    except Exception:
+                        pass
+                return icon_item
+
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -1465,19 +1492,19 @@ class YotoAPI:
                 console=Console(),
             ) as progress:
                 download_task = progress.add_task("Downloading & caching images...", total=len(icons))
-                for icon in icons:
-                    url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
-                    ext = Path(icon["url"]).suffix or ".png"
-                    cache_path = cache_dir / f"{url_hash}{ext}"
-                    icon["cache_path"] = str(cache_path)
-                    if not cache_path.exists() or refresh_cache:
+                max_workers = min(8, max(1, len(icons)))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    futures = {ex.submit(_download_icon, icon): icon for icon in icons}
+                    for fut in concurrent.futures.as_completed(futures):
+                        icon = futures[fut]
                         try:
-                            img_resp = httpx.get(icon["url"])
-                            img_resp.raise_for_status()
-                            cache_path.write_bytes(img_resp.content)
+                            fut.result()
                         except Exception as e:
-                            icon["cache_error"] = str(e)
-                    progress.update(download_task, advance=1)
+                            try:
+                                icon["cache_error"] = str(e)
+                            except Exception:
+                                pass
+                        progress.update(download_task, advance=1)
             # Render pixel art with progress
             with Progress(
                 SpinnerColumn(),
@@ -1502,18 +1529,36 @@ class YotoAPI:
                     progress.update(render_task, advance=1)
             rprint(table)
         else:
-            for icon in icons:
-                url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
-                ext = Path(icon["url"]).suffix or ".png"
-                cache_path = cache_dir / f"{url_hash}{ext}"
-                icon["cache_path"] = str(cache_path)
-                if not cache_path.exists() or refresh_cache:
+            # Non-console mode: download concurrently but without rich progress
+            import concurrent.futures
+
+            def _download_icon_noprint(icon_item):
+                try:
+                    url = icon_item.get("url")
+                    if not url:
+                        return icon_item
+                    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+                    ext = Path(url).suffix or ".png"
+                    cache_path = cache_dir / f"{url_hash}{ext}"
+                    icon_item["cache_path"] = str(cache_path)
+                    if not cache_path.exists() or refresh_cache:
+                        try:
+                            resp = httpx.get(url)
+                            resp.raise_for_status()
+                            cache_path.write_bytes(resp.content)
+                        except Exception as e:
+                            icon_item["cache_error"] = str(e)
+                except Exception as e:
                     try:
-                        img_resp = httpx.get(icon["url"])
-                        img_resp.raise_for_status()
-                        cache_path.write_bytes(img_resp.content)
-                    except Exception as e:
-                        icon["cache_error"] = str(e)
+                        icon_item["cache_error"] = str(e)
+                    except Exception:
+                        pass
+                return icon_item
+
+            max_workers = min(8, max(1, len(icons)))
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=max_workers) as ex:
+                list(ex.map(_download_icon_noprint, icons))
 
         return icons
 
