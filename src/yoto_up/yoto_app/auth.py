@@ -66,24 +66,41 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                         out = {"access_token": access, "refresh_token": refresh}
                         if idt:
                             out['id_token'] = idt
-                        tmp_path = TOKENS_FILE.with_suffix('.tmp')
                         try:
-                            tmp_path.parent.mkdir(parents=True, exist_ok=True)
-                        except Exception:
-                            pass
-                        with tmp_path.open('w') as f:
-                            json.dump(out, f)
-                        try:
-                            tmp_path.replace(TOKENS_FILE)
-                        except Exception:
+                            # prefer centralized helper
                             try:
-                                tmp_path.rename(TOKENS_FILE)
+                                from yoto_up import paths
                             except Exception:
-                                # last resort write
-                                with TOKENS_FILE.open('w') as f:
+                                paths = None
+                            if paths and getattr(paths, 'atomic_write', None):
+                                try:
+                                    paths.ensure_parents(paths.TOKENS_FILE)
+                                except Exception:
+                                    pass
+                                paths.atomic_write(paths.TOKENS_FILE, json.dumps(out))
+                            else:
+                                tmp_path = TOKENS_FILE.with_suffix('.tmp')
+                                try:
+                                    tmp_path.parent.mkdir(parents=True, exist_ok=True)
+                                except Exception:
+                                    pass
+                                with tmp_path.open('w') as f:
                                     json.dump(out, f)
-                        logger.debug(f"poll_device_token: wrote {TOKENS_FILE}")
-                        api = ensure_api(api_ref, client)
+                                try:
+                                    tmp_path.replace(TOKENS_FILE)
+                                except Exception:
+                                    try:
+                                        tmp_path.rename(TOKENS_FILE)
+                                    except Exception:
+                                        # last resort write
+                                        with TOKENS_FILE.open('w') as f:
+                                            json.dump(out, f)
+                        except Exception as e:
+                            logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
+                        try:
+                            api = ensure_api(api_ref, client)
+                        except Exception:
+                            api = ensure_api(api_ref, client)
                     except Exception as e:
                         logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
                         api = ensure_api(api_ref, client)
