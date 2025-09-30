@@ -71,6 +71,63 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     # status indicator shown under filters when long operations run
     status_text = ft.Text("", size=12, color="#1E90FF")
 
+    # If metadata files are missing, start a background refresh using the API
+    try:
+        missing_meta = False
+        try:
+            off_meta = YOTO_METADATA_FILE
+            yotoicons_meta = YOTOICONS_METADATA_GLOBAL
+            if (not off_meta.exists()) or (not yotoicons_meta.exists()):
+                missing_meta = True
+        except Exception:
+            missing_meta = False
+        if missing_meta:
+            # indicate refresh started
+            try:
+                status_text.value = "Icon metadata missing — refreshing icon caches in background."
+                page.update()
+            except Exception:
+                pass
+
+            def _refresh_icons():
+                try:
+                    # Signal UI (if available) that refresh is starting
+                    try:
+                        if hasattr(page, 'set_icon_refreshing'):
+                            page.set_icon_refreshing(True, "Refreshing icon caches...")
+                    except Exception:
+                        pass
+
+                    api = ensure_api(api_ref)
+                    if api:
+                        try:
+                            api.get_public_icons(show_in_console=False, refresh_cache=True)
+                        except Exception:
+                            pass
+                        try:
+                            api.get_user_icons(show_in_console=False, refresh_cache=True)
+                        except Exception:
+                            pass
+
+                    # Signal UI that refresh finished
+                    try:
+                        if hasattr(page, 'set_icon_refreshing'):
+                            page.set_icon_refreshing(False)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                # clear status text after refresh (best-effort)
+                try:
+                    status_text.value = ""
+                    page.update()
+                except Exception:
+                    pass
+
+            threading.Thread(target=_refresh_icons, daemon=True).start()
+    except Exception:
+        pass
+
     # in-memory caches to avoid expensive repeated JSON reads and metadata parsing
     _meta_map = {}        # path -> metadata dict or None
     _meta_source = {}     # path -> source label string or None

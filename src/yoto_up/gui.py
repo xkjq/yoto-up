@@ -204,6 +204,29 @@ def main(page):
             tokens_exist = False
             ui_exist = False
 
+        # Icon cache locations (show paths and existence)
+        try:
+            import yoto_up.paths as paths_mod
+            off_cache = getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None)
+            yotoicons_cache = getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None)
+            upload_icon_cache = getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None)
+            api_cache = getattr(paths_mod, 'API_CACHE_FILE', None)
+            try:
+                off_cache_exists = Path(off_cache).exists() if off_cache is not None else False
+            except Exception:
+                off_cache_exists = False
+            try:
+                yotoicons_cache_exists = Path(yotoicons_cache).exists() if yotoicons_cache is not None else False
+            except Exception:
+                yotoicons_cache_exists = False
+        except Exception:
+            off_cache = None
+            yotoicons_cache = None
+            upload_icon_cache = None
+            api_cache = None
+            off_cache_exists = False
+            yotoicons_cache_exists = False
+
         flet_storage = FLET_APP_STORAGE_DATA or os.getenv("FLET_APP_STORAGE_DATA") or "(not set)"
 
         content_items = [
@@ -221,6 +244,12 @@ def main(page):
             ft.Text(f"Tokens file: {str(tokens_path) if tokens_path is not None else '(unknown)'} {'(exists)' if tokens_exist else '(missing)'}", selectable=True, size=12),
             ft.Text(f"UI state file: {str(ui_state_path) if ui_state_path is not None else '(unknown)'} {'(exists)' if ui_exist else '(missing)'}", selectable=True, size=12),
             ft.Divider(),
+            ft.Text("Icon cache locations:", weight=ft.FontWeight.BOLD),
+            ft.Text(f"Official icon cache: {str(off_cache) if off_cache is not None else '(unknown)'} {'(exists)' if off_cache_exists else '(missing)'}", selectable=True, size=12),
+            ft.Text(f"YotoIcons cache: {str(yotoicons_cache) if yotoicons_cache is not None else '(unknown)'} {'(exists)' if yotoicons_cache_exists else '(missing)'}", selectable=True, size=12),
+            ft.Text(f"Upload icon cache file: {str(upload_icon_cache) if upload_icon_cache is not None else '(unknown)'}", selectable=True, size=12),
+            ft.Text(f"API cache file: {str(api_cache) if api_cache is not None else '(unknown)'}", selectable=True, size=12),
+            ft.Divider(),
             ft.Text("About:", weight=ft.FontWeight.BOLD),
             ft.Text("A desktop tool for managing Yoto cards and playlists."),
             ft.Text("Author: xkjq"),
@@ -233,14 +262,39 @@ def main(page):
             ft.Text("License: see LICENSE file in the project root."),
             ft.Row([ft.TextButton("Clear All User Data", on_click=lambda e: clear_all_user_data_gui(e), style=ft.ButtonStyle(color=ft.Colors.RED))]),
         ]
+        # Remove any None entries (e.g. refresh_notice may be None) so Flet
+        # receives a clean sequence of Controls.
+        try:
+            content_items = [c for c in content_items if c is not None]
+        except Exception:
+            pass
 
-        dlg = ft.AlertDialog(
-            title=ft.Text("About Yoto Up"),
-            content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
-            actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
-        )
-        page.open(dlg)
-        page.update()
+        try:
+            dlg = ft.AlertDialog(
+                title=ft.Text("About Yoto Up"),
+                content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
+                actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
+            )
+            page.open(dlg)
+            page.update()
+        except Exception as ex:
+            # If anything goes wrong building the rich About dialog (for
+            # example race with background UI updates), fall back to a very
+            # small dialog so the About button is still functional.
+            try:
+                print(f"[gui] show_about_dialog fallback due to: {ex}")
+            except Exception:
+                pass
+            try:
+                fallback = ft.AlertDialog(
+                    title=ft.Text("About Yoto Up"),
+                    content=ft.Text("Unable to build full About dialog at this time."),
+                    actions=[ft.TextButton("Close", on_click=lambda e: page.close(fallback))],
+                )
+                page.open(fallback)
+                page.update()
+            except Exception:
+                pass
     # --- UI State Persistence ---
     # UI_STATE_PATH is a pathlib.Path pointing at the persisted UI state file.
     # save_ui_state/load_ui_state will use it directly.
@@ -1828,6 +1882,31 @@ def main(page):
         style=ft.ButtonStyle(color=ft.Colors.BLUE),
     )
 
+    # Small badge to indicate background icon cache refresh activity.
+    icon_refresh_badge_text = ft.Text("Updating icon cache...", size=12, color=ft.Colors.ORANGE)
+    icon_refresh_badge = ft.Container(
+        content=ft.Row([ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text], spacing=6),
+        padding=6,
+        border_radius=6,
+        bgcolor=ft.Colors.YELLOW_50,
+        visible=False,
+    )
+
+    def set_icon_refreshing(flag: bool, message: str | None = None):
+        try:
+            icon_refresh_badge.visible = bool(flag)
+            if message is not None:
+                try:
+                    icon_refresh_badge_text.value = message
+                except Exception:
+                    pass
+            page.update()
+        except Exception:
+            pass
+
+    # Expose setter on page so other modules (icon_browser) can toggle the badge
+    page.set_icon_refreshing = set_icon_refreshing
+
     # Create tabs and keep a reference so we can enable/disable them
     # Build icon browser panel and add as a tab
     icon_browser_ui = build_icon_browser_panel(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
@@ -1856,7 +1935,7 @@ def main(page):
          expand=True,
      )
     # Place About button above tabs
-    page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), about_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
+    page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
     show_dev_warning()
 

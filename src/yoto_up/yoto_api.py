@@ -1432,6 +1432,7 @@ class YotoAPI:
         url = f"{self.SERVER_URL}/media/displayIcons/user/yoto"
         cache_dir = self.OFFICIAL_ICON_CACHE_DIR
         cache_dir.mkdir(exist_ok=True)
+        logger.debug(f"Using icon cache dir: {cache_dir}")
         metadata_path = cache_dir / "icon_metadata.json"
         icons = None
         # Use cache if available and not refreshing
@@ -1524,6 +1525,7 @@ class YotoAPI:
         url = f"{self.SERVER_URL}/media/displayIcons/user/me"
         cache_dir = self.OFFICIAL_ICON_CACHE_DIR
         cache_dir.mkdir(exist_ok=True)
+        logger.debug(f"Using icon cache dir: {cache_dir}")
         metadata_path = cache_dir / "user_icon_metadata.json"
         icons = None
         # Use cache if available and not refreshing
