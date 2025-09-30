@@ -206,11 +206,40 @@ def main(page):
 
         # Icon cache locations (show paths and existence)
         try:
-            import yoto_up.paths as paths_mod
-            off_cache = getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None)
-            yotoicons_cache = getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None)
-            upload_icon_cache = getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None)
-            api_cache = getattr(paths_mod, 'API_CACHE_FILE', None)
+            # Prefer the API instance paths if an API has been initialized, so
+            # the About dialog reflects the same locations the API will use.
+            api_instance = api_ref.get('api') if isinstance(api_ref, dict) else None
+            if not api_instance:
+                # Try to initialize or retrieve the API without forcing auth
+                try:
+                    api_instance = ensure_api(api_ref)
+                except Exception:
+                    api_instance = None
+
+            if api_instance:
+                try:
+                    off_cache = getattr(api_instance, 'OFFICIAL_ICON_CACHE_DIR', None)
+                except Exception:
+                    off_cache = None
+                try:
+                    yotoicons_cache = getattr(api_instance, 'YOTOICONS_CACHE_DIR', None)
+                except Exception:
+                    yotoicons_cache = None
+                try:
+                    upload_icon_cache = getattr(api_instance, 'UPLOAD_ICON_CACHE_FILE', None)
+                except Exception:
+                    upload_icon_cache = None
+                try:
+                    api_cache = getattr(api_instance, 'CACHE_FILE', None)
+                except Exception:
+                    api_cache = None
+            else:
+                import yoto_up.paths as paths_mod
+                off_cache = getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None)
+                yotoicons_cache = getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None)
+                upload_icon_cache = getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None)
+                api_cache = getattr(paths_mod, 'API_CACHE_FILE', None)
+
             try:
                 off_cache_exists = Path(off_cache).exists() if off_cache is not None else False
             except Exception:

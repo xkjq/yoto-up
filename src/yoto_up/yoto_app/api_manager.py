@@ -1,8 +1,7 @@
-from pathlib import Path
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app import config
 from loguru import logger
-import os
+
 
 
 def ensure_api(api_ref, client=None):
@@ -28,23 +27,11 @@ def ensure_api(api_ref, client=None):
             cid = config.CLIENT_ID if hasattr(config, 'CLIENT_ID') else ''
     except Exception:
         cid = client or ''
-    from yoto_up.paths import FLET_APP_STORAGE_DATA
-    # Prefer explicit FLET_APP_STORAGE_DATA env var (set by host) else the
-    # platformdirs-derived value provided by yoto_up.paths. Provide None when
-    # no meaningful path is available so YotoAPI will use cwd-based defaults.
-    app_path = None
-    if os.getenv("FLET_APP_STORAGE_DATA"):
-        try:
-            app_path = Path(os.getenv("FLET_APP_STORAGE_DATA"))
-        except Exception:
-            app_path = None
-    elif FLET_APP_STORAGE_DATA:
-        try:
-            app_path = Path(FLET_APP_STORAGE_DATA)
-        except Exception:
-            app_path = None
-
-    api = YotoAPI(cid, auto_start_authentication=False, debug=True, app_path=app_path)
+    # Prefer the platformdirs-derived locations defined in yoto_up.paths.
+    # Do not pass an explicit app_path into YotoAPI unless there's a strong
+    # reason to override — letting YotoAPI use the centralized paths module
+    # ensures GUI and API agree on cache locations.
+    api = YotoAPI(cid, auto_start_authentication=False, debug=True)
     try:
         if isinstance(api_ref, dict):
             api_ref['api'] = api
