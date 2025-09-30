@@ -73,15 +73,28 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
     # If metadata files are missing, start a background refresh using the API
     try:
-        missing_meta = False
+        # Only consider the official (Yoto) metadata files as a trigger for
+        # refreshing the public/user icon caches. The YotoIcons cache is
+        # optional and created on-demand by searches; its absence should not
+        # force a full re-download of the official icons every startup.
+        off_meta = YOTO_METADATA_FILE
+        user_meta = USER_METADATA_FILE
+        yotoicons_meta = YOTOICONS_METADATA_GLOBAL
+
+        need_official_refresh = False
+        need_user_refresh = False
+
         try:
-            off_meta = YOTO_METADATA_FILE
-            yotoicons_meta = YOTOICONS_METADATA_GLOBAL
-            if (not off_meta.exists()) or (not yotoicons_meta.exists()):
-                missing_meta = True
+            if not off_meta.exists():
+                need_official_refresh = True
+            if not user_meta.exists():
+                need_user_refresh = True
         except Exception:
-            missing_meta = False
-        if missing_meta:
+            need_official_refresh = False
+            need_user_refresh = False
+
+        # Only start a refresh if one of the official/user metadata files is missing.
+        if need_official_refresh or need_user_refresh:
             # indicate refresh started
             try:
                 status_text.value = "Icon metadata missing — refreshing icon caches in background."
@@ -100,14 +113,24 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
                     api = ensure_api(api_ref)
                     if api:
-                        try:
-                            api.get_public_icons(show_in_console=False, refresh_cache=True)
-                        except Exception:
-                            pass
-                        try:
-                            api.get_user_icons(show_in_console=False, refresh_cache=True)
-                        except Exception:
-                            pass
+                        # Refresh only what is missing to avoid unnecessary downloads.
+                        if need_official_refresh:
+                            try:
+                                api.get_public_icons(show_in_console=False, refresh_cache=True)
+                            except Exception:
+                                pass
+                        if need_user_refresh:
+                            try:
+                                api.get_user_icons(show_in_console=False, refresh_cache=True)
+                            except Exception:
+                                pass
+
+                    # Ensure the YotoIcons cache directory exists so future
+                    # checks don't repeatedly consider it "missing".
+                    try:
+                        YOTOICONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        pass
 
                     # Signal UI that refresh finished
                     try:

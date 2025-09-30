@@ -1447,8 +1447,6 @@ class YotoAPI:
             resp = httpx.get(url, headers=headers)
             resp.raise_for_status()
             icons = resp.json().get("displayIcons", [])
-            with metadata_path.open("w") as f:
-                json.dump(icons, f, indent=2)
         if show_in_console:
             table = Table(title="Yoto Public 16x16 Icons", show_lines=True)
             table.add_column("Title", style="bold magenta")
@@ -1505,6 +1503,12 @@ class YotoAPI:
                             except Exception:
                                 pass
                         progress.update(download_task, advance=1)
+            # After downloads finish, write the metadata back including any cache_path entries
+            try:
+                with metadata_path.open("w") as f:
+                    json.dump(icons, f, indent=2)
+            except Exception:
+                pass
             # Render pixel art with progress
             with Progress(
                 SpinnerColumn(),
@@ -1559,6 +1563,12 @@ class YotoAPI:
             import concurrent.futures as _cf
             with _cf.ThreadPoolExecutor(max_workers=max_workers) as ex:
                 list(ex.map(_download_icon_noprint, icons))
+            # Persist metadata including computed cache_path values
+            try:
+                with metadata_path.open("w") as f:
+                    json.dump(icons, f, indent=2)
+            except Exception:
+                pass
 
         return icons
 
@@ -1588,8 +1598,6 @@ class YotoAPI:
         existing_ids = {icon.get("displayIconId") for icon in icons} if icons else set()
         new_icons = [icon for icon in user_icons if icon.get("displayIconId") not in existing_ids]
         icons = (icons if icons else []) + new_icons
-        with metadata_path.open("w") as f:
-            json.dump(icons, f, indent=2)
 
         if show_in_console:
             table = Table(title="Yoto User 16x16 Icons", show_lines=True)
@@ -1619,6 +1627,12 @@ class YotoAPI:
                         except Exception as e:
                             icon["cache_error"] = str(e)
                     progress.update(download_task, advance=1)
+            # After downloads complete, persist the merged metadata including cache_path fields
+            try:
+                with metadata_path.open("w") as f:
+                    json.dump(icons, f, indent=2)
+            except Exception:
+                pass
             # Render pixel art with progress
             with Progress(
                 SpinnerColumn(),
