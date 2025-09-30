@@ -29,7 +29,7 @@ Features include content organization, device management, and easy integration w
 
    ### Command Line First
 
-    Leveraging Python libraries like Typer, Rich, and Textual for a vibrant, user-friendly command-line experience. Creating and managing cards with text has never been easier or more colorful 🌈.
+   Leveraging Python libraries like Typer, Rich, and Textual for a vibrant, user-friendly command-line experience. Creating and managing cards with text has never been easier or more colorful 🌈.
 
    ### Graphical Interface Included
 
@@ -41,11 +41,11 @@ Features include content organization, device management, and easy integration w
 
    1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
    
-   2. Run with uvx
+   2. Run with uvx (without installing if you just want to try it out)
 
       Command line
       ```bash
-      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up" yoto
+      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up" yoto [command]
       ```
 
       GUI
@@ -57,6 +57,21 @@ Features include content organization, device management, and easy integration w
       ```bash
       uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
       ```
+      This should add the command `yoto` to your path, test it out with
+      ```bash
+      yoto --help
+      ```
+
+      or if you want the GUI
+      ```bash
+      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]"
+      ```
+      Then run
+
+      ```bash
+      yoto gui
+      ```
+
       
 
    ### From source
