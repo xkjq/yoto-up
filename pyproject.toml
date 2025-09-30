@@ -80,9 +80,11 @@ dev-dependencies = [
 
 [tool.setuptools]
 py-modules = ["yoto", "gui", "models", "yoto_api", "tui", "icons"]
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 include = ["yoto_app*"]
+where = ["src"]
 
 [project.scripts]
 yoto = "yoto:app"
