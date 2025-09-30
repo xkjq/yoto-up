@@ -57,11 +57,19 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     )
     search_row.controls.extend([search_field, fuzzy_group, online_search_btn])
 
-    # Source filter checkboxes
+    # Source filter checkboxes + live counts
     cb_official = ft.Checkbox(label="Official", value=True, on_change=lambda e: do_filter())
     cb_yotoicons = ft.Checkbox(label="YotoIcons", value=True, on_change=lambda e: do_filter())
     cb_local = ft.Checkbox(label="Local", value=True, on_change=lambda e: do_filter())
-    filter_row = ft.Row([cb_official, cb_yotoicons, cb_local], spacing=12)
+    # small text controls to display counts for each source
+    official_count_text = ft.Text("0", size=12, color="#333333")
+    yotoicons_count_text = ft.Text("0", size=12, color="#333333")
+    local_count_text = ft.Text("0", size=12, color="#333333")
+    filter_row = ft.Row([
+        ft.Row([cb_official, official_count_text], alignment=ft.MainAxisAlignment.START),
+        ft.Row([cb_yotoicons, yotoicons_count_text], alignment=ft.MainAxisAlignment.START),
+        ft.Row([cb_local, local_count_text], alignment=ft.MainAxisAlignment.START),
+    ], spacing=18)
 
     icons_container = ft.GridView(expand=True, max_extent=80, child_aspect_ratio=1)
 
@@ -200,6 +208,33 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             logger.exception(f"Error loading YotoIcons metadata: {ex}")
         _meta_loaded = True
 
+    def update_filter_counts():
+        """Update the numeric counts next to each source filter checkbox."""
+        try:
+            icons = load_cached_icons()
+            off = 0
+            yotoi = 0
+            loc = 0
+            for p in icons:
+                try:
+                    if path_is_official(p):
+                        off += 1
+                    elif path_is_yotoicons(p):
+                        yotoi += 1
+                    else:
+                        loc += 1
+                except Exception:
+                    loc += 1
+            official_count_text.value = str(off)
+            yotoicons_count_text.value = str(yotoi)
+            local_count_text.value = str(loc)
+            try:
+                page.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def build_index():
         """Build in-memory index of metadata and candidate strings for each cached icon.
         Call this once on startup and after any online refresh to speed up filtering.
@@ -285,6 +320,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         try:
             status_text.value = ""
             page.update()
+        except Exception:
+            pass
+        # update filter counts whenever the index is rebuilt
+        try:
+            update_filter_counts()
         except Exception:
             pass
 
