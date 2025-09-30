@@ -3,9 +3,10 @@ import os
 from pathlib import Path
 import base64
 import json
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
 
-YOTO_ICON_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yoto_icon_cache")
-YOTOICONS_CACHE_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path(".yotoicons_cache")
+YOTO_ICON_CACHE_DIR = OFFICIAL_ICON_CACHE_DIR
+YOTOICONS_CACHE_DIR = YOTOICONS_CACHE_DIR
 
 YOTO_METADATA_FILE = YOTO_ICON_CACHE_DIR / 'icon_metadata.json'
 USER_METADATA_FILE = YOTO_ICON_CACHE_DIR / 'user_icon_metadata.json'

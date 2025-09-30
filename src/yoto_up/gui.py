@@ -6,10 +6,19 @@ import platform
 import sys
 from flet.auth import OAuthProvider
 
+from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents
+
+# Ensure FLET storage env vars are set to a sane default if not provided by the host.
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
 if os.getenv("FLET_APP_STORAGE_DATA") is None:
-    os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
+    # If the environment didn't provide a Flet storage path, prefer the
+    # platform-specific per-user data directory. UI code historically used
+    # storage/data under the project; switch to the centralized value.
+    if FLET_APP_STORAGE_DATA:
+        os.environ["FLET_APP_STORAGE_DATA"] = str(FLET_APP_STORAGE_DATA)
+    else:
+        os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
 
 def _can_start_thread() -> bool:
     if sys.platform == "emscripten":
@@ -191,7 +200,8 @@ def main(page):
         page.open(dlg)
         page.update()
     # --- UI State Persistence ---
-    UI_STATE_FILE = "ui_state.json"
+    # UI_STATE_PATH is a pathlib.Path pointing at the persisted UI state file.
+    # save_ui_state/load_ui_state will use it directly.
     def save_ui_state():
         sort_dropdown = playlists_ui['sort_dropdown'] if isinstance(playlists_ui, dict) else None
         state = {
@@ -204,14 +214,18 @@ def main(page):
             "playlist_sort": sort_dropdown.value if sort_dropdown else None,
         }
         try:
-            with open(UI_STATE_FILE, "w") as f:
+            try:
+                UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            with UI_STATE_PATH.open("w") as f:
                 json.dump(state, f)
         except Exception as e:
             print(f"[ui_state] Failed to save: {e}")
 
     def load_ui_state(playlists_ui):
         try:
-            with open(UI_STATE_FILE, "r") as f:
+            with UI_STATE_PATH.open("r") as f:
                 state = json.load(f)
             concurrency.value = state.get("concurrency", concurrency.value)
             strip_leading_checkbox.value = state.get("strip_leading", strip_leading_checkbox.value)
@@ -239,17 +253,21 @@ def main(page):
                     "upload_mode": (upload_mode_dropdown.value if 'upload_mode_dropdown' in locals() else 'Create new card'),
                     "playlist_sort": None,
                 }
-                # Write atomically
-                tmp = UI_STATE_FILE + '.tmp'
-                with open(tmp, 'w') as f:
+                # Write atomically to UI_STATE_PATH
+                try:
+                    UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+                tmp = UI_STATE_PATH.with_suffix('.tmp')
+                with tmp.open('w') as f:
                     json.dump(default_state, f)
                 try:
-                    os.replace(tmp, UI_STATE_FILE)
+                    tmp.replace(UI_STATE_PATH)
                 except Exception:
                     # Fallback if atomic replace not available
-                    with open(UI_STATE_FILE, 'w') as f:
+                    with UI_STATE_PATH.open('w') as f:
                         json.dump(default_state, f)
-                logger.info("Created default UI state file: %s", UI_STATE_FILE)
+                logger.info("Created default UI state file: %s", UI_STATE_PATH)
             except Exception as ex:
                 logger.error(f"Failed to create default UI state file: {ex}")
 
@@ -504,12 +522,10 @@ def main(page):
                 try:
                     api.save_tokens(access, refresh)
                 except Exception:
-                    # best-effort save
+                    # best-effort save into centralized TOKENS_FILE
                     try:
-                        tmp_path = 'tokens.json.tmp'
-                        with open(tmp_path, 'w') as f:
-                            json.dump({'access_token': access, 'refresh_token': refresh}, f)
-                        os.replace(tmp_path, 'tokens.json')
+                        ensure_parents(TOKENS_FILE)
+                        atomic_write(TOKENS_FILE, json.dumps({'access_token': access, 'refresh_token': refresh}), text_mode=True)
                     except Exception:
                         pass
                 api.access_token = access

@@ -77,6 +77,9 @@ from rich.progress import track as RichTrack
 
 from datetime import datetime, timezone
 
+# Centralized per-user paths
+import yoto_up.paths as paths
+
 # Helper: recursively detect unexpected (extra) fields in input data against a Pydantic model
 from typing import Any, List, Type, get_origin, get_args
 from pydantic import BaseModel
@@ -157,12 +160,13 @@ class YotoAPI:
     TOKEN_URL = "https://login.yotoplay.com/oauth/token"
     MYO_URL = SERVER_URL + "/content/mine"
     CONTENT_URL = SERVER_URL + "/content"
-    TOKEN_FILE = Path("tokens.json")
-    CACHE_FILE = Path(".yoto_api_cache.json")
-    UPLOAD_ICON_CACHE_FILE = Path(".yoto_icon_upload_cache.json")
-    OFFICIAL_ICON_CACHE_DIR = Path(".yoto_icon_cache")
-    YOTOICONS_CACHE_DIR: Path = Path(".yotoicons_cache")
-    VERSIONS_DIR: Path = Path(".card_versions")
+    TOKEN_FILE = paths.TOKENS_FILE
+    CACHE_FILE = paths.API_CACHE_FILE
+    UPLOAD_ICON_CACHE_FILE = paths.UPLOAD_ICON_CACHE_FILE
+    OFFICIAL_ICON_CACHE_DIR = paths.OFFICIAL_ICON_CACHE_DIR
+    YOTOICONS_CACHE_DIR: Path = paths.YOTOICONS_CACHE_DIR
+    VERSIONS_DIR: Path = paths.VERSIONS_DIR
+
 
     def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True, app_path:Path|None=None):
         self.client_id = client_id
@@ -192,12 +196,34 @@ class YotoAPI:
 
         if app_path is not None:
             logger.debug(f"Using app_path: {app_path}")
-            self.TOKEN_FILE = app_path / self.TOKEN_FILE
-            self.CACHE_FILE = app_path / self.CACHE_FILE
-            self.UPLOAD_ICON_CACHE_FILE = str(app_path / self.UPLOAD_ICON_CACHE_FILE)
-            self.OFFICIAL_ICON_CACHE_DIR = app_path / self.OFFICIAL_ICON_CACHE_DIR
-            self.YOTOICONS_CACHE_DIR = app_path / self.YOTOICONS_CACHE_DIR
-            self.VERSIONS_DIR = app_path / self.VERSIONS_DIR
+            # When an explicit app_path is provided (e.g., Flet's storage), place
+            # per-app files under that directory while keeping filenames/dirs from
+            # the centralized defaults.
+            try:
+                self.TOKEN_FILE = Path(app_path) / self.TOKEN_FILE.name
+            except Exception:
+                self.TOKEN_FILE = Path(app_path) / 'tokens.json'
+            try:
+                self.CACHE_FILE = Path(app_path) / self.CACHE_FILE.name
+            except Exception:
+                self.CACHE_FILE = Path(app_path) / '.yoto_api_cache.json'
+            try:
+                # keep upload cache as a file path
+                self.UPLOAD_ICON_CACHE_FILE = str(Path(app_path) / Path(self.UPLOAD_ICON_CACHE_FILE).name)
+            except Exception:
+                self.UPLOAD_ICON_CACHE_FILE = str(Path(app_path) / '.yoto_icon_upload_cache.json')
+            try:
+                self.OFFICIAL_ICON_CACHE_DIR = Path(app_path) / Path(self.OFFICIAL_ICON_CACHE_DIR).name
+            except Exception:
+                self.OFFICIAL_ICON_CACHE_DIR = Path(app_path) / '.yoto_icon_cache'
+            try:
+                self.YOTOICONS_CACHE_DIR = Path(app_path) / Path(self.YOTOICONS_CACHE_DIR).name
+            except Exception:
+                self.YOTOICONS_CACHE_DIR = Path(app_path) / '.yotoicons_cache'
+            try:
+                self.VERSIONS_DIR = Path(app_path) / Path(self.VERSIONS_DIR).name
+            except Exception:
+                self.VERSIONS_DIR = Path(app_path) / '.card_versions'
 
         self._request_cache = self._load_cache()
         self.access_token, self.refresh_token = self.load_tokens()

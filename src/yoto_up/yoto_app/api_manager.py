@@ -28,7 +28,23 @@ def ensure_api(api_ref, client=None):
             cid = config.CLIENT_ID if hasattr(config, 'CLIENT_ID') else ''
     except Exception:
         cid = client or ''
-    api = YotoAPI(cid, auto_start_authentication=False, debug=True, app_path=Path(os.getenv("FLET_APP_STORAGE_DATA")))
+    from yoto_up.paths import FLET_APP_STORAGE_DATA
+    # Prefer explicit FLET_APP_STORAGE_DATA env var (set by host) else the
+    # platformdirs-derived value provided by yoto_up.paths. Provide None when
+    # no meaningful path is available so YotoAPI will use cwd-based defaults.
+    app_path = None
+    if os.getenv("FLET_APP_STORAGE_DATA"):
+        try:
+            app_path = Path(os.getenv("FLET_APP_STORAGE_DATA"))
+        except Exception:
+            app_path = None
+    elif FLET_APP_STORAGE_DATA:
+        try:
+            app_path = Path(FLET_APP_STORAGE_DATA)
+        except Exception:
+            app_path = None
+
+    api = YotoAPI(cid, auto_start_authentication=False, debug=True, app_path=app_path)
     try:
         if isinstance(api_ref, dict):
             api_ref['api'] = api

@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
 import hashlib
 import logging
 from yoto_up.models import Card, CardContent
@@ -142,8 +143,8 @@ class EditCardContent(Static):
     def compose(self):
         def sanitize_id(s):
             return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
-        # Load icon cache and metadata once
-        cache_dir = Path(".yoto_icon_cache")
+        # Load icon cache and metadata once (use centralized paths)
+        cache_dir = OFFICIAL_ICON_CACHE_DIR
         metadata_path = cache_dir / "icon_metadata.json"
         icons_metadata = None
         if metadata_path.exists():
@@ -381,11 +382,11 @@ class EditCardApp(App):
                         if "url" in icon:
                             url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
                             ext = Path(icon["url"]).suffix or ".png"
-                            cache_path = Path(".yoto_icon_cache") / f"{url_hash}{ext}"
+                            cache_path = OFFICIAL_ICON_CACHE_DIR / f"{url_hash}{ext}"
                         elif "img_url" in icon:
                             url_hash = hashlib.sha256(icon["img_url"].encode()).hexdigest()[:16]
                             ext = Path(icon["img_url"]).suffix or ".png"
-                            cache_path = Path(".yotoicons_cache") / f"{url_hash}{ext}"
+                            cache_path = YOTOICONS_CACHE_DIR / f"{url_hash}{ext}"
                         elif "cache_path" in icon:
                             cache_path = Path(icon["cache_path"])
                         if cache_path and cache_path.exists():

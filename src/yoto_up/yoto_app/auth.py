@@ -6,14 +6,15 @@ import time
 from yoto_up.yoto_app.api_manager import ensure_api
 from loguru import logger
 from yoto_up.yoto_app import config
+from yoto_up.paths import TOKENS_FILE
 
 def delete_tokens_file():
     """Delete the tokens.json file if it exists."""
     try:
-        if os.path.exists('tokens.json'):
-            os.remove('tokens.json')
+        if TOKENS_FILE.exists():
+            TOKENS_FILE.unlink()
     except Exception as e:
-        logger.error(f"Failed to delete tokens.json: {e}")
+        logger.error(f"Failed to delete tokens file {TOKENS_FILE}: {e}")
 
 
 def poll_device_token(info, client, page, instr_container, api_ref, show_snack_fn):
@@ -65,11 +66,23 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                         out = {"access_token": access, "refresh_token": refresh}
                         if idt:
                             out['id_token'] = idt
-                        tmp_path = 'tokens.json.tmp'
-                        with open(tmp_path, 'w') as f:
+                        tmp_path = TOKENS_FILE.with_suffix('.tmp')
+                        try:
+                            tmp_path.parent.mkdir(parents=True, exist_ok=True)
+                        except Exception:
+                            pass
+                        with tmp_path.open('w') as f:
                             json.dump(out, f)
-                        os.replace(tmp_path, 'tokens.json')
-                        logger.debug("poll_device_token: wrote tokens.json")
+                        try:
+                            tmp_path.replace(TOKENS_FILE)
+                        except Exception:
+                            try:
+                                tmp_path.rename(TOKENS_FILE)
+                            except Exception:
+                                # last resort write
+                                with TOKENS_FILE.open('w') as f:
+                                    json.dump(out, f)
+                        logger.debug(f"poll_device_token: wrote {TOKENS_FILE}")
                         api = ensure_api(api_ref, client)
                     except Exception as e:
                         logger.debug(f"poll_device_token: failed to write tokens.json: {e}")

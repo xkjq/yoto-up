@@ -8,6 +8,7 @@ import json
 import re
 import hashlib
 import copy
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA
 
 try:
     from yoto_app.icon_import_helpers import USER_METADATA_FILE, YOTO_METADATA_FILE, get_base64_from_path
@@ -30,9 +31,14 @@ import io
 if __name__ == "__main__":
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-ICON_DIR = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path("saved_icons")
+ICON_DIR = OFFICIAL_ICON_CACHE_DIR / "saved_icons"
 
-CHECK_IMAGE = Path(os.getenv("FLET_APP_STORAGE_TEMP")) / Path('__checker.png')
+# Prefer FLET_APP_STORAGE_TEMP if set via environment; otherwise use data dir under the configured cache dir
+_flet_tmp = os.getenv("FLET_APP_STORAGE_TEMP")
+if _flet_tmp:
+    CHECK_IMAGE = Path(_flet_tmp) / Path('__checker.png')
+else:
+    CHECK_IMAGE = OFFICIAL_ICON_CACHE_DIR / Path('__checker.png')
 
 class PixelArtEditor:
     def __init__(self, size=16, pixel_size=24, page=None, loading_dialog=None  ):

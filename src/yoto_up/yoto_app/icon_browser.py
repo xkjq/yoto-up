@@ -23,7 +23,7 @@ from .icon_import_helpers import (
     path_is_official,
     path_is_yotoicons,
     source_label_for_path,
-    get_base64_from_path
+    get_base64_from_path,
 )
 
 
@@ -144,8 +144,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 pass
                 except Exception as ex:
                     logger.exception(f"Error loading official metadata: {ex}")
-            # yotoicons cache
-            yotoicons_dir = Path('.yotoicons_cache')
+            # yotoicons cache (use configured path)
+            yotoicons_dir = YOTOICONS_CACHE_DIR
             global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'
             if global_meta.exists():
                 try:
@@ -657,7 +657,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     prev = 0
                     while not monitor_stop.wait(0.7):
                         try:
-                            yc = Path('.yotoicons_cache')
+                                yc = YOTOICONS_CACHE_DIR
                             cnt = 0
                             if yc.exists():
                                 for f in yc.iterdir():
@@ -714,7 +714,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                     try:
                                         if not cand_path.exists():
                                             # try under .yotoicons_cache with just the filename
-                                            cand_path2 = Path('.yotoicons_cache') / Path(cp).name
+                                                cand_path2 = YOTOICONS_CACHE_DIR / Path(cp).name
                                             if cand_path2.exists():
                                                 cand_path = cand_path2
                                     except Exception:
@@ -725,7 +725,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 if not pth and url:
                                     try:
                                         h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
-                                        yc = Path('.yotoicons_cache')
+                                            yc = YOTOICONS_CACHE_DIR
                                         if yc.exists():
                                             for f in yc.iterdir():
                                                 if f.stem.startswith(h):

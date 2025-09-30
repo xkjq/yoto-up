@@ -33,6 +33,8 @@ dependencies = [
   # Optional NLP tools useful for desktop keyword extraction
   "nltk>=3.8.0",
 
+  "platformdirs>=3.0",
+
 ]
 
 license = "MIT"
