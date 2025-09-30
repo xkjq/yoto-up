@@ -122,6 +122,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 pass
                 except Exception as ex:
                     logger.exception(f"Error loading official metadata: {ex}")
+            else:
+                logger.debug(f"Official metadata file not found: {yoto_meta}")  
                     
             if user_meta.exists():
                 try:
@@ -144,6 +146,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 pass
                 except Exception as ex:
                     logger.exception(f"Error loading official metadata: {ex}")
+            else:
+                logger.debug(f"User metadata file not found: {user_meta}")
             # yotoicons cache (use configured path)
             yotoicons_dir = YOTOICONS_CACHE_DIR
             global_meta = yotoicons_dir / 'yotoicons_global_metadata.json'

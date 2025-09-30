@@ -177,16 +177,51 @@ def main(page):
     page.title = "Yoto Up"
     # --- About Dialog ---
     def show_about_dialog(e=None):
-        dlg = ft.AlertDialog(
-            title=ft.Text("About Yoto Up"),
-            content=ft.Column([
+        # Collect runtime / storage info to show to the user
+        try:
+            version = "dev"
+            try:
+                import importlib.metadata as _md
+                try:
+                    version = _md.version("yoto-up")
+                except Exception:
+                    version = _md.version("yoto_up") if hasattr(_md, 'version') else version
+            except Exception:
+                # importlib.metadata may not be present in older runtimes; ignore
+                pass
+        except Exception:
+            version = "dev"
+
+        try:
+            tokens_path = Path(TOKENS_FILE) if TOKENS_FILE is not None else None
+            ui_state_path = Path(UI_STATE_PATH) if UI_STATE_PATH is not None else None
+            tokens_exist = tokens_path.exists() if tokens_path is not None else False
+            ui_exist = ui_state_path.exists() if ui_state_path is not None else False
+        except Exception:
+            tokens_path = None
+            ui_state_path = None
+            tokens_exist = False
+            ui_exist = False
+
+        flet_storage = FLET_APP_STORAGE_DATA or os.getenv("FLET_APP_STORAGE_DATA") or "(not set)"
+
+        content_items = [
             ft.Row(
                 [ft.Image(src="art.jpeg", width=120, height=120)],
                 alignment=ft.MainAxisAlignment.CENTER
             ),
             ft.Text("Yoto Up", size=20, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Version: {version}"),
+            ft.Text(f"Python: {platform.python_version()} ({platform.machine()})"),
+            ft.Text(f"Platform: {platform.platform()}"),
+            ft.Divider(),
+            ft.Text("Storage & config:" , weight=ft.FontWeight.BOLD),
+            ft.Text(f"Flet storage (FLET_APP_STORAGE_DATA): {flet_storage}", selectable=True, size=12),
+            ft.Text(f"Tokens file: {str(tokens_path) if tokens_path is not None else '(unknown)'} {'(exists)' if tokens_exist else '(missing)'}", selectable=True, size=12),
+            ft.Text(f"UI state file: {str(ui_state_path) if ui_state_path is not None else '(unknown)'} {'(exists)' if ui_exist else '(missing)'}", selectable=True, size=12),
+            ft.Divider(),
+            ft.Text("About:", weight=ft.FontWeight.BOLD),
             ft.Text("A desktop tool for managing Yoto cards and playlists."),
-            #ft.Text("Version: 2025.09"),
             ft.Text("Author: xkjq"),
             ft.TextButton(
                 "GitHub Repository",
@@ -194,7 +229,12 @@ def main(page):
                 style=ft.ButtonStyle(color=ft.Colors.BLUE),
             ),
             ft.Text("\nYoto Up is not affiliated with Yoto Ltd.\n"),
-            ]),
+            ft.Text("License: see LICENSE file in the project root."),
+        ]
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("About Yoto Up"),
+            content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
             actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
         )
         page.open(dlg)
