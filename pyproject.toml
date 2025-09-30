@@ -79,7 +79,7 @@ dev-dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["yoto", "gui", "models", "yoto_api", "tui"]
+py-modules = ["yoto", "gui", "models", "yoto_api", "tui", "icons"]
 
 [tool.setuptools.packages.find]
 include = ["yoto_app*"]
