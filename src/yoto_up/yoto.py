@@ -217,6 +217,38 @@ def import_card(path: str):
     card = API.create_or_update_content(card_data, return_card=True)
     typer.echo(f"Card imported from {path}: {card.cardId}")
 
+
+@app.command()
+def paths(
+    json_out: bool = typer.Option(False, "--json", help="Output paths as JSON")
+):
+    """Show the resolved per-user/config/cache paths used by the application."""
+    try:
+        import yoto_up.paths as paths_mod
+    except Exception as e:
+        typer.echo(f"Failed to import yoto_up.paths: {e}")
+        raise typer.Exit(code=1)
+
+    data = {
+        "FLET_APP_STORAGE_DATA": str(paths_mod.FLET_APP_STORAGE_DATA) if getattr(paths_mod, 'FLET_APP_STORAGE_DATA', None) else None,
+        "BASE_DATA_DIR": str(getattr(paths_mod, '_BASE_DATA_DIR', '')),
+        "BASE_CONFIG_DIR": str(getattr(paths_mod, '_BASE_CONFIG_DIR', '')),
+        "BASE_CACHE_DIR": str(getattr(paths_mod, '_BASE_CACHE_DIR', '')),
+        "TOKENS_FILE": str(getattr(paths_mod, 'TOKENS_FILE', '')),
+        "UI_STATE_FILE": str(getattr(paths_mod, 'UI_STATE_FILE', '')),
+        "OFFICIAL_ICON_CACHE_DIR": str(getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', '')),
+        "YOTOICONS_CACHE_DIR": str(getattr(paths_mod, 'YOTOICONS_CACHE_DIR', '')),
+        "UPLOAD_ICON_CACHE_FILE": str(getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', '')),
+        "API_CACHE_FILE": str(getattr(paths_mod, 'API_CACHE_FILE', '')),
+        "VERSIONS_DIR": str(getattr(paths_mod, 'VERSIONS_DIR', '')),
+    }
+
+    if json_out:
+        typer.echo(json.dumps(data, indent=2))
+    else:
+        for k, v in data.items():
+            typer.echo(f"{k}: {v}")
+
 @app.command()
 def versions(
     verb: str = typer.Argument(..., help="Action: list|show|preview|restore|delete|delete-all"),
