@@ -1999,6 +1999,17 @@ def main(page):
                             page.set_icon_refreshing(False)
                     except Exception:
                         pass
+                # Notify any icon browser listeners that the cache refresh finished
+                try:
+                    cbs = getattr(page, 'icon_cache_refreshed_callbacks', None)
+                    if cbs:
+                        for cb in list(cbs):
+                            try:
+                                cb()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
             threading.Thread(target=_refresh_icons_bg, daemon=True).start()
         # Always use the local page variable, not the argument

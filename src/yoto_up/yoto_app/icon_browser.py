@@ -824,8 +824,32 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     ], expand=True)
 
     panel = ft.Column([panel_header, main_row], expand=True)
-
     # do initial load
     render_icons(load_cached_icons())
+
+    # Register a callback on the page so external refreshers (e.g. GUI auth
+    # refresh thread) can notify the icon browser that caches finished
+    # refreshing. Callbacks should rebuild the in-memory index and re-run
+    # the active filter so the displayed icons reflect updated caches.
+    try:
+        def _on_cache_refreshed():
+            nonlocal _meta_loaded, _index_built
+            try:
+                _meta_loaded = False
+                _index_built = False
+                # rebuild index from disk and re-apply current filter
+                build_index()
+                try:
+                    do_filter()
+                except Exception:
+                    render_icons(load_cached_icons())
+            except Exception:
+                pass
+        # support multiple listeners
+        if not hasattr(page, 'icon_cache_refreshed_callbacks'):
+            page.icon_cache_refreshed_callbacks = []
+        page.icon_cache_refreshed_callbacks.append(_on_cache_refreshed)
+    except Exception:
+        pass
 
     return {"panel": panel}
