@@ -2259,6 +2259,41 @@ class PixelArtEditor:
     def _ensure_saved_dir(self):
         d = ICON_DIR
         d.mkdir(parents=True, exist_ok=True)
+        # If directory is empty (no .png/.json), seed some basic stamps for users
+        try:
+            has_files = any(p.suffix.lower() in ('.png', '.json') for p in d.iterdir())
+        except Exception:
+            has_files = False
+        if not has_files:
+            try:
+                from PIL import ImageDraw
+
+                # Heart
+                im = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(im)
+                draw.polygon([(8, 12), (2, 6), (4, 2), (8, 4), (12, 2), (14, 6)], fill=(220, 20, 60, 255))
+                im.save(str(d / 'heart.png'))
+
+                # Star
+                im2 = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+                draw2 = ImageDraw.Draw(im2)
+                draw2.polygon([(8, 2), (10, 7), (15, 7), (11, 10), (12, 15), (8, 12), (4, 15), (5, 10), (1, 7), (6, 7)], fill=(255, 215, 0, 255))
+                im2.save(str(d / 'star.png'))
+
+                # Smiley
+                im3 = Image.new('RGBA', (16, 16), (255, 255, 0, 255))
+                draw3 = ImageDraw.Draw(im3)
+                draw3.ellipse((4, 4, 6, 6), fill=(0, 0, 0, 255))
+                draw3.ellipse((10, 4, 12, 6), fill=(0, 0, 0, 255))
+                try:
+                    draw3.arc((4, 6, 12, 12), start=20, end=160, fill=(0, 0, 0, 255))
+                except Exception:
+                    # fallback: draw simple mouth line
+                    draw3.line((5, 10, 11, 10), fill=(0, 0, 0, 255))
+                im3.save(str(d / 'smiley.png'))
+            except Exception:
+                # don't fail if PIL isn't available or write fails
+                pass
         return d
 
     def _pixels_to_image(self, pixels):

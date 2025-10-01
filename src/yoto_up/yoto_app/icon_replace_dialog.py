@@ -261,10 +261,41 @@ class IconReplaceDialog:
             """Scan saved_icons folder and populate saved_icons_list with preview + actions."""
             saved_icons_list.controls.clear()
             try:
-                saved_dir = Path(os.getenv("FLET_APP_STORAGE_DATA"))/Path("saved_icons")
+                saved_dir = Path(os.getenv("FLET_APP_STORAGE_DATA")) / Path("saved_icons")
+                # create and seed defaults if missing
                 if not saved_dir.exists():
-                    saved_icons_list.controls.append(ft.Text("No saved_icons folder"))
-                    return
+                    try:
+                        saved_dir.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        saved_icons_list.controls.append(ft.Text("No saved_icons folder"))
+                        return
+                # if empty, seed some basic stamps
+                try:
+                    has_files = any(p.suffix.lower() in ('.png', '.json') for p in saved_dir.iterdir())
+                except Exception:
+                    has_files = False
+                if not has_files:
+                    try:
+                        from PIL import Image, ImageDraw
+                        im = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+                        draw = ImageDraw.Draw(im)
+                        draw.polygon([(8, 12), (2, 6), (4, 2), (8, 4), (12, 2), (14, 6)], fill=(220, 20, 60, 255))
+                        im.save(str(saved_dir / 'heart.png'))
+                        im2 = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+                        draw2 = ImageDraw.Draw(im2)
+                        draw2.polygon([(8, 2), (10, 7), (15, 7), (11, 10), (12, 15), (8, 12), (4, 15), (5, 10), (1, 7), (6, 7)], fill=(255, 215, 0, 255))
+                        im2.save(str(saved_dir / 'star.png'))
+                        im3 = Image.new('RGBA', (16, 16), (255, 255, 0, 255))
+                        draw3 = ImageDraw.Draw(im3)
+                        draw3.ellipse((4, 4, 6, 6), fill=(0, 0, 0, 255))
+                        draw3.ellipse((10, 4, 12, 6), fill=(0, 0, 0, 255))
+                        try:
+                            draw3.arc((4, 6, 12, 12), start=20, end=160, fill=(0, 0, 0, 255))
+                        except Exception:
+                            draw3.line((5, 10, 11, 10), fill=(0, 0, 0, 255))
+                        im3.save(str(saved_dir / 'smiley.png'))
+                    except Exception:
+                        pass
                 files = sorted([p for p in saved_dir.iterdir() if p.suffix.lower() in ('.png', '.json')], key=lambda p: p.name)
                 if not files:
                     saved_icons_list.controls.append(ft.Text("No saved icons found"))
