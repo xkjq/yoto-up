@@ -37,11 +37,11 @@ Features include content organization, device management, and easy integration w
 
    ## 🛠️ Installation
 
-   ### With uvx
+   ### With uv(x)
 
    1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
    
-   2. Run with uvx (without installing if you just want to try it out)
+   2. Run with uvx _(without installing if you just want to try it out)_[^1]
 
       Command line
       ```bash
@@ -53,7 +53,7 @@ Features include content organization, device management, and easy integration w
       uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]" yoto gui
       ```
 
-   3. If you like it, install with uv tool
+   3. If you like it, install with uv tool[^2]
       ```bash
       uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
       ```
@@ -72,6 +72,8 @@ Features include content organization, device management, and easy integration w
       yoto gui
       ```
 
+[^1] uvx allows you to run a python tool/package without installation (by creating a temporary isolated environment).
+[^2] uv tool also supports upgrading the tool once installed, see [their docs](https://docs.astral.sh/uv/guides/tools/#installing-tools) for more information.
       
 
    ### From source
@@ -122,11 +124,13 @@ Features include content organization, device management, and easy integration w
 
    ## ▶️ Usage
 
+   For more details please see the (docs)[https://xkjq.github.io/yoto-up/]
+
    ### CLI / TUI
    • Start the CLI (lists commands):
 
    ```bash
-   python yoto.py
+   python yoto.py --help
    ```
 
    • Open the terminal editor for a card:
@@ -150,25 +154,12 @@ Features include content organization, device management, and easy integration w
    flet run gui.py
    ```
 
-   ## Want a pip installable package?
-   So do I, fancy creating one? 😉
-
-   ## 🤝 Contributing
-
-   1. Fork and create a branch:
+   or
 
    ```bash
-   git checkout -b feature-branch-name
+   python yoto.py gui
    ```
 
-   2. Make changes, commit and push:
-
-   ```bash
-   git commit -am "Describe your change"
-   git push origin feature-branch-name
-   ```
-
-   3. Open a pull request.
 
    ## 📜 License
 

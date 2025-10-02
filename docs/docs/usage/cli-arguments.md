@@ -24,10 +24,12 @@
   - [get_devices](#get_devices)
   - [get_device_status](#get_device_status)
   - [get_device_config](#get_device_config)
+  - [paths](#paths)
   - [reset-auth](#reset-auth-command-name-reset-auth)
   - [fix_card](#fix_card)
   - [merge_chapters](#merge_chapters)
   - [expand_all_tracks](#expand_all_tracks)
+  - [gui](#gui)
 
 This page lists the CLI commands and options exposed by `yoto.py` in this repository. For general help run:
 
@@ -264,6 +266,37 @@ Positional:
 - `device_id` (string)
 
 
+#### paths
+
+Show the resolved per-user/config/cache paths used by the application.
+
+Options:
+- `--json` (bool) — default: `False` — Output the resolved paths as JSON.
+- `--clear` (bool) — default: `False` — Delete all user data (tokens, UI state, API caches, icon caches, and saved versions). The command will prompt for confirmation before deleting files and directories.
+
+Notes:
+- When `--clear` is used the CLI will attempt to remove the following files (best-effort): tokens file, UI state file, upload icon cache, and API cache file. It will also remove the icon cache directories (official and yotoicons) and the versions directory. Use with caution — this is destructive and irreversible.
+
+Examples:
+- Show paths in human-readable form:
+
+```
+python yoto.py paths
+```
+
+- Output paths as JSON (machine friendly):
+
+```
+python yoto.py paths --json
+```
+
+- Delete all user data (prompts for confirmation):
+
+```
+python yoto.py paths --clear
+```
+
+
 #### reset-auth (command name: `reset-auth`)
 
 Options:
@@ -296,7 +329,8 @@ Options:
 Positional:
 - `card_id` (string)
 
+#### gui
 
+Launches the flet based gui.
 ---
 
-If you need more detail or an example for any command, run `python yoto.py <command> --help` or ask me to expand a particular command with usage examples.
