@@ -127,7 +127,7 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
-    def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None, render_method: str = "braille", braille_dims: tuple[int, int] = (8, 4), braille_x_scale: int | None = None):
+    def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None, render_method: str = "braille", braille_dims: tuple[int, int] = (8, 4), braille_x_scale: int | None = None, include_chapters: bool = True ):
         def trunc(val):
             if truncate_fields_limit is None or truncate_fields_limit <= 0:
                 return val
@@ -135,122 +135,209 @@ class Card(BaseModel):
                 return val[:truncate_fields_limit-1] + '…'
             return val
 
-        panel_text = (
-            f"[bold magenta]{trunc(self.title)}[/bold magenta]\n"
-            f"[cyan]ID:[/] [bold]{trunc(self.cardId) if self.cardId else ''}[/bold]\n"
-            f"[yellow]Status:[/] [bold]{trunc(self.metadata.status.name) if self.metadata and self.metadata.status else ''}[/bold]\n"
-            f"[green]Cover:[/] {trunc(self.metadata.cover.imageL) if self.metadata and self.metadata.cover and self.metadata.cover.imageL else ''}\n"
-            f"[blue]Duration:[/] {self.metadata.media.duration if self.metadata and self.metadata.media and self.metadata.media.duration is not None else ''}\n"
-            f"[blue]File Size:[/] {self.metadata.media.fileSize if self.metadata and self.metadata.media and self.metadata.media.fileSize is not None else ''}\n"
-            f"[blue]Preview Audio:[/] {trunc(self.metadata.previewAudio) if self.metadata and hasattr(self.metadata, 'previewAudio') else ''}\n"
-            f"[magenta]Playback Type:[/] {trunc(self.content.playbackType) if self.content and self.content.playbackType else ''}\n"
-            f"[red]Hidden:[/] {self.hidden if hasattr(self, 'hidden') else False}\n"
-            f"[red]Deleted:[/] {self.deleted if hasattr(self, 'deleted') else False}\n"
-            f"[white]Created At:[/] {trunc(self.createdAt) if hasattr(self, 'createdAt') and self.createdAt else ''}\n"
-            f"[white]Client ID:[/] {trunc(self.createdByClientId) if hasattr(self, 'createdByClientId') and self.createdByClientId else ''}\n"
-        )
+        # Build header lines with available metadata (safe access)
+        header_lines = []
+        header_lines.append(f"[bold magenta]{trunc(self.title)}[/bold magenta]")
+        header_lines.append(f"[cyan]ID:[/] [bold]{trunc(self.cardId) if self.cardId else ''}[/bold]")
+        status_name = ''
+        try:
+            status_name = self.metadata.status.name if self.metadata and self.metadata.status else ''
+        except Exception:
+            status_name = ''
+        header_lines.append(f"[yellow]Status:[/] [bold]{trunc(status_name)}[/bold]")
 
-        # Add chapter and track details
-        chapters_section = ""
-        if self.content and hasattr(self.content, "chapters") and self.content.chapters:
-            chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
-            for idx, chapter in enumerate(self.content.chapters, 1):
-                chapter_title = trunc(getattr(chapter, 'title', ''))
-                # Chapter header
-                # Attempt to render a compact inline icon for the chapter (single-line)
-                chapter_icon_inline = ""
-                if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
-                    if icon_field:
-                        try:
-                            method = getattr(api, 'get_icon_cache_path', None)
-                            cache_path = method(icon_field) if callable(method) else None
-                            if cache_path and cache_path.exists():
-                                if render_method == 'braille':
-                                    # Render full braille icon (all lines)
-                                    ci = render_icon(cache_path, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
-                                else:
-                                    ci = render_icon(cache_path, method='blocks')
-                                # Use the full icon (multi-line), indented for alignment
-                                chapter_icon_inline = "\n".join(line for line in ci.splitlines())
-                        except Exception:
-                            chapter_icon_inline = ""
+        # Metadata fields
+        author = (self.metadata.author if self.metadata and getattr(self.metadata, 'author', None) else None)
+        if author:
+            header_lines.append(f"[white]Author:[/] {trunc(author)}")
 
-                chapter_icon_lines = chapter_icon_inline.splitlines() if chapter_icon_inline else []
-                chapter_details = [
-                    f"[bold]Chapter {idx}:[/bold] {chapter_title}",
-                    f"[blue]Duration:[/] {getattr(chapter, 'duration', '')}",
-                    f"[magenta]Key:[/] {getattr(chapter, 'key', '')}",
-                    f"[yellow]Overlay Label:[/] {getattr(chapter, 'overlayLabel', '')}",
-                ]
-                # Pad chapter_details if needed so its length >= chapter_icon_lines
-                if len(chapter_details) < len(chapter_icon_lines):
-                    chapter_details += [""] * (len(chapter_icon_lines) - len(chapter_details))
+        category = (self.metadata.category if self.metadata and getattr(self.metadata, 'category', None) else None)
+        if category:
+            header_lines.append(f"[white]Category:[/] {trunc(category)}")
 
-                for line_idx, chapter_detail in enumerate(chapter_details):
-                    logger.debug(f"Chapter line {line_idx}: '{chapter_detail}' with icon line '{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}'")
-                    chapters_section += f"{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}  {chapter_detail}\n"
-                chapters_section += "\n"
-                ## Optionally render chapter icon
-                #if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                #    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
-                #    if icon_field:
-                #        try:
-                #            method = getattr(api, 'get_icon_cache_path', None)
-                #            cache_path = method(icon_field) if callable(method) else None
-                #            if cache_path and cache_path.exists():
-                #                # render chapter icon using requested method/scale
-                #                art = render_icon(cache_path, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
-                #                chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
-                #            else:
-                #                chapters_section += "  [red]Chapter Icon: not available[/red]\n"
-                #        except Exception:
-                #            chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
-                # List tracks individually and attach per-track icons immediately beneath each track
-                if hasattr(chapter, 'tracks') and chapter.tracks:
-                    for t_idx, track in enumerate(chapter.tracks, 1):
-                        track_title = trunc(getattr(track, 'title', str(track)))
-                        # prepare inline track icon
-                        track_icon_inline = ""
-                        if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                            t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
-                            if t_icon_field:
-                                try:
-                                    t_method = getattr(api, 'get_icon_cache_path', None)
-                                    t_cache = t_method(t_icon_field) if callable(t_method) else None
-                                    if t_cache and t_cache.exists():
-                                            if render_method == 'braille':
-                                                # Render track braille icons at 8x4
-                                                ti = render_icon(t_cache, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
-                                            else:
-                                                ti = render_icon(t_cache, method='blocks')
-                                            track_icon_inline = ti if ti else ""
+        # Tags (card-level and metadata tags)
+        combined_tags = []
+        try:
+            if self.tags:
+                combined_tags.extend([t for t in self.tags if t])
+            if self.metadata and getattr(self.metadata, 'tags', None):
+                combined_tags.extend([t for t in self.metadata.tags or [] if t])
+        except Exception:
+            pass
+        if combined_tags:
+            header_lines.append(f"[cyan]Tags:[/] {', '.join(combined_tags)}")
+
+        # Genre / Languages
+        try:
+            if self.metadata and getattr(self.metadata, 'genre', None):
+                header_lines.append(f"[green]Genre:[/] {', '.join(self.metadata.genre)}")
+        except Exception:
+            pass
+        try:
+            if self.metadata and getattr(self.metadata, 'languages', None):
+                header_lines.append(f"[green]Languages:[/] {', '.join(self.metadata.languages)}")
+        except Exception:
+            pass
+
+        # Age recommendation
+        try:
+            if self.metadata and getattr(self.metadata, 'minAge', None) is not None:
+                header_lines.append(f"[blue]Min Age:[/] {self.metadata.minAge}")
+            if self.metadata and getattr(self.metadata, 'maxAge', None) is not None:
+                header_lines.append(f"[blue]Max Age:[/] {self.metadata.maxAge}")
+        except Exception:
+            pass
+
+        # Copyright / readBy / description (truncated)
+        try:
+            if self.metadata and getattr(self.metadata, 'copyright', None):
+                header_lines.append(f"[white]Copyright:[/] {trunc(self.metadata.copyright)}")
+        except Exception:
+            pass
+        try:
+            if self.metadata and getattr(self.metadata, 'readBy', None):
+                header_lines.append(f"[white]Read By:[/] {trunc(self.metadata.readBy)}")
+        except Exception:
+            pass
+        try:
+            if self.metadata and getattr(self.metadata, 'description', None):
+                header_lines.append(f"[white]Description:[/] {trunc(self.metadata.description)}")
+        except Exception:
+            pass
+
+        # Cover, duration, file size, preview audio, playback type, flags, timestamps
+        cover_val = ''
+        try:
+            cover_val = self.metadata.cover.imageL if self.metadata and self.metadata.cover and self.metadata.cover.imageL else ''
+        except Exception:
+            cover_val = ''
+        header_lines.append(f"[green]Cover:[/] {trunc(cover_val)}")
+
+        try:
+            dur = self.metadata.media.duration if self.metadata and self.metadata.media and self.metadata.media.duration is not None else ''
+        except Exception:
+            dur = ''
+        header_lines.append(f"[blue]Duration:[/] {dur}")
+        try:
+            fsize = self.metadata.media.fileSize if self.metadata and self.metadata.media and self.metadata.media.fileSize is not None else ''
+        except Exception:
+            fsize = ''
+        header_lines.append(f"[blue]File Size:[/] {fsize}")
+        try:
+            prev = self.metadata.previewAudio if self.metadata and getattr(self.metadata, 'previewAudio', None) else ''
+        except Exception:
+            prev = ''
+        header_lines.append(f"[blue]Preview Audio:[/] {trunc(prev)}")
+        header_lines.append(f"[magenta]Playback Type:[/] {trunc(self.content.playbackType) if self.content and self.content.playbackType else ''}")
+        #header_lines.append(f"[red]Hidden:[/] {self.hidden if hasattr(self, 'hidden') else False}")
+        #header_lines.append(f"[red]Deleted:[/] {self.deleted if hasattr(self, 'deleted') else False}")
+        header_lines.append(f"[white]Created At:[/] {trunc(self.createdAt) if hasattr(self, 'createdAt') and self.createdAt else ''}")
+        header_lines.append(f"[white]Client ID:[/] {trunc(self.createdByClientId) if hasattr(self, 'createdByClientId') and self.createdByClientId else ''}")
+
+        panel_text = "\n".join(line for line in header_lines if line)
+
+        if include_chapters:
+            # Add chapter and track details
+            chapters_section = ""
+            if self.content and hasattr(self.content, "chapters") and self.content.chapters:
+                chapters_section += "\n[bold underline]Chapters & Tracks:[/bold underline]\n"
+                for idx, chapter in enumerate(self.content.chapters, 1):
+                    chapter_title = trunc(getattr(chapter, 'title', ''))
+                    # Chapter header
+                    # Attempt to render a compact inline icon for the chapter (single-line)
+                    chapter_icon_inline = ""
+                    if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                        icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                        if icon_field:
+                            try:
+                                method = getattr(api, 'get_icon_cache_path', None)
+                                cache_path = method(icon_field) if callable(method) else None
+                                if cache_path and cache_path.exists():
+                                    if render_method == 'braille':
+                                        # Render full braille icon (all lines)
+                                        ci = render_icon(cache_path, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
                                     else:
-                                        track_icon_inline = "[red]Icon not available[/red]"
-                                except Exception:
-                                    track_icon_inline = "[red]Icon error[/red]"
+                                        ci = render_icon(cache_path, method='blocks')
+                                    # Use the full icon (multi-line), indented for alignment
+                                    chapter_icon_inline = "\n".join(line for line in ci.splitlines())
+                            except Exception:
+                                chapter_icon_inline = ""
 
-                        track_details = [
-                            f"[cyan]Track {t_idx}:[/] [bold]{track_title}[/bold]",
-                            f"[blue]Duration:[/] {getattr(track, 'duration', '')}",
-                            f"[magenta]Format:[/] {getattr(track, 'format', '')}",
-                            f"[yellow]Type:[/] {getattr(track, 'type', '')}",
-                            f"[green]Key:[/] {getattr(track, 'key', '')}",
-                            f"[yellow]Overlay Label:[/] {getattr(track, 'overlayLabel', '')}"
-                        ]
-                        icon_lines = track_icon_inline.splitlines() if track_icon_inline else []
+                    chapter_icon_lines = chapter_icon_inline.splitlines() if chapter_icon_inline else []
+                    chapter_details = [
+                        f"[bold]Chapter {idx}:[/bold] {chapter_title}",
+                        f"[blue]Duration:[/] {getattr(chapter, 'duration', '')}",
+                        f"[magenta]Key:[/] {getattr(chapter, 'key', '')}",
+                        f"[yellow]Overlay Label:[/] {getattr(chapter, 'overlayLabel', '')}",
+                    ]
+                    # Pad chapter_details if needed so its length >= chapter_icon_lines
+                    if len(chapter_details) < len(chapter_icon_lines):
+                        chapter_details += [""] * (len(chapter_icon_lines) - len(chapter_details))
 
-                        # Pad track_details if needed so its length >= icon_lines
-                        if len(track_details) < len(icon_lines):
-                            track_details += [""] * (len(icon_lines) - len(track_details))
+                    for line_idx, chapter_detail in enumerate(chapter_details):
+                        logger.debug(f"Chapter line {line_idx}: '{chapter_detail}' with icon line '{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}'")
+                        chapters_section += f"{chapter_icon_lines[line_idx] if line_idx < len(chapter_icon_lines) else ''}  {chapter_detail}\n"
+                    chapters_section += "\n"
+                    ## Optionally render chapter icon
+                    #if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                    #    icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                    #    if icon_field:
+                    #        try:
+                    #            method = getattr(api, 'get_icon_cache_path', None)
+                    #            cache_path = method(icon_field) if callable(method) else None
+                    #            if cache_path and cache_path.exists():
+                    #                # render chapter icon using requested method/scale
+                    #                art = render_icon(cache_path, method=render_method, braille_dims=braille_dims, braille_x_scale=braille_x_scale)
+                    #                chapters_section += "  [green]Chapter Icon:[/]\n" + art + "\n"
+                    #            else:
+                    #                chapters_section += "  [red]Chapter Icon: not available[/red]\n"
+                    #        except Exception:
+                    #            chapters_section += "  [red]Chapter Icon: error resolving[/red]\n"
+                    # List tracks individually and attach per-track icons immediately beneath each track
+                    if hasattr(chapter, 'tracks') and chapter.tracks:
+                        for t_idx, track in enumerate(chapter.tracks, 1):
+                            track_title = trunc(getattr(track, 'title', str(track)))
+                            # prepare inline track icon
+                            track_icon_inline = ""
+                            if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
+                                t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
+                                if t_icon_field:
+                                    try:
+                                        t_method = getattr(api, 'get_icon_cache_path', None)
+                                        t_cache = t_method(t_icon_field) if callable(t_method) else None
+                                        if t_cache and t_cache.exists():
+                                                if render_method == 'braille':
+                                                    # Render track braille icons at 8x4
+                                                    ti = render_icon(t_cache, method='braille', braille_dims=(8, 4), braille_x_scale=braille_x_scale)
+                                                else:
+                                                    ti = render_icon(t_cache, method='blocks')
+                                                track_icon_inline = ti if ti else ""
+                                        else:
+                                            track_icon_inline = "[red]Icon not available[/red]"
+                                    except Exception:
+                                        track_icon_inline = "[red]Icon error[/red]"
 
-                        for line_idx, track_detail in enumerate(track_details):
-                            chapters_section += f"    {icon_lines[line_idx] if line_idx < len(icon_lines) else ''}  {track_detail}\n"
-                        chapters_section += "\n"
+                            track_details = [
+                                f"[cyan]Track {t_idx}:[/] [bold]{track_title}[/bold]",
+                                f"[blue]Duration:[/] {getattr(track, 'duration', '')}",
+                                f"[magenta]Format:[/] {getattr(track, 'format', '')}",
+                                f"[yellow]Type:[/] {getattr(track, 'type', '')}",
+                                f"[green]Key:[/] {getattr(track, 'key', '')}",
+                                f"[yellow]Overlay Label:[/] {getattr(track, 'overlayLabel', '')}"
+                            ]
+                            icon_lines = track_icon_inline.splitlines() if track_icon_inline else []
 
-                        # Render icon to the left of the track details
-                        #chapters_section += f"{track_icon_inline} [cyan]Track {t_idx}:[/] {track_title} [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
-        panel_text += chapters_section
+                            # Pad track_details if needed so its length >= icon_lines
+                            if len(track_details) < len(icon_lines):
+                                track_details += [""] * (len(icon_lines) - len(track_details))
+
+                            for line_idx, track_detail in enumerate(track_details):
+                                chapters_section += f"    {icon_lines[line_idx] if line_idx < len(icon_lines) else ''}  {track_detail}\n"
+                            chapters_section += "\n"
+
+                            # Render icon to the left of the track details
+                            #chapters_section += f"{track_icon_inline} [cyan]Track {t_idx}:[/] {track_title} [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
+            panel_text += chapters_section
         return panel_text
 
 class Device(BaseModel):

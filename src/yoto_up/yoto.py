@@ -20,30 +20,41 @@ console = Console()
 
 api_options = {}
 
+
 def get_api():
     return YotoAPI(**api_options)
 
+
 @app.callback()
 def main(
-    client_id: str = typer.Option("RslORm04nKbhf04qb91r2Pxwjsn3Hnd5", "--client-id", "-c", help="Yoto client ID"),
-    cache_requests: bool = typer.Option(True, "--cache-requests", "-r", help="Enable API request caching"),
-    cache_max_age_seconds: int = typer.Option(0, "--cache-max-age-seconds", "-a", help="Max cache age in seconds"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
+    client_id: str = typer.Option(
+        "RslORm04nKbhf04qb91r2Pxwjsn3Hnd5", "--client-id", "-c", help="Yoto client ID"
+    ),
+    cache_requests: bool = typer.Option(
+        True, "--cache-requests", "-r", help="Enable API request caching"
+    ),
+    cache_max_age_seconds: int = typer.Option(
+        0, "--cache-max-age-seconds", "-a", help="Max cache age in seconds"
+    ),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
 ):
     global api_options
     api_options = dict(
         client_id=client_id,
         cache_requests=cache_requests,
         cache_max_age_seconds=cache_max_age_seconds,
-        debug=debug
+        debug=debug,
     )
+
 
 @app.command()
 def create_content(
     title: str = typer.Option(..., help="Title of the content"),
     description: str = typer.Option("", help="Description of the content"),
-    content_type: str = typer.Option("audio", help="Type of content (e.g. audio, text)"),
-    data: str = typer.Option(..., help="Content data (e.g. URL or text)")
+    content_type: str = typer.Option(
+        "audio", help="Type of content (e.g. audio, text)"
+    ),
+    data: str = typer.Option(..., help="Content data (e.g. URL or text)"),
 ):
     """Create or update Yoto content."""
     API = get_api()
@@ -57,15 +68,22 @@ def get_cards(name, ignore_case, regex):
         if ignore_case:
             cards = [card for card in cards if name.lower() in card.title.lower()]
         elif regex:
-            cards = [card for card in cards if re.search(name, card.title, re.IGNORECASE)]
+            cards = [
+                card for card in cards if re.search(name, card.title, re.IGNORECASE)
+            ]
     return cards
+
 
 @app.command()
 def list_cards(
     name: str = typer.Option(None, help="Name of the card to filter (optional)"),
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
-    truncate: Optional[int] = typer.Option(50, help="Truncate fields to this many characters")
+    truncate: Optional[int] = typer.Option(
+        50, help="Truncate fields to this many characters"
+    ),
+    table: bool = typer.Option(False, help="Display cards in a table format"),
+    include_chapters: bool = typer.Option(False, help="Include chapters and tracks in display"),
 ):
     cards = get_cards(name, ignore_case, regex)
 
@@ -73,34 +91,82 @@ def list_cards(
         rprint("[bold red]No cards found.[/bold red]")
         return
 
-    for card in cards:
-        rprint(Panel.fit(card.display_card(truncate_fields_limit=truncate), title=f"[bold green]Card[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+    if include_chapters:
+        full_cards = []
+        API = get_api()
+        for summary_card in cards:
+            try:
+                full_card = API.get_card(summary_card.cardId)
+                if full_card:
+                    full_cards.append(full_card)
+                else:
+                    full_cards.append(summary_card)
+            except Exception:
+                full_cards.append(summary_card)
+        cards = full_cards
+
+    if table:
+        from rich.table import Table
+
+        table = Table(title="Yoto Cards")
+        table.add_column("Card ID", style="cyan", no_wrap=True)
+        table.add_column("Title", style="magenta")
+        table.add_column("Description", style="green")
+        for card in cards:
+            desc = (
+                (card.metadata.description[: truncate - 3] + "...")
+                if card.metadata.description and len(card.metadata.description) > truncate
+                else (card.metadata.description or "")
+            )
+            table.add_row(card.cardId, card.title or "", desc)
+        console.print(table)
+        return
+    else:
+        for card in cards:
+            rprint(
+                Panel.fit(
+                    card.display_card(truncate_fields_limit=truncate),
+                    title=f"[bold green]Card[/bold green]",
+                    subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
+                )
+            )
+
 
 @app.command()
 def delete_card(id: str):
     """Delete a Yoto card by its ID."""
     API = get_api()
-    if not Confirm.ask(f"Are you sure you want to delete card with ID '{id}'?", default=False):
+    if not Confirm.ask(
+        f"Are you sure you want to delete card with ID '{id}'?", default=False
+    ):
         typer.echo("Deletion cancelled.")
         return
     response = API.delete_content(id)
     typer.echo(response)
 
+
 @app.command()
 def delete_cards(
     name: str,
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
-    regex: bool = typer.Option(False, help="Use regex for name filtering")
+    regex: bool = typer.Option(False, help="Use regex for name filtering"),
 ):
     cards = get_cards(name, ignore_case, regex)
     to_delete = cards
     if not to_delete:
         rprint(f"[bold red]No cards found with the name '{name}'.[/bold red]")
         return
-    rprint(f"[bold yellow]Found {len(to_delete)} cards with the name '{name}':[/bold yellow]")
+    rprint(
+        f"[bold yellow]Found {len(to_delete)} cards with the name '{name}':[/bold yellow]"
+    )
     for card in to_delete:
-        rprint(f"- [bold magenta]{card.title}[/bold magenta] ([cyan]ID: {card.cardId}[/cyan])")
-    if not Confirm.ask(f"[bold red]Are you sure you want to delete all {len(to_delete)} cards named '{name}'?[/bold red]", default=False):
+        rprint(
+            f"- [bold magenta]{card.title}[/bold magenta] ([cyan]ID: {card.cardId}[/cyan])"
+        )
+    if not Confirm.ask(
+        f"[bold red]Are you sure you want to delete all {len(to_delete)} cards named '{name}'?[/bold red]",
+        default=False,
+    ):
         rprint("[bold green]Deletion cancelled.[/bold green]")
         return
     API = get_api()
@@ -108,13 +174,21 @@ def delete_cards(
         response = API.delete_content(card.cardId)
         rprint(f"[bold red]Deleted card ID {card.cardId}:[/bold red] {response}")
 
+
 @app.command()
 def get_card(
     card_id: str,
+    chapters: bool = typer.Option(True, help="Show chapters and tracks"),
     icons: bool = typer.Option(True, help="Render icons in card display"),
-    icons_method: str = typer.Option("braille", help="Icon rendering method: 'braille' or 'blocks'"),
-    braille_scale: int = typer.Option(None, help="Horizontal scale for braille rendering (integer)"),
-    braille_dims: str = typer.Option("8x4", help="Braille character grid dims as WxH, e.g. 8x4")
+    icons_method: str = typer.Option(
+        "braille", help="Icon rendering method: 'braille' or 'blocks'"
+    ),
+    braille_scale: int = typer.Option(
+        None, help="Horizontal scale for braille rendering (integer)"
+    ),
+    braille_dims: str = typer.Option(
+        "8x4", help="Braille character grid dims as WxH, e.g. 8x4"
+    ),
 ):
     """Get details of a Yoto card by its ID."""
     API = get_api()
@@ -125,15 +199,29 @@ def get_card(
             w, h = (int(x) for x in braille_dims.split("x"))
         except Exception:
             w, h = 8, 4
-        rprint(Panel.fit(card.display_card(render_icons=icons, api=API, render_method=icons_method, braille_dims=(w, h), braille_x_scale=braille_scale), title="[bold green]Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+        rprint(
+            Panel.fit(
+                card.display_card(
+                    render_icons=icons,
+                    api=API,
+                    render_method=icons_method,
+                    braille_dims=(w, h),
+                    braille_x_scale=braille_scale,
+                    include_chapters=chapters
+                ),
+                title="[bold green]Card Details[/bold green]",
+                subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
+            )
+        )
     else:
         typer.echo(f"Card with ID '{card_id}' not found.")
+
 
 @app.command()
 def export_card(
     card_id: str,
     path: str = typer.Option("cards", help="Path to export JSON file (optional)"),
-    include_name: bool = typer.Option(True, help="Include card name in export")
+    include_name: bool = typer.Option(True, help="Include card name in export"),
 ):
     """Export a Yoto card by its ID to a JSON file."""
     API = get_api()
@@ -147,7 +235,10 @@ def export_card(
     export_dir.mkdir(parents=True, exist_ok=True)
     if card:
         if include_name and card.title:
-            export_path = Path(path) / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', card.title)}_{card_id}.json"
+            export_path = (
+                Path(path)
+                / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', card.title)}_{card_id}.json"
+            )
         else:
             export_path = Path(path) / f"card_{card_id}.json"
         try:
@@ -160,6 +251,7 @@ def export_card(
     else:
         typer.echo(f"Card with ID '{card_id}' not found.")
 
+
 @app.command()
 def edit_card(card_id: str):
     """Edit a Yoto card by its ID using a rich TUI."""
@@ -168,15 +260,18 @@ def edit_card(card_id: str):
     if not card:
         typer.echo(f"Card with ID '{card_id}' not found.")
         raise typer.Exit(code=1)
+
     def run_tui():
         app = EditCardApp(card, API)
         app.run()
         return getattr(app, "result", None)
+
     result = run_tui()
     if result:
         typer.echo(f"Card updated: {result.cardId}")
     else:
         typer.echo("Edit cancelled.")
+
 
 @app.command()
 def export_cards(
@@ -184,7 +279,7 @@ def export_cards(
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
     path: str = typer.Option("cards", help="Path to export JSON file (optional)"),
-    include_name: bool = typer.Option(True, help="Include card name in export")
+    include_name: bool = typer.Option(True, help="Include card name in export"),
 ):
     API = get_api()
     cards = get_cards(name, ignore_case, regex)
@@ -196,7 +291,10 @@ def export_cards(
     for summary_card in cards:
         card = API.get_card(summary_card.cardId)
         if include_name and card.title:
-            export_path = export_dir / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', card.title)}_{card.cardId}.json"
+            export_path = (
+                export_dir
+                / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', card.title)}_{card.cardId}.json"
+            )
         else:
             export_path = export_dir / f"card_{card.cardId}.json"
         try:
@@ -207,11 +305,12 @@ def export_cards(
             json.dump(card_data, f, indent=2)
         typer.echo(f"Card exported to {export_path}")
 
+
 @app.command()
 def import_card(path: str):
     API = get_api()
     with open(path, "r") as f:
-        s= json.loads(f.read())
+        s = json.loads(f.read())
         card_data = Card.model_validate(s)
         print(card_data)
         card_data.cardId = None
@@ -221,9 +320,12 @@ def import_card(path: str):
 
 @app.command()
 def paths(
-    json_out: bool = typer.Option(False, "--json", help="Output paths as JSON")
-    ,
-    clear: bool = typer.Option(False, "--clear", help="Delete all user data (tokens, caches, UI state, icon caches, versions).")
+    json_out: bool = typer.Option(False, "--json", help="Output paths as JSON"),
+    clear: bool = typer.Option(
+        False,
+        "--clear",
+        help="Delete all user data (tokens, caches, UI state, icon caches, versions).",
+    ),
 ):
     """Show the resolved per-user/config/cache paths used by the application."""
     try:
@@ -233,36 +335,43 @@ def paths(
         raise typer.Exit(code=1)
 
     data = {
-        "FLET_APP_STORAGE_DATA": str(paths_mod.FLET_APP_STORAGE_DATA) if getattr(paths_mod, 'FLET_APP_STORAGE_DATA', None) else None,
-        "BASE_DATA_DIR": str(getattr(paths_mod, '_BASE_DATA_DIR', '')),
-        "BASE_CONFIG_DIR": str(getattr(paths_mod, '_BASE_CONFIG_DIR', '')),
-        "BASE_CACHE_DIR": str(getattr(paths_mod, '_BASE_CACHE_DIR', '')),
-        "TOKENS_FILE": str(getattr(paths_mod, 'TOKENS_FILE', '')),
-        "UI_STATE_FILE": str(getattr(paths_mod, 'UI_STATE_FILE', '')),
-        "OFFICIAL_ICON_CACHE_DIR": str(getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', '')),
-        "YOTOICONS_CACHE_DIR": str(getattr(paths_mod, 'YOTOICONS_CACHE_DIR', '')),
-        "UPLOAD_ICON_CACHE_FILE": str(getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', '')),
-        "API_CACHE_FILE": str(getattr(paths_mod, 'API_CACHE_FILE', '')),
-        "VERSIONS_DIR": str(getattr(paths_mod, 'VERSIONS_DIR', '')),
+        "FLET_APP_STORAGE_DATA": str(paths_mod.FLET_APP_STORAGE_DATA)
+        if getattr(paths_mod, "FLET_APP_STORAGE_DATA", None)
+        else None,
+        "BASE_DATA_DIR": str(getattr(paths_mod, "_BASE_DATA_DIR", "")),
+        "BASE_CONFIG_DIR": str(getattr(paths_mod, "_BASE_CONFIG_DIR", "")),
+        "BASE_CACHE_DIR": str(getattr(paths_mod, "_BASE_CACHE_DIR", "")),
+        "TOKENS_FILE": str(getattr(paths_mod, "TOKENS_FILE", "")),
+        "UI_STATE_FILE": str(getattr(paths_mod, "UI_STATE_FILE", "")),
+        "OFFICIAL_ICON_CACHE_DIR": str(
+            getattr(paths_mod, "OFFICIAL_ICON_CACHE_DIR", "")
+        ),
+        "YOTOICONS_CACHE_DIR": str(getattr(paths_mod, "YOTOICONS_CACHE_DIR", "")),
+        "UPLOAD_ICON_CACHE_FILE": str(getattr(paths_mod, "UPLOAD_ICON_CACHE_FILE", "")),
+        "API_CACHE_FILE": str(getattr(paths_mod, "API_CACHE_FILE", "")),
+        "VERSIONS_DIR": str(getattr(paths_mod, "VERSIONS_DIR", "")),
     }
     # If requested, clear the user data paths
     if clear:
-        if not Confirm.ask("Are you sure you want to DELETE ALL user data (tokens, ui state, caches, icon caches, versions)?", default=False):
+        if not Confirm.ask(
+            "Are you sure you want to DELETE ALL user data (tokens, ui state, caches, icon caches, versions)?",
+            default=False,
+        ):
             typer.echo("Cancelled.")
             return
         # Files to remove (best-effort)
         files = [
-            getattr(paths_mod, 'TOKENS_FILE', None),
-            getattr(paths_mod, 'UI_STATE_FILE', None),
-            getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None),
-            getattr(paths_mod, 'API_CACHE_FILE', None),
+            getattr(paths_mod, "TOKENS_FILE", None),
+            getattr(paths_mod, "UI_STATE_FILE", None),
+            getattr(paths_mod, "UPLOAD_ICON_CACHE_FILE", None),
+            getattr(paths_mod, "API_CACHE_FILE", None),
         ]
         dirs = [
-            getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None),
-            getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None),
-            getattr(paths_mod, 'VERSIONS_DIR', None),
+            getattr(paths_mod, "OFFICIAL_ICON_CACHE_DIR", None),
+            getattr(paths_mod, "YOTOICONS_CACHE_DIR", None),
+            getattr(paths_mod, "VERSIONS_DIR", None),
         ]
-        removed = { 'files': [], 'dirs': [], 'errors': [] }
+        removed = {"files": [], "dirs": [], "errors": []}
         for f in files:
             try:
                 if f is None:
@@ -270,9 +379,9 @@ def paths(
                 p = Path(f)
                 if p.exists():
                     p.unlink()
-                    removed['files'].append(str(p))
+                    removed["files"].append(str(p))
             except Exception as e:
-                removed['errors'].append(f"failed to remove file {f}: {e}")
+                removed["errors"].append(f"failed to remove file {f}: {e}")
         for d in dirs:
             try:
                 if d is None:
@@ -280,15 +389,15 @@ def paths(
                 p = Path(d)
                 if p.exists() and p.is_dir():
                     shutil.rmtree(p)
-                    removed['dirs'].append(str(p))
+                    removed["dirs"].append(str(p))
             except Exception as e:
-                removed['errors'].append(f"failed to remove dir {d}: {e}")
+                removed["errors"].append(f"failed to remove dir {d}: {e}")
         typer.echo("Clear operation complete. Removed:")
-        for r in removed['files']:
+        for r in removed["files"]:
             typer.echo(f"  file: {r}")
-        for r in removed['dirs']:
+        for r in removed["dirs"]:
             typer.echo(f"  dir: {r}")
-        for e in removed['errors']:
+        for e in removed["errors"]:
             typer.echo(f"  ERROR: {e}")
         return
 
@@ -298,11 +407,18 @@ def paths(
         for k, v in data.items():
             typer.echo(f"{k}: {v}")
 
+
 @app.command()
 def versions(
-    verb: str = typer.Argument(..., help="Action: list|show|preview|restore|delete|delete-all"),
-    target: Optional[str] = typer.Argument(None, help="Card id or path to version file (positional)") ,
-    path: str = typer.Option(None, help="Path to a specific version file (for show/restore/delete)")
+    verb: str = typer.Argument(
+        ..., help="Action: list|show|preview|restore|delete|delete-all"
+    ),
+    target: Optional[str] = typer.Argument(
+        None, help="Card id or path to version file (positional)"
+    ),
+    path: str = typer.Option(
+        None, help="Path to a specific version file (for show/restore/delete)"
+    ),
 ):
     """Manage local card versions saved by the application.
 
@@ -331,7 +447,7 @@ def versions(
         delete-all: remove all saved versions for the given card id
     """
     API = get_api()
-    verb_l = (verb or '').lower()
+    verb_l = (verb or "").lower()
     try:
         # If the user passed a path as the positional target, prefer it for show/preview/restore/delete
         effective_path = None
@@ -339,108 +455,147 @@ def versions(
             effective_path = Path(path)
         elif target:
             t = Path(target)
-            if t.exists() or '/' in target or target.startswith('.') or target.endswith('.json'):
+            if (
+                t.exists()
+                or "/" in target
+                or target.startswith(".")
+                or target.endswith(".json")
+            ):
                 effective_path = t
 
-        if verb_l == 'list':
+        if verb_l == "list":
             card_id = target
             if not card_id:
-                typer.echo('Please provide a card id (or title-derived id) to list versions')
+                typer.echo(
+                    "Please provide a card id (or title-derived id) to list versions"
+                )
                 raise typer.Exit(code=1)
             files = API.list_versions(card_id)
             if not files:
-                typer.echo('No versions found')
+                typer.echo("No versions found")
                 return
             for p in files:
                 typer.echo(str(p))
             return
 
-        if verb_l == 'show':
+        if verb_l == "show":
             if not effective_path:
-                typer.echo('Please provide --path to a version file or pass the file path as the positional target')
+                typer.echo(
+                    "Please provide --path to a version file or pass the file path as the positional target"
+                )
                 raise typer.Exit(code=1)
             data = API.load_version(effective_path)
             typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
             return
 
-        if verb_l == 'preview':
+        if verb_l == "preview":
             if not effective_path:
-                typer.echo('Please provide --path to a version file or pass the file path as the positional target')
+                typer.echo(
+                    "Please provide --path to a version file or pass the file path as the positional target"
+                )
                 raise typer.Exit(code=1)
             card = Card.model_validate(API.load_version(effective_path))
             # If this looks like a full card, try to pretty print key fields
             if card:
-                rprint(Panel.fit(card.display_card(truncate_fields_limit=100), title=f"[bold green]Card Preview[/bold green]", subtitle=f"[bold cyan]{getattr(card, 'cardId', getattr(card, 'id', 'unknown'))}[/bold cyan]"))
-            
+                rprint(
+                    Panel.fit(
+                        card.display_card(truncate_fields_limit=100),
+                        title=f"[bold green]Card Preview[/bold green]",
+                        subtitle=f"[bold cyan]{getattr(card, 'cardId', getattr(card, 'id', 'unknown'))}[/bold cyan]",
+                    )
+                )
+
             return
 
-        if verb_l == 'restore':
+        if verb_l == "restore":
             if not effective_path:
-                typer.echo('Please provide --path to a version file to restore or pass it as the positional target')
+                typer.echo(
+                    "Please provide --path to a version file to restore or pass it as the positional target"
+                )
                 raise typer.Exit(code=1)
             p = effective_path
             if not p.exists():
-                typer.echo(f'File not found: {p}')
+                typer.echo(f"File not found: {p}")
                 raise typer.Exit(code=1)
-            if not Confirm.ask(f"Are you sure you want to restore version {p.name}? This will POST to the server.", default=False):
-                typer.echo('Cancelled')
+            if not Confirm.ask(
+                f"Are you sure you want to restore version {p.name}? This will POST to the server.",
+                default=False,
+            ):
+                typer.echo("Cancelled")
                 return
             restored = API.restore_version(p, return_card=True)
-            typer.echo(f"Restored card: {getattr(restored, 'cardId', getattr(restored, 'id', 'unknown'))}")
+            typer.echo(
+                f"Restored card: {getattr(restored, 'cardId', getattr(restored, 'id', 'unknown'))}"
+            )
             return
 
-        if verb_l == 'delete':
+        if verb_l == "delete":
             if not effective_path:
-                typer.echo('Please provide --path to a version file to delete or pass it as the positional target')
+                typer.echo(
+                    "Please provide --path to a version file to delete or pass it as the positional target"
+                )
                 raise typer.Exit(code=1)
             p = effective_path
             if not p.exists():
-                typer.echo(f'File not found: {p}')
+                typer.echo(f"File not found: {p}")
                 raise typer.Exit(code=1)
             if not Confirm.ask(f"Delete version file {p}?", default=False):
-                typer.echo('Cancelled')
+                typer.echo("Cancelled")
                 return
             p.unlink()
-            typer.echo(f'Deleted {p}')
+            typer.echo(f"Deleted {p}")
             return
 
-        if verb_l == 'delete-all':
+        if verb_l == "delete-all":
             if not card_id:
-                typer.echo('Please provide a card id to delete all versions for')
+                typer.echo("Please provide a card id to delete all versions for")
                 raise typer.Exit(code=1)
             files = API.list_versions(card_id)
             if not files:
-                typer.echo('No versions to delete')
+                typer.echo("No versions to delete")
                 return
-            if not Confirm.ask(f"Are you sure you want to delete ALL {len(files)} version files for '{card_id}'?", default=False):
-                typer.echo('Cancelled')
+            if not Confirm.ask(
+                f"Are you sure you want to delete ALL {len(files)} version files for '{card_id}'?",
+                default=False,
+            ):
+                typer.echo("Cancelled")
                 return
             for p in files:
                 try:
                     p.unlink()
                 except Exception:
                     pass
-            typer.echo(f'Deleted {len(files)} files for {card_id}')
+            typer.echo(f"Deleted {len(files)} files for {card_id}")
             return
 
-        typer.echo(f'Unknown verb: {verb}')
+        typer.echo(f"Unknown verb: {verb}")
         raise typer.Exit(code=2)
     except Exception as e:
-        typer.echo(f'Error: {e}')
+        typer.echo(f"Error: {e}")
         raise typer.Exit(code=1)
+
 
 @app.command()
 def create_card_from_folder(
     folder: str = typer.Argument(..., help="Path to folder containing media files"),
-    title: str = typer.Option(None, help="Title for the new card, if not provided, folder name is used"),
-    loudnorm: bool = typer.Option(False, help="Apply loudness normalization to uploads"),
+    title: str = typer.Option(
+        None, help="Title for the new card, if not provided, folder name is used"
+    ),
+    loudnorm: bool = typer.Option(
+        False, help="Apply loudness normalization to uploads"
+    ),
     poll_interval: float = typer.Option(2, help="Transcoding poll interval (seconds)"),
     max_attempts: int = typer.Option(120, help="Max transcoding poll attempts"),
-    files_as_tracks: bool = typer.Option(False, help="Treat each file as a separate track"),
+    files_as_tracks: bool = typer.Option(
+        False, help="Treat each file as a separate track"
+    ),
     add_to_card: str = typer.Option(None, help="Add tracks to an existing card"),
-    strip_track_numbers: bool = typer.Option(True, help="Strip leading track numbers from filenames")
+    strip_track_numbers: bool = typer.Option(
+        True, help="Strip leading track numbers from filenames"
+    ),
 ):
     import asyncio
+
     async def async_main():
         API = get_api()
         folder_path = Path(folder)
@@ -452,7 +607,14 @@ def create_card_from_folder(
         if not folder_path.exists() or not folder_path.is_dir():
             typer.echo(f"[bold red]Folder not found: {folder}[/bold red]")
             raise typer.Exit(code=1)
-        media_files = sorted([f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in {'.mp3', '.wav', '.aac', '.m4a', '.ogg'}])
+        media_files = sorted(
+            [
+                f
+                for f in folder_path.iterdir()
+                if f.is_file()
+                and f.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".ogg"}
+            ]
+        )
         if not media_files:
             typer.echo(f"[bold red]No media files found in folder: {folder}[/bold red]")
             raise typer.Exit(code=1)
@@ -478,18 +640,20 @@ def create_card_from_folder(
                 loudnorm=loudnorm,
                 poll_interval=poll_interval,
                 max_attempts=max_attempts,
-                show_progress=True
+                show_progress=True,
             )
-            for idx, (media_file, transcoded_audio) in enumerate(zip(media_files, transcoded_audios), len(tracks) + 1):
+            for idx, (media_file, transcoded_audio) in enumerate(
+                zip(media_files, transcoded_audios), len(tracks) + 1
+            ):
                 track_title = media_file.stem
                 if strip_track_numbers:
-                    track_title = re.sub(r'^\d+\s*-\s*', '', track_title)
+                    track_title = re.sub(r"^\d+\s*-\s*", "", track_title)
                 track = API.get_track_from_transcoded_audio(
                     transcoded_audio,
                     track_details={"title": track_title, "key": f"{idx:02d}"},
                 )
                 tracks.append(track)
-            #chapters.tracks.append(tracks)
+            # chapters.tracks.append(tracks)
             chapters[-1].tracks = tracks
         else:
             if existing_card:
@@ -501,32 +665,39 @@ def create_card_from_folder(
                 loudnorm=loudnorm,
                 poll_interval=poll_interval,
                 max_attempts=max_attempts,
-                show_progress=True
+                show_progress=True,
             )
-            for idx, (media_file, transcoded_audio) in enumerate(zip(media_files, transcoded_audios), len(chapters) + 1):
+            for idx, (media_file, transcoded_audio) in enumerate(
+                zip(media_files, transcoded_audios), len(chapters) + 1
+            ):
                 chapter_title = media_file.stem
                 if strip_track_numbers:
-                    chapter_title = re.sub(r'^\d+\s*-\s*', '', chapter_title)
-                chapters.append(API.get_chapter_from_transcoded_audio(
-                    transcoded_audio,
-                    chapter_details={"title": chapter_title, "key": f"{idx:02d}"},
-                ))
+                    chapter_title = re.sub(r"^\d+\s*-\s*", "", chapter_title)
+                chapters.append(
+                    API.get_chapter_from_transcoded_audio(
+                        transcoded_audio,
+                        chapter_details={"title": chapter_title, "key": f"{idx:02d}"},
+                    )
+                )
         if not chapters:
             typer.echo("[bold red]No chapters created from media files.[/bold red]")
             raise typer.Exit(code=1)
-        
+
         if existing_card:
             result = API.create_or_update_content(existing_card, return_card=True)
         else:
             card_content = CardContent(chapters=chapters)
             card_metadata = CardMetadata()
-            new_card = Card(title=card_title, content=card_content, metadata=card_metadata)
+            new_card = Card(
+                title=card_title, content=card_content, metadata=card_metadata
+            )
             typer.echo(f"Creating card '{card_title}' with {len(chapters)} chapters...")
             result = API.create_or_update_content(new_card, return_card=True)
         typer.echo(f"[bold green]Card created: {result.cardId}[/bold green]")
         print(result.model_dump_json(exclude_none=True))
 
     asyncio.run(async_main())
+
 
 @app.command()
 def get_public_icons(show_in_console: bool = True):
@@ -536,6 +707,7 @@ def get_public_icons(show_in_console: bool = True):
         typer.echo("[bold red]No public icons found.[/bold red]")
         raise typer.Exit(code=1)
 
+
 @app.command()
 def get_user_icons(show_in_console: bool = True):
     API = get_api()
@@ -544,11 +716,9 @@ def get_user_icons(show_in_console: bool = True):
         typer.echo("[bold red]No user icons found.[/bold red]")
         raise typer.Exit(code=1)
 
+
 @app.command()
-def search_icons(
-    query: str,
-    fields: str = "title,publicTags"
-):
+def search_icons(query: str, fields: str = "title,publicTags"):
     API = get_api()
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     results = API.search_cached_icons(query, field_list, show_in_console=True)
@@ -556,21 +726,32 @@ def search_icons(
         typer.echo("[bold red]No matching icons found.[/bold red]")
         raise typer.Exit(code=1)
 
+
 @app.command()
-def search_yotoicons(tag: str, show_in_console: bool = True, refresh_cache: bool = False):
+def search_yotoicons(
+    tag: str, show_in_console: bool = True, refresh_cache: bool = False
+):
     API = get_api()
-    icons = API.search_yotoicons(tag, show_in_console=show_in_console, refresh_cache=refresh_cache)
+    icons = API.search_yotoicons(
+        tag, show_in_console=show_in_console, refresh_cache=refresh_cache
+    )
     if not icons:
         typer.echo(f"[bold red]No icons found for tag '{tag}'.[/bold red]")
         raise typer.Exit(code=1)
 
+
 @app.command()
-def find_best_icons(text: str, include_yotoicons: bool = True, show_in_console: bool = True):
+def find_best_icons(
+    text: str, include_yotoicons: bool = True, show_in_console: bool = True
+):
     API = get_api()
-    icons = API.find_best_icons_for_text(text, include_yotoicons=include_yotoicons, show_in_console=show_in_console)
+    icons = API.find_best_icons_for_text(
+        text, include_yotoicons=include_yotoicons, show_in_console=show_in_console
+    )
     if not icons:
         typer.echo(f"[bold red]No matching icons found for text: {text}[/bold red]")
         raise typer.Exit(code=1)
+
 
 @app.command()
 def upload_cover_image(path: str):
@@ -580,6 +761,7 @@ def upload_cover_image(path: str):
         typer.echo(f"[bold red]Failed to upload cover image: {path}[/bold red]")
         raise typer.Exit(code=1)
     typer.echo(f"[bold green]Cover image uploaded successfully: {result}[/bold green]")
+
 
 @app.command()
 def get_devices():
@@ -599,33 +781,35 @@ def get_devices():
             f"[blue]Group:[/] {getattr(device, 'deviceGroup', '')}\n"
             f"[yellow]Channel:[/] {getattr(device, 'releaseChannel', '')}\n"
         )
-        rprint(Panel.fit(
-            panel_text,
-            title=f"[bold green]Device[/bold green]",
-            subtitle=f"[bold cyan]{getattr(device, 'deviceId', '')}[/bold cyan]"
-        ))
+        rprint(
+            Panel.fit(
+                panel_text,
+                title=f"[bold green]Device[/bold green]",
+                subtitle=f"[bold cyan]{getattr(device, 'deviceId', '')}[/bold cyan]",
+            )
+        )
+
 
 @app.command()
 def get_device_status(device_id: str):
     API = get_api()
     device = API.get_device_status(device_id)
-    rprint(Panel.fit(
-        device.display_device_status()
-    ))
+    rprint(Panel.fit(device.display_device_status()))
+
 
 @app.command()
 def get_device_config(device_id: str):
     API = get_api()
     config = API.get_device_config(device_id)
     print(config)
-    rprint(Panel.fit(
-        config.display_device_config()
-    ))
+    rprint(Panel.fit(config.display_device_config()))
 
 
 @app.command(name="reset-auth")
 def reset_auth(
-    reauth: bool = typer.Option(False, "--reauth", "-r", help="Start authentication immediately after reset")
+    reauth: bool = typer.Option(
+        False, "--reauth", "-r", help="Start authentication immediately after reset"
+    ),
 ):
     """Reset stored authentication tokens (delete local token file) and optionally start authentication."""
     API = get_api()
@@ -640,10 +824,18 @@ def reset_auth(
             typer.echo(f"Authentication failed: {e}")
             raise typer.Exit(code=1)
     else:
-        typer.echo("Authentication reset. Run any command to trigger authentication or run 'yoto.py reset-auth --reauth' to authenticate now.")
+        typer.echo(
+            "Authentication reset. Run any command to trigger authentication or run 'yoto.py reset-auth --reauth' to authenticate now."
+        )
+
 
 @app.command()
-def fix_card(card_id: str, ensure_chapter_titles: bool = True, ensure_sequential_overlay_labels: bool = True, ensure_sequential_track_keys: bool = True) -> Card:
+def fix_card(
+    card_id: str,
+    ensure_chapter_titles: bool = True,
+    ensure_sequential_overlay_labels: bool = True,
+    ensure_sequential_track_keys: bool = True,
+) -> Card:
     """
     Fix common issues in a Yoto card.
     """
@@ -659,17 +851,28 @@ def fix_card(card_id: str, ensure_chapter_titles: bool = True, ensure_sequential
                 chapter.title = f"Chapter {idx}"
 
     if ensure_sequential_overlay_labels:
-        card = API.rewrite_track_fields(card, "overlayLabel", sequential=True, reset_every_chapter=True)
+        card = API.rewrite_track_fields(
+            card, "overlayLabel", sequential=True, reset_every_chapter=True
+        )
 
     if ensure_sequential_track_keys:
         card = API.rewrite_track_fields(card, "key", sequential=True)
 
     # Update the card on the server
     card = API.create_or_update_content(card, return_card=True)
-    rprint(Panel.fit(card.display_card(), title="[bold green]Fixed Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+    rprint(
+        Panel.fit(
+            card.display_card(),
+            title="[bold green]Fixed Card Details[/bold green]",
+            subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
+        )
+    )
+
 
 @app.command()
-def merge_chapters(card_id: str, reset_overlay_labels: bool = True, sequential_labels: bool = True) -> Card:
+def merge_chapters(
+    card_id: str, reset_overlay_labels: bool = True, sequential_labels: bool = True
+) -> Card:
     """
     Merges chapters in a card into a single chapter.
     """
@@ -677,7 +880,14 @@ def merge_chapters(card_id: str, reset_overlay_labels: bool = True, sequential_l
     card = API.get_card(card_id)
     card = API.merge_chapters(card, reset_overlay_labels=reset_overlay_labels)
     card = API.create_or_update_content(card, return_card=True)
-    rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+    rprint(
+        Panel.fit(
+            card.display_card(render_icons=True),
+            title="[bold green]Converted Card Details[/bold green]",
+            subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
+        )
+    )
+
 
 @app.command()
 def expand_all_tracks(card_id: str):
@@ -688,7 +898,14 @@ def expand_all_tracks(card_id: str):
     card = API.get_card(card_id)
     card = API.expand_all_tracks_to_chapters(card)
     card = API.create_or_update_content(card, return_card=True)
-    rprint(Panel.fit(card.display_card(render_icons=True), title="[bold green]Converted Card Details[/bold green]", subtitle=f"[bold cyan]{card.cardId}[/bold cyan]"))
+    rprint(
+        Panel.fit(
+            card.display_card(render_icons=True),
+            title="[bold green]Converted Card Details[/bold green]",
+            subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
+        )
+    )
+
 
 @app.command()
 def gui():
@@ -699,15 +916,21 @@ def gui():
     # fall back to launching the script with the current Python interpreter.
     try:
         import importlib
-        gui_mod = importlib.import_module('gui')
+
+        gui_mod = importlib.import_module("gui")
         try:
             import flet as ft
+
             # Use the same assets/upload dirs as gui.py
-            ft.app(target=gui_mod.main, assets_dir="assets", upload_dir="assets/uploads")
+            ft.app(
+                target=gui_mod.main, assets_dir="assets", upload_dir="assets/uploads"
+            )
             return
         except Exception as e:
             # Flet import or app start failed; fall back to subprocess
-            print(f"Failed to start GUI via flet API: {e}; falling back to running gui.py")
+            print(
+                f"Failed to start GUI via flet API: {e}; falling back to running gui.py"
+            )
     except Exception:
         # Importing gui failed; fall back to running the script directly
         pass
@@ -716,10 +939,12 @@ def gui():
     try:
         import subprocess
         import sys
-        script_path = Path(__file__).parent / 'gui.py'
+
+        script_path = Path(__file__).parent / "gui.py"
         subprocess.run([sys.executable, str(script_path)])
     except Exception as e:
         print(f"Failed to launch GUI subprocess: {e}")
+
 
 if __name__ == "__main__":
     app()
