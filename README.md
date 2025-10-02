@@ -41,7 +41,7 @@ Features include content organization, device management, and easy integration w
 
    1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
    
-   2. Run with uvx _(without installing if you just want to try it out)_[^1]
+   2. Run with uvx _(without installing if you just want to try it out)_<sup>[1]</sup>
 
       Command line
       ```bash
@@ -53,7 +53,7 @@ Features include content organization, device management, and easy integration w
       uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]" yoto gui
       ```
 
-   3. If you like it, install with uv tool[^2]
+   3. If you like it, install with uv tool<sup>[2]</sup>
       ```bash
       uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
       ```
@@ -72,8 +72,9 @@ Features include content organization, device management, and easy integration w
       yoto gui
       ```
 
-[^1] uvx allows you to run a python tool/package without installation (by creating a temporary isolated environment).
-[^2] uv tool also supports upgrading the tool once installed, see [their docs](https://docs.astral.sh/uv/guides/tools/#installing-tools) for more information.
+[1] uvx allows you to run a python tool/package without installation (by creating a temporary isolated environment).
+
+[2] uv tool also supports upgrading the tool once installed, see [their docs](https://docs.astral.sh/uv/guides/tools/#installing-tools) for more information.
       
 
    ### From source
