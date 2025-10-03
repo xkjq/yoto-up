@@ -493,6 +493,27 @@ class EditCardApp(App):
                     if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
                         chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['id']}"
             self.refresh()
+            # If selected_icon refers to a cached file path, display it directly and set model to file://
+            if isinstance(selected_icon, dict) and 'cache_path' in selected_icon:
+                try:
+                    cp = Path(selected_icon['cache_path'])
+                    if pixelart_widget:
+                        try:
+                            pixel_art = render_icon(cp)
+                            pixelart_widget.update(pixel_art)
+                        except Exception:
+                            logging.exception("Failed to render cached icon for chapter pixelart widget")
+                        try:
+                            pixelart_widget.cache_path = cp
+                        except Exception:
+                            pass
+                    if hasattr(chapter, 'tracks') and chapter.tracks:
+                        if hasattr(chapter.tracks[0], 'display') and chapter.tracks[0].display:
+                            chapter.tracks[0].display.icon16x16 = f"file://{cp}"
+                except Exception:
+                    logging.exception("Failed to apply cached icon for chapter")
+                self.refresh()
+                return
         await self._show_icon_modal(search_text, on_selected_for_chapter, local_only=local_only)
 
     async def _show_icon_modal(self, query_string, on_selected, local_only: bool = False):
@@ -626,7 +647,7 @@ class EditCardApp(App):
 
         await self.push_screen(IconSelectModal(icons, query_string), handle_icon_selected)
 
-    async def action_search_icon_for_track(self, chapter_idx, track_idx):
+    async def action_search_icon_for_track(self, chapter_idx, track_idx, local_only: bool = False):
         """
         Search icons for a specific track and apply selection to the TrackIconWidget.
         """
@@ -679,5 +700,27 @@ class EditCardApp(App):
                     track.display.icon16x16 = f"yoto:#{selected_icon['id']}"
             self.refresh()
 
+            # If selected_icon refers to a cached file path, display it directly and set model to file://
+            if isinstance(selected_icon, dict) and 'cache_path' in selected_icon:
+                cp = None
+                try:
+                    cp = Path(selected_icon['cache_path'])
+                    if pixelart_widget:
+                        try:
+                            pixel_art = render_icon(cp)
+                            pixelart_widget.update(pixel_art)
+                        except Exception:
+                            logging.exception("Failed to render cached icon for track pixelart widget")
+                        try:
+                            pixelart_widget.cache_path = cp
+                        except Exception:
+                            pass
+                    if hasattr(track, 'display') and track.display and cp is not None:
+                        track.display.icon16x16 = f"file://{cp}"
+                    self.refresh()
+                    return
+                except Exception:
+                    logging.exception("Failed to apply cached icon for track")
+
         # Reuse the same modal flow; the helper will call our on_selected_for_track
-        await self._show_icon_modal(search_text, on_selected_for_track)
+        await self._show_icon_modal(search_text, on_selected_for_track, local_only=local_only)
