@@ -9,11 +9,11 @@ from typing import Any, Dict
 
 
 import flet as ft
-from yoto_app.icon_replace_dialog import IconReplaceDialog
-from yoto_app.edit_card_dialog import show_edit_card_dialog
-from yoto_app.replace_icons import show_replace_icons_dialog
+from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
+from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
+from yoto_up.yoto_app.replace_icons import show_replace_icons_dialog
 from types import SimpleNamespace
-from yoto_app.card_details import make_show_card_details
+from yoto_up.yoto_app.card_details import make_show_card_details
 
 try:
     from pynput import keyboard
@@ -23,12 +23,12 @@ except Exception: # Broad because pyodide etc may raise weird errors
 
 import httpx
 from yoto_up.models import Card, CardMetadata, ChapterDisplay, TrackDisplay
-from yoto_app.auth import delete_tokens_file
-from yoto_app.config import CLIENT_ID
+from yoto_up.yoto_app.auth import delete_tokens_file
+from yoto_up.yoto_app.config import CLIENT_ID
 from loguru import logger
 import time
-from yoto_api import YotoAPI
-from yoto_up.paths import save_playlists
+from yoto_up.yoto_api import YotoAPI
+from yoto_up.paths import save_playlists, VERSIONS_DIR
 
 
 
@@ -108,41 +108,116 @@ def build_playlists_panel(
         # deleted) so this dialog functions as "Restore Deleted".
         deleted_entries = []
         try:
+            # Candidate roots: prefer API-configured VERSIONS_DIR, then the
+            # central paths.VERSIONS_DIR fallback. This covers cases where
+            # versions were written by a different API instance or earlier
+            # during execution.
+            candidate_roots = []
             if versions_root:
-                root = Path(versions_root)
-                if root.exists():
-                    for card_dir in sorted(root.iterdir()):
-                        if not card_dir.is_dir():
-                            continue
-                        # pick the newest json file in this card_dir
-                        json_files = sorted([p for p in card_dir.iterdir() if p.suffix == ".json"], reverse=True)
-                        if not json_files:
-                            continue
-                        latest = json_files[0]
-                        # attempt to read title and id from payload
-                        title = None
-                        card_id = card_dir.name
-                        try:
-                            with latest.open('r', encoding='utf-8') as fh:
-                                payload = json.load(fh)
-                                title = payload.get('title') if isinstance(payload, dict) else None
-                                card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or card_dir.name
-                        except Exception:
+                try:
+                    candidate_roots.append(Path(versions_root))
+                except Exception:
+                    pass
+            try:
+                candidate_roots.append(Path(VERSIONS_DIR))
+            except Exception:
+                pass
+
+            seen_roots = set()
+            for root in candidate_roots:
+                try:
+                    r = Path(root)
+                except Exception:
+                    continue
+                try:
+                    resolved = str(r.resolve())
+                except Exception:
+                    resolved = str(r)
+                if resolved in seen_roots:
+                    continue
+                seen_roots.add(resolved)
+                if not r.exists():
+                    continue
+
+                # Support both the per-card subdirectory layout (/<root>/<card_id>/*.json)
+                # and a flat layout where json files may live directly under the root.
+                for child in sorted(r.iterdir()):
+                    try:
+                        if child.is_dir():
+                            card_dir = child
+                            json_files = sorted([p for p in card_dir.iterdir() if p.suffix == ".json"], reverse=True)
+                            if not json_files:
+                                continue
+                            latest = json_files[0]
                             title = None
-                        # Check whether the card currently exists on the server; if it does not,
-                        # treat it as deleted and offer restore.
-                        try:
+                            card_id = card_dir.name
                             try:
-                                api.get_card(card_id)
-                                exists = True
+                                with latest.open('r', encoding='utf-8') as fh:
+                                    payload = json.load(fh)
+                                    title = payload.get('title') if isinstance(payload, dict) else None
+                                    card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or card_dir.name
+                            except Exception:
+                                title = None
+                            # Check whether the card currently exists on the server; if it does not,
+                            # treat it as deleted and offer restore.
+                            try:
+                                try:
+                                    api.get_card(card_id)
+                                    exists = True
+                                except Exception:
+                                    exists = False
                             except Exception:
                                 exists = False
-                        except Exception:
-                            exists = False
-                        if not exists:
-                            deleted_entries.append((card_id, title or '', latest))
+                            if not exists:
+                                deleted_entries.append((card_id, title or '', latest))
+                        elif child.is_file() and child.suffix == ".json":
+                            # Flat file directly under versions root
+                            latest = child
+                            title = None
+                            card_id = latest.stem
+                            try:
+                                with latest.open('r', encoding='utf-8') as fh:
+                                    payload = json.load(fh)
+                                    title = payload.get('title') if isinstance(payload, dict) else None
+                                    card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or latest.stem
+                            except Exception:
+                                title = None
+                            try:
+                                try:
+                                    api.get_card(card_id)
+                                    exists = True
+                                except Exception:
+                                    exists = False
+                            except Exception:
+                                exists = False
+                            if not exists:
+                                deleted_entries.append((card_id, title or '', latest))
+                    except Exception:
+                        # Ignore child-specific errors; continue scanning other entries
+                        pass
         except Exception:
             deleted_entries = []
+
+        # Dedupe by card id, keeping the newest version file (by mtime)
+        try:
+            dedup = {}
+            for cid, title, path in deleted_entries:
+                try:
+                    mtime = path.stat().st_mtime if path and path.exists() else 0
+                except Exception:
+                    mtime = 0
+                if cid not in dedup:
+                    dedup[cid] = (title, path, mtime)
+                else:
+                    try:
+                        _, _, prev_mtime = dedup[cid]
+                    except Exception:
+                        prev_mtime = 0
+                    if mtime > (prev_mtime or 0):
+                        dedup[cid] = (title, path, mtime)
+            deleted_entries = [(cid, t, p) for cid, (t, p, _) in dedup.items()]
+        except Exception:
+            pass
 
         if not deleted_entries:
             try:

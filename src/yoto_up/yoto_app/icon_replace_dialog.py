@@ -7,9 +7,9 @@ import os
 import tempfile
 import base64
 
-from models import TrackDisplay, ChapterDisplay
-from yoto_app.icon_import_helpers import get_base64_from_path
-from yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_up.models import TrackDisplay, ChapterDisplay
+from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
+from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 
 class IconReplaceDialog:
     def __init__(self, api, card, page, show_snack, show_card_details, kind='chapter', ch_i=None, tr_i=None):
