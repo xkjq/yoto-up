@@ -16,6 +16,7 @@ from typing import Optional, List
 import shutil
 import os
 import tempfile
+import math
 
 app = typer.Typer()
 console = Console()
@@ -25,6 +26,81 @@ api_options = {}
 
 def get_api():
     return YotoAPI(**api_options)
+
+
+def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0):
+    """Perform a pre-adjustment analysis for the given audio files.
+
+    Returns a dict mapping filepath -> {lufs, max_amp, avg_amp, recommended_gain_db}.
+    If LUFS is available for a file, recommendation is target_lufs - file_lufs.
+    Otherwise falls back to peak-based estimation using max_amp.
+    """
+    try:
+        from yoto_up.waveform_utils import batch_audio_stats
+    except Exception:
+        raise RuntimeError("waveform_utils unavailable; cannot analyze audio")
+
+    waveform_cache = {}
+    stats = batch_audio_stats(paths, waveform_cache)
+    plan = {}
+    for audio, max_amp, avg_amp, lufs, ext, filepath in stats:
+        rec_gain = None
+        if lufs is not None:
+            # Positive gain means increase loudness to reach target LUFS
+            rec_gain = float(target_lufs) - float(lufs)
+        else:
+            # Fallback: target peak amplitude (linear) e.g. 0.9
+            try:
+                peak = float(max_amp) if max_amp is not None else None
+            except Exception:
+                peak = None
+            if peak and peak > 0:
+                target_peak = 0.9
+                # gain_db = 20 * log10(target / current)
+                rec_gain = 20.0 * math.log10(target_peak / float(peak))
+            else:
+                rec_gain = 0.0
+        plan[filepath] = {
+            'lufs': (float(lufs) if lufs is not None else None),
+            'max_amp': (float(max_amp) if max_amp is not None else None),
+            'avg_amp': (float(avg_amp) if avg_amp is not None else None),
+            'recommended_gain_db': float(rec_gain),
+            'ext': ext,
+        }
+    return plan
+
+
+def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False):
+    """Apply gain adjustments described by `plan` to files, writing to out_dir.
+
+    Returns list of written paths (or planned paths in dry-run).
+    """
+    try:
+        from pydub import AudioSegment
+    except Exception:
+        raise RuntimeError("pydub is required to apply gain adjustments")
+
+    os.makedirs(out_dir, exist_ok=True)
+    written = []
+    for filepath, info in plan.items():
+        try:
+            gain_db = float(info.get('recommended_gain_db', 0.0))
+            base, ext = os.path.splitext(os.path.basename(filepath))
+            tag = f"_norm_{int(gain_db*100)}"
+            dest_name = f"{base}{tag}{ext}"
+            dest_path = os.path.join(out_dir, dest_name)
+            if dry_run:
+                written.append(dest_path)
+                continue
+            seg = AudioSegment.from_file(filepath)
+            seg = seg.apply_gain(gain_db)
+            fmt = ext.lstrip('.') or 'mp3'
+            seg.export(dest_path, format=fmt)
+            written.append(dest_path)
+        except Exception:
+            # skip failures but continue
+            continue
+    return written
 
 
 @app.callback()
@@ -863,9 +939,154 @@ def intro_outro(
                 console.print(Panel('\n'.join(trimmed_paths), title="Trimmed files"))
                 if created_temp:
                     console.print(f"Temporary trimmed files are in: [bold]{out_dir}[/bold]")
-    else:
-        console.print(f"[blue]Analysis suggests remove the first {seconds_matched} seconds from the {side}.[/blue]")
-        console.print(f"[blue]Rerun <command> with --trim option to apply.[/blue]")
+
+    # (Gain adjustment is handled by the separate `normalize` command.)
+
+    console.print(f"[blue]Analysis suggests remove the first {seconds_matched} seconds from the {side}.[/blue]")
+    console.print("Rerun <command> with --trim option to apply.")
+
+
+@app.command(name="normalize")
+def normalize(
+    files: List[str] = typer.Argument(..., help="Audio files to analyze or adjust"),
+    auto: bool = typer.Option(False, "--auto", help="Analyze files and show recommended per-file gain to reach target LUFS"),
+    apply: bool = typer.Option(False, "--apply", help="Apply recommended gains (non-destructive)"),
+    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="Apply a fixed gain (dB) to output copies; non-destructive"),
+    dest: Optional[str] = typer.Option(None, "--dest", help="Destination directory for adjusted files (defaults to a temp dir)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned adjusted files but don't write them"),
+    target_lufs: float = typer.Option(-16.0, "--target-lufs", help="Target LUFS for auto normalization"),
+    per_file: bool = typer.Option(False, "--per-file", help="Apply per-file normalization instead of a single global gain (default: preserve per-track differences)"),
+):
+    """Normalize or apply gain adjustments to audio files (non-destructive).
+
+    Examples:
+      python -m yoto_up.yoto normalize *.mp3 --auto
+      python -m yoto_up.yoto normalize *.mp3 --auto --apply --dest /tmp/adjusted
+      python -m yoto_up.yoto normalize *.mp3 --gain-db -3.0
+    """
+    # Validate input
+    if not files:
+        typer.echo("No files provided")
+        raise typer.Exit(code=2)
+
+    # Local rich imports used for formatted output
+    from rich.panel import Panel
+    from rich.table import Table
+
+    # If a fixed gain was requested, apply it to copies
+    if gain_db is not None:
+        # prepare out dir
+        if dest:
+            out_dir = os.path.abspath(dest)
+            os.makedirs(out_dir, exist_ok=True)
+            created_temp = False
+        else:
+            out_dir = tempfile.mkdtemp(prefix="yoto_gain_")
+            created_temp = True
+
+        console.print(f"Applying fixed gain {gain_db:+.2f} dB to {len(files)} file(s) -> {out_dir}")
+        try:
+            from pydub import AudioSegment
+        except Exception:
+            console.print("[red]pydub is required for gain adjustment but is not available.[/red]")
+            raise typer.Exit(code=1)
+
+        written = []
+        for src in files:
+            try:
+                src_path = os.path.abspath(src)
+                base, ext = os.path.splitext(os.path.basename(src_path))
+                tag = f"_adj_{int(gain_db*100)}"
+                dest_name = f"{base}{tag}{ext}"
+                dest_path = os.path.join(out_dir, dest_name)
+                if dry_run:
+                    console.print(f"[cyan]Dry-run:[/] would write: {dest_path}")
+                    written.append(dest_path)
+                    continue
+                seg = AudioSegment.from_file(src_path)
+                seg = seg.apply_gain(float(gain_db))
+                fmt = ext.lstrip('.') or 'mp3'
+                seg.export(dest_path, format=fmt)
+                written.append(dest_path)
+                console.print(f"[green]Wrote:[/] {dest_path}")
+            except Exception as e:
+                console.print(f"[red]Failed to process {src}: {e}[/red]")
+
+        if written:
+            console.print(Panel('\n'.join(written), title="Gain-adjusted files"))
+            if created_temp:
+                console.print(f"Temporary files are in: [bold]{out_dir}[/bold]")
+        return
+
+    # If auto analysis or apply requested
+    if auto or apply:
+        try:
+            plan = analyze_gain_requirements(list(files), target_lufs=target_lufs)
+        except Exception as e:
+            console.print(f"[red]Auto-gain analysis failed: {e}[/red]")
+            raise typer.Exit(code=1)
+
+        # Compute applied gain policy: by default preserve per-track differences by
+        # applying a single global gain (mean of recommendations). If --per-file is
+        # passed, apply each file's recommended gain individually.
+        recs = [float(info.get('recommended_gain_db', 0.0)) for info in plan.values()]
+        global_gain = float(sum(recs) / len(recs)) if recs else 0.0
+
+        # Show recommendations with an "Applied" column so user sees the difference
+        from rich.table import Table
+        from rich.panel import Panel
+        t = Table(title=f"Auto-gain recommendations (target {target_lufs} LUFS)")
+        t.add_column("File", style="cyan", overflow="fold")
+        t.add_column("LUFS", style="magenta", justify="right")
+        t.add_column("Peak", style="yellow", justify="right")
+        t.add_column("Recommended dB", style="green", justify="right")
+        t.add_column("Applied dB", style="bright_green", justify="right")
+        for p, info in plan.items():
+            lu = info.get('lufs')
+            pk = info.get('max_amp')
+            rg = float(info.get('recommended_gain_db', 0.0))
+            applied = rg if per_file else global_gain
+            t.add_row(
+                p,
+                f"{lu:.2f}" if lu is not None else "(n/a)",
+                f"{pk:.3f}" if pk is not None else "(n/a)",
+                f"{rg:+.2f} dB",
+                f"{applied:+.2f} dB",
+            )
+        console.print(t)
+
+        if apply:
+            if dest:
+                apply_out = os.path.abspath(dest)
+                os.makedirs(apply_out, exist_ok=True)
+                created_temp2 = False
+            else:
+                apply_out = tempfile.mkdtemp(prefix="yoto_auto_gain_")
+                created_temp2 = True
+            try:
+                # Build the plan to apply: either per-file recommendations or a
+                # uniform global gain that preserves per-track differences.
+                if per_file:
+                    plan_to_apply = plan
+                else:
+                    # overwrite recommended gains with global_gain for each file
+                    plan_to_apply = {}
+                    for p, info in plan.items():
+                        plan_to_apply[p] = dict(info)
+                        plan_to_apply[p]['recommended_gain_db'] = global_gain
+
+                written = apply_gain_plan(plan_to_apply, apply_out, dry_run=dry_run)
+            except Exception as e:
+                console.print(f"[red]Failed to apply gain plan: {e}[/red]")
+                raise typer.Exit(code=1)
+            if written:
+                console.print(Panel('\n'.join(written), title="Applied gain files"))
+                if created_temp2:
+                    console.print(f"Temporary auto-gain files are in: [bold]{apply_out}[/bold]")
+        return
+
+    # If we reach here, no operation requested
+    console.print("No operation specified. Use --gain-db for a fixed gain or --auto/--apply for normalization.")
 
 
 @app.command()
