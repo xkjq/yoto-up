@@ -4,7 +4,8 @@ from types import SimpleNamespace
 from copy import deepcopy
 from loguru import logger
 
-from yoto_api import YotoAPI
+from yoto_up.yoto_api import YotoAPI
+from yoto_up.models import Card
 
 from .icon_import_helpers import get_base64_from_path
 
@@ -365,28 +366,25 @@ def show_edit_card_dialog(
 
     def do_save(_ev=None):
         new_title = title_field.value
-        try:
-            if "metadata" not in c or not isinstance(
-                c.get("metadata"), dict
-            ):
-                c["metadata"] = {}
-            c["metadata"]["category"] = category_dropdown.value or None
-            desc = description_field.value or ""
-            c["metadata"]["description"] = desc if desc else None
-            c["metadata"]["note"] = note_field.value or None
+        if "metadata" not in c or not isinstance(
+            c.get("metadata"), dict
+        ):
+            c["metadata"] = {}
+        c["metadata"]["category"] = category_dropdown.value or None
+        desc = description_field.value or ""
+        c["metadata"]["description"] = desc if desc else None
+        c["metadata"]["note"] = note_field.value or None
 
-            def split_list(s):
-                if not s:
-                    return None
-                parts = [p.strip() for p in s.split(",") if p.strip()]
-                return parts if parts else None
+        def split_list(s):
+            if not s:
+                return None
+            parts = [p.strip() for p in s.split(",") if p.strip()]
+            return parts if parts else None
 
-            c["metadata"]["genre"] = split_list(genre_field.value)
-            c["metadata"]["languages"] = split_list(languages_field.value)
-            c["metadata"]["tags"] = split_list(tags_field.value)
-            c["metadata"]["author"] = author_field.value or None
-        except Exception:
-            pass
+        c["metadata"]["genre"] = split_list(genre_field.value)
+        c["metadata"]["languages"] = split_list(languages_field.value)
+        c["metadata"]["tags"] = split_list(tags_field.value)
+        c["metadata"]["author"] = author_field.value or None
 
         # Rebuild chapters_local from flat_items before saving
         state = show_edit_card_dialog._state
@@ -414,7 +412,6 @@ def show_edit_card_dialog(
         chapters_local.clear()
         chapters_local.extend(new_chapters)
 
-        from models import Card
         card_model = Card.model_validate(c)
         if new_title is not None:
             card_model.title = new_title
@@ -439,6 +436,7 @@ def show_edit_card_dialog(
                     status_ctrl.value = "Card updated"
                     fetch_playlists_sync(None)
                 except Exception as ex:
+                    logger.debug(f"Update card failed: {ex}")
                     msg = f"Update failed: {ex}"
                     status_ctrl.value = msg
                 finally:
@@ -447,6 +445,7 @@ def show_edit_card_dialog(
 
             threading.Thread(target=save_thread, daemon=True).start()
         except Exception as ex:
+            logger.debug(f"Failed to prepare update: {ex}")
             msg = f"Failed to prepare update: {ex}"
             status_ctrl.value = msg
             page.update()
