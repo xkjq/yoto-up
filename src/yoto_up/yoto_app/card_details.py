@@ -395,11 +395,18 @@ def make_show_card_details(
                                     url_or_field.startswith("http")
                                     or url_or_field.startswith("//")
                                 ):
-                                    controls.append(
-                                        ft.Image(
-                                            src=url_or_field, width=240, height=240
-                                        )
-                                    )
+                                    try:
+                                        cache_fn = getattr(page, 'get_cached_cover', None)
+                                        if callable(cache_fn):
+                                            p = cache_fn(url_or_field)
+                                            if p:
+                                                controls.append(ft.Image(src=str(p), width=240, height=240))
+                                            else:
+                                                controls.append(ft.Image(src=url_or_field, width=240, height=240))
+                                        else:
+                                            controls.append(ft.Image(src=url_or_field, width=240, height=240))
+                                    except Exception:
+                                        controls.append(ft.Image(src=url_or_field, width=240, height=240))
                                     break
                             except Exception:
                                 continue
@@ -1463,12 +1470,23 @@ Merging will result in:
                         if not url_or_field:
                             continue
                         # remote URL
-                        try:
-                            if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
-                                cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                break
-                        except Exception:
-                            pass
+                            try:
+                                if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
+                                    try:
+                                        cache_fn = getattr(page, 'get_cached_cover', None)
+                                        if callable(cache_fn):
+                                            p = cache_fn(url_or_field)
+                                            if p:
+                                                cover_img = ft.Image(src=str(p), width=160, height=160)
+                                            else:
+                                                cover_img = ft.Image(src=url_or_field, width=160, height=160)
+                                        else:
+                                            cover_img = ft.Image(src=url_or_field, width=160, height=160)
+                                    except Exception:
+                                        cover_img = ft.Image(src=url_or_field, width=160, height=160)
+                                    break
+                            except Exception:
+                                pass
                         ## try cached icon path
                         #try:
                         #    api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)

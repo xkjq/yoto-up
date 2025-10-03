@@ -57,6 +57,8 @@ from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.playlists import build_playlists_panel
 from loguru import logger
 from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
+import hashlib
 
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
@@ -2070,6 +2072,83 @@ def main(page):
 
     # Expose setter on page so other modules (icon_browser) can toggle the badge
     page.set_icon_refreshing = set_icon_refreshing
+
+
+    def get_cached_cover(url_or_field: str) -> str | None:
+        """
+        Given a remote cover URL (http/https) or a local path, ensure it's cached
+        under OFFICIAL_ICON_CACHE_DIR / 'covers' and return a path suitable for
+        use as an ft.Image.src (a local file path or the original URL if caching
+        failed).
+        """
+        try:
+            if not url_or_field:
+                return None
+            s = str(url_or_field)
+            # If it's a local file path, return as-is
+            if s.startswith("file://"):
+                return s
+            if not s.startswith("http://") and not s.startswith("https://"):
+                # assume local path
+                p = Path(s)
+                if p.exists():
+                    return str(p)
+                return None
+
+            # Remote URL: cache under OFFICIAL_ICON_CACHE_DIR/covers
+            try:
+                cache_dir = Path(OFFICIAL_ICON_CACHE_DIR) / "covers"
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                url_hash = hashlib.sha256(s.encode()).hexdigest()
+                ext = Path(s).suffix or ".png"
+                cache_path = cache_dir / f"{url_hash}{ext}"
+                if cache_path.exists():
+                    return str(cache_path)
+                # Download into a temporary file then move
+                import tempfile
+                import shutil
+                tf = tempfile.NamedTemporaryFile(prefix="yoto_cover_", suffix=ext, delete=False)
+                try:
+                    # Use Python's urllib to avoid adding httpx dependency at import
+                    try:
+                        import urllib.request
+                        urllib.request.urlretrieve(s, tf.name)
+                    except Exception:
+                        # fallback to requests via httpx if available
+                        try:
+                            import httpx
+                            resp = httpx.get(s)
+                            resp.raise_for_status()
+                            tf.close()
+                            with open(tf.name, 'wb') as fh:
+                                fh.write(resp.content)
+                        except Exception:
+                            tf.close()
+                            return s
+                    tf.close()
+                    try:
+                        shutil.move(tf.name, cache_path)
+                    except Exception:
+                        try:
+                            shutil.copy(tf.name, cache_path)
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        if Path(tf.name).exists():
+                            Path(tf.name).unlink()
+                    except Exception:
+                        pass
+                if cache_path.exists():
+                    return str(cache_path)
+                return s
+            except Exception:
+                return s
+        except Exception:
+            return None
+
+    # expose on page for other modules
+    page.get_cached_cover = get_cached_cover
 
     # Create tabs and keep a reference so we can enable/disable them
     # Build icon browser panel and add as a tab

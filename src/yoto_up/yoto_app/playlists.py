@@ -607,9 +607,18 @@ def build_playlists_panel(
                 _extract_cover_source(card_obj, api_instance=api) if api else None
             )
             if cover_src:
-                if str(cover_src).startswith("http") or str(cover_src).startswith("//"):
-                    img_ctrl = ft.Image(src=cover_src, width=64, height=64)
-                else:
+                try:
+                    # Prefer cached local path from page helper if available
+                    cache_fn = getattr(page, 'get_cached_cover', None)
+                    if callable(cache_fn) and str(cover_src).startswith("http"):
+                        p = cache_fn(cover_src)
+                        if p:
+                            img_ctrl = ft.Image(src=str(p), width=64, height=64)
+                        else:
+                            img_ctrl = ft.Image(src=cover_src, width=64, height=64)
+                    else:
+                        img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
+                except Exception:
                     img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
             else:
                 if not api:
