@@ -61,7 +61,17 @@
 }
 
 .small-btn {
-    width: 10;
+    /* Allow buttons to size to their label, but ensure a reasonable minimum width */
+    width: auto;
+    min-width: 12;
+    padding-left: 1;
+    padding-right: 1;
+}
+
+/* Ensure small buttons have a little margin so adjacent elements don't obscure them */
+.small-btn {
+    margin-left: 1;
+    margin-right: 1;
 }
 
 #icon_search_input {
@@ -77,4 +87,9 @@
 .centered-header {
     text-align: center;
     color: cyan;
+}
+
+.button-row {
+    padding: 0;
+    height: 3;
 }

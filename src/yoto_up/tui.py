@@ -162,8 +162,11 @@ class EditCardContent(Static):
                 )
                 # Use ChapterIconWidget for pixel art rendering
                 yield ChapterIconWidget(self.api, chapter, icons_metadata, chapter_idx, id=f"icon_pixelart_{chapter_idx}")
-                # Add icon search button
-                yield Button("Search Icon", id=f"search_icon_{safe_chapter_id}", classes="small-btn")
+                # Add icon search buttons: full search and local-only search
+                yield Horizontal(
+                    Button("Search Icon", id=f"search_icon_{safe_chapter_id}", classes="small-btn"),
+                    Button("Search Local", id=f"search_icon_local_{safe_chapter_id}", classes="small-btn"), classes="button-row"
+                )
                 # Editable title
                 yield Static("Title:", id=f"label_{safe_chapter_id}_title")
                 yield Input(value=str(getattr(chapter, "title", "")), placeholder="title", id=f"edit_{safe_chapter_id}_title")
@@ -176,7 +179,11 @@ class EditCardContent(Static):
                         safe_track_id = sanitize_id(track_id)
                         yield Static(f"  Track {track_idx+1}", id=f"static_{safe_track_id}_header")
                         yield TrackIconWidget(self.api, track, icons_metadata, track_idx, id=f"icon_pixelart_{safe_track_id}")
-                        yield Button("Search Icon", id=f"search_icon_{safe_track_id}", classes="small-btn")
+                        yield Horizontal(
+                            Button("Search Icon", id=f"search_icon_{safe_track_id}", classes="small-btn"),
+                            Button("Search Local", id=f"search_icon_local_{safe_track_id}", classes="small-btn"),
+                            classes="button-row"
+                        )
                         yield Static("Title:", id=f"label_{safe_track_id}_title")
                         yield Input(value=str(getattr(track, "title", "")), placeholder="title", id=f"edit_{safe_track_id}_title")
                         yield Static("Overlay Label:", id=f"label_{safe_track_id}_overlayLabel")
@@ -260,11 +267,19 @@ class EditCardApp(App):
         # Handle per-chapter icon search button
         print(f"BUTTON PRESSED: {event.button.id}")
         if event.button.id and event.button.id.startswith("search_icon_"):
+            # chapter full search
             m = re.match(r"search_icon_chapter_(\d+)_", event.button.id)
             if m:
                 chapter_idx = int(m.group(1))
                 print(f"SEARCH CHAPTER {chapter_idx}")
-                await self.action_search_icon(chapter_idx)
+                await self.action_search_icon(chapter_idx, local_only=False)
+                return
+            # chapter local-only search
+            m_local = re.match(r"search_icon_local_chapter_(\d+)_", event.button.id)
+            if m_local:
+                chapter_idx = int(m_local.group(1))
+                print(f"SEARCH CHAPTER LOCAL {chapter_idx}")
+                await self.action_search_icon(chapter_idx, local_only=True)
                 return
             # Attempt to match track search button ids of the form
             # search_icon_track_<chapter>_<track>_
@@ -273,7 +288,15 @@ class EditCardApp(App):
                 chapter_idx = int(m2.group(1))
                 track_idx = int(m2.group(2))
                 print(f"SEARCH TRACK chapter={chapter_idx} track={track_idx}")
-                await self.action_search_icon_for_track(chapter_idx, track_idx)
+                await self.action_search_icon_for_track(chapter_idx, track_idx, local_only=False)
+                return
+            # track local-only search
+            m2_local = re.match(r"search_icon_local_track_(\d+)_(\d+)_", event.button.id) or re.match(r"search_icon_local_track_(\d+)__(\d+)_", event.button.id)
+            if m2_local:
+                chapter_idx = int(m2_local.group(1))
+                track_idx = int(m2_local.group(2))
+                print(f"SEARCH TRACK LOCAL chapter={chapter_idx} track={track_idx}")
+                await self.action_search_icon_for_track(chapter_idx, track_idx, local_only=True)
                 return
         if event.button.id == "save":
             # Update only editable fields
@@ -414,7 +437,7 @@ class EditCardApp(App):
             # Dismiss loading modal
             loading_modal.dismiss()
 
-    async def action_search_icon(self, chapter_idx):
+    async def action_search_icon(self, chapter_idx, local_only: bool = False):
         """
         Called when user clicks 'Search Icon' for a chapter. Prompts for search text, shows icon choices, lets user select.
         """
@@ -470,9 +493,9 @@ class EditCardApp(App):
                     if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
                         chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['id']}"
             self.refresh()
-        await self._show_icon_modal(search_text, on_selected_for_chapter)
+        await self._show_icon_modal(search_text, on_selected_for_chapter, local_only=local_only)
 
-    async def _show_icon_modal(self, query_string, on_selected):
+    async def _show_icon_modal(self, query_string, on_selected, local_only: bool = False):
         """Shared modal flow: shows search -> select modal and calls on_selected(payload).
         """
         logging.info(f"Icon search initiated with query: '{query_string}'")
@@ -494,7 +517,15 @@ class EditCardApp(App):
             progress_bar.advance(1)
             await asyncio.sleep(0.05)  # Simulate search delay
 
-        icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+        # If local_only is requested, prefer local cache/search (disable remote Yotoicons)
+        try:
+            if local_only:
+                icons = self.api.find_best_icons_for_text(query_string, include_yotoicons=False, show_in_console=False)
+            else:
+                icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+        except TypeError:
+            # Older API signature may not accept include_yotoicons; fallback
+            icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
         search_modal.dismiss()
 
         class IconSelectModal(ModalScreen):
