@@ -612,7 +612,6 @@ def main(page):
             # Add only files not already present
             existing = set(getattr(row, "filename", None) for row in file_rows_column.controls)
             added = 0
-            from yoto_app.upload_tasks import FileUploadRow
             for f in files:
                 if f not in existing:
                     try:

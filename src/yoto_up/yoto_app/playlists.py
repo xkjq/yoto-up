@@ -22,7 +22,7 @@ except Exception: # Broad because pyodide etc may raise weird errors
     _PYNPUT_AVAILABLE = False
 
 import httpx
-from models import Card, CardMetadata, ChapterDisplay, TrackDisplay
+from yoto_up.models import Card, CardMetadata, ChapterDisplay, TrackDisplay
 from yoto_app.auth import delete_tokens_file
 from yoto_app.config import CLIENT_ID
 from loguru import logger
@@ -103,7 +103,10 @@ def build_playlists_panel(
             return
 
         versions_root = getattr(api, "VERSIONS_DIR", None)
-        items = []
+        # Build a mapping of card_id -> latest version file path. We'll show
+        # only entries where the current server does NOT have the card (i.e.
+        # deleted) so this dialog functions as "Restore Deleted".
+        deleted_entries = []
         try:
             if versions_root:
                 root = Path(versions_root)
@@ -111,22 +114,47 @@ def build_playlists_panel(
                     for card_dir in sorted(root.iterdir()):
                         if not card_dir.is_dir():
                             continue
-                        for vf in sorted(card_dir.iterdir(), reverse=True):
-                            if vf.suffix == ".json":
-                                items.append(vf)
+                        # pick the newest json file in this card_dir
+                        json_files = sorted([p for p in card_dir.iterdir() if p.suffix == ".json"], reverse=True)
+                        if not json_files:
+                            continue
+                        latest = json_files[0]
+                        # attempt to read title and id from payload
+                        title = None
+                        card_id = card_dir.name
+                        try:
+                            with latest.open('r', encoding='utf-8') as fh:
+                                payload = json.load(fh)
+                                title = payload.get('title') if isinstance(payload, dict) else None
+                                card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or card_dir.name
+                        except Exception:
+                            title = None
+                        # Check whether the card currently exists on the server; if it does not,
+                        # treat it as deleted and offer restore.
+                        try:
+                            try:
+                                api.get_card(card_id)
+                                exists = True
+                            except Exception:
+                                exists = False
+                        except Exception:
+                            exists = False
+                        if not exists:
+                            deleted_entries.append((card_id, title or '', latest))
         except Exception:
-            items = []
+            deleted_entries = []
 
-        if not items:
+        if not deleted_entries:
             try:
-                show_snack("No saved versions found")
+                show_snack("No deleted versions available to restore")
             except Exception:
                 pass
             return
 
         lv = ft.ListView(expand=True)
-        for p in items:
-            lv.controls.append(ft.Checkbox(label=f"{p.parent.name} / {p.name}", value=False, data=str(p)))
+        for card_id, title, path in deleted_entries:
+            label = f"{title or '<untitled>'} ({card_id})"
+            lv.controls.append(ft.Checkbox(label=label, value=False, data=str(path)))
 
         def do_restore(_ev=None):
             restored = 0
@@ -150,7 +178,7 @@ def build_playlists_panel(
             page.update()
             threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
 
-        dlg = ft.AlertDialog(title=ft.Text("Restore versions"), content=lv, actions=[ft.TextButton("Restore Selected", on_click=do_restore), ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
+        dlg = ft.AlertDialog(title=ft.Text("Restore deleted cards"), content=lv, actions=[ft.TextButton("Restore Selected", on_click=do_restore), ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
         try:
             page.open(dlg)
             page.update()
