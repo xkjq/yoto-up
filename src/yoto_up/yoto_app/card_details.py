@@ -1415,18 +1415,38 @@ Merging will result in:
                 show_snack("Failed to start expand operation", error=True)
 
         def replace_icons(ev):
-            show_replace_icons_dialog(
-                page,
-                api_ref,
-                c,
-                fetch_playlists_sync,
-                ensure_api,
-                CLIENT_ID,
-                show_snack,
-                playlists_list,
-                make_playlist_row,
-                show_card_details,
-            )
+            try:
+                # Start background replace with persistent badge
+                from yoto_up.yoto_app.replace_icons import start_replace_icons_background
+                start_replace_icons_background(
+                    page,
+                    api_ref,
+                    c,
+                    fetch_playlists_sync,
+                    ensure_api,
+                    CLIENT_ID,
+                    show_snack,
+                    playlists_list,
+                    make_playlist_row,
+                    show_card_details,
+                )
+            except Exception:
+                # Fallback to the old dialog if background starter isn't available
+                try:
+                    show_replace_icons_dialog(
+                        page,
+                        api_ref,
+                        c,
+                        fetch_playlists_sync,
+                        ensure_api,
+                        CLIENT_ID,
+                        show_snack,
+                        playlists_list,
+                        make_playlist_row,
+                        show_card_details,
+                    )
+                except Exception:
+                    pass
 
         # popup dialog for track-related actions (shows title + cover image)
         tracks_dialog = None

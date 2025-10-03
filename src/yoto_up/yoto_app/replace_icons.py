@@ -276,3 +276,177 @@ Continue?"""
         except Exception:
             pass
         logger.exception("replace_icons start error")
+
+
+def start_replace_icons_background(
+    page,
+    api_ref,
+    c,
+    fetch_playlists_sync,
+    ensure_api,
+    CLIENT_ID,
+    show_snack,
+    playlists_list,
+    make_playlist_row,
+    show_card_details,
+):
+    """Start replace default icons in background and show a persistent badge on the page.
+
+    The badge shows progress and can be clicked to reopen a small status dialog with Cancel.
+    """
+    try:
+        # Badge UI
+        badge_text = ft.Text("Autoselect: 0%")
+
+        def _open_status_dialog():
+            try:
+                msg = badge_text.value
+                dlg = ft.AlertDialog(
+                    title=ft.Text("Autoselect status"),
+                    content=ft.Text(msg),
+                    actions=[
+                        ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
+                        ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                    ],
+                )
+                page.open(dlg)
+                page.update()
+            except Exception:
+                pass
+
+        # Provide full padding values (left, top, right, bottom) to avoid Flet Padding init error
+        badge_btn = ft.ElevatedButton(content=badge_text, on_click=lambda e: _open_status_dialog(), style=ft.ButtonStyle(padding=ft.Padding(8, 6, 8, 6)))
+        badge_container = ft.Container(badge_btn, width=160, height=40, expand=False)
+
+        # Ensure overlay exists
+        try:
+            if not hasattr(page, "overlay"):
+                page.overlay = []
+            page.overlay.append(badge_container)
+            page.update()
+        except Exception:
+            pass
+
+        cancel_event = threading.Event()
+
+        def _set_badge(msg, frac):
+            try:
+                pct = int((frac or 0.0) * 100)
+                text = f"Autoselect: {pct}%"
+                if msg:
+                    text = f"{text} - {msg}"
+                try:
+                    badge_text.value = text
+                    page.update()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        def _open_status_dialog():
+            try:
+                msg = badge_text.value
+                dlg = ft.AlertDialog(
+                    title=ft.Text("Autoselect status"),
+                    content=ft.Text(msg),
+                    actions=[
+                        ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
+                        ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                    ],
+                )
+                page.open(dlg)
+                page.update()
+            except Exception:
+                pass
+
+        def work():
+            new_card = None
+            try:
+                api = ensure_api(api_ref, CLIENT_ID)
+                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                if not card_id:
+                    raise RuntimeError("Unable to determine card id")
+                full = api.get_card(card_id)
+
+                def icon_progress(msg, frac):
+                    try:
+                        _set_badge(msg, frac)
+                    except Exception:
+                        pass
+
+                new_card = api.replace_card_default_icons(
+                    full,
+                    progress_callback=icon_progress,
+                    cancel_event=cancel_event,
+                )
+
+                try:
+                    api.update_card(new_card, return_card_model=False)
+                except Exception:
+                    pass
+
+                # Refresh playlists UI on completion
+                try:
+                    updated_id = None
+                    if isinstance(new_card, dict):
+                        updated_id = new_card.get("id") or new_card.get("cardId") or new_card.get("contentId")
+                    else:
+                        updated_id = getattr(new_card, "id", None) or getattr(new_card, "cardId", None) or getattr(new_card, "contentId", None)
+
+                    if updated_id:
+                        for i, ctrl in enumerate(list(playlists_list.controls)):
+                            cb = None
+                            children = (
+                                getattr(ctrl, "controls", None)
+                                or getattr(getattr(ctrl, "content", None), "controls", None)
+                                or []
+                            )
+                            for ch in children or []:
+                                if getattr(ch, "_is_playlist_checkbox", False):
+                                    cb = ch
+                                    break
+                            if not cb:
+                                continue
+                            if getattr(cb, "_cid", None) == updated_id:
+                                try:
+                                    playlists_list.controls[i] = make_playlist_row(new_card, idx=i)
+                                    page.update()
+                                    try:
+                                        show_snack("Playlist icons updated")
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                                break
+                        else:
+                            # not found, refresh list
+                            threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                except Exception:
+                    pass
+
+            except Exception as ex:
+                try:
+                    show_snack(f"Replace icons failed: {ex}", error=True)
+                except Exception:
+                    pass
+                logger.exception("replace_icons error")
+            finally:
+                # remove badge after short delay
+                try:
+                    time.sleep(1)
+                except Exception:
+                    pass
+                try:
+                    if badge_container in page.overlay:
+                        page.overlay.remove(badge_container)
+                        page.update()
+                except Exception:
+                    pass
+
+        threading.Thread(target=work, daemon=True).start()
+    except Exception as e:
+        try:
+            show_snack(f"Failed to start background replace: {e}", error=True)
+        except Exception:
+            pass
+        logger.exception("start_replace_icons_background error")
