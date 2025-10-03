@@ -517,15 +517,35 @@ class EditCardApp(App):
             progress_bar.advance(1)
             await asyncio.sleep(0.05)  # Simulate search delay
 
-        # If local_only is requested, prefer local cache/search (disable remote Yotoicons)
-        try:
-            if local_only:
-                icons = self.api.find_best_icons_for_text(query_string, include_yotoicons=False, show_in_console=False)
-            else:
+        # If local_only is requested, enumerate all cached icons from the local cache
+        icons = []
+        if local_only:
+            logging.info("Performing local-only icon search: scanning cache directories")
+            try:
+                for cache_dir in (OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR):
+                    try:
+                        if cache_dir and cache_dir.exists():
+                            for p in sorted(cache_dir.iterdir()):
+                                if p.is_file() and p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
+                                    icons.append({'cache_path': str(p), 'title': p.stem})
+                    except Exception:
+                        logging.exception(f"Failed scanning cache dir: {cache_dir}")
+            except Exception:
+                logging.exception("Local-only icon scanning failed")
+            # If no local icons found, fall back to API search to guarantee results
+            if not icons:
+                try:
+                    icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+                except Exception:
+                    logging.exception("Fallback API icon search failed")
+                    icons = []
+        else:
+            # Regular search: call API (include_yotoicons if supported)
+            try:
                 icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
-        except TypeError:
-            # Older API signature may not accept include_yotoicons; fallback
-            icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+            except Exception:
+                logging.exception("API icon search failed")
+                icons = []
         search_modal.dismiss()
 
         class IconSelectModal(ModalScreen):
