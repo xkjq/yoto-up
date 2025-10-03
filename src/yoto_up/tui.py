@@ -57,11 +57,7 @@ class ChapterIconWidget(Static):
         logging.info(f"Chapter {self.chapter_idx} cache path: {self.cache_path}")
         icon_markup = None
         if self.cache_path and self.cache_path.exists():
-            try:
-                from icons import render_icon
-                icon_markup = render_icon(self.cache_path)
-            except Exception as e:
-                icon_markup = f"[red]Error rendering icon: {e}[/red]"
+            icon_markup = render_icon(self.cache_path)
         else:
             logging.info(f"Chapter {self.chapter_idx} icon cache path does not exist")
             logging.info(self.cache_path)
@@ -117,7 +113,6 @@ class TrackIconWidget(Static):
         icon_markup = None
         if self.cache_path and self.cache_path.exists():
             try:
-                from icons import render_icon
                 icon_markup = render_icon(self.cache_path)
             except Exception as e:
                 icon_markup = f"[red]Error rendering icon: {e}[/red]"
