@@ -160,6 +160,7 @@ def build_playlists_panel(
                 page.update()
             except Exception:
                 pass
+    restore_versions_btn.on_click = _open_versions_dialog
     multi_select_btn = ft.ElevatedButton(text="Select Multiple")
     add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
