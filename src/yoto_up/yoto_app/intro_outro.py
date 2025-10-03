@@ -23,65 +23,7 @@ from typing import List, Tuple, Dict, Union
 import os
 import numpy as np
 
-
-def analyze_files(
-    paths: List[str],
-    side: str = "intro",
-    seconds: float = 10.0,
-    sr: int = 22050,
-    similarity_threshold: float = 0.75,
-    n_mfcc: int = 20,
-    refine_with_dtw: bool = False,
-    dtw_threshold: float = 0.5,
-) -> Dict[str, object]:
-    """Lightweight compatibility wrapper for older callers.
-
-    The original heavy-weight analyzer was removed in favor of the
-    deterministic per-window analyzer. To preserve backward compatibility
-    for callers that expect a mapping with 'template' and 'matches', we
-    delegate to per_window_common_prefix and synthesize a minimal result
-    describing which files matched the detected prefix.
-    """
-    # if no paths, return empty structure
-    if not paths:
-        return {"features": {}, "pairs": [], "template": None, "matches": [], "mean_scores": {}}
-
-    # use a conservative window and thresholds derived from the requested
-    try:
-        window_seconds = min(0.10, float(seconds))
-    except Exception:
-        window_seconds = 0.10
-    try:
-        sim_thresh = float(similarity_threshold or 0.85)
-    except Exception:
-        sim_thresh = 0.85
-
-    res = _analysis_per_window_common_prefix(paths=paths, side=side, max_seconds=seconds, window_seconds=window_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=sim_thresh, min_files_fraction=0.5)
-
-    windows_matched = int(res.get('windows_matched', 0))
-    per_file = res.get('per_file_per_window', {})
-
-    # compute simple per-file match score as fraction of matched windows
-    matches = []
-    mean_scores = {}
-    for p, perw in per_file.items():
-        if windows_matched > 0:
-            matched = sum(1 for v in perw[:windows_matched] if v >= sim_thresh)
-            score = float(matched) / float(windows_matched)
-        else:
-            score = 0.0
-        matches.append((p, score))
-        mean_scores[p] = score
-
-    # choose template as the file with highest score (if any)
-    template = max(mean_scores.items(), key=lambda kv: kv[1])[0] if mean_scores else None
-    return {
-        "features": {},
-        "pairs": [],
-        "template": template,
-        "matches": matches,
-        "mean_scores": mean_scores,
-    }
+from loguru import logger
 
 
 def sliding_best_match_position(
@@ -144,6 +86,7 @@ def per_window_common_prefix(
     try:
         from .analysis import per_window_common_prefix as _analysis_per_window_common_prefix
     except Exception:
+        logger.debug("per_window_common_prefix: analysis helpers unavailable")
         return {
             'seconds_matched': 0.0,
             'windows_matched': 0,

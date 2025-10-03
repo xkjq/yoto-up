@@ -12,7 +12,7 @@ import json
 from rich.prompt import Confirm
 from pathlib import Path
 import asyncio
-from typing import Optional
+from typing import Optional, List
 import shutil
 
 app = typer.Typer()
@@ -706,6 +706,103 @@ def get_public_icons(show_in_console: bool = True):
     if not icons:
         typer.echo("[bold red]No public icons found.[/bold red]")
         raise typer.Exit(code=1)
+
+
+@app.command(name="intro-outro")
+def intro_outro(
+    files: List[str] = typer.Argument(..., help="Audio files to analyze"),
+    side: str = typer.Option("intro", "--side", "-s", help="Which side to analyze: intro or outro"),
+    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
+    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
+    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
+    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
+    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
+    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
+):
+    """Analyze a set of audio files to find common intro/outro segments using the per-window analyzer (same as GUI).
+
+    Example:
+      python yoto.py intro-outro file1.mp3 file2.mp3 --side intro --seconds 8 --window 0.1
+    """
+    try:
+        from yoto_up.yoto_app import intro_outro as io_mod
+    except Exception as e:
+        typer.echo(f"Failed to import intro_outro analysis module: {e}")
+        raise typer.Exit(code=1)
+
+    try:
+        result = io_mod.per_window_common_prefix(
+            paths=files,
+            side=side,
+            max_seconds=seconds,
+            window_seconds=window_seconds,
+            sr=sr,
+            n_mfcc=n_mfcc,
+            similarity_threshold=threshold,
+            min_files_fraction=min_files_fraction,
+        )
+    except Exception as e:
+        typer.echo(f"Analysis failed: {e}")
+        raise typer.Exit(code=1)
+
+    # Print a concise summary similar to GUI, using rich for nicer formatting
+    tpl = result.get("template") or ""
+    windows_matched = int(result.get("windows_matched", 0) or 0)
+    seconds_matched = float(result.get("seconds_matched", 0.0) or 0.0)
+    per_window_frac = result.get("per_window_frac", []) or []
+    per_file_per_window = result.get("per_file_per_window", {}) or {}
+
+    # Summary panel
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.align import Align
+    summary_lines = [f"Seconds matched: {seconds_matched}", f"Windows matched: {windows_matched}"]
+    if tpl:
+        summary_lines.insert(0, f"Template: {tpl}")
+    console.print(Panel('\n'.join(summary_lines), title="Intro/Outro Analysis", subtitle=f"side={side} seconds={seconds} window={window_seconds}"))
+
+    # Per-window fractions (show up to first 20 windows)
+    if per_window_frac:
+        try:
+            display_vals = per_window_frac[:20]
+            frac_text = ', '.join(f"{float(v):.3f}" for v in display_vals)
+            if len(per_window_frac) > 20:
+                frac_text += f", ... (+{len(per_window_frac)-20} more)"
+            console.print(Panel(frac_text, title=f"Per-window fraction (first {min(20, len(per_window_frac))})"))
+        except Exception:
+            pass
+
+    # Build table of per-file mean scores
+    tbl = Table(title="Per-file mean scores", show_lines=False)
+    tbl.add_column("File", style="cyan", overflow="fold")
+    tbl.add_column("Mean", style="magenta", justify="right")
+    tbl.add_column("Bar", style="green")
+
+    # helper to render a small bar for score
+    def score_bar(mean: float, width: int = 20) -> str:
+        try:
+            n = max(0, min(width, int(round(mean * width))))
+            return '█' * n + ' ' * (width - n)
+        except Exception:
+            return ''
+
+    # Compute mean for each file and add to table sorted by mean desc
+    rows = []
+    for p, arr in per_file_per_window.items():
+        try:
+            if windows_matched > 0:
+                vals = list(arr)[:windows_matched]
+                mean = sum(float(v or 0.0) for v in vals) / float(len(vals) if vals else 1)
+            else:
+                mean = 0.0
+        except Exception:
+            mean = 0.0
+        rows.append((p, mean))
+
+    for p, mean in sorted(rows, key=lambda r: r[1], reverse=True):
+        tbl.add_row(p, f"{mean:.3f}", score_bar(mean))
+
+    console.print(tbl)
 
 
 @app.command()
