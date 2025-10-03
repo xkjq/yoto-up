@@ -8,6 +8,7 @@ import tempfile
 import base64
 
 from yoto_up.models import TrackDisplay, ChapterDisplay
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA
 from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 
@@ -261,7 +262,15 @@ class IconReplaceDialog:
             """Scan saved_icons folder and populate saved_icons_list with preview + actions."""
             saved_icons_list.controls.clear()
             try:
-                saved_dir = Path(os.getenv("FLET_APP_STORAGE_DATA")) / Path("saved_icons")
+                # PixelArtEditor saves to OFFICIAL_ICON_CACHE_DIR / "saved_icons".
+                # Prefer that directory so saved icons from the editor are visible
+                # here. Fall back to FLET_APP_STORAGE_DATA if the official cache
+                # path isn't present for some reason.
+                saved_dir = Path(OFFICIAL_ICON_CACHE_DIR) / Path("saved_icons")
+                if not saved_dir.exists():
+                    env_dir = os.getenv("FLET_APP_STORAGE_DATA") or FLET_APP_STORAGE_DATA
+                    if env_dir:
+                        saved_dir = Path(env_dir) / Path("saved_icons")
                 # create and seed defaults if missing
                 if not saved_dir.exists():
                     try:
