@@ -961,6 +961,72 @@ def intro_outro(
     console.print("Rerun <command> with --trim option to apply.")
 
 
+@app.command(name="intro")
+def intro(
+    files: List[str] = typer.Argument(..., help="Audio files to analyze"),
+    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
+    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
+    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
+    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
+    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
+    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
+    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
+    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
+    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
+    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="(unused) kept for compatibility"),
+):
+    """Analyze the intro side (shortcut for `intro-outro --side intro`)."""
+    return intro_outro(
+        files=files,
+        side="intro",
+        seconds=seconds,
+        window_seconds=window_seconds,
+        sr=sr,
+        n_mfcc=n_mfcc,
+        threshold=threshold,
+        min_files_fraction=min_files_fraction,
+        trim=trim,
+        dest_dir=dest_dir,
+        dry_run=dry_run,
+        keep_silence_ms=keep_silence_ms,
+        gain_db=gain_db,
+    )
+
+
+@app.command(name="outro")
+def outro(
+    files: List[str] = typer.Argument(..., help="Audio files to analyze"),
+    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
+    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
+    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
+    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
+    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
+    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
+    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
+    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
+    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
+    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="(unused) kept for compatibility"),
+):
+    """Analyze the outro side (shortcut for `intro-outro --side outro`)."""
+    return intro_outro(
+        files=files,
+        side="outro",
+        seconds=seconds,
+        window_seconds=window_seconds,
+        sr=sr,
+        n_mfcc=n_mfcc,
+        threshold=threshold,
+        min_files_fraction=min_files_fraction,
+        trim=trim,
+        dest_dir=dest_dir,
+        dry_run=dry_run,
+        keep_silence_ms=keep_silence_ms,
+        gain_db=gain_db,
+    )
+
+
 @app.command(name="normalize")
 def normalize(
     files: List[str] = typer.Argument(..., help="Audio files to analyze or adjust"),
