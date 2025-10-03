@@ -14,6 +14,8 @@ from pathlib import Path
 import asyncio
 from typing import Optional, List
 import shutil
+import os
+import tempfile
 
 app = typer.Typer()
 console = Console()
@@ -718,6 +720,10 @@ def intro_outro(
     n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
     threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
     min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
+    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
+    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
+    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
 ):
     """Analyze a set of audio files to find common intro/outro segments using the per-window analyzer (same as GUI).
 
@@ -803,6 +809,63 @@ def intro_outro(
         tbl.add_row(p, f"{mean:.3f}", score_bar(mean))
 
     console.print(tbl)
+
+    # Optionally trim matched segment non-destructively by copying trimmed
+    # files to a temporary or user-specified directory. This uses the
+    # `trim_audio_file` helper from the analysis module which preserves
+    # file format via pydub.
+    if trim:
+        # Determine how many seconds to remove from the chosen side
+        remove_seconds = float(seconds_matched or 0.0)
+        if remove_seconds <= 0.0:
+            console.print("[yellow]No matched seconds found; nothing to trim.[/yellow]")
+        else:
+            # Prepare destination directory
+            if dest_dir:
+                out_dir = os.path.abspath(dest_dir)
+                os.makedirs(out_dir, exist_ok=True)
+                created_temp = False
+            else:
+                out_dir = tempfile.mkdtemp(prefix="yoto_trim_")
+                created_temp = True
+
+            console.print(f"Trimming {len(files)} files to: [bold]{out_dir}[/bold]")
+
+            trimmed_paths = []
+            for src in files:
+                try:
+                    src_path = os.path.abspath(src)
+                    fn = Path(src_path).name
+                    dest_path = os.path.join(out_dir, fn)
+
+                    if dry_run:
+                        console.print(f"[cyan]Dry-run:[/] would write trimmed file: {dest_path}")
+                        trimmed_paths.append(dest_path)
+                        continue
+
+                    # Decide which side to remove
+                    remove_intro = remove_seconds if side == "intro" else 0.0
+                    remove_outro = remove_seconds if side == "outro" else 0.0
+
+                    io_mod.trim_audio_file(
+                        src_path,
+                        dest_path,
+                        remove_intro_seconds=remove_intro,
+                        remove_outro_seconds=remove_outro,
+                        keep_silence_ms=keep_silence_ms,
+                    )
+                    trimmed_paths.append(dest_path)
+                    console.print(f"[green]Trimmed:[/] {src_path} -> {dest_path}")
+                except Exception as e:
+                    console.print(f"[red]Failed to trim {src}: {e}[/red]")
+
+            if trimmed_paths:
+                console.print(Panel('\n'.join(trimmed_paths), title="Trimmed files"))
+                if created_temp:
+                    console.print(f"Temporary trimmed files are in: [bold]{out_dir}[/bold]")
+    else:
+        console.print(f"[blue]Analysis suggests remove the first {seconds_matched} seconds from the {side}.[/blue]")
+        console.print(f"[blue]Rerun <command> with --trim option to apply.[/blue]")
 
 
 @app.command()
@@ -965,7 +1028,6 @@ def fix_card(
         )
     )
 
-
 @app.command()
 def merge_chapters(
     card_id: str, reset_overlay_labels: bool = True, sequential_labels: bool = True
@@ -984,6 +1046,7 @@ def merge_chapters(
             subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
         )
     )
+    return card
 
 
 @app.command()
