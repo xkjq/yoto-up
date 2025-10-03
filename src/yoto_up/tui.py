@@ -266,6 +266,15 @@ class EditCardApp(App):
                 print(f"SEARCH CHAPTER {chapter_idx}")
                 await self.action_search_icon(chapter_idx)
                 return
+            # Attempt to match track search button ids of the form
+            # search_icon_track_<chapter>_<track>_
+            m2 = re.match(r"search_icon_track_(\d+)_(\d+)_", event.button.id) or re.match(r"search_icon_track_(\d+)__(\d+)_", event.button.id)
+            if m2:
+                chapter_idx = int(m2.group(1))
+                track_idx = int(m2.group(2))
+                print(f"SEARCH TRACK chapter={chapter_idx} track={track_idx}")
+                await self.action_search_icon_for_track(chapter_idx, track_idx)
+                return
         if event.button.id == "save":
             # Update only editable fields
             card = self.card
@@ -413,128 +422,211 @@ class EditCardApp(App):
         # Use chapter title as default search text
         search_text = getattr(chapter, "title", "")
 
-        async def show_icon_modal(query_string):
-            logging.info(f"Icon search initiated for chapter {chapter_idx} with query: '{query_string}'")
-            # Add a progress bar to indicate search progress
-            class IconSearchModal(ModalScreen):
-                def compose(self):
-                    yield Vertical(
-                        Label("Searching for icons...", id="search_label"),
-                        ProgressBar(total=100, id="search_progress"),
-                        id="search_modal_container"
-                    )
+        # Use shared modal helper (implemented as a separate method)
+        # Build chapter-specific on_selected handler and call the helper.
 
-            search_modal = IconSearchModal()
-            await self.push_screen(search_modal)
-
-            # Simulate search progress
-            progress_bar = search_modal.query_one("#search_progress", ProgressBar)
-            for i in range(1, 101):
-                progress_bar.advance(1)
-                await asyncio.sleep(0.05)  # Simulate search delay
-
-            icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
-            search_modal.dismiss()
-
-            class IconSelectModal(ModalScreen):
-                AUTO_FOCUS = None
-                def __init__(self, icons, chapter_idx, query_string):
-                    super().__init__()
-                    self.icons = icons
-                    self.chapter_idx = chapter_idx
-                    self.query_string = query_string
-                def compose(self):
-                    opts = []
-                    for i, icon in enumerate(self.icons):
-                        cache_path = None
-                        if "url" in icon:
-                            url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
-                            ext = Path(icon["url"]).suffix or ".png"
-                            cache_path = OFFICIAL_ICON_CACHE_DIR / f"{url_hash}{ext}"
-                        elif "img_url" in icon:
-                            url_hash = hashlib.sha256(icon["img_url"].encode()).hexdigest()[:16]
-                            ext = Path(icon["img_url"]).suffix or ".png"
-                            cache_path = YOTOICONS_CACHE_DIR / f"{url_hash}{ext}"
-                        elif "cache_path" in icon:
-                            cache_path = Path(icon["cache_path"])
-                        if cache_path and cache_path.exists():
-                            pixel_art = render_icon(cache_path)
-                        else:
-                            pixel_art = "[red]No image[/red]"
-                        label_text = f"[b]{icon.get('title', icon.get('category', icon.get('id', 'Icon')))}[/b]\n{pixel_art}"
-                        opts.append(Option(label_text, i))
-                    yield Vertical(
-                        Label("Select an icon for this chapter:", id="icon_select_label"),
-                        Horizontal(
-                            Input(
-                                value=self.query_string,
-                                placeholder="Search icons...",
-                                id="icon_search_input"
-                            ),
-                            Button("Search", id="search_icon_query", classes="small-btn"),
-                            Button("Cancel", id="cancel_icon_select", classes="small-btn"),
-                            id="icon_modal_controls"
-                        ),
-                        OptionList(*opts, id="icon_option_list"),
-                    )
-
-                async def on_input_submitted(self, event):
-                    # If the submitted input is the search box, trigger the search
-                    if event.input.id == "icon_search_input":
-                        new_query = event.value.strip()
-                        if new_query:
-                            self.dismiss({"search_query": new_query})
-                async def on_button_pressed(self, event):
-                    if event.button.id == "cancel_icon_select":
-                        self.dismiss(None)
-                    elif event.button.id == "search_icon_query":
-                        # Get new query from input and rerun search
-                        input_widget = self.query_one("#icon_search_input", Input)
-                        new_query = input_widget.value.strip()
-                        if new_query:
-                            self.dismiss({"search_query": new_query})
-                async def on_option_list_option_selected(self, event):
-                    logging.info(f"IconSelectModal: option selected idx={event.option_id}")
-                    selected_idx = event.option_id
-                    selected_icon = self.icons[selected_idx]
-                    self.dismiss(selected_icon)
-
-            def handle_icon_selected(selected_icon):
-                if not selected_icon:
-                    return
-                if isinstance(selected_icon, dict) and "search_query" in selected_icon:
-                    # User requested a new search
-                    asyncio.create_task(show_icon_modal(selected_icon["search_query"]))
-                    return
-                logging.info(f"SELECTED ICON: {selected_icon}")
-                chapter = self.card.content.chapters[chapter_idx]
-                pixelart_id = f"icon_pixelart_{chapter_idx}"
-                card_content_widget = self.query_one("#card-content", EditCardContent)
+        # Expose a simple chapter-specific on_selected
+        def on_selected_for_chapter(selected_icon):
+            if not selected_icon:
+                return
+            logging.info(f"SELECTED ICON: {selected_icon}")
+            chapter = self.card.content.chapters[chapter_idx]
+            pixelart_id = f"icon_pixelart_{chapter_idx}"
+            card_content_widget = self.query_one("#card-content", EditCardContent)
+            try:
                 pixelart_widget = card_content_widget.query_one(f"#{pixelart_id}")
-                if "img_url" in selected_icon and "mediaId" not in selected_icon:
-                    try:
-                        uploaded_icon = self.api.upload_yotoicons_icon_to_yoto_api(selected_icon)
-                        media_id = uploaded_icon.get("mediaId")
-                        if media_id:
+            except Exception:
+                pixelart_widget = None
+            if isinstance(selected_icon, dict) and "img_url" in selected_icon and "mediaId" not in selected_icon:
+                try:
+                    uploaded_icon = self.api.upload_yotoicons_icon_to_yoto_api(selected_icon)
+                    media_id = uploaded_icon.get("mediaId")
+                    if media_id:
+                        if pixelart_widget:
                             pixelart_widget.set_icon(media_id)
-                            if hasattr(chapter, "tracks") and chapter.tracks:
-                                if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                                    chapter.tracks[0].display.icon16x16 = f"yoto:#{media_id}"
-                            logging.info(f"YotoIcons icon uploaded and set: {media_id}")
-                    except Exception as e:
-                        logging.error(f"Failed to upload YotoIcons icon: {e}")
-                        return
-                elif "mediaId" in selected_icon:
-                    pixelart_widget.set_icon(selected_icon['mediaId'])
-                    if hasattr(chapter, "tracks") and chapter.tracks:
-                        if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                            chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['mediaId']}"
-                elif "id" in selected_icon:
-                    pixelart_widget.set_icon(selected_icon['id'])
-                    if hasattr(chapter, "tracks") and chapter.tracks:
-                        if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                            chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['id']}"
-                self.refresh()
-            await self.push_screen(IconSelectModal(icons, chapter_idx, query_string), handle_icon_selected)
+                        if hasattr(chapter, "tracks") and chapter.tracks:
+                            if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
+                                chapter.tracks[0].display.icon16x16 = f"yoto:#{media_id}"
+                        logging.info(f"YotoIcons icon uploaded and set: {media_id}")
+                except Exception as e:
+                    logging.error(f"Failed to upload YotoIcons icon: {e}")
+                    return
+            elif isinstance(selected_icon, dict) and "mediaId" in selected_icon:
+                if pixelart_widget:
+                    try:
+                        pixelart_widget.set_icon(selected_icon['mediaId'])
+                    except Exception:
+                        logging.exception("Failed to set chapter pixelart widget icon")
+                if hasattr(chapter, "tracks") and chapter.tracks:
+                    if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
+                        chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['mediaId']}"
+            elif isinstance(selected_icon, dict) and "id" in selected_icon:
+                if pixelart_widget:
+                    try:
+                        pixelart_widget.set_icon(selected_icon['id'])
+                    except Exception:
+                        logging.exception("Failed to set chapter pixelart widget icon")
+                if hasattr(chapter, "tracks") and chapter.tracks:
+                    if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
+                        chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['id']}"
+            self.refresh()
+        await self._show_icon_modal(search_text, on_selected_for_chapter)
 
-        await show_icon_modal(search_text)
+    async def _show_icon_modal(self, query_string, on_selected):
+        """Shared modal flow: shows search -> select modal and calls on_selected(payload).
+        """
+        logging.info(f"Icon search initiated with query: '{query_string}'")
+        # Add a progress bar to indicate search progress
+        class IconSearchModal(ModalScreen):
+            def compose(self):
+                yield Vertical(
+                    Label("Searching for icons...", id="search_label"),
+                    ProgressBar(total=100, id="search_progress"),
+                    id="search_modal_container"
+                )
+
+        search_modal = IconSearchModal()
+        await self.push_screen(search_modal)
+
+        # Simulate search progress
+        progress_bar = search_modal.query_one("#search_progress", ProgressBar)
+        for i in range(1, 101):
+            progress_bar.advance(1)
+            await asyncio.sleep(0.05)  # Simulate search delay
+
+        icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
+        search_modal.dismiss()
+
+        class IconSelectModal(ModalScreen):
+            AUTO_FOCUS = None
+            def __init__(self, icons, query_string):
+                super().__init__()
+                self.icons = icons
+                self.query_string = query_string
+            def compose(self):
+                opts = []
+                for i, icon in enumerate(self.icons):
+                    cache_path = None
+                    if "url" in icon:
+                        url_hash = hashlib.sha256(icon["url"].encode()).hexdigest()[:16]
+                        ext = Path(icon["url"]).suffix or ".png"
+                        cache_path = OFFICIAL_ICON_CACHE_DIR / f"{url_hash}{ext}"
+                    elif "img_url" in icon:
+                        url_hash = hashlib.sha256(icon["img_url"].encode()).hexdigest()[:16]
+                        ext = Path(icon["img_url"]).suffix or ".png"
+                        cache_path = YOTOICONS_CACHE_DIR / f"{url_hash}{ext}"
+                    elif "cache_path" in icon:
+                        cache_path = Path(icon["cache_path"])
+                    if cache_path and cache_path.exists():
+                        pixel_art = render_icon(cache_path)
+                    else:
+                        pixel_art = "[red]No image[/red]"
+                    label_text = f"[b]{icon.get('title', icon.get('category', icon.get('id', 'Icon')))}[/b]\n{pixel_art}"
+                    opts.append(Option(label_text, i))
+                yield Vertical(
+                    Label("Select an icon:", id="icon_select_label"),
+                    Horizontal(
+                        Input(
+                            value=self.query_string,
+                            placeholder="Search icons...",
+                            id="icon_search_input"
+                        ),
+                        Button("Search", id="search_icon_query", classes="small-btn"),
+                        Button("Cancel", id="cancel_icon_select", classes="small-btn"),
+                        id="icon_modal_controls"
+                    ),
+                    OptionList(*opts, id="icon_option_list"),
+                )
+
+            async def on_input_submitted(self, event):
+                if event.input.id == "icon_search_input":
+                    new_query = event.value.strip()
+                    if new_query:
+                        self.dismiss({"search_query": new_query})
+            async def on_button_pressed(self, event):
+                if event.button.id == "cancel_icon_select":
+                    self.dismiss(None)
+                elif event.button.id == "search_icon_query":
+                    input_widget = self.query_one("#icon_search_input", Input)
+                    new_query = input_widget.value.strip()
+                    if new_query:
+                        self.dismiss({"search_query": new_query})
+            async def on_option_list_option_selected(self, event):
+                logging.info(f"IconSelectModal: option selected idx={event.option_id}")
+                selected_idx = event.option_id
+                selected_icon = self.icons[selected_idx]
+                try:
+                    on_selected(selected_icon)
+                except Exception:
+                    logging.exception("on_selected callback raised")
+                self.dismiss(selected_icon)
+
+        def handle_icon_selected(selected_icon):
+            if not selected_icon:
+                return
+            if isinstance(selected_icon, dict) and "search_query" in selected_icon:
+                # User requested a new search
+                asyncio.create_task(self._show_icon_modal(selected_icon["search_query"], on_selected))
+                return
+            try:
+                on_selected(selected_icon)
+            except Exception:
+                logging.exception("on_selected handler failed")
+
+        await self.push_screen(IconSelectModal(icons, query_string), handle_icon_selected)
+
+    async def action_search_icon_for_track(self, chapter_idx, track_idx):
+        """
+        Search icons for a specific track and apply selection to the TrackIconWidget.
+        """
+        try:
+            chapter = self.card.content.chapters[chapter_idx]
+            track = chapter.tracks[track_idx]
+        except Exception:
+            return
+        search_text = getattr(track, "title", "")
+
+        def on_selected_for_track(selected_icon):
+            if not selected_icon:
+                return
+            logging.info(f"SELECTED ICON FOR TRACK: {selected_icon}")
+            safe_track_id = re.sub(r"[^a-zA-Z0-9_-]", "_", f"track[{chapter_idx}][{track_idx}]")
+            pixelart_id = f"icon_pixelart_{safe_track_id}"
+            card_content_widget = self.query_one("#card-content", EditCardContent)
+            try:
+                pixelart_widget = card_content_widget.query_one(f"#{pixelart_id}")
+            except Exception:
+                pixelart_widget = None
+            if isinstance(selected_icon, dict) and "img_url" in selected_icon and "mediaId" not in selected_icon:
+                try:
+                    uploaded_icon = self.api.upload_yotoicons_icon_to_yoto_api(selected_icon)
+                    media_id = uploaded_icon.get("mediaId")
+                    if media_id:
+                        if pixelart_widget:
+                            pixelart_widget.set_icon(media_id)
+                        if hasattr(track, "display") and track.display:
+                            track.display.icon16x16 = f"yoto:#{media_id}"
+                        logging.info(f"YotoIcons icon uploaded and set for track: {media_id}")
+                except Exception as e:
+                    logging.error(f"Failed to upload YotoIcons icon: {e}")
+                    return
+            elif isinstance(selected_icon, dict) and "mediaId" in selected_icon:
+                if pixelart_widget:
+                    try:
+                        pixelart_widget.set_icon(selected_icon['mediaId'])
+                    except Exception:
+                        logging.exception("Failed to set track pixelart widget icon")
+                if hasattr(track, "display") and track.display:
+                    track.display.icon16x16 = f"yoto:#{selected_icon['mediaId']}"
+            elif isinstance(selected_icon, dict) and "id" in selected_icon:
+                if pixelart_widget:
+                    try:
+                        pixelart_widget.set_icon(selected_icon['id'])
+                    except Exception:
+                        logging.exception("Failed to set track pixelart widget icon")
+                if hasattr(track, "display") and track.display:
+                    track.display.icon16x16 = f"yoto:#{selected_icon['id']}"
+            self.refresh()
+
+        # Reuse the same modal flow; the helper will call our on_selected_for_track
+        await self._show_icon_modal(search_text, on_selected_for_track)
