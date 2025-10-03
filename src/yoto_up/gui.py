@@ -1921,6 +1921,141 @@ def main(page):
         visible=False,
     )
 
+    # Small autoselect progress badge (smaller than icon_refresh_badge)
+    autoselect_badge_text = ft.Text("", size=11, color=ft.Colors.BLUE)
+    autoselect_badge = ft.Container(
+        content=ft.Row([ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text], spacing=4),
+        padding=4,
+        border_radius=6,
+        bgcolor=ft.Colors.WHITE,
+        visible=False,
+    )
+
+    # Default tooltip and click handler: click should reopen the autoselect status dialog
+    try:
+        autoselect_badge.tooltip = "Selecting icons"
+    except Exception:
+        pass
+
+    def _on_autoselect_click(e=None):
+        try:
+            cancel = getattr(page, 'autoselect_cancel_event', None)
+            try:
+                page.open_autoselect_status_dialog(cancel)
+            except Exception:
+                # fallback: call without cancel event
+                try:
+                    page.open_autoselect_status_dialog(None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    try:
+        autoselect_badge.on_click = _on_autoselect_click
+    except Exception:
+        pass
+
+    # Default: dialog opens when autoselect starts unless this flag is set
+    page.autoselect_hide_dialog_default = False
+
+    def set_autoselect_progress(msg: str | None, frac: float | None = None, visible: bool = True):
+        try:
+            if not visible:
+                autoselect_badge.visible = False
+                page.update()
+                return
+            autoselect_badge.visible = True
+            # Build the visible badge text: always show 'Selecting Icons' and a pct if available
+            if frac is not None:
+                try:
+                    pct = int(frac * 100)
+                    label = f"{pct}%"
+                except Exception:
+                    label = ""
+            else:
+                label = ""
+            if label:
+                autoselect_badge_text.value = f"Selecting Icons {label}"
+            else:
+                autoselect_badge_text.value = "Selecting Icons"
+
+            # Set the tooltip to the more-detailed message (e.g. which icon is being searched)
+            try:
+                if msg:
+                    autoselect_badge.tooltip = msg
+                else:
+                    autoselect_badge.tooltip = "Selecting icons"
+            except Exception:
+                pass
+
+            # Also update the status text control and detail control in the dialog if they're open
+            try:
+                ctrl = getattr(page, 'autoselect_status_ctrl', None)
+                if ctrl is not None:
+                    try:
+                        ctrl.value = autoselect_badge_text.value
+                    except Exception:
+                        pass
+                detail = getattr(page, 'autoselect_status_detail', None)
+                if detail is not None:
+                    try:
+                        # detail shows the more verbose message about the current icon/search
+                        detail.value = msg or ""
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            page.update()
+        except Exception:
+            pass
+
+    def open_autoselect_status_dialog(cancel_event: threading.Event | None = None):
+        try:
+            hide_checkbox = ft.Checkbox(label="Hide this dialog by default", value=page.autoselect_hide_dialog_default)
+
+            def on_hide_change(e):
+                try:
+                    page.autoselect_hide_dialog_default = bool(hide_checkbox.value)
+                except Exception:
+                    pass
+
+            hide_checkbox.on_change = on_hide_change
+
+            status_txt = ft.Text(autoselect_badge_text.value or "Autoselect running...")
+            # Keep a reference on the page so the progress updater can refresh this control
+            try:
+                page.autoselect_status_ctrl = status_txt
+            except Exception:
+                pass
+
+            # A secondary detail control shows verbose info about the current icon/search
+            detail_txt = ft.Text("", size=12)
+            try:
+                page.autoselect_status_detail = detail_txt
+            except Exception:
+                pass
+
+            # Use a fixed width column so the dialog doesn't constantly resize
+            content_col = ft.Column([status_txt, detail_txt, hide_checkbox], width=480, scroll=ft.ScrollMode.AUTO)
+
+            dlg = ft.AlertDialog(
+                title=ft.Text("Autoselect status"),
+                content=content_col,
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set() if cancel_event else None, page.close(dlg))),
+                    ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                ],
+            )
+            page.open(dlg)
+            page.update()
+        except Exception:
+            pass
+
+    # Expose helpers on page so other modules can control autoselect UI
+    page.set_autoselect_progress = set_autoselect_progress
+    page.open_autoselect_status_dialog = open_autoselect_status_dialog
+
     def set_icon_refreshing(flag: bool, message: str | None = None):
         try:
             icon_refresh_badge.visible = bool(flag)
@@ -1964,7 +2099,7 @@ def main(page):
          expand=True,
      )
     # Place About button above tabs
-    page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
+    page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, autoselect_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
     show_dev_warning()
 

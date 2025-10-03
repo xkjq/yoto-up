@@ -298,64 +298,62 @@ def start_replace_icons_background(
         # Badge UI
         badge_text = ft.Text("Autoselect: 0%")
 
-        def _open_status_dialog():
-            try:
-                msg = badge_text.value
-                dlg = ft.AlertDialog(
-                    title=ft.Text("Autoselect status"),
-                    content=ft.Text(msg),
-                    actions=[
-                        ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
-                        ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
-                    ],
-                )
-                page.open(dlg)
-                page.update()
-            except Exception:
-                pass
-
-        # Provide full padding values (left, top, right, bottom) to avoid Flet Padding init error
-        badge_btn = ft.ElevatedButton(content=badge_text, on_click=lambda e: _open_status_dialog(), style=ft.ButtonStyle(padding=ft.Padding(8, 6, 8, 6)))
-        badge_container = ft.Container(badge_btn, width=160, height=40, expand=False)
-
-        # Ensure overlay exists
+        # Cancellation event for the worker
+        cancel_event = threading.Event()
+        # Expose cancel_event on page so UI helpers (badge click) can access it
         try:
-            if not hasattr(page, "overlay"):
-                page.overlay = []
-            page.overlay.append(badge_container)
-            page.update()
+            setattr(page, 'autoselect_cancel_event', cancel_event)
         except Exception:
             pass
 
-        cancel_event = threading.Event()
-
-        def _set_badge(msg, frac):
+        # Prefer using page helpers if available (added in gui.py)
+        def _set_badge(msg, frac, visible=True):
             try:
-                pct = int((frac or 0.0) * 100)
-                text = f"Autoselect: {pct}%"
-                if msg:
-                    text = f"{text} - {msg}"
-                try:
-                    badge_text.value = text
-                    page.update()
-                except Exception:
-                    pass
+                if hasattr(page, 'set_autoselect_progress'):
+                    page.set_autoselect_progress(msg, frac, visible=visible)
+                else:
+                    # fallback: update simple text
+                    try:
+                        badge_text.value = f"{int((frac or 0.0)*100)}% - {msg}" if msg else f"{int((frac or 0.0)*100)}%"
+                        page.update()
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
         def _open_status_dialog():
             try:
-                msg = badge_text.value
-                dlg = ft.AlertDialog(
-                    title=ft.Text("Autoselect status"),
-                    content=ft.Text(msg),
-                    actions=[
-                        ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
-                        ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
-                    ],
-                )
-                page.open(dlg)
-                page.update()
+                if hasattr(page, 'open_autoselect_status_dialog'):
+                    page.open_autoselect_status_dialog(cancel_event)
+                else:
+                    # fallback simple dialog
+                    try:
+                        dlg = ft.AlertDialog(
+                            title=ft.Text("Autoselect status"),
+                            content=ft.Text(badge_text.value),
+                            actions=[
+                                ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
+                                ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                            ],
+                        )
+                        page.open(dlg)
+                        page.update()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Show initial badge state
+        _set_badge("Starting", 0.0, visible=True)
+
+        # Open the status dialog by default unless the page requests it be hidden
+        try:
+            hide_default = getattr(page, 'autoselect_hide_dialog_default', False)
+        except Exception:
+            hide_default = False
+        if not hide_default:
+            try:
+                _open_status_dialog()
             except Exception:
                 pass
 
@@ -437,9 +435,8 @@ def start_replace_icons_background(
                 except Exception:
                     pass
                 try:
-                    if badge_container in page.overlay:
-                        page.overlay.remove(badge_container)
-                        page.update()
+                    if hasattr(page, 'set_autoselect_progress'):
+                        page.set_autoselect_progress('', 0.0, visible=False)
                 except Exception:
                     pass
 
