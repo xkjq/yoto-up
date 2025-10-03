@@ -165,7 +165,6 @@ class EditCardContent(Static):
                 # Add icon search buttons: full search and local-only search
                 yield Horizontal(
                     Button("Search Icon", id=f"search_icon_{safe_chapter_id}", classes="small-btn"),
-                    Button("Search Local", id=f"search_icon_local_{safe_chapter_id}", classes="small-btn"), classes="button-row"
                 )
                 # Editable title
                 yield Static("Title:", id=f"label_{safe_chapter_id}_title")
@@ -181,7 +180,6 @@ class EditCardContent(Static):
                         yield TrackIconWidget(self.api, track, icons_metadata, track_idx, id=f"icon_pixelart_{safe_track_id}")
                         yield Horizontal(
                             Button("Search Icon", id=f"search_icon_{safe_track_id}", classes="small-btn"),
-                            Button("Search Local", id=f"search_icon_local_{safe_track_id}", classes="small-btn"),
                             classes="button-row"
                         )
                         yield Static("Title:", id=f"label_{safe_track_id}_title")
@@ -238,11 +236,6 @@ class EditCardApp(App):
             details.append(Static(f"Copyright: {metadata.copyright}", id="static_copyright"))
             details.append(Static(f"Accent: {metadata.accent}", id="static_accent"))
             details.append(Static(f"Status: {metadata.status.name if metadata.status else ''}", id="static_status"))
-            if metadata.cover and metadata.cover.imageL:
-                details.append(Static(f"Cover Image: {metadata.cover.imageL}", id="static_coverimage"))
-            if metadata.media:
-                details.append(Static(f"Duration: {metadata.media.duration}", id="static_duration"))
-                details.append(Static(f"File Size: {metadata.media.fileSize}", id="static_filesize"))
         # Main layout
         yield Vertical(
             ScrollView(
@@ -267,19 +260,12 @@ class EditCardApp(App):
         # Handle per-chapter icon search button
         print(f"BUTTON PRESSED: {event.button.id}")
         if event.button.id and event.button.id.startswith("search_icon_"):
-            # chapter full search
+            # chapter search (matches ids like search_icon_chapter_<n>_)
             m = re.match(r"search_icon_chapter_(\d+)_", event.button.id)
             if m:
                 chapter_idx = int(m.group(1))
                 print(f"SEARCH CHAPTER {chapter_idx}")
-                await self.action_search_icon(chapter_idx, local_only=False)
-                return
-            # chapter local-only search
-            m_local = re.match(r"search_icon_local_chapter_(\d+)_", event.button.id)
-            if m_local:
-                chapter_idx = int(m_local.group(1))
-                print(f"SEARCH CHAPTER LOCAL {chapter_idx}")
-                await self.action_search_icon(chapter_idx, local_only=True)
+                await self.action_search_icon(chapter_idx)
                 return
             # Attempt to match track search button ids of the form
             # search_icon_track_<chapter>_<track>_
@@ -288,15 +274,7 @@ class EditCardApp(App):
                 chapter_idx = int(m2.group(1))
                 track_idx = int(m2.group(2))
                 print(f"SEARCH TRACK chapter={chapter_idx} track={track_idx}")
-                await self.action_search_icon_for_track(chapter_idx, track_idx, local_only=False)
-                return
-            # track local-only search
-            m2_local = re.match(r"search_icon_local_track_(\d+)_(\d+)_", event.button.id) or re.match(r"search_icon_local_track_(\d+)__(\d+)_", event.button.id)
-            if m2_local:
-                chapter_idx = int(m2_local.group(1))
-                track_idx = int(m2_local.group(2))
-                print(f"SEARCH TRACK LOCAL chapter={chapter_idx} track={track_idx}")
-                await self.action_search_icon_for_track(chapter_idx, track_idx, local_only=True)
+                await self.action_search_icon_for_track(chapter_idx, track_idx)
                 return
         if event.button.id == "save":
             # Update only editable fields
@@ -437,7 +415,7 @@ class EditCardApp(App):
             # Dismiss loading modal
             loading_modal.dismiss()
 
-    async def action_search_icon(self, chapter_idx, local_only: bool = False):
+    async def action_search_icon(self, chapter_idx):
         """
         Called when user clicks 'Search Icon' for a chapter. Prompts for search text, shows icon choices, lets user select.
         """
@@ -512,11 +490,10 @@ class EditCardApp(App):
                             chapter.tracks[0].display.icon16x16 = f"file://{cp}"
                 except Exception:
                     logging.exception("Failed to apply cached icon for chapter")
-                self.refresh()
-                return
-        await self._show_icon_modal(search_text, on_selected_for_chapter, local_only=local_only)
+        self.refresh()
+        await self._show_icon_modal(search_text, on_selected_for_chapter)
 
-    async def _show_icon_modal(self, query_string, on_selected, local_only: bool = False):
+    async def _show_icon_modal(self, query_string, on_selected):
         """Shared modal flow: shows search -> select modal and calls on_selected(payload).
         """
         logging.info(f"Icon search initiated with query: '{query_string}'")
@@ -538,30 +515,56 @@ class EditCardApp(App):
             progress_bar.advance(1)
             await asyncio.sleep(0.05)  # Simulate search delay
 
-        # If local_only is requested, enumerate all cached icons from the local cache
+        # Build icons list by first trying cached metadata, else fall back to API
         icons = []
-        if local_only:
-            logging.info("Performing local-only icon search: scanning cache directories")
-            try:
-                for cache_dir in (OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR):
-                    try:
-                        if cache_dir and cache_dir.exists():
-                            for p in sorted(cache_dir.iterdir()):
-                                if p.is_file() and p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
-                                    icons.append({'cache_path': str(p), 'title': p.stem})
-                    except Exception:
-                        logging.exception(f"Failed scanning cache dir: {cache_dir}")
-            except Exception:
-                logging.exception("Local-only icon scanning failed")
-            # If no local icons found, fall back to API search to guarantee results
+        logging.info("Attempting to use cached icon metadata for fast search")
+        try:
+            # Look for metadata files in both cache directories
+            candidate_meta_files = []
+            for cache_dir in (OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR):
+                if cache_dir and cache_dir.exists():
+                    for name in ("icon_metadata.json", "user_icon_metadata.json"):
+                        p = cache_dir / name
+                        if p.exists():
+                            candidate_meta_files.append(p)
+            # Load and aggregate metadata
+            aggregated = []
+            for mpath in candidate_meta_files:
+                try:
+                    with mpath.open('r') as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            aggregated.extend(data)
+                except Exception:
+                    logging.exception(f"Failed to load icon metadata: {mpath}")
+            # If we have metadata, filter by query_string
+            if aggregated:
+                q = (query_string or "").strip().lower()
+                if q:
+                    matches = []
+                    for icon in aggregated:
+                        hay = " ".join(
+                            filter(None, (
+                                str(icon.get('title', '')),
+                                " ".join(icon.get('publicTags', [])) if isinstance(icon.get('publicTags'), list) else str(icon.get('publicTags', '')),
+                                str(icon.get('category', '')),
+                                str(icon.get('displayIconId', '')),
+                                str(icon.get('id', '')),
+                            ))
+                        ).lower()
+                        if q in hay:
+                            matches.append(icon)
+                    if matches:
+                        icons = matches
+            # If no local matches, fall back to API search
             if not icons:
                 try:
                     icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
                 except Exception:
-                    logging.exception("Fallback API icon search failed")
+                    logging.exception("API icon search failed")
                     icons = []
-        else:
-            # Regular search: call API (include_yotoicons if supported)
+        except Exception:
+            logging.exception("Cached metadata search failed, falling back to API")
             try:
                 icons = self.api.find_best_icons_for_text(query_string, show_in_console=False)
             except Exception:
@@ -647,7 +650,7 @@ class EditCardApp(App):
 
         await self.push_screen(IconSelectModal(icons, query_string), handle_icon_selected)
 
-    async def action_search_icon_for_track(self, chapter_idx, track_idx, local_only: bool = False):
+    async def action_search_icon_for_track(self, chapter_idx, track_idx):
         """
         Search icons for a specific track and apply selection to the TrackIconWidget.
         """
@@ -723,4 +726,4 @@ class EditCardApp(App):
                     logging.exception("Failed to apply cached icon for track")
 
         # Reuse the same modal flow; the helper will call our on_selected_for_track
-        await self._show_icon_modal(search_text, on_selected_for_track, local_only=local_only)
+        await self._show_icon_modal(search_text, on_selected_for_track)
