@@ -70,7 +70,7 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0):
     return plan
 
 
-def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False):
+def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False, progress_callback=None):
     """Apply gain adjustments described by `plan` to files, writing to out_dir.
 
     Returns list of written paths (or planned paths in dry-run).
@@ -82,7 +82,8 @@ def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False):
 
     os.makedirs(out_dir, exist_ok=True)
     written = []
-    for filepath, info in plan.items():
+    total = len(plan)
+    for idx, (filepath, info) in enumerate(plan.items()):
         try:
             gain_db = float(info.get('recommended_gain_db', 0.0))
             base, ext = os.path.splitext(os.path.basename(filepath))
@@ -91,14 +92,29 @@ def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False):
             dest_path = os.path.join(out_dir, dest_name)
             if dry_run:
                 written.append(dest_path)
+                if progress_callback:
+                    try:
+                        progress_callback(idx + 1, total)
+                    except Exception:
+                        pass
                 continue
             seg = AudioSegment.from_file(filepath)
             seg = seg.apply_gain(gain_db)
             fmt = ext.lstrip('.') or 'mp3'
             seg.export(dest_path, format=fmt)
             written.append(dest_path)
+            if progress_callback:
+                try:
+                    progress_callback(idx + 1, total)
+                except Exception:
+                    pass
         except Exception:
             # skip failures but continue
+            if progress_callback:
+                try:
+                    progress_callback(idx + 1, total)
+                except Exception:
+                    pass
             continue
     return written
 
@@ -991,26 +1007,36 @@ def normalize(
             console.print("[red]pydub is required for gain adjustment but is not available.[/red]")
             raise typer.Exit(code=1)
 
+        # Use a progress bar while writing files
+        from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
         written = []
-        for src in files:
-            try:
+        total = len(files)
+        if dry_run:
+            # dry-run: just list planned paths
+            for src in files:
                 src_path = os.path.abspath(src)
                 base, ext = os.path.splitext(os.path.basename(src_path))
                 tag = f"_adj_{int(gain_db*100)}"
                 dest_name = f"{base}{tag}{ext}"
                 dest_path = os.path.join(out_dir, dest_name)
-                if dry_run:
-                    console.print(f"[cyan]Dry-run:[/] would write: {dest_path}")
-                    written.append(dest_path)
-                    continue
-                seg = AudioSegment.from_file(src_path)
-                seg = seg.apply_gain(float(gain_db))
-                fmt = ext.lstrip('.') or 'mp3'
-                seg.export(dest_path, format=fmt)
+                console.print(f"[cyan]Dry-run:[/] would write: {dest_path}")
                 written.append(dest_path)
-                console.print(f"[green]Wrote:[/] {dest_path}")
-            except Exception as e:
-                console.print(f"[red]Failed to process {src}: {e}[/red]")
+        else:
+            with Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), TimeElapsedColumn()) as prog:
+                task = prog.add_task("Applying fixed gain...", total=total)
+
+                def _cb(completed, tot):
+                    try:
+                        prog.update(task, completed=completed)
+                    except Exception:
+                        pass
+
+                # Build a tiny plan for fixed-gain application to reuse apply_gain_plan
+                fixed_plan = {}
+                for src in files:
+                    fixed_plan[os.path.abspath(src)] = {'recommended_gain_db': float(gain_db)}
+
+                written = apply_gain_plan(fixed_plan, out_dir, dry_run=False, progress_callback=_cb)
 
         if written:
             console.print(Panel('\n'.join(written), title="Gain-adjusted files"))
@@ -1063,19 +1089,28 @@ def normalize(
             else:
                 apply_out = tempfile.mkdtemp(prefix="yoto_auto_gain_")
                 created_temp2 = True
+            # Use a progress bar for applying the plan
             try:
-                # Build the plan to apply: either per-file recommendations or a
-                # uniform global gain that preserves per-track differences.
-                if per_file:
-                    plan_to_apply = plan
-                else:
-                    # overwrite recommended gains with global_gain for each file
-                    plan_to_apply = {}
-                    for p, info in plan.items():
-                        plan_to_apply[p] = dict(info)
-                        plan_to_apply[p]['recommended_gain_db'] = global_gain
+                from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+                total = len(plan)
+                with Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), TimeElapsedColumn()) as prog:
+                    task = prog.add_task("Applying auto-gain plan...", total=total)
 
-                written = apply_gain_plan(plan_to_apply, apply_out, dry_run=dry_run)
+                    def _cb(completed, tot):
+                        try:
+                            prog.update(task, completed=completed)
+                        except Exception:
+                            pass
+
+                    if per_file:
+                        plan_to_apply = plan
+                    else:
+                        plan_to_apply = {}
+                        for p, info in plan.items():
+                            plan_to_apply[p] = dict(info)
+                            plan_to_apply[p]['recommended_gain_db'] = global_gain
+
+                    written = apply_gain_plan(plan_to_apply, apply_out, dry_run=dry_run, progress_callback=_cb)
             except Exception as e:
                 console.print(f"[red]Failed to apply gain plan: {e}[/red]")
                 raise typer.Exit(code=1)
