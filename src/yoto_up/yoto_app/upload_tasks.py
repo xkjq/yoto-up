@@ -1,8 +1,8 @@
 import asyncio
 import os
 import traceback
-from models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
-from yoto_api import YotoAPI
+from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
+from yoto_up.yoto_api import YotoAPI
 from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
