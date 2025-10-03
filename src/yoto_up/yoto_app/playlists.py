@@ -1084,20 +1084,42 @@ def build_playlists_panel(
                     reverse = sort_key == "title_desc"
                 try:
                     sorted_cards = sorted(cards, key=sort_func, reverse=reverse)
-                    if sort_key in ("created_desc", "created_asc"):
-                        print(f"[sort] sort_key={sort_key}, reverse={reverse}")
-                        for idx, c in enumerate(sorted_cards):
-                            d, _ = get_meta(c)
-                            print(f"[sorted] idx={idx}, title={d.get('title','?')}, createdAt={d.get('createdAt','?')}")
-                except Exception as e:
-                    print(f"[sort] Exception during sorting: {e}")
+                except Exception:
                     sorted_cards = cards
 
+                # Build rows for each card; only append valid ft.Control objects.
                 for idx, c in enumerate(sorted_cards):
                     try:
                         if not card_matches_filters(c):
                             continue
-                        playlists_list.controls.append(make_playlist_row(c, idx=idx))
+                        try:
+                            row = make_playlist_row(c, idx=idx)
+                        except Exception:
+                            row = None
+                        if row is not None and isinstance(row, ft.Control):
+                            playlists_list.controls.append(row)
+                        else:
+                            try:
+                                title = getattr(c, "title", None) or (
+                                    c.model_dump(exclude_none=True).get("title")
+                                    if hasattr(c, "model_dump")
+                                    else str(c)
+                                )
+                            except Exception:
+                                title = str(c)
+                            cid = (
+                                getattr(c, "id", None)
+                                or getattr(c, "contentId", None)
+                                or getattr(c, "cardId", None)
+                                or ""
+                            )
+                            playlists_list.controls.append(
+                                ft.ListTile(
+                                    title=ft.Text(title),
+                                    subtitle=ft.Text(str(cid)),
+                                    on_click=lambda ev, card=c: show_card_details(ev, card),
+                                )
+                            )
                     except Exception:
                         try:
                             title = getattr(c, "title", None) or (
@@ -1110,6 +1132,7 @@ def build_playlists_panel(
                         cid = (
                             getattr(c, "id", None)
                             or getattr(c, "contentId", None)
+                            or getattr(c, "cardId", None)
                             or ""
                         )
                         playlists_list.controls.append(

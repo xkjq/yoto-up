@@ -1187,8 +1187,17 @@ def main(page):
                     for idx, item in enumerate(saved):
                         try:
                             if callable(make_row):
-                                row = make_row(item, idx=idx)
-                                pl_list.controls.append(row)
+                                try:
+                                    row = make_row(item, idx=idx)
+                                except Exception:
+                                    row = None
+                                # Only append a valid Control; otherwise fall back
+                                if row is not None and isinstance(row, ft.Control):
+                                    pl_list.controls.append(row)
+                                else:
+                                    title = item.get('title', '') if isinstance(item, dict) else str(item)
+                                    cid = item.get('cardId', '') if isinstance(item, dict) else ''
+                                    pl_list.controls.append(ft.ListTile(title=ft.Text(title), subtitle=ft.Text(str(cid))))
                             else:
                                 # fallback: render a simple ListTile
                                 title = item.get('title', '') if isinstance(item, dict) else str(item)
