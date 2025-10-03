@@ -7,6 +7,7 @@ from yoto_up.yoto_api import YotoAPI
 from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 import difflib
 import json
 from rich.prompt import Confirm
@@ -200,20 +201,18 @@ def list_cards(
         cards = full_cards
 
     if table:
-        from rich.table import Table
-
-        table = Table(title="Yoto Cards")
-        table.add_column("Card ID", style="cyan", no_wrap=True)
-        table.add_column("Title", style="magenta")
-        table.add_column("Description", style="green")
+        rich_table = Table(title="Yoto Cards")
+        rich_table.add_column("Card ID", style="cyan", no_wrap=True)
+        rich_table.add_column("Title", style="magenta")
+        rich_table.add_column("Description", style="green")
         for card in cards:
             desc = (
                 (card.metadata.description[: truncate - 3] + "...")
                 if card.metadata.description and len(card.metadata.description) > truncate
                 else (card.metadata.description or "")
             )
-            table.add_row(card.cardId, card.title or "", desc)
-        console.print(table)
+            rich_table.add_row(card.cardId, card.title or "", desc)
+        console.print(rich_table)
         return
     else:
         for card in cards:
@@ -1059,8 +1058,6 @@ def normalize(
         global_gain = float(sum(recs) / len(recs)) if recs else 0.0
 
         # Show recommendations with an "Applied" column so user sees the difference
-        from rich.table import Table
-        from rich.panel import Panel
         t = Table(title=f"Auto-gain recommendations (target {target_lufs} LUFS)")
         t.add_column("File", style="cyan", overflow="fold")
         t.add_column("LUFS", style="magenta", justify="right")
