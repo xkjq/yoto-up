@@ -13,6 +13,8 @@ from pathlib import Path
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
 import hashlib
 import logging
+import tempfile
+import urllib.request
 from yoto_up.models import Card, CardContent
 from yoto_up.icons import render_icon
 
@@ -202,7 +204,7 @@ class EditCardApp(App):
         metadata = card.metadata if hasattr(card, "metadata") and card.metadata else None
         # Display card details nicely
         details = []
-        details.append(Static(f"Editing Card: {card.cardId}", id="header"))
+        details.append(Static(f"Editing Card: [blue]{card.cardId}[/blue]", id="header"))
         # Editable title
         details.append(Static("Title:", id="label_title"))
         details.append(Input(value=str(card.title), placeholder="title", id="edit_title"))
@@ -247,6 +249,7 @@ class EditCardApp(App):
                 Button("Save", id="save", classes="small-btn"),
                 Button("Cancel", id="cancel", classes="small-btn"),
                 Button("Show JSON", id="show_json", classes="small-btn"),
+                Button("Show Cover", id="show_cover", classes="small-btn"),
                 Button("Autoselect Icons", id="autoselect_icons", classes="small-btn"),
                 id="button-row"
             ),
@@ -302,6 +305,77 @@ class EditCardApp(App):
                     if event.button.id == "close_json":
                         self.dismiss()
             await self.push_screen(CardJsonModal())
+        elif event.button.id == "show_cover":
+            # Render the card cover image (if present) in a modal using braille renderer
+            cover_url = None
+            try:
+                metadata = self.card.metadata if hasattr(self.card, 'metadata') and self.card.metadata else None
+                if metadata and metadata.cover and getattr(metadata.cover, 'imageL', None):
+                    cover_url = metadata.cover.imageL
+            except Exception:
+                cover_url = None
+
+            class CoverModal(ModalScreen):
+                def __init__(self, cover_url):
+                    super().__init__()
+                    self.cover_url = cover_url
+                    self.temp_path = None
+
+                def compose(self):
+                    # placeholder while loading
+                    yield Vertical(
+                        Label("Loading cover image...", id="cover_loading_label"),
+                        id="cover_modal_container"
+                    )
+
+                async def on_mount(self):
+                    # Download or resolve local path and render
+                    art = "[red]No cover available[/red]"
+                    try:
+                        if not self.cover_url:
+                            art = "[red]No cover available[/red]"
+                        else:
+                            # If cover_url looks like a file path, try to use it directly
+                            if self.cover_url.startswith("file://"):
+                                p = Path(self.cover_url[len("file://"):])
+                                if p.exists():
+                                    art = render_icon(p, method='braille', braille_dims=(24, 12))
+                            elif self.cover_url.startswith("http://") or self.cover_url.startswith("https://"):
+                                # download to temp file
+                                tf = tempfile.NamedTemporaryFile(prefix="yoto_cover_", suffix=Path(self.cover_url).suffix or ".png", delete=False)
+                                try:
+                                    urllib.request.urlretrieve(self.cover_url, tf.name)
+                                    self.temp_path = Path(tf.name)
+                                    art = render_icon(self.temp_path, method='braille', braille_dims=(24, 12))
+                                finally:
+                                    tf.close()
+                            else:
+                                # treat as local path
+                                p = Path(self.cover_url)
+                                if p.exists():
+                                    art = render_icon(p, method='braille', braille_dims=(24, 12))
+                                else:
+                                    art = f"[red]Cover path not found: {self.cover_url}[/red]"
+                    except Exception as e:
+                        art = f"[red]Error rendering cover: {e}[/red]"
+
+                    # Replace modal content with rendered art and close button
+                    self.dismiss()
+                    # Push a simple modal showing the art
+                    class CoverDisplayModal(ModalScreen):
+                        def compose(self):
+                            yield Vertical(
+                                Static(art, markup=True),
+                                Button("Close", id="close_cover", classes="small-btn"),
+                                id="cover_display_container"
+                            )
+                        async def on_button_pressed(self, event):
+                            if event.button.id == "close_cover":
+                                self.dismiss()
+
+                    await self.app.push_screen(CoverDisplayModal())
+
+            await self.push_screen(CoverModal(cover_url))
         elif event.button.id == "autoselect_icons":
             # Show loading modal
             class LoadingModal(ModalScreen):
@@ -336,7 +410,6 @@ class EditCardApp(App):
         Called when user clicks 'Search Icon' for a chapter. Prompts for search text, shows icon choices, lets user select.
         """
         chapter = self.card.content.chapters[chapter_idx]
-        print("SEARCH CHAPTER ICON")
         # Use chapter title as default search text
         search_text = getattr(chapter, "title", "")
 
