@@ -91,6 +91,75 @@ def build_playlists_panel(
         # page may be a SimpleNamespace in some tests; ignore if overlay isn't available
         pass
     import_card_btn = ft.ElevatedButton(text="Import Card(s)")
+    restore_versions_btn = ft.ElevatedButton(text="Restore Versions")
+    def _open_versions_dialog(_e=None):
+        try:
+            api = ensure_api(api_ref, CLIENT_ID)
+        except Exception:
+            try:
+                show_snack("API not available for restore", error=True)
+            except Exception:
+                pass
+            return
+
+        versions_root = getattr(api, "VERSIONS_DIR", None)
+        items = []
+        try:
+            if versions_root:
+                root = Path(versions_root)
+                if root.exists():
+                    for card_dir in sorted(root.iterdir()):
+                        if not card_dir.is_dir():
+                            continue
+                        for vf in sorted(card_dir.iterdir(), reverse=True):
+                            if vf.suffix == ".json":
+                                items.append(vf)
+        except Exception:
+            items = []
+
+        if not items:
+            try:
+                show_snack("No saved versions found")
+            except Exception:
+                pass
+            return
+
+        lv = ft.ListView(expand=True)
+        for p in items:
+            lv.controls.append(ft.Checkbox(label=f"{p.parent.name} / {p.name}", value=False, data=str(p)))
+
+        def do_restore(_ev=None):
+            restored = 0
+            for cb in lv.controls:
+                try:
+                    if getattr(cb, 'value', False):
+                        path = getattr(cb, 'data', None)
+                        if path:
+                            try:
+                                api.restore_version(Path(path), return_card=True)
+                                restored += 1
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            try:
+                show_snack(f"Restored {restored} versions")
+            except Exception:
+                pass
+            dlg.open = False
+            page.update()
+            threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+
+        dlg = ft.AlertDialog(title=ft.Text("Restore versions"), content=lv, actions=[ft.TextButton("Restore Selected", on_click=do_restore), ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
+        try:
+            page.open(dlg)
+            page.update()
+        except Exception:
+            try:
+                page.dialog = dlg
+                page.update()
+            except Exception:
+                pass
     multi_select_btn = ft.ElevatedButton(text="Select Multiple")
     add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
@@ -155,6 +224,61 @@ def build_playlists_panel(
     playlists_list = ft.ListView(expand=True, spacing=6)
     existing_card_map = {}
     existing_card_dropdown = ft.Dropdown(label="Existing card", width=400, options=[])
+
+    def _clean_controls():
+        """Remove any invalid entries from UI control lists that may cause
+        Flet to raise AssertionError when building update commands.
+
+        This is defensive: some code paths previously appended None or
+        non-Control objects into lists which breaks the Flet RPC layer.
+        """
+        try:
+            # Keep only real ft.Control instances in playlists_list
+            try:
+                cleaned = [c for c in playlists_list.controls if isinstance(c, ft.Control)]
+                if len(cleaned) != len(playlists_list.controls):
+                    playlists_list.controls[:] = cleaned
+            except Exception:
+                pass
+            # Also defensively clean file_rows_column if it exists and has controls
+            try:
+                if hasattr(file_rows_column, 'controls'):
+                    cleaned_fr = [c for c in file_rows_column.controls if isinstance(c, ft.Control)]
+                    if len(cleaned_fr) != len(file_rows_column.controls):
+                        file_rows_column.controls[:] = cleaned_fr
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _safe_page_update():
+        """Call page.update() but recover from AssertionError by cleaning
+        invalid controls and retrying once.
+        """
+        try:
+            page.update()
+            return
+        except AssertionError:
+            logger.error("page.update() raised AssertionError - attempting to clean UI controls and retry")
+            try:
+                _clean_controls()
+            except Exception:
+                pass
+            try:
+                page.update()
+            except Exception as ex:
+                logger.error(f"page.update retry failed: {ex}")
+        except Exception as ex:
+            # Propagate other exceptions as before
+            logger.error(f"page.update failed: {ex}")
+
+    # Expose a page-level cleanup helper so other modules (notably gui.show_snack)
+    # can attempt automatic recovery when page.update() raises AssertionError.
+    try:
+        if not hasattr(page, 'clean_ui'):
+            setattr(page, 'clean_ui', _clean_controls)
+    except Exception:
+        pass
 
     # Provide safe defaults for optional injected controls so callers that
     # don't pass them (older code paths) still work.
@@ -504,6 +628,19 @@ def build_playlists_panel(
                         status_ctrl.value = "Unable to determine card id to delete"
                         page.update()
                         return
+                    # save a local version snapshot before deleting so it can be restored
+                    try:
+                        try:
+                            payload = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else None
+                        except Exception:
+                            payload = None
+                        if isinstance(payload, dict):
+                            try:
+                                api.save_version(payload)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                     api.delete_content(content_id)
                     try:
                         playlists_list.controls.remove(row_container)
@@ -945,7 +1082,12 @@ def build_playlists_panel(
 
     async def fetch_playlists(e=None):
         print("Fetching playlists...")
-        page.update()
+        # Clean any stale/invalid controls before touching the page
+        _clean_controls()
+        try:
+            _safe_page_update()
+        except Exception:
+            pass
         api = api_ref.get("api")
         try:
             cards = await asyncio.to_thread(api.get_myo_content)
@@ -1020,13 +1162,24 @@ def build_playlists_panel(
                 pass
         except Exception:
             pass
-        page.update()
+        try:
+            _safe_page_update()
+        except Exception:
+            pass
 
     def fetch_playlists_sync(e=None):
         print("Fetching playlists...")
         try:
-            show_snack("Fetching playlists...")
-            page.update()
+            # Clean invalid controls before showing snack / updating page
+            _clean_controls()
+            try:
+                show_snack("Fetching playlists...")
+            except Exception:
+                pass
+            try:
+                _safe_page_update()
+            except Exception:
+                pass
             api = api_ref.get("api")
             cards = api.get_myo_content()
             playlists_list.controls.clear()
@@ -1166,8 +1319,14 @@ def build_playlists_panel(
                     existing_card_dropdown.options = opts
                 except Exception:
                     pass
-            show_snack(f"Fetched {len(cards)} playlists")
-            page.update()
+            try:
+                show_snack(f"Fetched {len(cards)} playlists")
+            except Exception:
+                pass
+            try:
+                _safe_page_update()
+            except Exception:
+                pass
             # Persist playlists after sync fetch
             try:
                 serializable = []
@@ -1259,6 +1418,7 @@ def build_playlists_panel(
                     delete_selected_btn,
                     export_selected_btn,
                     import_card_btn,
+                    restore_versions_btn,
                     add_tags_btn,
                     sort_dropdown,
                 ]

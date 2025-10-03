@@ -457,7 +457,23 @@ def main(page):
         bg = ft.Colors.RED if error else None
         page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg, duration=duration)
         page.open(page.snack_bar)
-        page.update()
+        try:
+            page.update()
+        except AssertionError:
+            # Flet may raise AssertionError if a control list contains
+            # invalid entries (None or non-Control). If the playlists module
+            # exposed a cleaner, call it and retry once.
+            try:
+                cleaner = getattr(page, 'clean_ui', None)
+                if callable(cleaner):
+                    cleaner()
+            except Exception:
+                pass
+            try:
+                page.update()
+            except Exception:
+                # Give up silently; show_snack should not crash the app
+                pass
 
     overall_bar = ft.ProgressBar(width=400, visible=False)
     overall_text = ft.Text("")
