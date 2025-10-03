@@ -6,7 +6,7 @@ import platform
 import sys
 from flet.auth import OAuthProvider
 
-from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents
+from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents, load_playlists, save_playlists
 
 # Ensure FLET storage env vars are set to a sane default if not provided by the host.
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
@@ -1162,6 +1162,57 @@ def main(page):
 
     # Now load state after controls are created
     load_ui_state(playlists_ui)
+    # Load persisted playlists (if any) and populate the playlists list view
+    try:
+        saved = load_playlists()
+        if saved and isinstance(saved, list):
+            try:
+                pl_list = playlists_ui.get('playlists_list') if isinstance(playlists_ui, dict) else None
+                if pl_list and hasattr(pl_list, 'controls'):
+                    pl_list.controls.clear()
+                    # Resolve make_playlist_row once to avoid repeated fallback logs
+                    make_row = None
+                    try:
+                        make_row = playlists_ui.get('make_playlist_row') if isinstance(playlists_ui, dict) else None
+                    except Exception:
+                        make_row = None
+                    # If playlists_ui did not provide a row builder, we'll fall back
+                    # to a simple ListTile per-item. Do not try to import the nested
+                    # `make_playlist_row` from the module (it's local to the builder).
+                    if not callable(make_row):
+                        make_row = None
+                    if not callable(make_row):
+                        logger.debug("No make_playlist_row function available in playlists_ui; using fallback ListTile")
+
+                    for idx, item in enumerate(saved):
+                        try:
+                            if callable(make_row):
+                                row = make_row(item, idx=idx)
+                                pl_list.controls.append(row)
+                            else:
+                                # fallback: render a simple ListTile
+                                title = item.get('title', '') if isinstance(item, dict) else str(item)
+                                cid = item.get('cardId', '') if isinstance(item, dict) else ''
+                                pl_list.controls.append(ft.ListTile(title=ft.Text(title), subtitle=ft.Text(str(cid))))
+                        except Exception:
+                            try:
+                                pl_list.controls.append(ft.ListTile(title=ft.Text(str(item))))
+                            except Exception:
+                                pass
+                    page.update()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Expose saver on page so other modules can persist playlists after edits
+    def _page_save_playlists(items):
+        try:
+            save_playlists(items)
+        except Exception:
+            pass
+
+    page.save_playlists = _page_save_playlists
     ctx['upload_mode_dropdown'] = upload_mode_dropdown  # Add to context for upload tasks
 
     # Card info/link display (persistent at bottom)

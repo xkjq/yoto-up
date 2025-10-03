@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import json
+from typing import Any
 try:
     from platformdirs import user_config_dir, user_data_dir, user_cache_dir
 except Exception:
@@ -38,6 +40,7 @@ YOTOICONS_CACHE_DIR = _BASE_DATA_DIR / ".yotoicons_cache"
 UPLOAD_ICON_CACHE_FILE = _BASE_DATA_DIR / ".yoto_icon_upload_cache.json"
 API_CACHE_FILE = _BASE_DATA_DIR / ".yoto_api_cache.json"
 VERSIONS_DIR = _BASE_DATA_DIR / ".card_versions"
+PLAYLISTS_FILE = _BASE_DATA_DIR / "playlists.json"
 
 # Convenience helpers
 def ensure_parents(path: Path):
@@ -80,6 +83,29 @@ def atomic_write(path: Path, data: str | bytes, text_mode: bool = True):
                     path.write_bytes(data)
 
 
+def load_playlists(default: Any | None = None) -> Any:
+    """Load persisted playlists from PLAYLISTS_FILE. Returns default if file missing/invalid."""
+    if default is None:
+        default = []
+    try:
+        if not PLAYLISTS_FILE.exists():
+            return default
+        text = PLAYLISTS_FILE.read_text(encoding="utf-8")
+        return json.loads(text)
+    except Exception:
+        return default
+
+
+def save_playlists(playlists: Any) -> None:
+    """Persist playlists (list/dict) to PLAYLISTS_FILE atomically."""
+    try:
+        data = json.dumps(playlists, ensure_ascii=False, indent=2)
+        atomic_write(PLAYLISTS_FILE, data, text_mode=True)
+    except Exception:
+        # best-effort; don't raise to avoid disrupting the UI
+        pass
+
+
 __all__ = [
     "TOKENS_FILE",
     "UI_STATE_FILE",
@@ -88,7 +114,10 @@ __all__ = [
     "UPLOAD_ICON_CACHE_FILE",
     "API_CACHE_FILE",
     "VERSIONS_DIR",
+    "PLAYLISTS_FILE",
     "FLET_APP_STORAGE_DATA",
     "ensure_parents",
     "atomic_write",
+    "load_playlists",
+    "save_playlists",
 ]

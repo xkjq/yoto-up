@@ -28,6 +28,7 @@ from yoto_app.config import CLIENT_ID
 from loguru import logger
 import time
 from yoto_api import YotoAPI
+from yoto_up.paths import save_playlists
 
 
 
@@ -1007,6 +1008,18 @@ def build_playlists_panel(
             show_snack(f"Fetched {len(cards)} playlists")
         except Exception:
             pass
+        # Persist playlists for faster startup and offline view
+        try:
+            serializable = []
+            for c in cards:
+
+                    serializable.append(c.model_dump(exclude_none=True))
+            try:
+                save_playlists(serializable)
+            except Exception:
+                pass
+        except Exception:
+            pass
         page.update()
 
     def fetch_playlists_sync(e=None):
@@ -1132,6 +1145,28 @@ def build_playlists_panel(
                     pass
             show_snack(f"Fetched {len(cards)} playlists")
             page.update()
+            # Persist playlists after sync fetch
+            try:
+                serializable = []
+                for c in cards:
+                    try:
+                        if hasattr(c, 'model_dump'):
+                            serializable.append(c.model_dump(exclude_none=True))
+                        elif isinstance(c, dict):
+                            serializable.append(c)
+                        else:
+                            serializable.append(str(c))
+                    except Exception:
+                        try:
+                            serializable.append(str(c))
+                        except Exception:
+                            pass
+                try:
+                    save_playlists(serializable)
+                except Exception:
+                    pass
+            except Exception:
+                pass
         except httpx.HTTPError as http_ex:
             logger.error(f"HTTP error during fetch_playlists_sync: {http_ex}")
             logger.error(f"fetch_playlists_sync error: {http_ex}")
@@ -1310,6 +1345,7 @@ def build_playlists_panel(
         "playlists_list": playlists_list,
         "existing_card_dropdown": existing_card_dropdown,
         "existing_card_map": existing_card_map,
+        "make_playlist_row": make_playlist_row,
         "show_card_details": show_card_details,
         "delete_selected_btn": delete_selected_btn,
         "multi_select_btn": multi_select_btn,
