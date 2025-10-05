@@ -10,13 +10,56 @@ from loguru import logger
 from PIL import Image
 
 from .icon_import_helpers import get_base64_from_path
+from yoto_up.paths import STAMPS_DIR
 
+def seed_stamps_if_empty(d):
+    # If directory is empty (no .png/.json), seed some basic stamps for users
+    if not d.exists():
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            logger.error("Failed to create stamps directory")
+            return
+    try:
+        has_files = any(p.suffix.lower() in ('.png', '.json') for p in d.iterdir())
+    except Exception:
+        has_files = False
+    if not has_files:
+        try:
+            from PIL import ImageDraw
+
+            # Heart
+            im = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(im)
+            draw.polygon([(8, 12), (2, 6), (4, 2), (8, 4), (12, 2), (14, 6)], fill=(220, 20, 60, 255))
+            im.save(str(d / 'heart.png'))
+
+            # Star
+            im2 = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+            draw2 = ImageDraw.Draw(im2)
+            draw2.polygon([(8, 2), (10, 7), (15, 7), (11, 10), (12, 15), (8, 12), (4, 15), (5, 10), (1, 7), (6, 7)], fill=(255, 215, 0, 255))
+            im2.save(str(d / 'star.png'))
+
+            # Smiley
+            im3 = Image.new('RGBA', (16, 16), (255, 255, 0, 255))
+            draw3 = ImageDraw.Draw(im3)
+            draw3.ellipse((4, 4, 6, 6), fill=(0, 0, 0, 255))
+            draw3.ellipse((10, 4, 12, 6), fill=(0, 0, 0, 255))
+            try:
+                draw3.arc((4, 6, 12, 12), start=20, end=160, fill=(0, 0, 0, 255))
+            except Exception:
+                # fallback: draw simple mouth line
+                draw3.line((5, 10, 11, 10), fill=(0, 0, 0, 255))
+            im3.save(str(d / 'smiley.png'))
+        except Exception:
+            # don't fail if PIL isn't available or write fails
+            pass
 
 STAMP_DIALOG = None
-STAMP_GALLERY_DIALOG = None 
+STAMP_GALLERY_DIALOG = None
 
-project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-stamps_dir = os.path.join(project_dir, '.stamps')
+# Use the centralized stamps dir from paths.py (absolute path)
+stamps_dir = str(STAMPS_DIR)
 
 
 def open_image_stamp_dialog(editor, e):
@@ -33,23 +76,36 @@ def open_image_stamp_dialog(editor, e):
     preview = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
     preview_applied = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
 
+    provided_dir = STAMPS_DIR / 'provided'
+    seed_stamps_if_empty(provided_dir)
+
+
     # gather file list (include .stamps/imported)
     try:
         if stamps_dir and os.path.isdir(stamps_dir):
             for fn in os.listdir(stamps_dir):
                 if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                    files.append(os.path.join('.stamps', fn))
+                    files.append(os.path.join(stamps_dir, fn))
             # include imported subfolder contents (if present)
             try:
                 imported_dir = os.path.join(stamps_dir, 'imported')
                 if os.path.isdir(imported_dir):
                     for fn in os.listdir(imported_dir):
                         if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                            rel = os.path.join('.stamps', 'imported', fn)
-                            if rel not in files:
-                                files.append(rel)
+                            abs_path = os.path.join(imported_dir, fn)
+                            if abs_path not in files:
+                                files.append(abs_path)
             except Exception:
                 pass
+            try:
+                for fn in os.listdir(provided_dir):
+                    if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
+                        abs_path = os.path.join(provided_dir, fn)
+                        if abs_path not in files:
+                            files.append(abs_path)
+            except Exception:
+                pass
+
     except Exception:
         pass
     try:
@@ -57,10 +113,34 @@ def open_image_stamp_dialog(editor, e):
             sd = str(saved_dir) if hasattr(saved_dir, 'as_posix') else saved_dir
             for fn in os.listdir(sd):
                 if fn.lower().endswith('.png') or fn.lower().endswith('.json'):
-                    if fn not in [os.path.basename(f) for f in files]:
-                        files.append(fn)
+                    abs_path = os.path.join(sd, fn)
+                    if abs_path not in files:
+                        files.append(abs_path)
     except Exception:
         logger.exception("Error listing saved icons for stamp dialog")
+
+
+
+
+
+    # prepare absolute stamps root and normalize file paths
+    try:
+        stamps_root = os.path.abspath(stamps_dir) if stamps_dir else None
+    except Exception:
+        stamps_root = None
+    imported_root = os.path.join(stamps_root, 'imported') if stamps_root else None
+    try:
+        files = [os.path.abspath(x) if not os.path.isabs(x) else x for x in files]
+        # dedupe while preserving order
+        seen = set()
+        normalized = []
+        for x in files:
+            if x not in seen:
+                seen.add(x)
+                normalized.append(x)
+        files = normalized
+    except Exception:
+        pass
 
     if not files:
         status.value = "No saved small icons found in .stamps or saved_icons"
@@ -74,17 +154,28 @@ def open_image_stamp_dialog(editor, e):
     # build dropdown (labels mark imported vs stamps)
     dropdown_options = []
     option_map = {}
+    # Determine stamps root path for label detection
+    try:
+        stamps_root = os.path.abspath(stamps_dir) if stamps_dir else None
+    except Exception:
+        stamps_root = None
+
     for f in files:
-        fstr = str(f)
-        if fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported'):
-            label = f"[imported] {os.path.basename(f)}"
-            value = f
-        elif fstr.startswith('.stamps' + os.sep) or fstr.startswith('.stamps/'):
-            label = f"[stamps] {os.path.basename(f)}"
-            value = f
-        else:
-            label = os.path.basename(f)
-            value = f
+        f_abs = os.path.abspath(f) if not os.path.isabs(f) else f
+        label = os.path.basename(f_abs)
+        value = f_abs
+        try:
+            if stamps_root and os.path.commonpath([f_abs, stamps_root]) == stamps_root:
+                # file lives under the stamps root
+                rel = os.path.relpath(f_abs, stamps_root)
+                if rel.startswith(os.path.join('imported', '')) or rel.split(os.sep)[0] == 'imported':
+                    label = f"[imported] {os.path.basename(f_abs)}"
+                else:
+                    label = f"[stamps] {os.path.basename(f_abs)}"
+            else:
+                label = f"[saved] {os.path.basename(f_abs)}"
+        except Exception:
+            label = os.path.basename(f_abs)
         option_map[label] = value
         dropdown_options.append(ft.dropdown.Option(label))
 
@@ -123,29 +214,36 @@ def open_image_stamp_dialog(editor, e):
         for f in files:
             # apply gallery filter if requested
             try:
+                f_abs = os.path.abspath(f) if not os.path.isabs(f) else f
                 if filter_by and filter_by != 'All':
-                    fstr = str(f)
-                    if filter_by == 'Imported' and not (fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported')):
-                        continue
-                    if filter_by == 'Stamps' and (fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported')):
-                        # skip imported when only showing stamps
-                        continue
-                    if filter_by == 'Saved' and (fstr.startswith('.stamps' + os.sep) or fstr.startswith('.stamps/')):
-                        # skip central .stamps when showing saved
-                        continue
+                    if filter_by == 'Imported':
+                        if not (imported_root and os.path.commonpath([f_abs, imported_root]) == imported_root):
+                            continue
+                    if filter_by == 'Stamps':
+                        # include stamps under stamps_root but not those under imported
+                        if not (stamps_root and os.path.commonpath([f_abs, stamps_root]) == stamps_root and not (imported_root and os.path.commonpath([f_abs, imported_root]) == imported_root)):
+                            continue
+                    if filter_by == 'Saved':
+                        if stamps_root and os.path.commonpath([f_abs, stamps_root]) == stamps_root:
+                            # skip central stamps when showing saved
+                            continue
             except Exception:
                 pass
             try:
-                if str(f).startswith('.stamps' + os.sep) or str(f).startswith('.stamps/'):
-                    p = os.path.join(project_dir, f)
-                    # label will show imported when inside imported folder
-                    if str(f).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(f).startswith('.stamps/imported'):
-                        label = f"[imported] {os.path.basename(f)}"
+                f_abs = os.path.abspath(f) if not os.path.isabs(f) else f
+                p = f_abs
+                # label will show imported when inside imported folder
+                try:
+                    if stamps_root and os.path.commonpath([f_abs, stamps_root]) == stamps_root:
+                        rel = os.path.relpath(f_abs, stamps_root)
+                        if rel.split(os.sep)[0] == 'imported':
+                            label = f"[imported] {os.path.basename(f_abs)}"
+                        else:
+                            label = f"[stamps] {os.path.basename(f_abs)}"
                     else:
-                        label = f"[stamps] {os.path.basename(f)}"
-                else:
-                    label = os.path.basename(f)
-                    p = os.path.join(str(saved_dir), f) if saved_dir and not os.path.isabs(f) else f
+                        label = os.path.basename(f_abs)
+                except Exception:
+                    label = os.path.basename(f_abs)
                 if not p or not os.path.exists(p):
                     continue
 
@@ -192,25 +290,26 @@ def open_image_stamp_dialog(editor, e):
                 # if this is an imported stamp, offer a small Delete button below the thumbnail
                 controls = [img_ctrl, ft.Text(label, width=64, max_lines=1)]
                 try:
-                    fstr = str(f)
-                    if fstr.startswith(os.path.join('.stamps', 'imported') + os.sep) or fstr.startswith('.stamps/imported'):
+                    f_abs = os.path.abspath(f) if not os.path.isabs(f) else f
+                    if imported_root and os.path.commonpath([f_abs, imported_root]) == imported_root:
                         # define deletion callback which removes the file from disk and refreshes the gallery
-                        def _delete_imported(ev, path=p, rel=f, lbl=label):
+                        def _delete_imported(ev, path=p, lbl=label):
                             try:
                                 # confirmation dialog
                                 def _do_delete(confirm_ev):
                                     try:
                                         if os.path.exists(path):
                                             os.remove(path)
-                                        # remove relative entry from files list if present
+                                        # remove absolute entry from files list if present
                                         try:
-                                            if rel in files:
-                                                files.remove(rel)
+                                            abs_path = os.path.abspath(path)
+                                            if abs_path in files:
+                                                files.remove(abs_path)
                                         except Exception:
                                             pass
                                         # remove from option_map entries that point to this value
                                         try:
-                                            keys_to_remove = [k for k, v in list(option_map.items()) if v == rel]
+                                            keys_to_remove = [k for k, v in list(option_map.items()) if os.path.abspath(v) == os.path.abspath(path)]
                                             for k in keys_to_remove:
                                                 option_map.pop(k, None)
                                         except Exception:
@@ -219,7 +318,7 @@ def open_image_stamp_dialog(editor, e):
                                         try:
                                             dropdown.options = [ft.dropdown.Option(k) for k in option_map.keys()]
                                             # clear selection if it was the deleted item
-                                            if dropdown.value and option_map.get(dropdown.value, None) == rel:
+                                            if dropdown.value and option_map.get(dropdown.value, None) and os.path.abspath(option_map.get(dropdown.value, None)) == os.path.abspath(path):
                                                 dropdown.value = None
                                             try:
                                                 dropdown.update()
@@ -357,6 +456,33 @@ def open_image_stamp_dialog(editor, e):
         w = max((len(r) for r in pixels), default=0)
         return w, h
 
+    def resolve_mapped_path(mapped_in):
+        """Resolve a mapped value from the dropdown to an absolute path.
+
+        Behaviour:
+        - If mapped_in is already absolute, return as-is.
+        - If it starts with the legacy prefix '.stamps', resolve relative to stamps_root (STAMPS_DIR).
+        - Otherwise treat it as saved_dir-relative when saved_dir is provided.
+        """
+        if not mapped_in:
+            return None
+        if os.path.isabs(mapped_in):
+            return mapped_in
+        # legacy relative path under .stamps
+        try:
+            if mapped_in.startswith('.stamps'):
+                rel = mapped_in[len('.stamps'):].lstrip('/\\')
+                if stamps_root:
+                    return os.path.join(stamps_root, rel) if rel else stamps_root
+        except Exception:
+            pass
+        # otherwise treat as saved_dir-relative
+        try:
+            return os.path.join(str(saved_dir), mapped_in) if saved_dir else mapped_in
+        except Exception:
+            return mapped_in
+
+
     def set_position(pos):
         grid_size = editor.size
         v = dropdown.value
@@ -364,10 +490,7 @@ def open_image_stamp_dialog(editor, e):
         stamp_w = stamp_h = 0
         try:
             if mapped:
-                if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
-                    p = os.path.join(project_dir, mapped)
-                else:
-                    p = os.path.join(str(saved_dir), mapped) if saved_dir else mapped
+                p = resolve_mapped_path(mapped)
                 if p and os.path.exists(p):
                     try:
                         sf = float(scale_dropdown.value)
@@ -543,10 +666,11 @@ def open_image_stamp_dialog(editor, e):
             mapped = option_map.get(v, v)
         except Exception:
             mapped = v
-        if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
-            p = os.path.join(project_dir, mapped)
-        else:
-            p = os.path.join(str(saved_dir), mapped) if saved_dir and not os.path.isabs(mapped) else mapped
+        # resolve to absolute path using same helper as above
+        try:
+            p = resolve_mapped_path(mapped)
+        except Exception:
+            p = mapped
 
         logger.debug(f"Stamp dialog on_select: selected value={v} mapped={mapped} resolved_path={p} exists={os.path.exists(p) if p else 'N/A'} scale={scale_dropdown.value}")
 
@@ -786,10 +910,11 @@ def open_image_stamp_dialog(editor, e):
             status.update()
             return
         mapped = option_map.get(fn, fn)
-        if str(mapped).startswith('.stamps' + os.sep) or str(mapped).startswith('.stamps/'):
-            p = os.path.join(project_dir, mapped)
-        else:
-            p = os.path.join(str(saved_dir), mapped) if saved_dir and not os.path.isabs(mapped) else mapped
+        # resolve path
+        try:
+            p = resolve_mapped_path(mapped)
+        except Exception:
+            p = mapped
 
         try:
             try:
@@ -838,25 +963,28 @@ def open_image_stamp_dialog(editor, e):
         except Exception:
             mapped = v
 
-        # only allow deletion of imported items inside .stamps/imported
-        if not (str(mapped).startswith(os.path.join('.stamps', 'imported') + os.sep) or str(mapped).startswith('.stamps/imported')):
+        # resolve mapped path and only allow deletion if it's under imported_root
+        try:
+            p = resolve_mapped_path(mapped)
+        except Exception:
+            p = mapped
+        if not (imported_root and os.path.commonpath([os.path.abspath(p), imported_root]) == imported_root):
             status.value = "Selected file is not an imported stamp"
             status.update()
             return
-
-        p = os.path.join(project_dir, mapped)
 
         def _do_delete_selected(confirm_ev):
             try:
                 if os.path.exists(p):
                     os.remove(p)
                 try:
-                    if mapped in files:
-                        files.remove(mapped)
+                    abs_p = os.path.abspath(p)
+                    if abs_p in files:
+                        files.remove(abs_p)
                 except Exception:
                     pass
                 try:
-                    keys_to_remove = [k for k, vv in list(option_map.items()) if vv == mapped]
+                    keys_to_remove = [k for k, vv in list(option_map.items()) if vv and os.path.abspath(vv) == os.path.abspath(p)]
                     for k in keys_to_remove:
                         option_map.pop(k, None)
                 except Exception:
@@ -893,7 +1021,7 @@ def open_image_stamp_dialog(editor, e):
 
     def delete_selected_sheet(ev):
         # Build a list of imported sheet groups and show a dialog to pick which sheet to delete.
-        imported_dir = os.path.join(project_dir, '.stamps', 'imported')
+        imported_dir = imported_root if imported_root else os.path.join(stamps_dir, 'imported')
         groups = {}  # key -> {display: str, files: [fullpath]}
         try:
             if os.path.isdir(imported_dir):
@@ -986,16 +1114,19 @@ def open_image_stamp_dialog(editor, e):
                             os.remove(fdel)
                     except Exception:
                         pass
-                # update files and option_map
+                # update files and option_map using absolute paths
                 try:
-                    for fdel in files_list:
-                        relp = os.path.join('.stamps', 'imported', os.path.basename(fdel))
-                        if relp in files:
+                    abs_list = [os.path.abspath(x) for x in files_list]
+                    for fdel in abs_list:
+                        if fdel in files:
                             try:
-                                files.remove(relp)
+                                files.remove(fdel)
                             except Exception:
                                 pass
-                    keys_to_remove = [k2 for k2, v2 in list(option_map.items()) if v2 and v2 in [os.path.join('.stamps','imported', os.path.basename(x)) for x in files_list]]
+                except Exception:
+                    pass
+                try:
+                    keys_to_remove = [k2 for k2, v2 in list(option_map.items()) if v2 and os.path.abspath(v2) in [os.path.abspath(x) for x in files_list]]
                     for k2 in keys_to_remove:
                         option_map.pop(k2, None)
                 except Exception:

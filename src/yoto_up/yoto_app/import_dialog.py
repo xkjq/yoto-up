@@ -12,9 +12,10 @@ import subprocess
 import sys
 import platform
 import io as _io
+from yoto_up.paths import STAMPS_DIR
 
-project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-stamps_dir = os.path.join(project_dir, '.stamps')
+# Use centralized STAMPS_DIR from paths.py (absolute Path-like)
+stamps_dir = str(STAMPS_DIR)
 
 IMPORT_DIALOG = None
 
@@ -1377,7 +1378,8 @@ def open_import_dialog(editor, ev):
                 cols = max(1, math.ceil(sw / tw))
                 rows = max(1, math.ceil(sh / th))
                 work_img = img
-            base_stamps = stamps_dir if stamps_dir else os.path.join(project_dir, '.stamps')
+            # write imports into the centralized stamps dir
+            base_stamps = stamps_dir
             ensure_dir = os.path.join(base_stamps, 'imported')
             try:
                 os.makedirs(ensure_dir, exist_ok=True)

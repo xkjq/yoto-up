@@ -39,6 +39,8 @@ OFFICIAL_ICON_CACHE_DIR = _BASE_DATA_DIR / ".yoto_icon_cache"
 YOTOICONS_CACHE_DIR = _BASE_DATA_DIR / ".yotoicons_cache"
 UPLOAD_ICON_CACHE_FILE = _BASE_DATA_DIR / ".yoto_icon_upload_cache.json"
 API_CACHE_FILE = _BASE_DATA_DIR / ".yoto_api_cache.json"
+STAMPS_DIR = _BASE_DATA_DIR / ".stamps"
+USER_ICONS_DIR = _BASE_DATA_DIR / ".user_icons"
 VERSIONS_DIR = _BASE_DATA_DIR / ".card_versions"
 PLAYLISTS_FILE = _BASE_DATA_DIR / "playlists.json"
 
@@ -83,6 +85,31 @@ def atomic_write(path: Path, data: str | bytes, text_mode: bool = True):
                     path.write_bytes(data)
 
 
+# Ensure standard app-specific subdirectories exist under the base data dir so callers
+# can depend on them being present without duplicating mkdir logic elsewhere.
+try:
+    OFFICIAL_ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    YOTOICONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    STAMPS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    USER_ICONS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+
+
 def load_playlists(default: Any | None = None) -> Any:
     """Load persisted playlists from PLAYLISTS_FILE. Returns default if file missing/invalid."""
     if default is None:
@@ -113,6 +140,8 @@ __all__ = [
     "YOTOICONS_CACHE_DIR",
     "UPLOAD_ICON_CACHE_FILE",
     "API_CACHE_FILE",
+    "USER_ICONS_DIR",
+    "STAMPS_DIR",
     "VERSIONS_DIR",
     "PLAYLISTS_FILE",
     "FLET_APP_STORAGE_DATA",

@@ -8,7 +8,7 @@ import tempfile
 import base64
 
 from yoto_up.models import TrackDisplay, ChapterDisplay
-from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA, USER_ICONS_DIR
 from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 
@@ -262,20 +262,12 @@ class IconReplaceDialog:
             """Scan saved_icons folder and populate saved_icons_list with preview + actions."""
             saved_icons_list.controls.clear()
             try:
-                # PixelArtEditor saves to OFFICIAL_ICON_CACHE_DIR / "saved_icons".
-                # Prefer that directory so saved icons from the editor are visible
-                # here. Fall back to FLET_APP_STORAGE_DATA if the official cache
-                # path isn't present for some reason.
-                saved_dir = Path(OFFICIAL_ICON_CACHE_DIR) / Path("saved_icons")
-                if not saved_dir.exists():
-                    env_dir = os.getenv("FLET_APP_STORAGE_DATA") or FLET_APP_STORAGE_DATA
-                    if env_dir:
-                        saved_dir = Path(env_dir) / Path("saved_icons")
-                # create and seed defaults if missing
+                saved_dir = USER_ICONS_DIR
                 if not saved_dir.exists():
                     try:
                         saved_dir.mkdir(parents=True, exist_ok=True)
-                    except Exception:
+                    except Exception as e:
+                        logger.exception(f"Failed to create saved_icons directory: {e}")
                         saved_icons_list.controls.append(ft.Text("No saved_icons folder"))
                         return
                 # if empty, seed some basic stamps
@@ -284,28 +276,9 @@ class IconReplaceDialog:
                 except Exception:
                     has_files = False
                 if not has_files:
-                    try:
-                        from PIL import Image, ImageDraw
-                        im = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
-                        draw = ImageDraw.Draw(im)
-                        draw.polygon([(8, 12), (2, 6), (4, 2), (8, 4), (12, 2), (14, 6)], fill=(220, 20, 60, 255))
-                        im.save(str(saved_dir / 'heart.png'))
-                        im2 = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
-                        draw2 = ImageDraw.Draw(im2)
-                        draw2.polygon([(8, 2), (10, 7), (15, 7), (11, 10), (12, 15), (8, 12), (4, 15), (5, 10), (1, 7), (6, 7)], fill=(255, 215, 0, 255))
-                        im2.save(str(saved_dir / 'star.png'))
-                        im3 = Image.new('RGBA', (16, 16), (255, 255, 0, 255))
-                        draw3 = ImageDraw.Draw(im3)
-                        draw3.ellipse((4, 4, 6, 6), fill=(0, 0, 0, 255))
-                        draw3.ellipse((10, 4, 12, 6), fill=(0, 0, 0, 255))
-                        try:
-                            draw3.arc((4, 6, 12, 12), start=20, end=160, fill=(0, 0, 0, 255))
-                        except Exception:
-                            draw3.line((5, 10, 11, 10), fill=(0, 0, 0, 255))
-                        im3.save(str(saved_dir / 'smiley.png'))
-                    except Exception:
-                        pass
-                files = sorted([p for p in saved_dir.iterdir() if p.suffix.lower() in ('.png', '.json')], key=lambda p: p.name)
+                    files = []
+                else: 
+                    files = sorted([p for p in saved_dir.iterdir() if p.suffix.lower() in ('.png', '.json')], key=lambda p: p.name)
                 if not files:
                     saved_icons_list.controls.append(ft.Text("No saved icons found"))
                     return
@@ -439,8 +412,9 @@ class IconReplaceDialog:
                         ft.Row([ft.ElevatedButton("Edit", on_click=make_edit(p)), ft.ElevatedButton("Use", on_click=make_use(p))])
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, spacing=12)
                     saved_icons_list.controls.append(row)
-            except Exception:
-                saved_icons_list.controls.append(ft.Text("Failed to read saved icons"))
+            except Exception as e:
+                logger.exception(f"Failed to refresh saved icons: {e}")
+                saved_icons_list.controls.append(ft.Text(f"Failed to read saved icons: {e}"))
             self.page.update()
         # --- end saved-icons helpers ----------------------------------------------------
 
