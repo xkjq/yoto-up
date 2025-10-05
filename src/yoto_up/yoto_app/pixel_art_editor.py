@@ -3485,6 +3485,12 @@ class PixelArtEditor:
 
                 def _gd_pan_start(ev):
                     try:
+                        # start of a pan/drag: push one undo snapshot for the whole drag
+                        try:
+                            if not getattr(self, '_drag_painting', False):
+                                self._push_undo()
+                        except Exception:
+                            pass
                         self._mouse_down = True
                         self._drag_painting = True
                         logger.debug(
@@ -3520,6 +3526,14 @@ class PixelArtEditor:
                     try:
                         self._mouse_down = True
                         # start a drag session so first hovered cell is painted
+                        try:
+                            if not getattr(self, '_drag_painting', False):
+                                try:
+                                    self._push_undo()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                         self._drag_painting = True
                         try:
                             self._paint_from_event(ev)
