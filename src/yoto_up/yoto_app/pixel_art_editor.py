@@ -2961,6 +2961,7 @@ class PixelArtEditor:
         )
         preview = ft.Image(width=64, height=64)
         status = ft.Text("")
+        
 
         def on_select(ev):
             v = dropdown.value
@@ -2971,9 +2972,16 @@ class PixelArtEditor:
                 if v.lower().endswith(".png"):
                     img = Image.open(p)
                     img2 = img.resize((64, 64))
-                    tmp = os.path.join(sd, "__preview.png")
-                    img2.save(tmp)
-                    preview.src = tmp
+                    import tempfile as _tmp
+                    tmpf = _tmp.NamedTemporaryFile(suffix='.png', delete=False)
+                    try:
+                        img2.save(tmpf.name)
+                        preview.src = tmpf.name
+                    finally:
+                        try:
+                            tmpf.close()
+                        except Exception:
+                            pass
                 elif v.lower().endswith(".json"):
                     # parse json package
                     with open(p, "r", encoding="utf-8") as fh:
@@ -2982,10 +2990,17 @@ class PixelArtEditor:
                     if isinstance(obj, dict) and obj.get("png_base64"):
                         try:
                             b = base64.b64decode(obj["png_base64"])
-                            tmp_path = os.path.join(sd, "__preview.png")
-                            with open(tmp_path, "wb") as pf:
-                                pf.write(b)
-                            preview.src = tmp_path
+                            import tempfile as _tmp
+                            tmpf = _tmp.NamedTemporaryFile(suffix='.png', delete=False)
+                            try:
+                                with open(tmpf.name, "wb") as pf:
+                                    pf.write(b)
+                                preview.src = tmpf.name
+                            finally:
+                                try:
+                                    tmpf.close()
+                                except Exception:
+                                    pass
                         except Exception:
                             preview.src = ""
                     else:
