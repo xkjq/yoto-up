@@ -4,7 +4,7 @@ import httpx
 
 from yoto_app.api_manager import ensure_api
 
-def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
+def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on_close=None):
 
     def do_remove_cover(_e=None):
         try:
@@ -224,6 +224,19 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
         except Exception:
             logger.error("Failed to close dialog in close_add")
         page.update()
+        # call optional on_close callback (e.g., to reopen parent dialog)
+        try:
+            if callable(on_close):
+                try:
+                    on_close()
+                except Exception:
+                    # allow on_close to accept an event param
+                    try:
+                        on_close(None)
+                    except Exception:
+                        logger.exception("on_close callback failed")
+        except Exception:
+            pass
 
     def do_search_cover(_e=None):
         try:

@@ -1282,6 +1282,7 @@ def make_show_card_details(
                 fetch_playlists_sync,
                 Card,
                 CLIENT_ID,
+                on_close=lambda e=None: show_card_details(None, c, preview_path=preview_path),
             )
 
         def relabel_keys(ev=None):
