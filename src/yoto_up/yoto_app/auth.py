@@ -222,7 +222,7 @@ def start_device_auth(page, instr_container=None, api_ref=None, show_snack_fn=No
                 container.controls.append(__import__('flet').Text(f"Visit: {verification_uri} and enter the code displayed below.", selectable=True))
                 container.controls.append(__import__('flet').Text(f"Code: {user_code}", selectable=True))
                 container.controls.append(__import__('flet').Row([__import__('flet').Text('Alternatively open (click) this direct link: '), __import__('flet').TextButton(text=verification_uri_complete, on_click=lambda e, url=verification_uri_complete: __import__('webbrowser').open(url))]))
-                container.controls.append(__import__('flet').Row([__import__('flet').Text('Doing this links you Yoto account with this app.'), __import__('flet').Text('')]))
+                container.controls.append(__import__('flet').Row([__import__('flet').Text('Doing this links your Yoto account with this app.'), __import__('flet').Text('')]))
                 container.controls.append(getattr(page, 'auth_status', __import__('flet').Text('')))
                 page.update()
         except Exception as e:

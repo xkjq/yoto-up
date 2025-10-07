@@ -6,7 +6,7 @@ import platform
 import sys
 from flet.auth import OAuthProvider
 
-from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents, load_playlists, save_playlists
+from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents, load_playlists, save_playlists, _BASE_DATA_DIR, _BASE_CONFIG_DIR
 
 # Ensure FLET storage env vars are set to a sane default if not provided by the host.
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
@@ -59,6 +59,7 @@ from loguru import logger
 from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 import hashlib
+from yoto_up import paths as paths_mod
 
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
@@ -236,7 +237,6 @@ def main(page):
                 except Exception:
                     api_cache = None
             else:
-                import yoto_up.paths as paths_mod
                 off_cache = getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None)
                 yotoicons_cache = getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None)
                 upload_icon_cache = getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None)
@@ -260,6 +260,38 @@ def main(page):
 
         flet_storage = FLET_APP_STORAGE_DATA or os.getenv("FLET_APP_STORAGE_DATA") or "(not set)"
 
+        def open_path(path_obj, notify_fn=None):
+            """Open path_obj in the platform file manager and call notify_fn(message, error=False) on failure/success."""
+            try:
+                if path_obj is None:
+                    if notify_fn:
+                        notify_fn("Path is unknown", error=True)
+                    return
+                p = str(path_obj)
+                if not os.path.exists(p):
+                    try:
+                        os.makedirs(p, exist_ok=True)
+                    except Exception:
+                        pass
+                if sys.platform.startswith('darwin'):
+                    subprocess.Popen(['open', p])
+                elif sys.platform.startswith('win'):
+                    subprocess.Popen(['explorer', p])
+                else:
+                    # assume linux/xdg-open
+                    try:
+                        subprocess.Popen(['xdg-open', p])
+                    except Exception:
+                        # fallback to opening parent
+                        subprocess.Popen(['xdg-open', os.path.dirname(p) or p])
+                if notify_fn:
+                    notify_fn(f"Opened {p}")
+            except Exception as ex:
+                if notify_fn:
+                    notify_fn(f"Failed to open {path_obj}: {ex}", error=True)
+                else:
+                    logger.exception(f"Failed to open path {path_obj}: {ex}")
+
         content_items = [
             ft.Row(
                 [ft.Image(src="art.jpeg", width=120, height=120)],
@@ -270,16 +302,30 @@ def main(page):
             ft.Text(f"Python: {platform.python_version()} ({platform.machine()})"),
             ft.Text(f"Platform: {platform.platform()}"),
             ft.Divider(),
-            ft.Text("Storage & config:" , weight=ft.FontWeight.BOLD),
+            ft.Text("Config:" , weight=ft.FontWeight.BOLD),
             ft.Text(f"Flet storage (FLET_APP_STORAGE_DATA): {flet_storage}", selectable=True, size=12),
             ft.Text(f"Tokens file: {str(tokens_path) if tokens_path is not None else '(unknown)'} {'(exists)' if tokens_exist else '(missing)'}", selectable=True, size=12),
             ft.Text(f"UI state file: {str(ui_state_path) if ui_state_path is not None else '(unknown)'} {'(exists)' if ui_exist else '(missing)'}", selectable=True, size=12),
+            ft.Row([
+                ft.TextButton(
+                    "Open config dir",
+                    on_click=lambda e, p=_BASE_CONFIG_DIR: open_path(p, show_snack),
+                    style=ft.ButtonStyle(color=ft.Colors.BLUE),
+                ),
+            ]),
             ft.Divider(),
-            ft.Text("Icon cache locations:", weight=ft.FontWeight.BOLD),
+            ft.Text("Data locations:", weight=ft.FontWeight.BOLD),
             ft.Text(f"Official icon cache: {str(off_cache) if off_cache is not None else '(unknown)'} {'(exists)' if off_cache_exists else '(missing)'}", selectable=True, size=12),
             ft.Text(f"YotoIcons cache: {str(yotoicons_cache) if yotoicons_cache is not None else '(unknown)'} {'(exists)' if yotoicons_cache_exists else '(missing)'}", selectable=True, size=12),
             ft.Text(f"Upload icon cache file: {str(upload_icon_cache) if upload_icon_cache is not None else '(unknown)'}", selectable=True, size=12),
             ft.Text(f"API cache file: {str(api_cache) if api_cache is not None else '(unknown)'}", selectable=True, size=12),
+            ft.Row([
+                ft.TextButton(
+                    "Open data/cache dir",
+                    on_click=lambda e, p=_BASE_DATA_DIR: open_path(p, show_snack),
+                    style=ft.ButtonStyle(color=ft.Colors.BLUE),
+                ),
+            ]),
             ft.Divider(),
             ft.Text("About:", weight=ft.FontWeight.BOLD),
             ft.Text("A desktop tool for managing Yoto cards and playlists."),
