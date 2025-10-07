@@ -363,6 +363,8 @@ def make_show_card_details(
                     print(f"Failed to fetch full card details: {ex}")
 
             controls = []
+            # capture cover source found in metadata and defer building the Image
+            cover_src = None
             controls.append(ft.Text(f"Title: {c.get('title', '')}", selectable=True))
             controls.append(ft.Text(f"Card ID: {c.get('cardId', '')}", selectable=True))
             controls.append(
@@ -400,13 +402,14 @@ def make_show_card_details(
                                         if callable(cache_fn):
                                             p = cache_fn(url_or_field)
                                             if p:
-                                                controls.append(ft.Image(src=str(p), width=240, height=240))
+                                                # defer creating the Image widget until dialog size is known
+                                                cover_src = str(p)
                                             else:
-                                                controls.append(ft.Image(src=url_or_field, width=240, height=240))
+                                                cover_src = url_or_field
                                         else:
-                                            controls.append(ft.Image(src=url_or_field, width=240, height=240))
+                                            cover_src = url_or_field
                                     except Exception:
-                                        controls.append(ft.Image(src=url_or_field, width=240, height=240))
+                                        cover_src = url_or_field
                                     break
                             except Exception:
                                 continue
@@ -460,6 +463,9 @@ def make_show_card_details(
 
             content = c.get("content") or {}
             chapters = content.get("chapters") or []
+            # capture header controls (everything up to the chapters section)
+            header_controls = list(controls)
+            chapters_view = None
             if chapters:
                 controls.append(ft.Divider())
                 controls.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
@@ -719,6 +725,13 @@ def make_show_card_details(
                 controls.append(chapters_rv)
 
                 controls.append(ft.Row([ft.ElevatedButton("Save Order", on_click=save_order_click)]))
+
+                # Build a chapters_view from the controls appended after the header
+                try:
+                    chapters_portion = controls[len(header_controls):]
+                    chapters_view = ft.Column(chapters_portion, spacing=6)
+                except Exception:
+                    chapters_view = None
 
                 def use_chapter_icon(ev, ch_i, tr_i):
                     try:
@@ -1600,7 +1613,45 @@ Renumbering keys will assign sequential keys to all tracks.
         except Exception:
             dlg_h, dlg_w = 500, 800
 
-        dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
+        # Build dialog content. If we found a cover, place it in a right-hand column
+        try:
+            if cover_src:
+                # thumbnail sizing: keep it reasonably sized relative to dialog
+                thumb_w = min(320, max(120, int(dlg_w * 0.28)))
+                thumb_h = max(64, min(320, dlg_h - 120))
+
+                try:
+                    # clicking the cover should open the Add Cover dialog
+                    img_w = ft.Image(src=cover_src, width=thumb_w, height=thumb_h)
+                    try:
+                        cover_widget = ft.GestureDetector(content=img_w, on_tap=lambda ev: show_add_cover(ev))
+                    except Exception:
+                        cover_widget = ft.GestureDetector(content=img_w, on_tap=show_add_cover)
+                except Exception:
+                    # fallback: non-interactive image
+                    cover_widget = ft.Image(src=cover_src)
+
+                # left pane should contain header/metadata controls (use Column so it sizes to content)
+                left_col = ft.Column(header_controls, spacing=6)
+                right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
+
+                header_row = ft.Row([
+                    ft.Container(content=left_col, expand=True),
+                    ft.Container(width=12),
+                    right_col,
+                ], alignment=ft.MainAxisAlignment.START)
+
+                # Build a single scrolling ListView for the dialog content so header + chapters scroll together
+                parts = [header_row]
+                if chapters_view:
+                    parts.append(ft.Divider())
+                    parts.append(chapters_view)
+
+                dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
+            else:
+                dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
+        except Exception:
+            dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
         def export_card(_ev=None):
             try:
                 def worker():

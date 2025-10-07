@@ -48,6 +48,45 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
     page.overlay.append(picker)
     file_label = ft.Text("No file chosen")
 
+    # If the card already has a cover, try to locate a suitable image URL/path
+    cover_src = None
+    try:
+        meta = (c.get("metadata") or {})
+        cover = meta.get("cover") or {}
+        if isinstance(cover, dict):
+            for key in ("imageL", "imageM", "imageS", "image"):
+                url_or_field = cover.get(key)
+                if not url_or_field:
+                    continue
+                try:
+                    if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
+                        cache_fn = getattr(page, "get_cached_cover", None)
+                        if callable(cache_fn):
+                            p = cache_fn(url_or_field)
+                            cover_src = str(p) if p else url_or_field
+                        else:
+                            cover_src = url_or_field
+                        break
+                    # if it's already a local path
+                    if isinstance(url_or_field, str) and url_or_field and url_or_field.startswith("/"):
+                        cover_src = url_or_field
+                        break
+                    # some implementations may store a dict with mediaUrl
+                    if isinstance(url_or_field, dict):
+                        media = url_or_field.get("mediaUrl") or url_or_field.get("media_url")
+                        if media:
+                            cache_fn = getattr(page, "get_cached_cover", None)
+                            if callable(cache_fn):
+                                p = cache_fn(media)
+                                cover_src = str(p) if p else media
+                            else:
+                                cover_src = media
+                            break
+                except Exception:
+                    continue
+    except Exception:
+        cover_src = None
+
     def on_pick_result(e: ft.FilePickerResultEvent):
         try:
             if e.files:
@@ -369,26 +408,35 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID):
         except Exception:
             logger.error("Error opening search dialog")
 
-    add_cover_list = ft.Column(
-        [
-            url_field,
-            ft.Row(
-                [
-                    ft.TextButton(
-                        "Pick file...",
-                        on_click=lambda e: picker.pick_files(
-                            allow_multiple=False
-                        ),
+    # Build the dialog content, showing current cover (if any) above the controls
+    content_children = []
+    if cover_src:
+        try:
+            preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.ImageFit.CONTAIN)
+            content_children.append(ft.Column([ft.Text("Current cover"), preview], spacing=6))
+        except Exception:
+            pass
+
+    content_children.extend([
+        url_field,
+        ft.Row(
+            [
+                ft.TextButton(
+                    "Pick file...",
+                    on_click=lambda e: picker.pick_files(
+                        allow_multiple=False
                     ),
-                    file_label,
-                ]
-            ),
-            ft.TextButton(
-                "Search for cover art",
-                on_click=do_search_cover,
-            ),
-        ]
-    )
+                ),
+                file_label,
+            ]
+        ),
+        ft.TextButton(
+            "Search for cover art",
+            on_click=do_search_cover,
+        ),
+    ])
+
+    add_cover_list = ft.Column(content_children)
     dialog = ft.AlertDialog(
         title=ft.Text("Add Cover Image"),
         content=add_cover_list,
