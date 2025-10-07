@@ -563,7 +563,7 @@ class YotoAPI:
         logger.debug(f"Parsed {len(cards)} cards from response")
         return [Card.model_validate(card) for card in cards]
 
-    def get_card(self, card_id) -> Card:
+    def get_card(self, card_id, save_version_if_missing: bool = True) -> Card:
         headers = {"Authorization": f"Bearer {self.access_token}"}
         logger.debug(f"GET {self.CONTENT_URL}/{card_id}")
         response = self._cached_request("GET", f"{self.CONTENT_URL}/{card_id}", headers=headers)
@@ -571,6 +571,29 @@ class YotoAPI:
         response.raise_for_status()
         self.response_history.append(response)
         data = response.json()["card"]
+        # If requested, save a local version snapshot when none exist for this card yet.
+        # This helps provide a recovery point if the card is later deleted.
+        if save_version_if_missing:
+            try:
+                # Determine the versions directory for this payload and check for any existing json versions.
+                dir_path = self._version_path_for(data)
+                has_any = False
+                try:
+                    for p in dir_path.iterdir():
+                        if p.suffix == ".json":
+                            has_any = True
+                            break
+                except Exception:
+                    # If iteration fails, treat as no versions present so we attempt to save.
+                    has_any = False
+                if not has_any:
+                    try:
+                        self.save_version(data)
+                    except Exception:
+                        logger.debug("Failed to save local version after fetching card")
+            except Exception:
+                # Non-fatal — don't interrupt normal get_card flow if version saving fails.
+                pass
         if self.debug:
             find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
