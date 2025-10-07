@@ -1479,6 +1479,26 @@ def build_playlists_panel(
         threading.Thread(target=lambda: fetch_playlists_sync(e), daemon=True).start(),
     )
 
+    # Allow pressing Enter in any filter TextField to apply filters (same as Apply Filter)
+    try:
+        title_filter.on_submit = lambda e: threading.Thread(
+            target=lambda: fetch_playlists_sync(e), daemon=True
+        ).start()
+    except Exception:
+        pass
+    try:
+        genre_filter.on_submit = lambda e: threading.Thread(
+            target=lambda: fetch_playlists_sync(e), daemon=True
+        ).start()
+    except Exception:
+        pass
+    try:
+        tags_filter.on_submit = lambda e: threading.Thread(
+            target=lambda: fetch_playlists_sync(e), daemon=True
+        ).start()
+    except Exception:
+        pass
+
     # Make filters row expandable using Accordion
     filters_panel = ft.ExpansionTile(
         title=ft.Container(
