@@ -346,24 +346,79 @@ def export_card(
 
 
 @app.command()
-def edit_card(card_id: str):
-    """Edit a Yoto card by its ID using a rich TUI."""
+def edit_card(
+    card_id: str,
+    title: Optional[str] = typer.Option(None, help="Set a new title for the card"),
+    description: Optional[str] = typer.Option(None, help="Set/replace metadata.description"),
+    author: Optional[str] = typer.Option(None, help="Set/replace metadata.author"),
+    category: Optional[str] = typer.Option(None, help="Set/replace metadata.category"),
+    tags: Optional[str] = typer.Option(None, help='Comma-separated list of tags to set on the card'),
+):
+    """Edit a Yoto card by its ID.
+
+    If no update flags are provided this launches the interactive TUI editor.
+    If one or more flags are passed (e.g. --title, --tags) the card is updated
+    directly via the API and the TUI is not launched.
+    """
     API = get_api()
     card = API.get_card(card_id)
     if not card:
         typer.echo(f"Card with ID '{card_id}' not found.")
         raise typer.Exit(code=1)
 
-    def run_tui():
-        app = EditCardApp(card, API)
-        app.run()
-        return getattr(app, "result", None)
+    # Determine whether to apply direct updates or launch the TUI
+    direct_update = any(x is not None for x in (title, description, author, category, tags))
 
-    result = run_tui()
-    if result:
-        typer.echo(f"Card updated: {result.cardId}")
-    else:
-        typer.echo("Edit cancelled.")
+    if not direct_update:
+        # Launch the existing TUI editor
+        def run_tui():
+            app = EditCardApp(card, API)
+            app.run()
+            return getattr(app, "result", None)
+
+        result = run_tui()
+        if result:
+            typer.echo(f"Card updated: {result.cardId}")
+        else:
+            typer.echo("Edit cancelled.")
+        return
+
+    # Apply direct updates
+    try:
+        # Update title
+        if title is not None:
+            card.title = title
+
+        # Ensure metadata exists
+        if card.metadata is None:
+            card.metadata = CardMetadata()
+
+        if description is not None:
+            card.metadata.description = description
+
+        if author is not None:
+            card.metadata.author = author
+
+        if category is not None:
+            card.metadata.category = category
+
+        if tags is not None:
+            # parse comma-separated list into a Python list
+            parsed = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+            # set top-level tags and metadata.tags for compatibility
+            card.tags = parsed
+            card.metadata.tags = parsed
+
+        # Send update
+        updated = API.update_card(card)
+        try:
+            updated_id = getattr(updated, 'cardId', getattr(card, 'cardId', None))
+            typer.echo(f"Card updated: {updated_id}")
+        except Exception:
+            typer.echo("Card updated.")
+    except Exception as exc:
+        typer.echo(f"Failed to update card: {exc}")
+        raise typer.Exit(code=1)
 
 
 @app.command()
