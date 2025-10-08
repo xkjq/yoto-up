@@ -349,10 +349,32 @@ def export_card(
 def edit_card(
     card_id: str,
     title: Optional[str] = typer.Option(None, help="Set a new title for the card"),
+    slug: Optional[str] = typer.Option(None, help="Set/replace top-level slug for the card"),
     description: Optional[str] = typer.Option(None, help="Set/replace metadata.description"),
     author: Optional[str] = typer.Option(None, help="Set/replace metadata.author"),
     category: Optional[str] = typer.Option(None, help="Set/replace metadata.category"),
     tags: Optional[str] = typer.Option(None, help='Comma-separated list of tags to set on the card'),
+    genres: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.genre'),
+    languages: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.languages'),
+    min_age: Optional[int] = typer.Option(None, help='Set metadata.minAge'),
+    max_age: Optional[int] = typer.Option(None, help='Set metadata.maxAge'),
+    copyright: Optional[str] = typer.Option(None, help='Set metadata.copyright'),
+    note: Optional[str] = typer.Option(None, help='Set metadata.note'),
+    read_by: Optional[str] = typer.Option(None, help='Set metadata.readBy'),
+    share: Optional[bool] = typer.Option(None, help='Set metadata.share (true/false)'),
+    hidden: Optional[bool] = typer.Option(None, help='Set metadata.hidden (true/false)'),
+    preview_audio: Optional[str] = typer.Option(None, help='Set metadata.previewAudio'),
+    playback_direction: Optional[str] = typer.Option(None, help="Set metadata.playbackDirection ('ASC'|'DESC')"),
+    accent: Optional[str] = typer.Option(None, help='Set metadata.accent'),
+    add_to_family_library: Optional[bool] = typer.Option(None, help='Set metadata.addToFamilyLibrary'),
+    music_type: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.musicType'),
+    # Flexible key=value setters for arbitrary nested fields, e.g. --set metadata.cover.imageL=/path/img.jpg
+    set_fields: Optional[List[str]] = typer.Option(
+        None,
+        "--set",
+        "-S",
+        help="Set arbitrary key paths using key=value (multiple allowed). Example: -S metadata.author=NewAuthor",
+    ),
 ):
     """Edit a Yoto card by its ID.
 
@@ -385,32 +407,118 @@ def edit_card(
 
     # Apply direct updates
     try:
-        # Update title
-        if title is not None:
-            card.title = title
+        # Convert the existing card to a mutable dict so we can apply arbitrary changes
+        try:
+            card_data = card.model_dump(exclude_none=False)
+        except Exception:
+            # fallback for non-pydantic Card-like objects
+            card_data = dict(getattr(card, "__dict__", {}) or {})
 
-        # Ensure metadata exists
-        if card.metadata is None:
-            card.metadata = CardMetadata()
+        def set_in_dict(d: dict, path: str, value):
+            parts = path.split('.') if path else []
+            cur = d
+            for p in parts[:-1]:
+                if p not in cur or not isinstance(cur[p], dict):
+                    cur[p] = {}
+                cur = cur[p]
+            if parts:
+                cur[parts[-1]] = value
+
+        # Helper to parse comma-separated lists
+        def parse_list(s: Optional[str]):
+            if s is None:
+                return None
+            return [t.strip() for t in s.split(',') if t.strip()]
+
+        # Apply explicit flags to card_data
+        if title is not None:
+            card_data['title'] = title
+        if slug is not None:
+            card_data['slug'] = slug
+
+        # Ensure metadata dict exists
+        if 'metadata' not in card_data or card_data.get('metadata') is None:
+            card_data['metadata'] = {}
 
         if description is not None:
-            card.metadata.description = description
-
+            card_data['metadata']['description'] = description
         if author is not None:
-            card.metadata.author = author
-
+            card_data['metadata']['author'] = author
         if category is not None:
-            card.metadata.category = category
+            card_data['metadata']['category'] = category
+        if genres is not None:
+            card_data['metadata']['genre'] = parse_list(genres)
+        if languages is not None:
+            card_data['metadata']['languages'] = parse_list(languages)
+        if min_age is not None:
+            card_data['metadata']['minAge'] = int(min_age)
+        if max_age is not None:
+            card_data['metadata']['maxAge'] = int(max_age)
+        if copyright is not None:
+            card_data['metadata']['copyright'] = copyright
+        if note is not None:
+            card_data['metadata']['note'] = note
+        if read_by is not None:
+            card_data['metadata']['readBy'] = read_by
+        if share is not None:
+            card_data['metadata']['share'] = bool(share)
+        if hidden is not None:
+            card_data['metadata']['hidden'] = bool(hidden)
+        if preview_audio is not None:
+            card_data['metadata']['previewAudio'] = preview_audio
+        if playback_direction is not None:
+            card_data['metadata']['playbackDirection'] = playback_direction
+        if accent is not None:
+            card_data['metadata']['accent'] = accent
+        if add_to_family_library is not None:
+            card_data['metadata']['addToFamilyLibrary'] = bool(add_to_family_library)
+        if music_type is not None:
+            card_data['metadata']['musicType'] = parse_list(music_type)
 
+        # tags: set both top-level and metadata.tags
         if tags is not None:
-            # parse comma-separated list into a Python list
-            parsed = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-            # set top-level tags and metadata.tags for compatibility
-            card.tags = parsed
-            card.metadata.tags = parsed
+            parsed = parse_list(tags) or []
+            card_data['tags'] = parsed
+            card_data['metadata']['tags'] = parsed
+
+        # Apply any explicit --set key=value pairs
+        if set_fields:
+            for kv in set_fields:
+                if '=' not in kv:
+                    typer.echo(f"Ignoring malformed --set value (no '='): {kv}")
+                    continue
+                key, val = kv.split('=', 1)
+                key = key.strip()
+                val = val.strip()
+                # Convert some simple types
+                if val.lower() in ('true', 'false'):
+                    parsed_val = val.lower() == 'true'
+                else:
+                    try:
+                        parsed_val = int(val)
+                    except Exception:
+                        # comma-separated lists -> list
+                        if ',' in val:
+                            parsed_val = [p.strip() for p in val.split(',') if p.strip()]
+                        else:
+                            parsed_val = val
+                set_in_dict(card_data, key, parsed_val)
+
+        # Re-validate into a Card model if possible
+        try:
+            updated_card = Card.model_validate(card_data)
+        except Exception:
+            # Best-effort: update attributes directly on the original card
+            # (this is less strict but avoids crashing if validation fails)
+            for k, v in card_data.items():
+                try:
+                    setattr(card, k, v)
+                except Exception:
+                    pass
+            updated_card = card
 
         # Send update
-        updated = API.update_card(card)
+        updated = API.update_card(updated_card)
         try:
             updated_id = getattr(updated, 'cardId', getattr(card, 'cardId', None))
             typer.echo(f"Card updated: {updated_id}")
