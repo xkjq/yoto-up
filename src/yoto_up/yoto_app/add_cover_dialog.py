@@ -2,7 +2,7 @@ import flet as ft
 from loguru import logger
 import httpx
 
-from yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.api_manager import ensure_api
 
 def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on_close=None):
 
