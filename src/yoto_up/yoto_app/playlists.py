@@ -1380,12 +1380,17 @@ def build_playlists_panel(
             if not genres:
                 genres = []
             category = meta.get("category") or ""
+            # Show author in playlist row if present
+            author = meta.get("author") or meta.get("creator") or ""
         except Exception:
             tags = []
             genres = []
             category = ""
+            author = ""
 
         meta_line = []
+        if author:
+            meta_line.append(f"Author: {author}")
         if category:
             meta_line.append(f"Category: {category}")
         if genres:
