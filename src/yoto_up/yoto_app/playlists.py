@@ -611,10 +611,7 @@ def build_playlists_panel(
                     pass
             if not multi_select_mode:
                 selected_playlist_ids.clear()
-                delete_selected_btn.disabled = True
-                export_selected_btn.disabled = True
-                add_tags_btn.disabled = True
-                edit_category_btn.disabled = True
+                _update_multiselect_buttons()
             try:
                 for row in playlists_list.controls:
                     try:
@@ -638,6 +635,40 @@ def build_playlists_panel(
 
     # Select All / Deselect All control (visible only in multi-select mode)
     select_all_btn = ft.ElevatedButton(text="Select all", visible=False)
+
+    def _update_multiselect_buttons():
+        """Central helper to set disabled state for multiselect action buttons."""
+        try:
+            disabled = len(selected_playlist_ids) == 0
+            try:
+                delete_selected_btn.disabled = disabled
+            except Exception:
+                pass
+            try:
+                export_selected_btn.disabled = disabled
+            except Exception:
+                pass
+            try:
+                add_tags_btn.disabled = disabled
+            except Exception:
+                pass
+            try:
+                edit_category_btn.disabled = disabled
+            except Exception:
+                pass
+            try:
+                delete_selected_btn.update()
+                export_selected_btn.update()
+                add_tags_btn.update()
+                edit_category_btn.update()
+            except Exception:
+                pass
+            try:
+                page.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _set_all_checkboxes(value: bool):
         """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
@@ -664,17 +695,10 @@ def build_playlists_panel(
             if select_all_btn.text == "Select all":
                 _set_all_checkboxes(True)
                 select_all_btn.text = "Deselect all"
-                delete_selected_btn.disabled = len(selected_playlist_ids) == 0
-                export_selected_btn.disabled = len(selected_playlist_ids) == 0
-                add_tags_btn.disabled = len(selected_playlist_ids) == 0
-                edit_category_btn.disabled = len(selected_playlist_ids) == 0
             else:
                 _set_all_checkboxes(False)
                 select_all_btn.text = "Select all"
-                delete_selected_btn.disabled = True
-                export_selected_btn.disabled = True
-                add_tags_btn.disabled = True
-                edit_category_btn.disabled = True
+            _update_multiselect_buttons()
             try:
                 select_all_btn.update()
             except Exception:
@@ -919,10 +943,7 @@ def build_playlists_panel(
                     selected_playlist_ids.discard(cid)
                 nonlocal last_selected_index
                 last_selected_index = idx
-                delete_selected_btn.disabled = len(selected_playlist_ids) == 0
-                export_selected_btn.disabled = len(selected_playlist_ids) == 0
-                add_tags_btn.disabled = len(selected_playlist_ids) == 0
-                edit_category_btn.disabled = len(selected_playlist_ids) == 0
+                _update_multiselect_buttons()
                 page.update()
             except Exception:
                 pass
@@ -1141,10 +1162,7 @@ def build_playlists_panel(
                                 selected_playlist_ids.add(getattr(cb_found, "_cid", ""))
                         except Exception:
                             pass
-                    delete_selected_btn.disabled = len(selected_playlist_ids) == 0
-                    export_selected_btn.disabled = len(selected_playlist_ids) == 0
-                    add_tags_btn.disabled = len(selected_playlist_ids) == 0
-                    edit_category_btn.disabled = len(selected_playlist_ids) == 0
+                    _update_multiselect_buttons()
                     page.update()
                     last_selected_index = this_idx
                     return
@@ -1161,10 +1179,7 @@ def build_playlists_panel(
                     else:
                         selected_playlist_ids.discard(cid)
                     last_selected_index = this_idx
-                    delete_selected_btn.disabled = len(selected_playlist_ids) == 0
-                    export_selected_btn.disabled = len(selected_playlist_ids) == 0
-                    add_tags_btn.disabled = len(selected_playlist_ids) == 0
-                    edit_category_btn.disabled = len(selected_playlist_ids) == 0
+                    _update_multiselect_buttons()
                     page.update()
                 return
             # If not in multi-select, open details as before
@@ -1199,8 +1214,7 @@ def build_playlists_panel(
                                 pass
                     except Exception:
                         pass
-                delete_selected_btn.disabled = len(selected_playlist_ids) == 0
-                export_selected_btn.disabled = len(selected_playlist_ids) == 0
+                _update_multiselect_buttons()
                 page.update()
                 last_selected_index = this_idx
                 return
