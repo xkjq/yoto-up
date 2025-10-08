@@ -778,7 +778,19 @@ def build_playlists_panel(
                         pass
                     api.delete_content(content_id)
                     try:
-                        playlists_list.controls.remove(row_container)
+                        # Only remove if row_container looks like a real control and is present
+                        if row_container is not None and isinstance(row_container, ft.Control) and row_container in playlists_list.controls:
+                            playlists_list.controls.remove(row_container)
+                        else:
+                            # defensive fallback: remove any None entries, otherwise clear to avoid invalid payloads
+                            try:
+                                cleaned = [c for c in playlists_list.controls if c is not None and isinstance(c, ft.Control)]
+                                playlists_list.controls[:] = cleaned
+                            except Exception:
+                                try:
+                                    playlists_list.controls.clear()
+                                except Exception:
+                                    pass
                     except Exception:
                         try:
                             playlists_list.controls.clear()
