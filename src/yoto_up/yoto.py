@@ -14,10 +14,13 @@ from rich.prompt import Confirm
 from pathlib import Path
 import asyncio
 from typing import Optional, List
+from typing import get_origin, get_args, get_type_hints
 import shutil
 import os
 import tempfile
 import math
+import sys
+import pydantic
 
 app = typer.Typer()
 console = Console()
@@ -347,7 +350,7 @@ def export_card(
 
 @app.command()
 def edit_card(
-    card_id: str,
+    card_id: Optional[str] = typer.Argument(None, help="Card ID (optional when --list-keys is used)"),
     title: Optional[str] = typer.Option(None, help="Set a new title for the card"),
     slug: Optional[str] = typer.Option(None, help="Set/replace top-level slug for the card"),
     description: Optional[str] = typer.Option(None, help="Set/replace metadata.description"),
@@ -375,6 +378,11 @@ def edit_card(
         "-S",
         help="Set arbitrary key paths using key=value (multiple allowed). Example: -S metadata.author=NewAuthor",
     ),
+    show_set_keys: bool = typer.Option(
+        False,
+        "--list-keys",
+        help="Show available key paths that can be used with --set and exit",
+    ),
 ):
     """Edit a Yoto card by its ID.
 
@@ -382,6 +390,134 @@ def edit_card(
     If one or more flags are passed (e.g. --title, --tags) the card is updated
     directly via the API and the TUI is not launched.
     """
+    # If user requested the available set keys, generate them dynamically from the Card model
+    if show_set_keys:
+        # attempt to get module globals for resolving forward refs
+        models_module = sys.modules.get('yoto_up.models')
+        globalns = models_module.__dict__ if models_module is not None else globals()
+
+        primitive_types = (str, int, float, bool)
+
+        def describe_type(tp) -> str:
+            origin = get_origin(tp)
+            if origin is list or origin is List:
+                args = get_args(tp)
+                if args:
+                    return f"List[{describe_type(args[0])}]"
+                return "List[Unknown]"
+            if origin is None and hasattr(tp, '__args__'):
+                # Union/Optional
+                args = [a for a in get_args(tp) if a is not type(None)]
+                if len(args) == 1:
+                    return f"Optional[{describe_type(args[0])}]"
+                return f"Union[{', '.join(describe_type(a) for a in args)}]"
+            try:
+                if isinstance(tp, type):
+                    if issubclass(tp, pydantic.BaseModel):
+                        return tp.__name__
+                    if tp in primitive_types:
+                        return tp.__name__
+                    return getattr(tp, '__name__', str(tp))
+            except Exception:
+                pass
+            return str(tp)
+
+        def collect_paths(tp, prefix: str = '', depth: int = 0, max_depth: int = 6):
+            if depth > max_depth:
+                return []
+            origin = get_origin(tp)
+            results = []
+
+            # handle lists
+            if origin is list or origin is List:
+                args = get_args(tp)
+                elem = args[0] if args else None
+                list_path = f"{prefix}[]" if prefix else "[]"
+                if elem is None:
+                    results.append((list_path, 'List[Unknown]'))
+                else:
+                    # If element is a pydantic model, recurse into it
+                    try:
+                        if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
+                            # show the list field itself
+                            results.append((list_path, describe_type(tp)))
+                            # then recurse into item fields using list_path as base
+                            try:
+                                hints = get_type_hints(elem, globalns=globalns)
+                            except Exception:
+                                hints = getattr(elem, '__annotations__', {})
+                            for name, sub_tp in hints.items():
+                                sub_prefix = f"{list_path[:-2]}.{name}" if list_path.endswith('[]') else f"{list_path}.{name}"
+                                results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
+                        else:
+                            results.append((list_path, describe_type(tp)))
+                    except Exception:
+                        results.append((list_path, describe_type(tp)))
+                return results
+
+            # handle pydantic models
+            try:
+                if isinstance(tp, type) and issubclass(tp, pydantic.BaseModel):
+                    try:
+                        hints = get_type_hints(tp, globalns=globalns)
+                    except Exception:
+                        hints = getattr(tp, '__annotations__', {})
+                    for name, sub_tp in hints.items():
+                        sub_prefix = f"{prefix}.{name}" if prefix else name
+                        # if subfield is a primitive -> leaf
+                        try:
+                            if isinstance(sub_tp, type) and sub_tp in primitive_types:
+                                results.append((sub_prefix, describe_type(sub_tp)))
+                                continue
+                        except Exception:
+                            pass
+                        # recurse
+                        sub_results = collect_paths(sub_tp, sub_prefix, depth + 1, max_depth)
+                        if sub_results:
+                            results.extend(sub_results)
+                        else:
+                            results.append((sub_prefix, describe_type(sub_tp)))
+                    return results
+            except Exception:
+                pass
+
+            # handle Union/Optional
+            if origin is None and hasattr(tp, '__args__'):
+                for a in get_args(tp):
+                    if a is type(None):
+                        continue
+                    results.extend(collect_paths(a, prefix, depth + 1, max_depth))
+                return results
+
+            # fallback: primitive or unknown
+            if prefix:
+                results.append((prefix, describe_type(tp)))
+            return results
+
+        # Start from Card class
+        try:
+            from yoto_up.models import Card as CardModel
+        except Exception:
+            CardModel = Card
+
+        raw = collect_paths(CardModel, '', 0, 6)
+        # normalize and dedupe
+        keys = []
+        seen = set()
+        for path, t in raw:
+            if not path:
+                continue
+            # normalize list markers (ensure consistent use of [])
+            norm = path.replace('.[].', '.').replace('[]..', '[]')
+            if norm not in seen:
+                seen.add(norm)
+                keys.append((norm, t))
+
+        typer.echo("Available keys for --set (path: type):")
+        for k, t in sorted(keys):
+            typer.echo(f"  {k}: {t}")
+        return
+
     API = get_api()
     card = API.get_card(card_id)
     if not card:
