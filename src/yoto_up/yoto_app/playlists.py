@@ -1403,18 +1403,46 @@ def build_playlists_panel(
             else None
         )
 
-        subtitle_items = [ft.Text(str(cid))]
+        # Show cardId and a short description (if present) beside it
+        def _trunc(s, n=80):
+            try:
+                if not s:
+                    return ''
+                s = str(s)
+                return s if len(s) <= n else s[: n - 1] + '…'
+            except Exception:
+                return ''
+
+        short_desc = ''
+        try:
+            short_desc = _trunc(meta.get('description') or '')
+        except Exception:
+            short_desc = ''
+
+        # Subtitle contains preview, description and metadata; card id is shown on the row's right
+        subtitle_items = []
         if preview:
             subtitle_items.append(ft.Text(preview, size=12, color=ft.Colors.BLACK45))
+
+        # Add truncated description as a subtitle line (if present)
+        try:
+            short_desc = _trunc(meta.get('description') or '')
+        except Exception:
+            short_desc = ''
+        if short_desc:
+            subtitle_items.append(ft.Text(short_desc, size=12, color=ft.Colors.BLACK45))
         if meta_text:
             subtitle_items.append(meta_text)
         subtitle = ft.Column(subtitle_items)
-        tile = ft.ListTile(
-            title=ft.Text(title), subtitle=subtitle, on_click=_on_tile_click
-        )
+        tile = ft.ListTile(title=ft.Text(title), subtitle=subtitle, on_click=_on_tile_click)
+
+        # Card ID placed to the right of the row (muted)
+        id_text = ft.Text(str(cid), size=11, color=ft.Colors.BLACK45)
+
         row = ft.Row(
-            [cb, img_ctrl, ft.Container(content=tile, expand=True), delete_btn],
+            [cb, img_ctrl, ft.Container(content=tile, expand=True), id_text, delete_btn],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         delete_btn.on_click = (
             lambda ev, card=card_obj, row_container=row: delete_playlist(
