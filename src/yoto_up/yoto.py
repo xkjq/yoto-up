@@ -15,6 +15,7 @@ from pathlib import Path
 import asyncio
 from typing import Optional, List
 from typing import get_origin, get_args, get_type_hints
+import typing
 import shutil
 import os
 import tempfile
@@ -400,13 +401,14 @@ def edit_card(
 
         def describe_type(tp) -> str:
             origin = get_origin(tp)
+            # Lists
             if origin is list or origin is List:
                 args = get_args(tp)
                 if args:
                     return f"List[{describe_type(args[0])}]"
                 return "List[Unknown]"
-            if origin is None and hasattr(tp, '__args__'):
-                # Union/Optional
+            # Union / Optional
+            if origin is typing.Union:
                 args = [a for a in get_args(tp) if a is not type(None)]
                 if len(args) == 1:
                     return f"Optional[{describe_type(args[0])}]"
@@ -428,32 +430,45 @@ def edit_card(
             origin = get_origin(tp)
             results = []
 
-            # handle lists
+            # handle lists (List[T] -> prefix[] and prefix[].field)
             if origin is list or origin is List:
                 args = get_args(tp)
                 elem = args[0] if args else None
                 list_path = f"{prefix}[]" if prefix else "[]"
                 if elem is None:
                     results.append((list_path, 'List[Unknown]'))
-                else:
-                    # If element is a pydantic model, recurse into it
-                    try:
-                        if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
-                            # show the list field itself
-                            results.append((list_path, describe_type(tp)))
-                            # then recurse into item fields using list_path as base
-                            try:
-                                hints = get_type_hints(elem, globalns=globalns)
-                            except Exception:
-                                hints = getattr(elem, '__annotations__', {})
-                            for name, sub_tp in hints.items():
-                                sub_prefix = f"{list_path[:-2]}.{name}" if list_path.endswith('[]') else f"{list_path}.{name}"
-                                results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
-                        else:
-                            results.append((list_path, describe_type(tp)))
-                    except Exception:
+                    return results
+
+                # If element is a pydantic model, recurse using prefix[].field
+                try:
+                    if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
                         results.append((list_path, describe_type(tp)))
-                return results
+                        # Prefer pydantic v2 model_fields then v1 __fields__
+                        mf = getattr(elem, 'model_fields', None)
+                        if isinstance(mf, dict):
+                            items = [(n, f.annotation if hasattr(f, 'annotation') else None) for n, f in mf.items()]
+                        else:
+                            ff = getattr(elem, '__fields__', None)
+                            if isinstance(ff, dict):
+                                items = [(n, getattr(f, 'outer_type_', None)) for n, f in ff.items()]
+                            else:
+                                # fallback to annotations
+                                try:
+                                    hints = get_type_hints(elem, globalns=globalns)
+                                except Exception:
+                                    hints = getattr(elem, '__annotations__', {})
+                                items = list(hints.items())
+
+                        for name, sub_tp in items:
+                            sub_prefix = f"{prefix}[].{name}" if prefix else f"[].{name}"
+                            results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
+                        return results
+                    else:
+                        results.append((list_path, describe_type(tp)))
+                        return results
+                except Exception:
+                    results.append((list_path, describe_type(tp)))
+                    return results
 
             # handle pydantic models
             try:
@@ -482,7 +497,7 @@ def edit_card(
                 pass
 
             # handle Union/Optional
-            if origin is None and hasattr(tp, '__args__'):
+            if origin is typing.Union:
                 for a in get_args(tp):
                     if a is type(None):
                         continue
