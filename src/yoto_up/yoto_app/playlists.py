@@ -267,6 +267,9 @@ def build_playlists_panel(
     multi_select_btn = ft.ElevatedButton(text="Select Multiple")
     add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
+    # Bulk edit category button
+    edit_category_btn = ft.ElevatedButton(text="Edit Category for Selected", disabled=True)
+    edit_category_btn.visible = False
 
     # Sorting control
     sort_options = [
@@ -598,6 +601,7 @@ def build_playlists_panel(
             delete_selected_btn.visible = multi_select_mode
             export_selected_btn.visible = multi_select_mode
             add_tags_btn.visible = multi_select_mode
+            edit_category_btn.visible = multi_select_mode
             select_all_btn.visible = multi_select_mode
             if not multi_select_mode:
                 try:
@@ -610,6 +614,7 @@ def build_playlists_panel(
                 delete_selected_btn.disabled = True
                 export_selected_btn.disabled = True
                 add_tags_btn.disabled = True
+                edit_category_btn.disabled = True
             try:
                 for row in playlists_list.controls:
                     try:
@@ -662,12 +667,14 @@ def build_playlists_panel(
                 delete_selected_btn.disabled = len(selected_playlist_ids) == 0
                 export_selected_btn.disabled = len(selected_playlist_ids) == 0
                 add_tags_btn.disabled = len(selected_playlist_ids) == 0
+                edit_category_btn.disabled = len(selected_playlist_ids) == 0
             else:
                 _set_all_checkboxes(False)
                 select_all_btn.text = "Select all"
                 delete_selected_btn.disabled = True
                 export_selected_btn.disabled = True
                 add_tags_btn.disabled = True
+                edit_category_btn.disabled = True
             try:
                 select_all_btn.update()
             except Exception:
@@ -915,9 +922,120 @@ def build_playlists_panel(
                 delete_selected_btn.disabled = len(selected_playlist_ids) == 0
                 export_selected_btn.disabled = len(selected_playlist_ids) == 0
                 add_tags_btn.disabled = len(selected_playlist_ids) == 0
+                edit_category_btn.disabled = len(selected_playlist_ids) == 0
                 page.update()
             except Exception:
                 pass
+
+        def _on_edit_category_selected(ev):
+            if not selected_playlist_ids:
+                return
+            # Category dropdown similar to category_filter options
+            cat_dropdown = ft.Dropdown(
+                label="New category",
+                width=300,
+                value="",
+                options=[
+                    ft.dropdown.Option(""),
+                    ft.dropdown.Option("none"),
+                    ft.dropdown.Option("stories"),
+                    ft.dropdown.Option("music"),
+                    ft.dropdown.Option("radio"),
+                    ft.dropdown.Option("podcast"),
+                    ft.dropdown.Option("sfx"),
+                    ft.dropdown.Option("activities"),
+                    ft.dropdown.Option("alarms"),
+                ],
+            )
+            status_text = ft.Text("")
+
+            def do_set_category(_e=None):
+                new_cat = (cat_dropdown.value or "").strip()
+                client = CLIENT_ID
+                api: YotoAPI = ensure_api(api_ref, client)
+                updated = 0
+                for cid in list(selected_playlist_ids):
+                    try:
+                        card = api.get_card(cid)
+                        meta = getattr(card, "metadata", CardMetadata())
+                        if new_cat == "":
+                            # interpret empty as clearing category
+                            try:
+                                meta.category = ""
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                meta.category = new_cat
+                            except Exception:
+                                pass
+                        card.metadata = meta
+                        api.update_card(card, return_card_model=False)
+                        updated += 1
+                    except Exception as ex:
+                        logger.error(f"Failed to update category for {cid}: {ex}")
+                status_text.value = f"Updated category for {updated} playlists"
+                try:
+                    show_snack(status_text.value)
+                except Exception:
+                    pass
+                dlg.open = False
+                threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                page.update()
+
+            def do_remove_category(_e=None):
+                # Explicitly remove/clear category for selected playlists
+                client = CLIENT_ID
+                api: YotoAPI = ensure_api(api_ref, client)
+                removed = 0
+                for cid in list(selected_playlist_ids):
+                    try:
+                        card = api.get_card(cid)
+                        meta = getattr(card, "metadata", CardMetadata())
+                        try:
+                            meta.category = ""
+                        except Exception:
+                            pass
+                        card.metadata = meta
+                        api.update_card(card, return_card_model=False)
+                        removed += 1
+                    except Exception as ex:
+                        logger.error(f"Failed to remove category for {cid}: {ex}")
+                status_text.value = f"Removed category from {removed} playlists"
+                try:
+                    show_snack(status_text.value)
+                except Exception:
+                    pass
+                dlg.open = False
+                threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                page.update()
+
+            def close_edit(_e=None):
+                try:
+                    dlg.open = False
+                except Exception:
+                    pass
+                page.update()
+
+            dlg = ft.AlertDialog(
+                title=ft.Text("Edit Category for Selected Playlists"),
+                content=ft.Column([cat_dropdown, status_text]),
+                actions=[
+                    ft.TextButton("Set Category", on_click=do_set_category),
+                    ft.TextButton("Remove Category", on_click=do_remove_category),
+                    ft.TextButton("Cancel", on_click=close_edit),
+                ],
+            )
+            try:
+                page.open(dlg)
+            except Exception:
+                try:
+                    page.dialog = dlg
+                    page.update()
+                except Exception:
+                    pass
+
+        edit_category_btn.on_click = _on_edit_category_selected
 
         def _on_add_tags_selected(ev):
             if not selected_playlist_ids:
@@ -1026,6 +1144,7 @@ def build_playlists_panel(
                     delete_selected_btn.disabled = len(selected_playlist_ids) == 0
                     export_selected_btn.disabled = len(selected_playlist_ids) == 0
                     add_tags_btn.disabled = len(selected_playlist_ids) == 0
+                    edit_category_btn.disabled = len(selected_playlist_ids) == 0
                     page.update()
                     last_selected_index = this_idx
                     return
@@ -1045,6 +1164,7 @@ def build_playlists_panel(
                     delete_selected_btn.disabled = len(selected_playlist_ids) == 0
                     export_selected_btn.disabled = len(selected_playlist_ids) == 0
                     add_tags_btn.disabled = len(selected_playlist_ids) == 0
+                    edit_category_btn.disabled = len(selected_playlist_ids) == 0
                     page.update()
                 return
             # If not in multi-select, open details as before
@@ -1544,6 +1664,7 @@ def build_playlists_panel(
                     import_card_btn,
                     restore_versions_btn,
                     add_tags_btn,
+                    edit_category_btn,
                     sort_dropdown,
                 ]
             ),
@@ -1657,8 +1778,9 @@ def build_playlists_panel(
         "delete_selected_btn": delete_selected_btn,
         "multi_select_btn": multi_select_btn,
         "add_tags_btn": add_tags_btn,
+        "edit_category_btn": edit_category_btn,
         "export_selected_btn": export_selected_btn,
-    "import_card_btn": import_card_btn,
+        "import_card_btn": import_card_btn,
         "fetch_btn": fetch_btn,
         "sort_dropdown": sort_dropdown,
         "current_sort": current_sort,
