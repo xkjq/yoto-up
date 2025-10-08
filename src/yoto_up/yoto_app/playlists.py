@@ -270,6 +270,9 @@ def build_playlists_panel(
     # Bulk edit category button
     edit_category_btn = ft.ElevatedButton(text="Edit Category for Selected", disabled=True)
     edit_category_btn.visible = False
+    # Bulk edit author button
+    edit_author_btn = ft.ElevatedButton(text="Edit Author for Selected", disabled=True)
+    edit_author_btn.visible = False
 
     # Sorting control
     sort_options = [
@@ -602,6 +605,7 @@ def build_playlists_panel(
             export_selected_btn.visible = multi_select_mode
             add_tags_btn.visible = multi_select_mode
             edit_category_btn.visible = multi_select_mode
+            edit_author_btn.visible = multi_select_mode
             select_all_btn.visible = multi_select_mode
             if not multi_select_mode:
                 try:
@@ -657,10 +661,18 @@ def build_playlists_panel(
             except Exception:
                 pass
             try:
+                edit_author_btn.disabled = disabled
+            except Exception:
+                pass
+            try:
                 delete_selected_btn.update()
                 export_selected_btn.update()
                 add_tags_btn.update()
                 edit_category_btn.update()
+                try:
+                    edit_author_btn.update()
+                except Exception:
+                    pass
             except Exception:
                 pass
             try:
@@ -1138,6 +1150,92 @@ def build_playlists_panel(
                     pass
 
         add_tags_btn.on_click = _on_add_tags_selected
+
+        def _on_edit_author_selected(ev):
+            if not selected_playlist_ids:
+                return
+            author_field = ft.TextField(label="Author (leave blank to clear)", width=400)
+            status_text = ft.Text("")
+
+            def do_set_author(_e=None):
+                new_author = (author_field.value or "").strip()
+                client = CLIENT_ID
+                api: YotoAPI = ensure_api(api_ref, client)
+                updated = 0
+                for cid in list(selected_playlist_ids):
+                    try:
+                        card = api.get_card(cid)
+                        meta = getattr(card, "metadata", CardMetadata())
+                        try:
+                            meta.author = new_author
+                        except Exception:
+                            pass
+                        card.metadata = meta
+                        api.update_card(card, return_card_model=False)
+                        updated += 1
+                    except Exception as ex:
+                        logger.error(f"Failed to update author for {cid}: {ex}")
+                status_text.value = f"Updated author for {updated} playlists"
+                try:
+                    show_snack(status_text.value)
+                except Exception:
+                    pass
+                dlg.open = False
+                threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                page.update()
+
+            def do_remove_author(_e=None):
+                client = CLIENT_ID
+                api: YotoAPI = ensure_api(api_ref, client)
+                removed = 0
+                for cid in list(selected_playlist_ids):
+                    try:
+                        card = api.get_card(cid)
+                        meta = getattr(card, "metadata", CardMetadata())
+                        try:
+                            meta.author = ""
+                        except Exception:
+                            pass
+                        card.metadata = meta
+                        api.update_card(card, return_card_model=False)
+                        removed += 1
+                    except Exception as ex:
+                        logger.error(f"Failed to remove author for {cid}: {ex}")
+                status_text.value = f"Removed author from {removed} playlists"
+                try:
+                    show_snack(status_text.value)
+                except Exception:
+                    pass
+                dlg.open = False
+                threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                page.update()
+
+            def close_author(_e=None):
+                try:
+                    dlg.open = False
+                except Exception:
+                    pass
+                page.update()
+
+            dlg = ft.AlertDialog(
+                title=ft.Text("Edit Author for Selected Playlists"),
+                content=ft.Column([author_field, status_text]),
+                actions=[
+                    ft.TextButton("Set Author", on_click=do_set_author),
+                    ft.TextButton("Remove Author", on_click=do_remove_author),
+                    ft.TextButton("Cancel", on_click=close_author),
+                ],
+            )
+            try:
+                page.open(dlg)
+            except Exception:
+                try:
+                    page.dialog = dlg
+                    page.update()
+                except Exception:
+                    pass
+
+        edit_author_btn.on_click = _on_edit_author_selected
 
         cb.on_change = _on_checkbox_change
 
@@ -1691,6 +1789,7 @@ def build_playlists_panel(
                     restore_versions_btn,
                     add_tags_btn,
                     edit_category_btn,
+                    edit_author_btn,
                     sort_dropdown,
                 ]
             ),
