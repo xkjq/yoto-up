@@ -107,7 +107,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 warning = ft.Text("Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)", size=10, color=ft.Colors.RED)
             elif lufs > -16:
                 warning = ft.Text("Warning: LUFS is moderately high (-16 dB to -9 dB)", size=10, color=ft.Colors.YELLOW_900)
-        return label, warning, tmp_path
+        return label, warning, tmp_path, lufs
 
     per_track = []
     n_images = 0
@@ -125,7 +125,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             # Use last gain value for this file if available
             last_gain = page._track_gains.get(filepath, 0.0)
             gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=last_gain, label="Gain: {value} dB", width=320)
-            label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=last_gain)
+            label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=last_gain)
             img = ft.Image(src=tmp_path, width=320, height=100)
             col = ft.Column([])
             gain_val = {'value': last_gain}
@@ -133,7 +133,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 gain_db = e.control.value
                 gain_val['value'] = gain_db
                 page._track_gains[filepath] = gain_db
-                label, warning, tmp_path = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
+                label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
                 col.controls.clear()
                 col.controls.append(label)
                 if warning:
@@ -232,6 +232,88 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=global_gain['value'], label="Global Gain: {value} dB", width=320)
     global_gain_slider.on_change_end = on_global_gain_change
 
+    # Auto-set controls: target LUFS and buttons to autoset per-file or global
+    target_lufs_field = ft.TextField(label="Target LUFS", value=str(-16.0), width=120)
+
+    def apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, gain_db):
+        try:
+            label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
+        except Exception as ex:
+            show_snack(f"Failed to generate preview for {filepath}: {ex}", error=True)
+            return
+        gain_val['value'] = gain_db
+        # Update UI in column
+        col.controls.clear()
+        col.controls.append(label)
+        if warning:
+            col.controls.append(warning)
+        col.controls.append(ft.Image(src=tmp_path, width=320, height=100))
+        page.update()
+
+    def on_auto_per_file(e):
+        try:
+            target = float(target_lufs_field.value)
+        except Exception:
+            show_snack("Target LUFS must be a number", error=True)
+            return
+        # For each track compute LUFS (no saving) and set slider to recommended gain
+        for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+            if audio is None or gain_slider is None:
+                continue
+            try:
+                import pyloudnorm as pyln
+                meter = pyln.Meter(framerate)
+                lufs = float(meter.integrated_loudness(audio))
+            except Exception:
+                lufs = None
+            if lufs is None:
+                show_snack(f"LUFS unavailable for {os.path.basename(filepath)}; skipping", error=False)
+                continue
+            rec_gain = target - lufs
+            # clamp to slider range
+            rec_gain = max(min(rec_gain, gain_slider.max), gain_slider.min)
+            gain_slider.value = rec_gain
+            # regenerate preview
+            apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, rec_gain)
+            page._track_gains[filepath] = rec_gain
+        page.update()
+
+    def on_auto_global(e):
+        try:
+            target = float(target_lufs_field.value)
+        except Exception:
+            show_snack("Target LUFS must be a number", error=True)
+            return
+        # compute per-file recommended gains then apply mean
+        recs = []
+        for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+            if audio is None:
+                continue
+            try:
+                import pyloudnorm as pyln
+                meter = pyln.Meter(framerate)
+                lufs = float(meter.integrated_loudness(audio))
+            except Exception:
+                lufs = None
+            if lufs is None:
+                continue
+            recs.append(target - lufs)
+        if not recs:
+            show_snack("No LUFS data available to compute global gain", error=True)
+            return
+        mean_gain = float(sum(recs) / len(recs))
+        # apply mean to all sliders and regenerate previews
+        for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+            if audio is None or gain_slider is None:
+                continue
+            rec_gain = max(min(mean_gain, gain_slider.max), gain_slider.min)
+            gain_slider.value = rec_gain
+            apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, rec_gain)
+            page._track_gains[filepath] = rec_gain
+        page.update()
+
+    # auto_row will be created after show_gain_help is defined (so the Help button callback exists)
+
     def show_gain_help(ev=None):
         """Open a small help dialog explaining gain controls and recommended workflow."""
         help_lines = [
@@ -246,6 +328,14 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         help_text = "\n\n".join(help_lines)
         help_dlg = ft.AlertDialog(title=ft.Text("Gain adjustment help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page.open(WAVEFORM_DIALOG))])
         page.open(help_dlg)
+
+    # Now that show_gain_help exists, create the auto-row containing autoset controls
+    auto_row = ft.Row([
+        target_lufs_field,
+        ft.ElevatedButton("Auto-set per-file", on_click=on_auto_per_file),
+        ft.ElevatedButton("Auto-set global", on_click=on_auto_global),
+        ft.TextButton("Help", on_click=show_gain_help),
+    ], alignment=ft.MainAxisAlignment.START)
 
     save_btn = None
     if n_images > 0:
@@ -302,6 +392,8 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     else:
         images.append(global_gain_slider)
         images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
+        # Add autoset controls (target LUFS + auto-set buttons)
+        images.append(auto_row)
         for idx, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track, start=1):
             # Header for the track group (track number + filename)
             try:
@@ -309,7 +401,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             except Exception:
                 fname = str(filepath)
             header = ft.Row([
-                ft.Text(f"Track {idx}", weight="bold", size=12),
+                ft.Text(f"Track {idx}", weight=ft.FontWeight.BOLD, size=12),
                 ft.Text(" — "),
                 ft.Text(fname, size=11, color=ft.Colors.BLUE),
             ], alignment=ft.MainAxisAlignment.START)
