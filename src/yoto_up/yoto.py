@@ -286,11 +286,201 @@ def get_card(
     braille_dims: str = typer.Option(
         "8x4", help="Braille character grid dims as WxH, e.g. 8x4"
     ),
+    show_schema: bool = typer.Option(False, "--schema", help="Show the Card schema (paths, types) and values for this card"),
 ):
     """Get details of a Yoto card by its ID."""
     API = get_api()
     card = API.get_card(card_id)
     if card:
+        if show_schema:
+            # Prepare model introspection helpers (copied/adapted from edit_card --list-keys)
+            models_module = sys.modules.get('yoto_up.models')
+            globalns = models_module.__dict__ if models_module is not None else globals()
+
+            primitive_types = (str, int, float, bool)
+
+            def describe_type(tp) -> str:
+                origin = get_origin(tp)
+                # Lists
+                if origin is list or origin is List:
+                    args = get_args(tp)
+                    if args:
+                        return f"List[{describe_type(args[0])}]"
+                    return "List[Unknown]"
+                # Union / Optional
+                if origin is typing.Union:
+                    args = [a for a in get_args(tp) if a is not type(None)]
+                    if len(args) == 1:
+                        return f"Optional[{describe_type(args[0])}]"
+                    return f"Union[{', '.join(describe_type(a) for a in args)}]"
+                try:
+                    if isinstance(tp, type):
+                        if issubclass(tp, pydantic.BaseModel):
+                            return tp.__name__
+                        if tp in primitive_types:
+                            return tp.__name__
+                        return getattr(tp, '__name__', str(tp))
+                except Exception:
+                    pass
+                return str(tp)
+
+            def collect_paths(tp, prefix: str = '', depth: int = 0, max_depth: int = 8):
+                if depth > max_depth:
+                    return []
+                origin = get_origin(tp)
+                results = []
+
+                # handle lists (List[T] -> prefix[].field)
+                if origin is list or origin is List:
+                    args = get_args(tp)
+                    elem = args[0] if args else None
+                    list_path = f"{prefix}[]" if prefix else "[]"
+                    if elem is None:
+                        results.append((list_path, 'List[Unknown]'))
+                        return results
+
+                    try:
+                        if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
+                            results.append((list_path, describe_type(tp)))
+                            mf = getattr(elem, 'model_fields', None)
+                            if isinstance(mf, dict):
+                                items = [(n, f.annotation if hasattr(f, 'annotation') else None) for n, f in mf.items()]
+                            else:
+                                ff = getattr(elem, '__fields__', None)
+                                if isinstance(ff, dict):
+                                    items = [(n, getattr(f, 'outer_type_', None)) for n, f in ff.items()]
+                                else:
+                                    try:
+                                        hints = get_type_hints(elem, globalns=globalns)
+                                    except Exception:
+                                        hints = getattr(elem, '__annotations__', {})
+                                    items = list(hints.items())
+
+                            for name, sub_tp in items:
+                                sub_prefix = f"{prefix}[].{name}" if prefix else f"[].{name}"
+                                results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
+                            return results
+                        else:
+                            results.append((list_path, describe_type(tp)))
+                            return results
+                    except Exception:
+                        results.append((list_path, describe_type(tp)))
+                        return results
+
+                # handle pydantic models
+                try:
+                    if isinstance(tp, type) and issubclass(tp, pydantic.BaseModel):
+                        try:
+                            hints = get_type_hints(tp, globalns=globalns)
+                        except Exception:
+                            hints = getattr(tp, '__annotations__', {})
+                        for name, sub_tp in hints.items():
+                            sub_prefix = f"{prefix}.{name}" if prefix else name
+                            try:
+                                if isinstance(sub_tp, type) and sub_tp in primitive_types:
+                                    results.append((sub_prefix, describe_type(sub_tp)))
+                                    continue
+                            except Exception:
+                                pass
+                            sub_results = collect_paths(sub_tp, sub_prefix, depth + 1, max_depth)
+                            if sub_results:
+                                results.extend(sub_results)
+                            else:
+                                results.append((sub_prefix, describe_type(sub_tp)))
+                        return results
+                except Exception:
+                    pass
+
+                # handle Union/Optional
+                if origin is typing.Union:
+                    for a in get_args(tp):
+                        if a is type(None):
+                            continue
+                        results.extend(collect_paths(a, prefix, depth + 1, max_depth))
+                    return results
+
+                if prefix:
+                    results.append((prefix, describe_type(tp)))
+                return results
+
+            # extract values from card according to path
+            try:
+                card_data = card.model_dump(exclude_none=True)
+            except Exception:
+                card_data = dict(getattr(card, '__dict__', {}) or {})
+
+            def traverse_value(val, parts):
+                # returns scalar or list of scalars/dicts depending on path
+                if val is None:
+                    return None
+                if not parts:
+                    return val
+                part = parts[0]
+                rest = parts[1:]
+                # list indicator e.g. chapters[] or [].
+                if part.endswith('[]'):
+                    key = part[:-2]
+                    if isinstance(val, dict):
+                        seq = val.get(key) or []
+                    else:
+                        seq = getattr(val, key, None) or []
+                    if not isinstance(seq, list):
+                        return None
+                    results = []
+                    for item in seq:
+                        results.append(traverse_value(item, rest))
+                    return results
+                # part may be '[]' meaning current value is a list
+                if part == '[]':
+                    if not isinstance(val, list):
+                        return None
+                    results = []
+                    for item in val:
+                        results.append(traverse_value(item, rest))
+                    return results
+                # normal dict/key
+                if isinstance(val, dict):
+                    nextv = val.get(part)
+                else:
+                    nextv = getattr(val, part, None)
+                return traverse_value(nextv, rest)
+
+            # collect schema paths from Card model
+            try:
+                from yoto_up.models import Card as CardModel
+            except Exception:
+                CardModel = Card
+
+            raw = collect_paths(CardModel, '', 0, 8)
+            # normalize and dedupe similar to edit_card
+            keys = []
+            seen = set()
+            for path, t in raw:
+                if not path:
+                    continue
+                norm = path.replace('.[].', '.').replace('[]..', '[]')
+                if norm not in seen:
+                    seen.add(norm)
+                    keys.append((norm, t))
+
+            typer.echo(f"Schema + values for card {card_id}:")
+            for k, t in sorted(keys):
+                # prepare parts for traversal
+                parts = k.split('.') if k else []
+                value = traverse_value(card_data, parts)
+                # pretty print value
+                if isinstance(value, list):
+                    # show count and a short sample
+                    sample = [v for v in value if v is not None][:3]
+                    sval = f"List(len={len(value)}) sample={json.dumps(sample, default=str)[:200]}"
+                else:
+                    try:
+                        sval = json.dumps(value, default=str, ensure_ascii=False)
+                    except Exception:
+                        sval = str(value)
+                typer.echo(f"  {k}: {t} = {sval}")
+            return
+
         # parse braille_dims
         try:
             w, h = (int(x) for x in braille_dims.split("x"))
