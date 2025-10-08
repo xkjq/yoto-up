@@ -1796,7 +1796,10 @@ def build_playlists_panel(
                     edit_category_btn,
                     edit_author_btn,
                     sort_dropdown,
-                ]
+                ],
+                wrap=True,
+                spacing=8,
+                alignment=ft.MainAxisAlignment.START,
             ),
             filters_panel,
             ft.Divider(),
