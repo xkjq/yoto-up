@@ -302,14 +302,35 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     else:
         images.append(global_gain_slider)
         images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
-        for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+        for idx, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track, start=1):
+            # Header for the track group (track number + filename)
+            try:
+                fname = os.path.basename(filepath) if filepath else "(unknown)"
+            except Exception:
+                fname = str(filepath)
+            header = ft.Row([
+                ft.Text(f"Track {idx}", weight="bold", size=12),
+                ft.Text(" — "),
+                ft.Text(fname, size=11, color=ft.Colors.BLUE),
+            ], alignment=ft.MainAxisAlignment.START)
+
+            # Group the controls for this track inside a bordered container so each track is visually distinct
+            group_children = [header]
             if gain_slider is not None and audio is not None:
-                images.append(ft.Column([
-                    gain_slider,
-                    col
-                ]))
-            else:
-                images.append(col)
+                group_children.append(gain_slider)
+            # add the detailed column (label, warnings, image, buttons)
+            group_children.append(col)
+
+            track_group = ft.Container(
+                content=ft.Column(group_children, tight=True),
+                padding=ft.padding.all(8),
+                margin=ft.margin.only(top=6, bottom=6),
+                border=ft.border.all(1, ft.Colors.GREY_300),
+                border_radius=6,
+                expand=False,
+            )
+
+            images.append(track_group)
         images.insert(0, ft.Text(f"Generated {n_images} waveform(s) for {len(files)} file(s).", color=ft.Colors.GREEN))
         if save_btn:
             dlg_actions = [save_btn, ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
