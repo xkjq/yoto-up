@@ -160,16 +160,113 @@ def create_content(
     typer.echo(API.create_or_update_content(title, description, content_type, data))
 
 
-def get_cards(name, ignore_case, regex):
+def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Optional[str] = None):
+    """Fetch cards and optionally filter by name, tags (comma-separated), and metadata.category.
+
+    - name: substring or regex depending on flags
+    - tags: comma-separated list; card must include ALL provided tags (in top-level tags or metadata.tags)
+    - category: category string to match against metadata.category (honors ignore_case)
+    """
     API = get_api()
     cards = API.get_myo_content()
+
+    # If caller asked to filter by tags or category, the summary objects returned
+    # by get_myo_content() may omit nested metadata/tags. In that case fetch
+    # full card objects so filters can inspect metadata reliably.
+    if (tags is not None or category is not None) and cards:
+        try:
+            full_cards = []
+            for c in cards:
+                try:
+                    full = API.get_card(getattr(c, 'cardId', None))
+                    full_cards.append(full or c)
+                except Exception:
+                    full_cards.append(c)
+            cards = full_cards
+        except Exception:
+            # fallback: leave summary cards in place
+            pass
+
+    # Filter by name (existing behavior)
     if name:
         if ignore_case:
-            cards = [card for card in cards if name.lower() in card.title.lower()]
+            cards = [card for card in cards if card.title and name.lower() in (card.title or '').lower()]
         elif regex:
-            cards = [
-                card for card in cards if re.search(name, card.title, re.IGNORECASE)
-            ]
+            cards = [card for card in cards if card.title and re.search(name, card.title, re.IGNORECASE)]
+
+    # Filter by category. Supports exact match or regex when `regex` is True.
+    if category is not None:
+        if regex:
+            try:
+                cre = re.compile(category, re.IGNORECASE if ignore_case else 0)
+            except re.error:
+                cre = None
+
+            def cat_match(c):
+                try:
+                    mc = None
+                    if getattr(c, 'metadata', None):
+                        mc = getattr(c.metadata, 'category', None)
+                    if mc is None:
+                        return False
+                    if cre is None:
+                        return (str(mc).lower() == category.lower()) if ignore_case else (str(mc) == category)
+                    return bool(cre.search(str(mc)))
+                except Exception:
+                    return False
+
+        else:
+            target = category.lower() if ignore_case else category
+
+            def cat_match(c):
+                try:
+                    mc = None
+                    if getattr(c, 'metadata', None):
+                        mc = getattr(c.metadata, 'category', None)
+                    if mc is None:
+                        return False
+                    return str(mc).lower() == target if ignore_case else str(mc) == target
+                except Exception:
+                    return False
+
+        cards = [c for c in cards if cat_match(c)]
+
+    # Filter by tags (comma-separated). By default match ANY of the tags. If regex flag is set,
+    # treat each requested tag as a regex and match against found tags.
+    if tags is not None:
+        wanted_raw = [t.strip() for t in tags.split(',') if t.strip()]
+
+        def has_any_tag(c):
+            try:
+                found = []
+                if getattr(c, 'tags', None):
+                    found.extend([t for t in c.tags if t])
+                if getattr(c, 'metadata', None) and getattr(c.metadata, 'tags', None):
+                    found.extend([t for t in c.metadata.tags if t])
+                if not found:
+                    return False
+                if regex:
+                    # any requested regex must match at least one found tag
+                    for pat in wanted_raw:
+                        try:
+                            cre = re.compile(pat, re.IGNORECASE if ignore_case else 0)
+                        except re.error:
+                            # invalid regex -> skip
+                            continue
+                        for f in found:
+                            if cre.search(str(f)):
+                                return True
+                    return False
+                else:
+                    found_l = [str(x).lower() for x in found if x]
+                    wanted_l = [w.lower() for w in wanted_raw]
+                    # any-of semantics: return True if any wanted tag is present
+                    return any(w in found_l for w in wanted_l)
+            except Exception:
+                return False
+
+        cards = [c for c in cards if has_any_tag(c)]
+
     return cards
 
 
@@ -178,13 +275,15 @@ def list_cards(
     name: str = typer.Option(None, help="Name of the card to filter (optional)"),
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
+    tags: Optional[str] = typer.Option(None, help="Comma-separated list of tags to filter by (card must include all)"),
+    category: Optional[str] = typer.Option(None, help="Filter by metadata.category"),
     truncate: Optional[int] = typer.Option(
         50, help="Truncate fields to this many characters"
     ),
     table: bool = typer.Option(False, help="Display cards in a table format"),
     include_chapters: bool = typer.Option(False, help="Include chapters and tracks in display"),
 ):
-    cards = get_cards(name, ignore_case, regex)
+    cards = get_cards(name, ignore_case, regex, tags=tags, category=category)
 
     if not cards:
         rprint("[bold red]No cards found.[/bold red]")
@@ -222,7 +321,7 @@ def list_cards(
         for card in cards:
             rprint(
                 Panel.fit(
-                    card.display_card(truncate_fields_limit=truncate),
+                    card.display_card(truncate_fields_limit=truncate, include_chapters=include_chapters),
                     title=f"[bold green]Card[/bold green]",
                     subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
                 )
@@ -247,8 +346,10 @@ def delete_cards(
     name: str,
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
+    tags: Optional[str] = typer.Option(None, help="Comma-separated tags to filter deletion (optional)"),
+    category: Optional[str] = typer.Option(None, help="Category to filter deletion (optional)"),
 ):
-    cards = get_cards(name, ignore_case, regex)
+    cards = get_cards(name, ignore_case, regex, tags=tags, category=category)
     to_delete = cards
     if not to_delete:
         rprint(f"[bold red]No cards found with the name '{name}'.[/bold red]")
