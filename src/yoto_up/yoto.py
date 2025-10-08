@@ -33,12 +33,14 @@ def get_api():
     return YotoAPI(**api_options)
 
 
-def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0):
+def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0, strategy: str = 'auto', target_peak: float = 0.9):
     """Perform a pre-adjustment analysis for the given audio files.
 
     Returns a dict mapping filepath -> {lufs, max_amp, avg_amp, recommended_gain_db}.
-    If LUFS is available for a file, recommendation is target_lufs - file_lufs.
-    Otherwise falls back to peak-based estimation using max_amp.
+    If strategy == 'lufs', recommendation is target_lufs - file_lufs when LUFS is available; files without LUFS
+    will have recommended_gain_db set to None.
+    If strategy == 'peak', recommendation is calculated using peak-based estimation (target_peak / max_amp).
+    If strategy == 'auto' (default), prefer LUFS when available, otherwise fall back to peak estimation.
     """
     try:
         from yoto_up.waveform_utils import batch_audio_stats
@@ -50,26 +52,51 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0):
     plan = {}
     for audio, max_amp, avg_amp, lufs, ext, filepath in stats:
         rec_gain = None
-        if lufs is not None:
-            # Positive gain means increase loudness to reach target LUFS
-            rec_gain = float(target_lufs) - float(lufs)
-        else:
-            # Fallback: target peak amplitude (linear) e.g. 0.9
+        # Strategy: 'auto' prefers LUFS when available, 'lufs' requires LUFS, 'peak' uses peak
+        if strategy == 'auto':
+            if lufs is not None:
+                rec_gain = float(target_lufs) - float(lufs)
+            else:
+                try:
+                    peak = float(max_amp) if max_amp is not None else None
+                except Exception:
+                    peak = None
+                if peak and peak > 0:
+                    rec_gain = 20.0 * math.log10(target_peak / float(peak))
+                else:
+                    rec_gain = None
+        elif strategy == 'lufs':
+            if lufs is not None:
+                rec_gain = float(target_lufs) - float(lufs)
+            else:
+                rec_gain = None
+        elif strategy == 'peak':
             try:
                 peak = float(max_amp) if max_amp is not None else None
             except Exception:
                 peak = None
             if peak and peak > 0:
-                target_peak = 0.9
-                # gain_db = 20 * log10(target / current)
                 rec_gain = 20.0 * math.log10(target_peak / float(peak))
             else:
-                rec_gain = 0.0
+                rec_gain = None
+        else:
+            # unknown strategy -> behave like auto
+            if lufs is not None:
+                rec_gain = float(target_lufs) - float(lufs)
+            else:
+                try:
+                    peak = float(max_amp) if max_amp is not None else None
+                except Exception:
+                    peak = None
+                if peak and peak > 0:
+                    rec_gain = 20.0 * math.log10(target_peak / float(peak))
+                else:
+                    rec_gain = None
         plan[filepath] = {
             'lufs': (float(lufs) if lufs is not None else None),
             'max_amp': (float(max_amp) if max_amp is not None else None),
             'avg_amp': (float(avg_amp) if avg_amp is not None else None),
-            'recommended_gain_db': float(rec_gain),
+            'recommended_gain_db': (float(rec_gain) if rec_gain is not None else None),
             'ext': ext,
         }
     return plan
