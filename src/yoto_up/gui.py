@@ -2394,6 +2394,8 @@ def main(page):
     except Exception as e:
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
+def start_gui():
+    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")
+    start_gui()
