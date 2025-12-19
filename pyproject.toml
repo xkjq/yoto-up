@@ -89,3 +89,4 @@ include = ["yoto_up*"]
 
 [project.scripts]
 yoto = "yoto_up.yoto:app"
+gui = "yoto_up.gui:start_gui"

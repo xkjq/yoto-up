@@ -10,7 +10,7 @@ from typing import Callable
 import flet as ft
 from loguru import logger
 from PIL import Image as PILImage
-from yoto_app.pixel_art_editor import PixelArtEditor
+from .pixel_art_editor import PixelArtEditor
 
 import base64
 
