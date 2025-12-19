@@ -1291,8 +1291,18 @@ def create_card_from_folder(
     strip_track_numbers: bool = typer.Option(
         True, help="Strip leading track numbers from filenames"
     ),
+    local_norm: bool = typer.Option(
+        False, help="Apply local loudness normalization using ffmpeg-normalize"
+    ),
+    local_norm_target: float = typer.Option(
+        -23.0, help="Target LUFS for local normalization"
+    ),
+    local_norm_batch: bool = typer.Option(
+        False, help="Use batch mode for local normalization"
+    ),
 ):
     import asyncio
+    from yoto_up.normalization import AudioNormalizer
 
     async def async_main():
         API = get_api()
@@ -1316,6 +1326,25 @@ def create_card_from_folder(
         if not media_files:
             typer.echo(f"[bold red]No media files found in folder: {folder}[/bold red]")
             raise typer.Exit(code=1)
+
+        temp_norm_dir = None
+        if local_norm:
+            typer.echo(f"Running local normalization (Target: {local_norm_target} LUFS, Batch: {local_norm_batch})...")
+            try:
+                temp_norm_dir = tempfile.mkdtemp(prefix="yoto_norm_")
+                normalizer = AudioNormalizer(target_level=local_norm_target, batch_mode=local_norm_batch)
+                media_files_str = [str(f) for f in media_files]
+                
+                normalized_files = await asyncio.to_thread(
+                    normalizer.normalize, media_files_str, temp_norm_dir
+                )
+                media_files = [Path(f) for f in normalized_files]
+                typer.echo("Normalization complete.")
+            except Exception as e:
+                typer.echo(f"[bold red]Normalization failed: {e}[/bold red]")
+                if temp_norm_dir:
+                    shutil.rmtree(temp_norm_dir)
+                raise typer.Exit(code=1)
 
         existing_card = None
         if add_to_card:
@@ -1393,6 +1422,9 @@ def create_card_from_folder(
             result = API.create_or_update_content(new_card, return_card=True)
         typer.echo(f"[bold green]Card created: {result.cardId}[/bold green]")
         print(result.model_dump_json(exclude_none=True))
+        
+        if temp_norm_dir and os.path.exists(temp_norm_dir):
+            shutil.rmtree(temp_norm_dir)
 
     asyncio.run(async_main())
 
