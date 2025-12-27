@@ -2019,6 +2019,43 @@ def main(page):
         show_waveforms_btn.disabled = not has_files
         page.update()
 
+    # Collapsible local normalization controls (collapsed by default)
+    # Build the inner container and expander before creating the upload column
+    _local_norm_inner = ft.Container(
+        content=ft.Column([
+            ft.Text(
+                "Normalise audio loudness before upload. Use the target LUFS and choose batch mode for album-style normalization.",
+                size=12,
+                color=ft.Colors.GREY
+            ),
+            ft.Row([
+                local_norm_checkbox,
+                local_norm_target,
+                local_norm_batch
+            ]),
+            ft.Text(
+                "For waveform-based inspection and additional normalisation options, click 'Show Waveforms'.",
+                size=11,
+                italic=True,
+                color=ft.Colors.GREY
+            )
+        ], tight=True),
+        padding=10
+    )
+
+    local_norm_expander = ft.ExpansionTile(
+        title=ft.Container(content=ft.Text("ffmpeg normalisation", size=12, weight=ft.FontWeight.W_400)),
+        controls=[_local_norm_inner],
+    )
+    # Ensure collapsed by default (set attribute after construction to avoid constructor arg mismatch)
+    try:
+        local_norm_expander.open = False
+    except Exception:
+        pass
+
+    # Wrap in a container to preserve top/bottom margins
+    _local_norm_container = ft.Container(content=local_norm_expander, margin=ft.margin.only(top=6, bottom=6))
+
     upload_column = ft.Column([
         ft.Row([
             upload_target_dropdown, 
@@ -2030,11 +2067,7 @@ def main(page):
             strip_leading_checkbox,
             upload_mode_dropdown  # Add the new dropdown here
         ]),
-        ft.Row([
-            local_norm_checkbox,
-            local_norm_target,
-            local_norm_batch
-        ]),
+        _local_norm_container,
         ft.Row([
             folder, 
             ft.TextButton("Browse Folder...", on_click=lambda e: browse.pick_files(allow_multiple=True)),
