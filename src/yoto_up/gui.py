@@ -384,6 +384,9 @@ def main(page):
             "intro_outro_seconds": intro_seconds.value,
             "intro_outro_threshold": similarity_threshold.value,
             "upload_mode": upload_mode_dropdown.value,
+            "local_norm_enabled": local_norm_checkbox.value,
+            "local_norm_target": local_norm_target.value,
+            "local_norm_batch": local_norm_batch.value,
             "playlist_sort": sort_dropdown.value if sort_dropdown else None,
         }
         try:
@@ -406,6 +409,9 @@ def main(page):
             intro_seconds.value = state.get("intro_outro_seconds", intro_seconds.value)
             similarity_threshold.value = state.get("intro_outro_threshold", similarity_threshold.value)
             upload_mode_dropdown.value = state.get("upload_mode", upload_mode_dropdown.value)
+            local_norm_checkbox.value = state.get("local_norm_enabled", local_norm_checkbox.value)
+            local_norm_target.value = state.get("local_norm_target", local_norm_target.value)
+            local_norm_batch.value = state.get("local_norm_batch", local_norm_batch.value)
             sort_dropdown = playlists_ui['sort_dropdown'] if isinstance(playlists_ui, dict) else None
             if sort_dropdown and state.get("playlist_sort"):
                 sort_dropdown.value = state["playlist_sort"]
@@ -933,6 +939,16 @@ def main(page):
             ctx['strip_leading_track_numbers'] = bool(strip_leading_checkbox.value)
         except Exception:
             ctx['strip_leading_track_numbers'] = True
+        
+        try:
+            ctx['local_normalization_enabled'] = bool(local_norm_checkbox.value)
+            ctx['local_normalization_target'] = float(local_norm_target.value or -23.0)
+            ctx['local_normalization_batch'] = bool(local_norm_batch.value)
+        except Exception:
+            ctx['local_normalization_enabled'] = False
+            ctx['local_normalization_target'] = -23.0
+            ctx['local_normalization_batch'] = False
+
         # intro/outro analysis is manual via the Analyze dialog; no automatic flag
         try:
             ctx['intro_outro_side'] = str(intro_outro_side.value or 'intro')
@@ -1218,6 +1234,27 @@ def main(page):
             ft.dropdown.Option('Tracks')
         ],
         width=150,
+        on_change=lambda e: save_ui_state(),
+    )
+
+    # Normalization controls
+    local_norm_checkbox = ft.Checkbox(
+        label='Normalize audio (local)',
+        value=False,
+        tooltip="Normalize audio loudness before upload using ffmpeg-normalize",
+        on_change=lambda e: save_ui_state(),
+    )
+    local_norm_target = ft.TextField(
+        label='Target LUFS',
+        value='-23.0',
+        width=100,
+        tooltip="Target integrated loudness in LUFS (default -23.0)",
+        on_change=lambda e: save_ui_state(),
+    )
+    local_norm_batch = ft.Checkbox(
+        label='Batch mode',
+        value=False,
+        tooltip="Normalize all files as a batch (Album mode) instead of individually",
         on_change=lambda e: save_ui_state(),
     )
 
@@ -1994,6 +2031,11 @@ def main(page):
             upload_mode_dropdown  # Add the new dropdown here
         ]),
         ft.Row([
+            local_norm_checkbox,
+            local_norm_target,
+            local_norm_batch
+        ]),
+        ft.Row([
             folder, 
             ft.TextButton("Browse Folder...", on_click=lambda e: browse.pick_files(allow_multiple=True)),
             ft.TextButton("Add Files...", on_click=lambda e: browse_files.pick_files(allow_multiple=True)),
@@ -2394,6 +2436,8 @@ def main(page):
     except Exception as e:
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
+def start_gui():
+    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")
+    start_gui()
