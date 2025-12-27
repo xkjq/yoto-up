@@ -64,6 +64,7 @@ from yoto_up import paths as paths_mod
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_up.yoto_app.covers import build_covers_panel
 import http.server
 import socketserver
 import socket
@@ -2351,6 +2352,10 @@ def main(page):
     icon_browser_ui = build_icon_browser_panel(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
     icon_panel = icon_browser_ui.get('panel') if isinstance(icon_browser_ui, dict) else None
 
+    # Build covers panel
+    covers_ui = build_covers_panel(page=page, show_snack=show_snack)
+    covers_panel = covers_ui.get('panel') if isinstance(covers_ui, dict) else None
+
     # Instantiate PixelArtEditor and expose as a dedicated tab on the main page
     try:
         editor = PixelArtEditor(page=page)
@@ -2368,6 +2373,7 @@ def main(page):
              ft.Tab(text="Playlists", content=playlists_column, visible=False),
              ft.Tab(text="Upload", content=upload_column, visible=False),
              ft.Tab(text="Icons", content=icon_panel, visible=False),
+             ft.Tab(text="Covers", content=covers_panel, visible=False),
              # Editor tab (if created) - inserted before Icons
              editor_tab if editor_tab is not None else ft.Tab(text="Editor", content=ft.Text("Editor unavailable")),
          ],
@@ -2380,10 +2386,11 @@ def main(page):
 
     def auth_complete():
         logger.debug("Auth complete")
-        tabs_control.tabs[1].visible = True
-        tabs_control.tabs[2].visible = True
+        tabs_control.tabs[1].visible = True  # Playlists
+        tabs_control.tabs[2].visible = True  # Upload
         tabs_control.tabs[3].visible = True  # Icons tab
-        tabs_control.tabs[4].visible = True  # Editor tab
+        tabs_control.tabs[4].visible = True  # Covers tab
+        tabs_control.tabs[5].visible = True  # Editor tab
 
         api = api_ref.get("api")
         if api:
