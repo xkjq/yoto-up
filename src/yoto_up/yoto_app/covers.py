@@ -973,6 +973,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.dropdown.Option("bold", "Bold"),
             ft.dropdown.Option("light", "Light"),
             ft.dropdown.Option("outline", "Outline"),
+            ft.dropdown.Option("folded", "Folded"),
             ft.dropdown.Option("condensed", "Condensed"),
         ],
         width=160,
