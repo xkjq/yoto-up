@@ -37,7 +37,7 @@ def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont
     return (0, 0)
 
 
-def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12) -> str:
+def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12) -> str:
     """Return an HTML string for the requested template.
 
     image_url can be a file:// URL or a remote URL supported by the renderer.
@@ -75,10 +75,31 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     except Exception:
         overlay_css = ""
 
-    # Title transform for edge-stretch effect
-    title_transform_css = ""
-    if title_edge_stretch:
-        title_transform_css = "transform: scaleY(1.35);"
+    # Title font and optional text-shadow
+    title_font_css = ""
+    if title_font:
+        # use specified font name as family, fallback to DejaVuSans
+        title_font_css = f"font-family: '{title_font}', 'DejaVuSans', serif;"
+    title_shadow_css = ""
+    if title_shadow:
+        # multi-offset shadow similar to the requested style; allow custom color
+        c = title_shadow_color
+        # Build the list of offsets per the user's spec
+        offsets = [
+            "-1px 0",
+            "0 1px",
+            "1px 0",
+            "0 -1px",
+            "-8px 8px",
+            "-7px 7px",
+            "-6px 6px",
+            "-5px 5px",
+            "-4px 4px",
+            "-3px 3px",
+            "-2px 2px",
+            "-1px 1px",
+        ]
+        title_shadow_css = "text-shadow: " + ", ".join([f"{off} {c}" for off in offsets]) + ";"
 
     if template_name == "classic":
         html = f"""
@@ -90,7 +111,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; background:white; position:relative; }}
-    .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; }}
+    .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; {title_font_css} {title_shadow_css} }}
   .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
             .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:8px; }}
             .overlay {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; border-radius:8px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
@@ -121,7 +142,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; position:relative; 
                      background: {overlay_css} url('{image_url}'); background-size: cover; background-position: center; color: #eaf6ff; }}
     .title {{ position:absolute; top:4%; left:6%; right:6%; text-align:center; font-size:10vw; font-weight:900; 
-                        text-transform:uppercase; letter-spacing:2px; color:#eaf6ff; text-shadow: 0 6px 18px rgba(6,40,80,0.45); {title_transform_css} }}
+                        text-transform:uppercase; letter-spacing:2px; color:#eaf6ff; text-shadow: 0 6px 18px rgba(6,40,80,0.45); {title_font_css} {title_shadow_css} }}
     .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; border-radius:10px; box-shadow: 0 18px 48px rgba(6,40,80,0.28); opacity:0.98; }}
   .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:8%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#08384a; background: rgba(255,255,255,0.6); border-radius:6px; }}
@@ -146,7 +167,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 <style>
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
-  .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; }}
+        .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; {title_font_css} {title_shadow_css} }}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
         .overlay {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; border-radius:6px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
@@ -166,7 +187,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     return html
 
 
-def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
+def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
     """Fallback renderer using Pillow. Returns PIL.Image (RGB).
 
     This creates a simple layout approximating the HTML templates.
@@ -200,12 +221,32 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     base = Image.new("RGB", (width_px, height_px), "white")
     draw = ImageDraw.Draw(base)
 
-    # Fonts
+    # Fonts - choose title font based on title_font argument when possible
+    def _choose_title_font(name: Optional[str], size: int):
+        candidates = []
+        if name == "DejaVuSans" or name is None:
+            candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        elif name == "LiberationSans":
+            candidates = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
+        elif name == "Arial":
+            candidates = ["/usr/share/fonts/truetype/msttcorefonts/Arial.ttf", "/usr/share/fonts/truetype/msttcorefonts/arial.ttf"]
+        else:
+            candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
+
+        for fp in candidates:
+            try:
+                return ImageFont.truetype(fp, size)
+            except Exception:
+                continue
+        try:
+            return ImageFont.load_default()
+        except Exception:
+            return None
+
+    font_title = _choose_title_font(title_font, max(18, width_px // 10))
     try:
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(18, width_px // 10))
         font_footer = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", max(12, width_px // 20))
     except Exception:
-        font_title = ImageFont.load_default()
         font_footer = ImageFont.load_default()
 
     # footer and accent were already determined above (either from kwargs
@@ -230,9 +271,39 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         footer_box_h = int(height_px * 0.08)
         footer_box = (int(width_px * 0.06), int(height_px * 0.78) + int(height_px * 0.02), int(width_px * 0.94), int(height_px * 0.78) + footer_box_h + int(height_px * 0.02))
 
-        # Draw title
+        # Draw title; support optional text shadow and title font selection
         w, h = _measure_text(draw, title, font_title)
-        draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=(10,10,10))
+        try:
+            x = int((width_px - w) / 2)
+            y = title_y
+            if title_shadow:
+                # Draw multiple shadow offsets as requested; allow custom color
+                def _hex_to_rgba(hx: str, alpha: int = 255):
+                    try:
+                        a = hx.lstrip('#')
+                        r = int(a[0:2], 16)
+                        g = int(a[2:4], 16)
+                        b = int(a[4:6], 16)
+                        return (r, g, b, alpha)
+                    except Exception:
+                        return (0, 128, 0, alpha)
+
+                shadow_color = _hex_to_rgba(title_shadow_color, 200)
+                overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+                od = ImageDraw.Draw(overlay)
+                # Small 1px offsets around to create crisp outline
+                small_offsets = [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1)]
+                for ox, oy in small_offsets:
+                    od.text((x + ox, y + oy), title, font=font_title, fill=shadow_color)
+                # Larger cascading offsets for depth
+                for d in range(8, 0, -1):
+                    od.text((x - d, y + d), title, font=font_title, fill=_hex_to_rgba(title_shadow_color, max(40, 220 - d * 20)))
+                base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
+                # Recreate draw after compositing so further drawing targets the updated image
+                draw = ImageDraw.Draw(base)
+            draw.text((x, y), title, font=font_title, fill=(10, 10, 10))
+        except Exception:
+            draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=(10,10,10))
 
         # Paste hero according to image_fit / cover_full_bleed
         hw = hero_box[2] - hero_box[0]
@@ -358,6 +429,8 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
                     col = (bb_rgb[0], bb_rgb[1], bb_rgb[2], alpha)
                     o_draw.line([(0, y), (width_px, y)], fill=col)
                 base = Image.alpha_composite(base.convert('RGBA'), overlay).convert('RGB')
+                # Recreate draw after compositing so subsequent drawing (footer) uses the updated image
+                draw = ImageDraw.Draw(base)
         except Exception:
             pass
 
@@ -377,7 +450,21 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     else:
         # modern template
         title_y = int(height_px * 0.06)
-        draw.text((int(width_px * 0.08), title_y), title, font=font_title, fill=(0,51,102))
+        # Draw title: support optional text-shadow and title font
+        try:
+            w, h = _measure_text(draw, title, font_title)
+            x = int(width_px * 0.08)
+            y = title_y
+            if title_shadow:
+                overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+                od = ImageDraw.Draw(overlay)
+                shadow_off = (2, 2)
+                od.text((x + shadow_off[0], y + shadow_off[1]), title, font=font_title, fill=(0, 0, 0, 160))
+                base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
+                draw = ImageDraw.Draw(base)
+            draw.text((x, y), title, font=font_title, fill=(0,51,102))
+        except Exception:
+            draw.text((int(width_px * 0.08), title_y), title, font=font_title, fill=(0,51,102))
         hero_box = (int(width_px * 0.08), int(height_px * 0.24), int(width_px * 0.92), int(height_px * 0.80))
         hw = hero_box[2] - hero_box[0]
         hh = hero_box[3] - hero_box[1]
@@ -415,7 +502,7 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     return base
 
 
-def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
+def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
     """Try to render using HTML+WeasyPrint; fall back to Pillow.
 
     Returns a PIL Image.
@@ -448,7 +535,9 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             title_style=title_style,
             image_fit=image_fit,
             cover_full_bleed=cover_full_bleed,
-            title_edge_stretch=title_edge_stretch,
+            title_shadow=title_shadow,
+            title_font=title_font,
+            title_shadow_color=title_shadow_color,
             top_blend_color=top_blend_color,
             bottom_blend_color=bottom_blend_color,
             top_blend_pct=top_blend_pct,
@@ -483,7 +572,9 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             crop_offset_x=crop_offset_x,
             crop_offset_y=crop_offset_y,
             cover_full_bleed=cover_full_bleed,
-            title_edge_stretch=title_edge_stretch,
+            title_shadow=title_shadow,
+            title_font=title_font,
+            title_shadow_color=title_shadow_color,
             top_blend_color=top_blend_color,
             bottom_blend_color=bottom_blend_color,
             top_blend_pct=top_blend_pct,

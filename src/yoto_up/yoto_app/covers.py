@@ -93,7 +93,11 @@ class CoverImage:
         # Template presentation options
         self.template_title_style: str = "classic"
         # Additional visual options
-        self.template_title_edge_stretch: bool = False
+        # Replace edge-stretch (broken) with title shadow and font selection
+        self.template_title_shadow: bool = False
+        self.template_title_font: str = "DejaVuSans"
+        # Shadow color for title text (hex)
+        self.template_title_shadow_color: str = "#008000"
         self.template_top_blend_color: Optional[str] = None
         self.template_bottom_blend_color: Optional[str] = None
         self.template_top_blend_pct: float = 0.12
@@ -122,7 +126,9 @@ class CoverImage:
             "template_footer": self.template_footer,
             "template_accent_color": self.template_accent_color,
             "template_title_style": self.template_title_style,
-            "template_title_edge_stretch": self.template_title_edge_stretch,
+            "template_title_shadow": self.template_title_shadow,
+            "template_title_font": self.template_title_font,
+            "template_title_shadow_color": self.template_title_shadow_color,
             "template_top_blend_color": self.template_top_blend_color,
             "template_bottom_blend_color": self.template_bottom_blend_color,
             "template_top_blend_pct": self.template_top_blend_pct,
@@ -150,7 +156,9 @@ class CoverImage:
         img.template_footer = data.get("template_footer", "")
         img.template_accent_color = data.get("template_accent_color", "#f1c40f")
         img.template_title_style = data.get("template_title_style", "classic")
-        img.template_title_edge_stretch = data.get("template_title_edge_stretch", False)
+        img.template_title_shadow = data.get("template_title_shadow", False)
+        img.template_title_font = data.get("template_title_font", "DejaVuSans")
+        img.template_title_shadow_color = data.get("template_title_shadow_color", "#008000")
         img.template_top_blend_color = data.get("template_top_blend_color", None)
         img.template_bottom_blend_color = data.get("template_bottom_blend_color", None)
         img.template_top_blend_pct = data.get("template_top_blend_pct", 0.12)
@@ -599,7 +607,9 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         crop_offset_x=getattr(cover_img, "template_crop_offset_x", 0.0),
                         crop_offset_y=getattr(cover_img, "template_crop_offset_y", 0.0),
                         cover_full_bleed=getattr(cover_img, "template_cover_full_bleed", True),
-                        title_edge_stretch=getattr(cover_img, "template_title_edge_stretch", False),
+                        title_shadow=getattr(cover_img, "template_title_shadow", False),
+                        title_font=getattr(cover_img, "template_title_font", "DejaVuSans"),
+                        title_shadow_color=getattr(cover_img, "template_title_shadow_color", "#008000"),
                         top_blend_color=getattr(cover_img, "template_top_blend_color", None),
                         bottom_blend_color=getattr(cover_img, "template_bottom_blend_color", None),
                         top_blend_pct=getattr(cover_img, "template_top_blend_pct", 0.12),
@@ -838,11 +848,39 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         tooltip="Pick Accent Color",
         icon_size=20,
     )
-    # Title edge-stretch option (mirrors generate_html_template title_edge_stretch)
-    img_template_title_edge_stretch_chk = ft.Checkbox(label="Title edge stretch", value=False)
+    # Title presentation options: shadow toggle and title font
+    img_template_title_shadow_chk = ft.Checkbox(label="Title shadow", value=False)
+    img_template_title_font_dropdown = ft.Dropdown(
+        label="Title Font",
+        value="DejaVuSans",
+        options=[
+            ft.dropdown.Option("DejaVuSans", "DejaVu Sans"),
+            ft.dropdown.Option("LiberationSans", "Liberation Sans"),
+            ft.dropdown.Option("Arial", "Arial"),
+            ft.dropdown.Option("Default", "Default"),
+        ],
+        width=180,
+    )
+    # Shadow color field + picker
+    img_template_title_shadow_color_field = ft.TextField(label="Shadow Color (hex)", value="#008000", width=120)
+    img_template_title_shadow_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Shadow Color",
+        icon_size=20,
+    )
     # Top/bottom blend colours and percentages (applied as overlays)
     img_template_top_blend_field = ft.TextField(label="Top blend color", value="", width=120)
     img_template_bottom_blend_field = ft.TextField(label="Bottom blend color", value="", width=120)
+    img_template_top_blend_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Top Blend Color",
+        icon_size=20,
+    )
+    img_template_bottom_blend_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Bottom Blend Color",
+        icon_size=20,
+    )
     img_template_top_blend_pct_slider = ft.Slider(
         min=0.0,
         max=1.0,
@@ -1225,10 +1263,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         content=ft.Column([
             ft.Row([img_template_title_field, img_template_dropdown]),
             ft.Row([template_title_style_dropdown, img_template_full_bleed_chk]),
-            ft.Row([img_template_title_edge_stretch_chk]),
+            ft.Row([img_template_title_shadow_chk, img_template_title_font_dropdown]),
+            ft.Row([img_template_title_shadow_color_field, img_template_title_shadow_picker_btn]),
             img_template_footer_field,
             ft.Row([img_template_accent_field, img_template_accent_picker_btn]),
-            ft.Row([img_template_top_blend_field, img_template_bottom_blend_field]),
+            ft.Row([img_template_top_blend_field, img_template_top_blend_picker_btn, img_template_bottom_blend_field, img_template_bottom_blend_picker_btn]),
             ft.Row([ft.Text("Top Blend:"), img_template_top_blend_pct_slider]),
             ft.Row([ft.Text("Bottom Blend:"), img_template_bottom_blend_pct_slider]),
             ft.Divider(),
@@ -1489,7 +1528,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 tpl_crop_offset_y_slider.value = getattr(img, "template_crop_offset_y", 0.0)
                 img_template_full_bleed_chk.value = getattr(img, "template_cover_full_bleed", True)
                 # populate new template presentation options
-                img_template_title_edge_stretch_chk.value = bool(getattr(img, "template_title_edge_stretch", False))
+                img_template_title_shadow_chk.value = bool(getattr(img, "template_title_shadow", False))
+                img_template_title_font_dropdown.value = getattr(img, "template_title_font", "DejaVuSans")
+                img_template_title_shadow_color_field.value = getattr(img, "template_title_shadow_color", "#008000")
                 img_template_top_blend_field.value = getattr(img, "template_top_blend_color", "") or ""
                 img_template_bottom_blend_field.value = getattr(img, "template_bottom_blend_color", "") or ""
                 img_template_top_blend_pct_slider.value = getattr(img, "template_top_blend_pct", 0.12)
@@ -1607,11 +1648,54 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.template_title_style = template_title_style_dropdown.value
             update_preview()
 
-    def on_img_title_edge_stretch_change(e):
+    def on_img_title_shadow_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
-            img.template_title_edge_stretch = bool(img_template_title_edge_stretch_chk.value)
+            img.template_title_shadow = bool(img_template_title_shadow_chk.value)
             update_preview()
+
+    def on_img_template_title_font_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title_font = img_template_title_font_dropdown.value
+            update_preview()
+
+    def on_img_template_title_shadow_color_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title_shadow_color = img_template_title_shadow_color_field.value
+            update_preview()
+
+    def on_img_template_title_shadow_color_picker_click(e):
+        def on_color_change(color_value):
+            img_template_title_shadow_color_field.value = color_value
+            page.update()
+            if selected_image_index is not None:
+                cover_images[selected_image_index].template_title_shadow_color = color_value
+                update_preview()
+
+        color_options = ["#008000", "#000000", "#FFFFFF", "#FF0000", "#0000FF", "#FFA500"]
+        color_buttons = []
+        for c in color_options:
+            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+
+        custom_color_input = ft.TextField(
+            label="Custom Hex Color",
+            value=img_template_title_shadow_color_field.value,
+            width=200,
+        )
+
+        def on_custom_color(e):
+            on_color_change(custom_color_input.value)
+            page.close(color_dialog)
+
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Shadow Color"),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+        )
+        page.open(color_dialog)
+        page.update()
 
     def on_img_top_blend_color_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
@@ -1620,12 +1704,74 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.template_top_blend_color = val
             update_preview()
 
+    def on_img_top_blend_picker_click(e):
+        def on_color_change(color_value):
+            img_template_top_blend_field.value = color_value
+            page.update()
+            if selected_image_index is not None:
+                cover_images[selected_image_index].template_top_blend_color = color_value
+                update_preview()
+
+        color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
+        color_buttons = []
+        for c in color_options:
+            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+
+        custom_color_input = ft.TextField(
+            label="Custom Hex Color",
+            value=img_template_top_blend_field.value,
+            width=200,
+        )
+
+        def on_custom_color(e):
+            on_color_change(custom_color_input.value)
+            page.close(color_dialog)
+
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Top Blend Color"),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+        )
+        page.open(color_dialog)
+        page.update()
+
     def on_img_bottom_blend_color_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
             val = img_template_bottom_blend_field.value.strip() or None
             img.template_bottom_blend_color = val
             update_preview()
+
+    def on_img_bottom_blend_picker_click(e):
+        def on_color_change(color_value):
+            img_template_bottom_blend_field.value = color_value
+            page.update()
+            if selected_image_index is not None:
+                cover_images[selected_image_index].template_bottom_blend_color = color_value
+                update_preview()
+
+        color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
+        color_buttons = []
+        for c in color_options:
+            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+
+        custom_color_input = ft.TextField(
+            label="Custom Hex Color",
+            value=img_template_bottom_blend_field.value,
+            width=200,
+        )
+
+        def on_custom_color(e):
+            on_color_change(custom_color_input.value)
+            page.close(color_dialog)
+
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Bottom Blend Color"),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+        )
+        page.open(color_dialog)
+        page.update()
 
     def on_img_top_blend_pct_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
@@ -1684,9 +1830,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_accent_field.on_change = on_img_template_accent_change
     img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
     template_title_style_dropdown.on_change = on_img_template_title_style_change
-    img_template_title_edge_stretch_chk.on_change = on_img_title_edge_stretch_change
+    img_template_title_shadow_chk.on_change = on_img_title_shadow_change
+    img_template_title_font_dropdown.on_change = on_img_template_title_font_change
+    img_template_title_shadow_color_field.on_change = on_img_template_title_shadow_color_change
+    img_template_title_shadow_picker_btn.on_click = on_img_template_title_shadow_color_picker_click
     img_template_top_blend_field.on_change = on_img_top_blend_color_change
     img_template_bottom_blend_field.on_change = on_img_bottom_blend_color_change
+    img_template_top_blend_picker_btn.on_click = on_img_top_blend_picker_click
+    img_template_bottom_blend_picker_btn.on_click = on_img_bottom_blend_picker_click
     img_template_top_blend_pct_slider.on_change = on_img_top_blend_pct_change
     img_template_bottom_blend_pct_slider.on_change = on_img_bottom_blend_pct_change
     tpl_fit_mode_dropdown.on_change = on_tpl_fit_mode_change
