@@ -119,6 +119,7 @@ class TextOverlay:
         self.color: str = "#000000"  # Hex color
         self.font_name: str = "DejaVuSans"
         self.centered: bool = True
+        self.rotation: float = 0.0  # degrees
         
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -130,6 +131,7 @@ class TextOverlay:
             "color": self.color,
             "font_name": self.font_name,
             "centered": self.centered,
+            "rotation": self.rotation,
         }
     
     @classmethod
@@ -142,6 +144,7 @@ class TextOverlay:
         overlay.color = data.get("color", "#000000")
         overlay.font_name = data.get("font_name", "DejaVuSans")
         overlay.centered = data.get("centered", True)
+        overlay.rotation = data.get("rotation", 0.0)
         return overlay
 
 
@@ -276,18 +279,18 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
     else:
         result = img
     
-    # Add text overlays
+    # Add text overlays (support rotation by drawing onto an RGBA layer)
     if text_overlays:
-        draw = ImageDraw.Draw(result)
-        
+        # Work in RGBA so we can composite rotated text with transparency
+        base_rgba = result.convert("RGBA")
         for overlay in text_overlays:
             if not overlay.text:
                 continue
-            
-            # Calculate position
+
+            # Calculate absolute position in pixels
             x = int(overlay.x * target_width)
             y = int(overlay.y * target_height)
-            
+
             # Determine scaled font size so slider values map sensibly between
             # preview DPI and print DPI.
             try:
@@ -297,8 +300,7 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
             except Exception:
                 font_size_px = int(overlay.font_size or 24)
 
-            # Attempt to load a scalable TrueType font. Prefer the overlay's
-            # chosen font name, falling back to common system fonts.
+            # Load ImageFont if available
             font = None
             try:
                 from PIL import ImageFont
@@ -325,7 +327,6 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
                     ],
                 }
 
-                # Start with preferred font if specified
                 preferred = getattr(overlay, "font_name", None) or "DejaVuSans"
                 tried = []
                 candidates = font_candidates.get(preferred, []) + [
@@ -353,36 +354,56 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
                         font = ImageFont.load_default()
                     except Exception:
                         font = None
-            
+
             # Convert hex color to RGB
             color = overlay.color.lstrip('#')
             rgb_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-            
-            # Draw text. If overlay.centered is True, position is interpreted
-            # as the text center; otherwise it's the top-left corner.
+
+            # Measure text size using a temporary draw
             try:
+                tmp_img = Image.new("RGB", (1, 1))
+                tmp_draw = ImageDraw.Draw(tmp_img)
                 if font is not None:
-                    bbox = draw.textbbox((0, 0), overlay.text, font=font)
+                    bbox = tmp_draw.textbbox((0, 0), overlay.text, font=font)
                     text_w = bbox[2] - bbox[0]
                     text_h = bbox[3] - bbox[1]
                 else:
-                    # fallback measurement
-                    text_w, text_h = draw.textsize(overlay.text)
+                    text_w, text_h = tmp_draw.textsize(overlay.text)
             except Exception:
-                # If measurement fails, fall back to naive placement
                 text_w, text_h = 0, 0
 
+            # Create RGBA image for text and draw it
+            if text_w <= 0 or text_h <= 0:
+                # Skip empty measurement
+                continue
+
+            text_img = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
+            text_draw = ImageDraw.Draw(text_img)
+            if font:
+                text_draw.text((0, 0), overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255), font=font)
+            else:
+                text_draw.text((0, 0), overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255))
+
+            # Rotate image if needed
+            rotation = getattr(overlay, "rotation", 0.0) or 0.0
+            if rotation % 360 != 0:
+                rotated = text_img.rotate(rotation, expand=True, resample=Image.Resampling.BICUBIC)
+            else:
+                rotated = text_img
+
+            # Determine draw coordinates; if centered, treat the overlay x/y as the center
             if getattr(overlay, "centered", False):
-                draw_x = x - (text_w // 2)
-                draw_y = y - (text_h // 2)
+                draw_x = x - (rotated.width // 2)
+                draw_y = y - (rotated.height // 2)
             else:
                 draw_x = x
                 draw_y = y
 
-            if font:
-                draw.text((draw_x, draw_y), overlay.text, fill=rgb_color, font=font)
-            else:
-                draw.text((draw_x, draw_y), overlay.text, fill=rgb_color)
+            # Composite onto base image using alpha mask
+            base_rgba.paste(rotated, (int(draw_x), int(draw_y)), rotated)
+
+        # Convert back to RGB for downstream usage
+        result = base_rgba.convert("RGB")
     
     return result
 
@@ -702,6 +723,19 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         icon_size=20,
     )
 
+    # Rotation controls
+    rotation_slider = ft.Slider(
+        min=-180,
+        max=180,
+        value=0,
+        divisions=360,
+        label="Rotate: {value}°",
+        width=200,
+    )
+
+    rotate_minus_btn = ft.ElevatedButton("-90°")
+    rotate_plus_btn = ft.ElevatedButton("+90°")
+
     # Position dropdown (relative to text centre)
     text_position_dropdown = ft.Dropdown(
         label="Position",
@@ -844,6 +878,45 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     text_color_field.on_change = on_text_color_change
     text_x_slider.on_change = on_text_x_change
     text_y_slider.on_change = on_text_y_change
+    def on_rotation_change(e):
+        """Auto-update preview when rotation changes."""
+        if selected_text_overlay_index is not None and selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            if 0 <= selected_text_overlay_index < len(img.text_overlays):
+                # update directly and refresh
+                img.text_overlays[selected_text_overlay_index].rotation = float(rotation_slider.value)
+                update_text_overlay()
+
+    rotation_slider.on_change = on_rotation_change
+
+    def rotate_by(delta: float):
+        # adjust slider relative to the overlay's neutral horizontal rotation
+        new = 0.0
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images) and selected_text_overlay_index is not None:
+            img = cover_images[selected_image_index]
+            if 0 <= selected_text_overlay_index < len(img.text_overlays):
+                base = float(getattr(img.text_overlays[selected_text_overlay_index], "rotation", 0.0) or 0.0)
+            else:
+                base = float(rotation_slider.value or 0.0)
+        else:
+            base = float(rotation_slider.value or 0.0)
+
+        try:
+            new = base + float(delta)
+        except Exception:
+            new = base + float(delta)
+
+        # Normalize to -180..180
+        while new <= -180:
+            new += 360
+        while new > 180:
+            new -= 360
+
+        rotation_slider.value = new
+        on_rotation_change(None)
+
+    rotate_minus_btn.on_click = lambda e: rotate_by(-90)
+    rotate_plus_btn.on_click = lambda e: rotate_by(90)
 
     def on_text_position_change(e):
         """Handle preset position selection from dropdown (moves overlay and updates sliders/preview)."""
@@ -854,16 +927,18 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             return
         overlay = img.text_overlays[selected_text_overlay_index]
         pos = text_position_dropdown.value
+        # Use a small inset so the full text remains visible at edges
+        INSET = 0.05
         mapping = {
             "Center": (0.5, 0.5),
-            "Top": (0.5, 0.0),
-            "Bottom": (0.5, 1.0),
-            "Left": (0.0, 0.5),
-            "Right": (1.0, 0.5),
-            "Top-Left": (0.0, 0.0),
-            "Top-Right": (1.0, 0.0),
-            "Bottom-Left": (0.0, 1.0),
-            "Bottom-Right": (1.0, 1.0),
+            "Top": (0.5, INSET),
+            "Bottom": (0.5, 1.0 - INSET),
+            "Left": (INSET, 0.5),
+            "Right": (1.0 - INSET, 0.5),
+            "Top-Left": (INSET, INSET),
+            "Top-Right": (1.0 - INSET, INSET),
+            "Bottom-Left": (INSET, 1.0 - INSET),
+            "Bottom-Right": (1.0 - INSET, 1.0 - INSET),
         }
         if pos in mapping:
             overlay.x, overlay.y = mapping[pos]
@@ -890,6 +965,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Divider(),
             text_input,
             ft.Row([ft.Text("Font Size:"), font_size_slider, font_dropdown]),
+            ft.Row([rotate_minus_btn, rotation_slider, rotate_plus_btn]),
             ft.Row([text_color_field, text_color_picker_btn, text_position_dropdown]),
             ft.Row([ft.Text("Position X:"), text_x_slider]),
             ft.Row([ft.Text("Position Y:"), text_y_slider]),
@@ -976,6 +1052,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                     return "Custom"
 
                 text_position_dropdown.value = closest_pos_label(overlay.x, overlay.y)
+                # rotation
+                # Ensure slider shows a normalized rotation in -180..180
+                r = float(getattr(overlay, "rotation", 0.0) or 0.0)
+                while r <= -180:
+                    r += 360
+                while r > 180:
+                    r -= 360
+                rotation_slider.value = r
         
         update_text_overlay_list()
     
@@ -989,6 +1073,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             overlay.color = text_color_field.value
             overlay.x = text_x_slider.value
             overlay.y = text_y_slider.value
+            overlay.rotation = float(rotation_slider.value)
             img.text_overlays.append(overlay)
             update_text_overlay_list()
             update_preview()
@@ -1011,6 +1096,16 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 overlay.y = text_y_slider.value
                 # Update centered flag based on dropdown choice
                 overlay.centered = (text_position_dropdown.value != "Custom")
+                # rotation (normalize to -180..180)
+                try:
+                    r = float(rotation_slider.value)
+                except Exception:
+                    r = 0.0
+                while r <= -180:
+                    r += 360
+                while r > 180:
+                    r -= 360
+                overlay.rotation = r
                 update_text_overlay_list()
                 update_preview()
                 show_snack("Text overlay updated")

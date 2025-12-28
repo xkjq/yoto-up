@@ -365,6 +365,8 @@ def build_playlists_panel(
         """Call page.update() but recover from AssertionError by cleaning
         invalid controls and retrying once.
         """
+        page.update()
+        return
         try:
             page.update()
             return
