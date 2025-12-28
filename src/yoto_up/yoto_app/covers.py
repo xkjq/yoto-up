@@ -834,14 +834,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
     # Per-image template controls (in edit panel)
     img_template_enabled_chk = ft.Checkbox(label="Use Template", value=False)
-    img_template_title_field = ft.TextField(label="Template Title", width=260)
+    img_template_title_field = ft.TextField(label="Template Title", width=180)
     img_template_dropdown = ft.Dropdown(label="Template", value="classic", options=[
         ft.dropdown.Option("classic", "Classic"),
         ft.dropdown.Option("modern", "Modern"),
         ft.dropdown.Option("frozen", "Frozen"),
     ], width=150)
     # Additional template-editable fields
-    img_template_footer_field = ft.TextField(label="Template Footer", width=260)
+    img_template_footer_field = ft.TextField(label="Template Footer", width=180)
     img_template_accent_field = ft.TextField(label="Accent Color (hex)", value="#f1c40f", width=120)
     img_template_accent_picker_btn = ft.IconButton(
         icon=ft.Icons.COLOR_LENS,
@@ -859,7 +859,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.dropdown.Option("Arial", "Arial"),
             ft.dropdown.Option("Default", "Default"),
         ],
-        width=180,
+        width=140,
     )
     # Shadow color field + picker
     img_template_title_shadow_color_field = ft.TextField(label="Shadow Color (hex)", value="#008000", width=120)
@@ -1259,15 +1259,18 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     )
 
     # Group template-specific controls separately from image-edit controls.
+    # Use a wrapping layout and make the container scrollable so controls
+    # don't clip on narrow windows. Fields have been given smaller widths
+    # where appropriate so they can pack more compactly.
     template_controls = ft.Container(
         content=ft.Column([
-            ft.Row([img_template_title_field, img_template_dropdown]),
-            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk]),
-            ft.Row([img_template_title_shadow_chk, img_template_title_font_dropdown]),
-            ft.Row([img_template_title_shadow_color_field, img_template_title_shadow_picker_btn]),
+            ft.Row([img_template_title_field, img_template_dropdown], spacing=8),
+            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk], spacing=8),
+            ft.Row([img_template_title_shadow_chk, img_template_title_font_dropdown], spacing=8),
+            ft.Row([img_template_title_shadow_color_field, img_template_title_shadow_picker_btn], spacing=8),
             img_template_footer_field,
-            ft.Row([img_template_accent_field, img_template_accent_picker_btn]),
-            ft.Row([img_template_top_blend_field, img_template_top_blend_picker_btn, img_template_bottom_blend_field, img_template_bottom_blend_picker_btn]),
+            ft.Row([img_template_accent_field, img_template_accent_picker_btn], spacing=8),
+            ft.Row([img_template_top_blend_field, img_template_top_blend_picker_btn, img_template_bottom_blend_field, img_template_bottom_blend_picker_btn], spacing=8),
             ft.Row([ft.Text("Top Blend:"), img_template_top_blend_pct_slider]),
             ft.Row([ft.Text("Bottom Blend:"), img_template_bottom_blend_pct_slider]),
             ft.Divider(),
@@ -1276,7 +1279,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             tpl_crop_position_dropdown,
             ft.Row([ft.Text("Tpl Horiz. Offset:"), tpl_crop_offset_x_slider]),
             ft.Row([ft.Text("Tpl Vert. Offset:"), tpl_crop_offset_y_slider]),
-        ], spacing=8),
+        ], spacing=8, scroll=ft.ScrollMode.AUTO),
         padding=5,
         visible=False,
     )

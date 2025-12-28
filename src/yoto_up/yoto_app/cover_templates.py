@@ -14,6 +14,7 @@ from pathlib import Path
 try:
     from PIL import Image, ImageDraw, ImageFont
     HAS_PIL = True
+    from PIL import ImageOps
 except Exception:
     HAS_PIL = False
 
@@ -48,6 +49,9 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     footer = footer_text if footer_text is not None else Path(image_url).stem
 
     # Decide object-fit for hero image depending on image_fit / cover_full_bleed
+    # If cover_full_bleed is requested we want the hero to cover the whole
+    # card by default (background-style). Otherwise it will be contained
+    # inside the hero box.
     if cover_full_bleed:
         object_fit = "cover"
     else:
@@ -102,6 +106,13 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
         title_shadow_css = "text-shadow: " + ", ".join([f"{off} {c}" for off in offsets]) + ";"
 
     if template_name == "classic":
+        # When cover_full_bleed is True prefer using the image as the
+        # card background so it covers the full card area; fall back to
+        # the hero box when False.
+        bg_css = ""
+        if cover_full_bleed:
+            bg_css = f"background: url('{image_url}') no-repeat center/cover;"
+
         html = f"""
 <!doctype html>
 <html>
@@ -110,10 +121,10 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 <style>
   @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
-  .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; background:white; position:relative; }}
-    .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; {title_font_css} {title_shadow_css} }}
-  .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
-            .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:8px; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; {bg_css} position:relative; }}
+        .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; {title_font_css} {title_shadow_css} }}
+    .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
+                        .hero img {{ width:100%; height:100%; object-fit:{object_fit}; border-radius:8px; }}
             .overlay {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; border-radius:8px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
     .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:10%; background:{accent_color}; display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; border-radius:6px; }}
 </style>
@@ -167,7 +178,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 <style>
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
-        .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; {title_font_css} {title_shadow_css} }}
+      .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; {title_font_css} {title_shadow_css} }}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
         .overlay {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; border-radius:6px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
@@ -220,6 +231,18 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     # Create base
     base = Image.new("RGB", (width_px, height_px), "white")
     draw = ImageDraw.Draw(base)
+
+    # If full-bleed requested, place a resized/cropped hero as the background
+    # before any overlays/text so other items render on top.
+    if cover_full_bleed:
+        try:
+            bg = ImageOps.fit(hero, (width_px, height_px), Image.LANCZOS, centering=(0.5, 0.5))
+            base.paste(bg.convert("RGB"), (0, 0))
+            background_applied = True
+        except Exception:
+            background_applied = False
+    else:
+        background_applied = False
 
     # Fonts - choose title font based on title_font argument when possible
     def _choose_title_font(name: Optional[str], size: int):
@@ -305,9 +328,16 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         except Exception:
             draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=(10,10,10))
 
+        # Decide where the hero image should be pasted. If cover_full_bleed is
+        # requested, use the entire card as the target; otherwise use the
+        # hero_box area inside the card.
+        hero_target_box = hero_box
+        if cover_full_bleed:
+            hero_target_box = (0, 0, width_px, height_px)
+
         # Paste hero according to image_fit / cover_full_bleed
-        hw = hero_box[2] - hero_box[0]
-        hh = hero_box[3] - hero_box[1]
+        hw = hero_target_box[2] - hero_target_box[0]
+        hh = hero_target_box[3] - hero_target_box[1]
         hero_thumb = hero.copy()
 
         # Decide behaviour: resize (stretch), scale (contain) or crop (cover)
@@ -389,14 +419,17 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
             cropped = hero_thumb.crop((left, top, left + new_width, top + new_height))
             hero_resized = cropped.resize((hw, hh), Image.LANCZOS)
 
-        # If hero_resized is a canvas with RGBA, paste it centered into base at hero_box
+        # If hero_resized is a canvas with RGBA, convert before pasting
         if hero_resized.mode != "RGB":
             paste_img = hero_resized.convert("RGB")
         else:
             paste_img = hero_resized
 
-        # For scale mode where hero_resized is exactly hw x hh we paste at hero_box origin
-        base.paste(paste_img, (hero_box[0], hero_box[1]))
+        # Paste into the determined target box (hero_target_box) unless we
+        # already applied the full-bleed background earlier; avoid covering
+        # overlays/title/footer.
+        if not (cover_full_bleed and background_applied):
+            base.paste(paste_img, (hero_target_box[0], hero_target_box[1]))
 
         # Apply optional top/bottom blend overlays (fade image into a solid colour)
         def _hex_to_rgb(hx: Optional[str], fallback=(255,255,255)):
