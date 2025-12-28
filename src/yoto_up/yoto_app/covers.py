@@ -18,6 +18,7 @@ from enum import Enum
 
 import flet as ft
 from loguru import logger
+from yoto_up.yoto_app.cover_templates import render_template
 
 try:
     from PIL import Image, ImageDraw
@@ -82,6 +83,13 @@ class CoverImage:
         self.crop_offset_y: float = 0.0  # -1.0 to 1.0
         # Text overlays
         self.text_overlays: List['TextOverlay'] = []
+        # Per-image quick template settings
+        self.template_enabled: bool = False
+        self.template_name: str = "classic"
+        self.template_title: str = ""
+        # Additional template fields (customisable per-card)
+        self.template_footer: str = ""
+        self.template_accent_color: str = "#f1c40f"
         
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -93,6 +101,11 @@ class CoverImage:
             "crop_offset_x": self.crop_offset_x,
             "crop_offset_y": self.crop_offset_y,
             "text_overlays": [overlay.to_dict() for overlay in self.text_overlays],
+            "template_enabled": self.template_enabled,
+            "template_name": self.template_name,
+            "template_title": self.template_title,
+            "template_footer": self.template_footer,
+            "template_accent_color": self.template_accent_color,
         }
     
     @classmethod
@@ -105,6 +118,11 @@ class CoverImage:
         img.crop_offset_x = data.get("crop_offset_x", 0.0)
         img.crop_offset_y = data.get("crop_offset_y", 0.0)
         img.text_overlays = [TextOverlay.from_dict(t) for t in data.get("text_overlays", [])]
+        img.template_enabled = data.get("template_enabled", False)
+        img.template_name = data.get("template_name", "classic")
+        img.template_title = data.get("template_title", "")
+        img.template_footer = data.get("template_footer", "")
+        img.template_accent_color = data.get("template_accent_color", "#f1c40f")
         return img
 
 
@@ -363,12 +381,34 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
             try:
                 tmp_img = Image.new("RGB", (1, 1))
                 tmp_draw = ImageDraw.Draw(tmp_img)
-                if font is not None:
-                    bbox = tmp_draw.textbbox((0, 0), overlay.text, font=font)
+                # Prefer textbbox which gives accurate metrics. If a font
+                # is available, pass it. Some Pillow versions support
+                # textbbox without a font as well.
+                try:
+                    if font is not None:
+                        bbox = tmp_draw.textbbox((0, 0), overlay.text, font=font)
+                    else:
+                        bbox = tmp_draw.textbbox((0, 0), overlay.text)
                     text_w = bbox[2] - bbox[0]
                     text_h = bbox[3] - bbox[1]
-                else:
-                    text_w, text_h = tmp_draw.textsize(overlay.text)
+                except Exception:
+                    # Fallback to font metrics if available
+                    if font is not None:
+                        try:
+                            # getbbox is available on FreeTypeFont in newer Pillow
+                            bbox2 = font.getbbox(overlay.text)
+                            text_w = bbox2[2] - bbox2[0]
+                            text_h = bbox2[3] - bbox2[1]
+                        except Exception:
+                            try:
+                                text_w, text_h = font.getsize(overlay.text)
+                            except Exception:
+                                text_w, text_h = 0, 0
+                    else:
+                        # Best-effort approximate measurement when no font API
+                        # is available: approximate width by char count.
+                        text_h = int(font_size_px)
+                        text_w = int(len(overlay.text) * (font_size_px * 0.6))
             except Exception:
                 text_w, text_h = 0, 0
 
@@ -504,17 +544,42 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
             target_w = max(1, int(card_w_px * size_multiplier))
             target_h = max(1, int(card_h_px * size_multiplier))
 
-            # Process and place image at the computed target size
-            processed = process_image(
-                cover_img.path,
-                cover_img.fit_mode,
-                cover_img.crop_position,
-                target_w,
-                target_h,
-                cover_img.crop_offset_x,
-                cover_img.crop_offset_y,
-                cover_img.text_overlays,
-            )
+            # If a per-image template is enabled, render the template for this
+            # cover and use it; otherwise process the raw image as before.
+            if getattr(cover_img, "template_enabled", False):
+                try:
+                    tpl = render_template(
+                        (getattr(cover_img, "template_title", None) or cover_img.name),
+                        cover_img.path,
+                        getattr(cover_img, "template_name", "classic"),
+                        width_px=target_w,
+                        height_px=target_h,
+                    )
+                    processed = tpl
+                except Exception as tpl_err:
+                    logger.error(f"Error rendering template for {cover_img.name}: {tpl_err}")
+                    # Fallback to normal processing
+                    processed = process_image(
+                        cover_img.path,
+                        cover_img.fit_mode,
+                        cover_img.crop_position,
+                        target_w,
+                        target_h,
+                        cover_img.crop_offset_x,
+                        cover_img.crop_offset_y,
+                        cover_img.text_overlays,
+                    )
+            else:
+                processed = process_image(
+                    cover_img.path,
+                    cover_img.fit_mode,
+                    cover_img.crop_position,
+                    target_w,
+                    target_h,
+                    cover_img.crop_offset_x,
+                    cover_img.crop_offset_y,
+                    cover_img.text_overlays,
+                )
             
             # Center processed image on the card slot. If processed is larger
             # than the card (overprint) paste it offset negatively so it
@@ -706,6 +771,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         width=200,
         visible=False,
     )
+
+    # Per-image template controls (in edit panel)
+    img_template_enabled_chk = ft.Checkbox(label="Use Template", value=False)
+    img_template_title_field = ft.TextField(label="Template Title", width=260)
+    img_template_dropdown = ft.Dropdown(label="Template", value="classic", options=[
+        ft.dropdown.Option("classic", "Classic"),
+        ft.dropdown.Option("modern", "Modern"),
+    ], width=150)
     
     # Text overlay controls
     text_overlay_list = ft.ListView(spacing=5, padding=5, height=150)
@@ -1008,6 +1081,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     edit_panel = ft.Container(
         content=ft.Column([
             ft.Text("Edit Selected Image", weight=ft.FontWeight.BOLD),
+            ft.Row([img_template_enabled_chk]),
+            ft.Row([img_template_title_field, img_template_dropdown]),
             fit_mode_dropdown,
             crop_position_dropdown,
             ft.Row([ft.Text("Horiz. Offset:"), crop_offset_x_slider]),
@@ -1203,6 +1278,16 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             crop_offset_x_slider.visible = (img.fit_mode == ImageFitMode.CROP)
             crop_offset_y_slider.value = img.crop_offset_y
             crop_offset_y_slider.visible = (img.fit_mode == ImageFitMode.CROP)
+            # populate per-image template controls
+            try:
+                img_template_enabled_chk.value = bool(getattr(img, "template_enabled", False))
+                img_template_dropdown.value = getattr(img, "template_name", "classic")
+                img_template_title_field.value = getattr(img, "template_title", "")
+            except Exception:
+                # ignore if controls aren't available for some reason
+                pass
+            # Ensure controls visibility matches whether this image uses a template
+            set_template_mode_for_selected_image(bool(getattr(img, "template_enabled", False)))
             edit_panel.visible = True
             text_edit_panel.visible = True
             update_text_overlay_list()
@@ -1231,9 +1316,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
             img.fit_mode = ImageFitMode(fit_mode_dropdown.value)
-            crop_position_dropdown.visible = (img.fit_mode == ImageFitMode.CROP)
-            crop_offset_x_slider.visible = (img.fit_mode == ImageFitMode.CROP)
-            crop_offset_y_slider.visible = (img.fit_mode == ImageFitMode.CROP)
+            # Only show crop controls when not using a template
+            crop_visible = (img.fit_mode == ImageFitMode.CROP) and not getattr(img, "template_enabled", False)
+            crop_position_dropdown.visible = crop_visible
+            crop_offset_x_slider.visible = crop_visible
+            crop_offset_y_slider.visible = crop_visible
             update_image_list()
             update_preview()
     
@@ -1243,6 +1330,32 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img = cover_images[selected_image_index]
             img.crop_position = CropPosition(crop_position_dropdown.value)
             update_preview()
+
+    # Per-image template control handlers
+    def on_img_template_enabled_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_enabled = bool(img_template_enabled_chk.value)
+            # Update UI controls to reflect template mode
+            set_template_mode_for_selected_image(bool(img.template_enabled))
+            update_image_list()
+            update_preview()
+
+    def on_img_template_name_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_name = img_template_dropdown.value
+            update_preview()
+
+    def on_img_template_title_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title = img_template_title_field.value
+            update_preview()
+
+    img_template_enabled_chk.on_change = on_img_template_enabled_change
+    img_template_dropdown.on_change = on_img_template_name_change
+    img_template_title_field.on_change = on_img_template_title_change
     
     def on_crop_offset_x_change(e):
         """Handle crop horizontal offset change."""
@@ -1262,6 +1375,44 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     crop_position_dropdown.on_change = on_crop_position_change
     crop_offset_x_slider.on_change = on_crop_offset_x_change
     crop_offset_y_slider.on_change = on_crop_offset_y_change
+
+    def set_template_mode_for_selected_image(is_template: bool):
+        """Show/hide edit controls depending on whether template mode is enabled for
+        the currently selected image.
+
+        When a template is enabled we hide manual image-edit controls (fit/crop/offset
+        and text overlays). When disabled we show them according to the current
+        fit_mode.
+        """
+        # Fit/crop controls should be hidden when using a template
+        try:
+            fit_mode_dropdown.visible = not is_template
+            # If not template, show crop controls only when fit mode is CROP
+            if not is_template and selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+                img = cover_images[selected_image_index]
+                crop_mode = (img.fit_mode == ImageFitMode.CROP)
+            else:
+                crop_mode = False
+
+            crop_position_dropdown.visible = (not is_template and crop_mode)
+            crop_offset_x_slider.visible = (not is_template and crop_mode)
+            crop_offset_y_slider.visible = (not is_template and crop_mode)
+
+            # Text overlays are an editable feature and not applicable when using a
+            # template (templates provide their own layout). Hide the text edit panel
+            # when template mode is active.
+            text_edit_panel.visible = not is_template
+
+            # Ensure per-image template controls remain visible so user can toggle
+            # or change template while editing the image.
+            img_template_enabled_chk.visible = True
+            img_template_dropdown.visible = True
+            img_template_title_field.visible = True
+
+        except Exception:
+            # Keep UI stable on any unexpected state
+            pass
+        page.update()
     
     def update_preview():
         """Generate and display preview."""
@@ -1462,11 +1613,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Row([paper_size_dropdown, print_mode_dropdown]),
             ft.Row([cut_lines_checkbox]),
             ft.Row([ft.Text("Margin:"), margin_slider]),
+            ft.Divider(),
+            # Template inputs were removed (global quick templates section)
         ], spacing=10),
         padding=10,
         border=ft.border.all(1, ft.Colors.GREY_400),
         border_radius=5,
     )
+    # Note: global "Quick Templates" controls removed per request.
     
     image_management = ft.Container(
         content=ft.Column([
