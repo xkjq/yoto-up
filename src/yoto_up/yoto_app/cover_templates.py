@@ -13,6 +13,7 @@ from typing import Optional
 import io
 import re
 import base64
+import tempfile
 from pathlib import Path
 
 from loguru import logger
@@ -23,6 +24,69 @@ _FLET_WEB_RENDERER_TRIED: bool = False
 _FLET_WEB_RENDERER_AVAILABLE: Optional[bool] = None
 _FLET_WEB_RENDERER_ERROR: Optional[str] = None
 
+# html2image availability cache
+_HTML2IMAGE_TRIED: bool = False
+_HTML2IMAGE_AVAILABLE: Optional[bool] = None
+_HTML2IMAGE_ERROR: Optional[str] = None
+
+
+def _probe_html2image(min_size: int = 5000) -> bool:
+    """Quick probe to check if html2image/headless Chrome can render and write files.
+
+    Returns True if html2image appears functional (produces a file >= min_size),
+    otherwise False. Caches are handled by module-level flags.
+    """
+    try:
+        from html2image import Html2Image
+    except Exception as e:
+        logger.debug(f"html2image import failed during probe: {e}")
+        return False
+
+    tmpdir = tempfile.mkdtemp(prefix="yoto_h2i_probe_")
+    html = """<!doctype html><html><body style='margin:0;padding:0'><div style='width:200px;height:200px;background:#88c'>probe</div></body></html>"""
+    html_path = Path(tmpdir) / "probe.html"
+    try:
+        html_path.write_text(html, encoding='utf-8')
+    except Exception:
+        pass
+
+    try:
+        try:
+            hti = Html2Image(output_path=str(tmpdir))
+        except TypeError:
+            hti = Html2Image()
+            try:
+                hti.output_path = str(tmpdir)
+            except Exception:
+                pass
+
+        out_name = "probe.png"
+        try:
+            # prefer html_str
+            hti.screenshot(html_str=html, save_as=out_name, size=(200, 200))
+        except TypeError:
+            try:
+                hti.screenshot(html_file=str(html_path), save_as=out_name, size=(200, 200))
+            except Exception as e:
+                logger.debug(f"html2image probe screenshot failed: {e}")
+
+        outp = Path(getattr(hti, 'output_path', str(tmpdir))) / out_name
+        if outp.exists() and outp.stat().st_size >= min_size:
+            try:
+                outp.unlink()
+            except Exception:
+                pass
+            return True
+    except Exception as e:
+        logger.debug(f"html2image probe exception: {e}")
+    finally:
+        try:
+            import shutil
+            shutil.rmtree(tmpdir)
+        except Exception:
+            pass
+    return False
+
 try:
     from PIL import Image, ImageDraw, ImageFont
     HAS_PIL = True
@@ -32,17 +96,38 @@ except Exception:
 
 
 def _image_to_data_url(image_path: str) -> str:
-    """Convert an image file to a base64 data URL for embedding in HTML.
-    
-    This is useful for html2image which can't access file:// URLs due to browser security.
+    """Convert an image file or file:// URI to a base64 data URL for embedding in HTML.
+
+    Accepts:
+    - a local filesystem path ("/path/to/img.png")
+    - a file:// URI ("file:///path/to/img.png")
+    - an existing data: URI (returns as-is)
+    Falls back to returning the original string if conversion fails.
     """
     try:
-        path = Path(image_path)
-        # Read the image file
+        # If already a data URL, return it directly
+        if isinstance(image_path, str) and image_path.startswith("data:"):
+            return image_path
+
+        # Handle file:// URIs by extracting the local path
+        local_path = image_path
+        if isinstance(image_path, str) and image_path.startswith("file://"):
+            try:
+                from urllib.parse import urlparse
+                from urllib.request import url2pathname
+                p = urlparse(image_path)
+                local_path = url2pathname(p.path)
+            except Exception:
+                # best-effort fallback
+                local_path = image_path.replace("file://", "")
+
+        path = Path(local_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {local_path}")
+
         with open(path, 'rb') as f:
             image_data = f.read()
-        
-        # Determine MIME type from extension
+
         ext = path.suffix.lower()
         mime_types = {
             '.jpg': 'image/jpeg',
@@ -53,14 +138,13 @@ def _image_to_data_url(image_path: str) -> str:
             '.webp': 'image/webp'
         }
         mime_type = mime_types.get(ext, 'image/png')
-        
-        # Encode to base64
+
         b64_data = base64.b64encode(image_data).decode('utf-8')
         return f"data:{mime_type};base64,{b64_data}"
     except Exception as e:
         logger.debug(f"Failed to convert image to data URL: {e}")
-        # Fall back to file:// URL
-        return Path(image_path).as_uri()
+        # Fall back to original value (may be a file:// URI or remote URL)
+        return image_path
 
 
 def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont.FreeTypeFont]):
@@ -1009,32 +1093,107 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             footer_font_size_px=footer_font_size_px,
         )
         
-        hti = Html2Image()
-        tmpfile_name = "cover.png"
+        tmpdir = tempfile.mkdtemp(prefix="yoto_cover_")
+        html_path = Path(tmpdir) / "cover_debug.html"
         try:
-            # html2image screenshot method: html_str, css_str, save_as (filename only), size (tuple)
-            hti.screenshot(
-                html_str=html_for_h2i,
-                save_as=tmpfile_name,
-                size=(width_px, height_px)
-            )
-            # Html2Image saves to its output_path (default is current dir or can be set)
-            # We need to find the file it created
-            tmpf = Path(hti.output_path) / tmpfile_name
-            if tmpf.exists():
-                img = Image.open(tmpf).convert("RGB")
-                LAST_RENDERER = 'html2image'
-                logger.debug(f"Successfully rendered with html2image: {tmpf}")
-                # Clean up the generated file
+            html_path.write_text(html_for_h2i, encoding='utf-8')
+        except Exception:
+            logger.debug("Failed to write debug HTML file for html2image")
+
+        # Prefer to set Html2Image output_path so we know where it will save
+        try:
+            hti = Html2Image(output_path=str(tmpdir))
+        except TypeError:
+            # older html2image may not accept output_path in constructor
+            hti = Html2Image()
+            try:
+                hti.output_path = str(tmpdir)
+            except Exception:
+                pass
+
+        tmpfile_name = "cover.png"
+        logger.debug(f"html2image output path: {tmpdir}; debug html: {html_path}")
+
+        try:
+            # Try to screenshot using the HTML string first (some engines accept it)
+            try:
+                hti.screenshot(html_str=html_for_h2i, save_as=tmpfile_name, size=(width_px, height_px))
+            except TypeError:
+                # fallback to passing filename of saved HTML
                 try:
-                    tmpf.unlink()
+                    hti.screenshot(html_file=str(html_path), save_as=tmpfile_name, size=(width_px, height_px))
+                except Exception as e_sf:
+                    logger.debug(f"html2image screenshot failed with html_file fallback: {e_sf}")
+
+            tmpf = Path(hti.output_path) / tmpfile_name if hasattr(hti, 'output_path') else Path(tmpdir) / tmpfile_name
+            # If no file produced, try again using the current working directory as output
+            if not tmpf.exists():
+                logger.debug("html2image did not create file in tmpdir; retrying with cwd output path")
+                try:
+                    alt_out = Path.cwd()
+                    # attempt to set output_path or re-instantiate
+                    try:
+                        hti.output_path = str(alt_out)
+                    except Exception:
+                        try:
+                            hti = Html2Image(output_path=str(alt_out))
+                        except Exception:
+                            pass
+                    # try screenshot using saved HTML file
+                    try:
+                        hti.screenshot(html_file=str(html_path), save_as=tmpfile_name, size=(width_px, height_px))
+                    except Exception as e2:
+                        logger.debug(f"html2image retry in cwd failed: {e2}")
+                    tmpf = Path(getattr(hti, 'output_path', str(alt_out))) / tmpfile_name
                 except Exception:
-                    pass
-                return img
+                    tmpf = Path(tmpdir) / tmpfile_name
+
+            if tmpf.exists():
+                try:
+                    # Basic sanity check: ensure the image file is reasonably large
+                    # Treat unexpectedly small files as error screenshots.
+                    # Increase threshold to capture Chrome's small error images.
+                    min_size = 30000
+                    if tmpf.stat().st_size < min_size:
+                        logger.debug(f"html2image produced small file ({tmpf.stat().st_size} bytes) < {min_size}; treating as failure")
+                        # Move produced file into the debug dir for inspection if it's not already there
+                        try:
+                            dbg_dest = Path(tmpdir) / "failed_cover.png"
+                            if tmpf.exists() and dbg_dest.parent.exists():
+                                tmpf.rename(dbg_dest)
+                                logger.debug(f"Moved failed html2image output to {dbg_dest}")
+                                # remove original if it still exists
+                                try:
+                                    if tmpf.exists():
+                                        tmpf.unlink()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            try:
+                                if tmpf.exists():
+                                    tmpf.unlink()
+                            except Exception:
+                                pass
+                        # continue to fallback (do not return)
+                    else:
+                        img = Image.open(tmpf).convert("RGB")
+                        LAST_RENDERER = 'html2image'
+                        logger.debug(f"Successfully rendered with html2image: {tmpf}")
+                        # remove the image file but keep debug HTML for inspection
+                        try:
+                            tmpf.unlink()
+                        except Exception:
+                            pass
+                        return img
+                except Exception as e_open:
+                    logger.debug(f"Failed to open image produced by html2image: {e_open}")
             else:
                 logger.debug(f"html2image did not create expected file at {tmpf}")
         except Exception as e_inner:
             logger.debug(f"html2image rendering failed: {e_inner}")
+        finally:
+            # Do not remove the tmpdir here — keep for user inspection when debugging
+            logger.debug(f"Left html2image debug dir: {tmpdir}")
     except ImportError:
         logger.debug("html2image not available")
     except Exception as e_h2i:
