@@ -1182,7 +1182,10 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ]),
             ft.Container(
                 content=ft.InteractiveViewer(
-                    content=preview_image,
+                    # InteractiveViewer requires its content to be visible. Wrap the
+                    # preview image in a container that remains visible while the
+                    # image itself can be shown/hidden via its src.
+                    content=ft.Container(content=preview_image, visible=True),
                     min_scale=0.2,
                     max_scale=5.0,
                     boundary_margin=ft.Margin(20, 20, 20, 20),
