@@ -1077,22 +1077,58 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         padding=10,
         visible=False,
     )
-    
-    edit_panel = ft.Container(
+
+    # Group template-specific controls separately from image-edit controls.
+    template_controls = ft.Container(
         content=ft.Column([
-            ft.Text("Edit Selected Image", weight=ft.FontWeight.BOLD),
-            ft.Row([img_template_enabled_chk]),
             ft.Row([img_template_title_field, img_template_dropdown]),
+        ], spacing=8),
+        padding=5,
+        visible=False,
+    )
+
+    image_controls = ft.Container(
+        content=ft.Column([
             fit_mode_dropdown,
             crop_position_dropdown,
             ft.Row([ft.Text("Horiz. Offset:"), crop_offset_x_slider]),
             ft.Row([ft.Text("Vert. Offset:"), crop_offset_y_slider]),
+        ], spacing=8),
+        padding=5,
+        visible=True,
+    )
+
+    edit_panel = ft.Container(
+        content=ft.Column([
+            ft.Text("Edit Selected Image", weight=ft.FontWeight.BOLD),
+            # Template enable checkbox sits at the top and controls which group is shown
+            ft.Row([img_template_enabled_chk]),
+            # Template controls (title/template selector) - shown when template enabled
+            template_controls,
+            # Image editing controls - shown when template is NOT enabled
+            image_controls,
             ft.Divider(),
             text_edit_panel,
         ], spacing=10),
         padding=10,
         visible=False,
     )
+
+    def set_template_mode_for_selected_image(enabled: bool):
+        """Toggle visibility of template vs image edit controls for the selected image."""
+        try:
+            template_controls.visible = bool(enabled)
+            image_controls.visible = not bool(enabled)
+            # When using a template we hide manual crop controls and text overlays
+            crop_visible = (fit_mode_dropdown.value == ImageFitMode.CROP.value) and not bool(enabled)
+            crop_position_dropdown.visible = crop_visible
+            crop_offset_x_slider.visible = crop_visible
+            crop_offset_y_slider.visible = crop_visible
+            text_edit_panel.visible = not bool(enabled)
+            page.update()
+        except Exception:
+            # Fail silently if controls not yet wired
+            pass
     
     # Functions
     def update_text_overlay_list():
@@ -1376,43 +1412,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     crop_offset_x_slider.on_change = on_crop_offset_x_change
     crop_offset_y_slider.on_change = on_crop_offset_y_change
 
-    def set_template_mode_for_selected_image(is_template: bool):
-        """Show/hide edit controls depending on whether template mode is enabled for
-        the currently selected image.
-
-        When a template is enabled we hide manual image-edit controls (fit/crop/offset
-        and text overlays). When disabled we show them according to the current
-        fit_mode.
-        """
-        # Fit/crop controls should be hidden when using a template
-        try:
-            fit_mode_dropdown.visible = not is_template
-            # If not template, show crop controls only when fit mode is CROP
-            if not is_template and selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
-                img = cover_images[selected_image_index]
-                crop_mode = (img.fit_mode == ImageFitMode.CROP)
-            else:
-                crop_mode = False
-
-            crop_position_dropdown.visible = (not is_template and crop_mode)
-            crop_offset_x_slider.visible = (not is_template and crop_mode)
-            crop_offset_y_slider.visible = (not is_template and crop_mode)
-
-            # Text overlays are an editable feature and not applicable when using a
-            # template (templates provide their own layout). Hide the text edit panel
-            # when template mode is active.
-            text_edit_panel.visible = not is_template
-
-            # Ensure per-image template controls remain visible so user can toggle
-            # or change template while editing the image.
-            img_template_enabled_chk.visible = True
-            img_template_dropdown.visible = True
-            img_template_title_field.visible = True
-
-        except Exception:
-            # Keep UI stable on any unexpected state
-            pass
-        page.update()
+    
     
     def update_preview():
         """Generate and display preview."""
