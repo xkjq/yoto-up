@@ -1219,7 +1219,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     template_controls = ft.Container(
         content=ft.Column([
             ft.Row([img_template_title_field, img_template_dropdown]),
-            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk, img_template_title_edge_stretch_chk]),
+            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk]),
+            ft.Row([img_template_title_edge_stretch_chk]),
             img_template_footer_field,
             ft.Row([img_template_accent_field, img_template_accent_picker_btn]),
             ft.Row([img_template_top_blend_field, img_template_bottom_blend_field]),
