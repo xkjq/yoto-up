@@ -170,11 +170,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
         title_shadow_css = "text-shadow: " + ", ".join([f"{off} {c}" for off in offsets]) + ";"
 
     # Folded title CSS (user-provided folded style adapted for the card title)
-    folded_css = """
-    .title.folded { position: absolute; left: 6%; right: 6%; top: 6%; display: flex; justify-content: center; align-items: center; font-family: 'Source Code Pro', monospace; font-weight: 900; font-size: calc(20vw + 0.5rem); white-space: nowrap; color: lch(76 39.21 9.23 / 0.5); text-transform: uppercase; transform: skew(10deg) rotate(-10deg); %s text-shadow: 1px 4px 6px lch(90 2.22 62.5), 0 0 0 lch(28 26.21 12.27), 1px 4px 6px lch(90 2.22 62.5); }
-    .title.folded::before { content: attr(data-heading); position: absolute; left: 0; top: -4.8%%; overflow: hidden; height: 50%%; color: lch(97 2.19 62.49); transform: translate(1.6vw, 0) skew(-13deg) scale(1, 1.2); text-shadow: 2px -1px 6px rgba(0,0,0,0.2); }
-    .title.folded::after { content: attr(data-heading); position: absolute; left: 0; color: lch(83 2.26 62.51); transform: translate(0, 0) skew(13deg) scale(1, 0.8); clip-path: polygon(0 50%%, 100%% 50%%, 100%% 100%%, 0%% 100%%); text-shadow: 2px -1px 6px lch(0 0 0 / 0.3); }
-    """ % (title_extra_css)
+    folded_css = f"""
+    .title.folded {{ position: absolute; left: 6%; right: 6%; top: 6%; display: flex; justify-content: center; align-items: center; font-family: 'Source Code Pro', monospace; font-weight: 900; font-size: calc(20vw + 0.5rem); white-space: nowrap; color: lch(76 39.21 9.23 / 0.5); text-transform: uppercase; transform: skew(10deg) rotate(-10deg); {title_extra_css} text-shadow: 1px 4px 6px lch(90 2.22 62.5), 0 0 0 lch(28 26.21 12.27), 1px 4px 6px lch(90 2.22 62.5); }}
+    .title.folded::before {{ content: attr(data-heading); position: absolute; left: 0; top: -4.8%; overflow: hidden; height: 50%; color: lch(97 2.19 62.49); transform: translate(1.6vw, 0) skew(-13deg) scale(1, 1.2); text-shadow: 2px -1px 6px rgba(0,0,0,0.2); }}
+    .title.folded::after {{ content: attr(data-heading); position: absolute; left: 0; color: lch(83 2.26 62.51); transform: translate(0, 0) skew(13deg) scale(1, 0.8); clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0% 100%); text-shadow: 2px -1px 6px lch(0 0 0 / 0.3); }}
+    """
 
     if template_name == "classic":
         # When cover_full_bleed is True prefer using the image as the
