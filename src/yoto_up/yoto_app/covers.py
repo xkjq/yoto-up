@@ -66,6 +66,7 @@ class PrintMode(str, Enum):
     """Print mode for covers."""
     OVERPRINT = "overprint"   # Print on top of existing card
     UNDERPRINT = "underprint" # Print underneath (mirror image)
+    EXACT = "exact"           # Fit exactly to card size
 
 
 class CoverImage:
@@ -116,6 +117,8 @@ class TextOverlay:
         self.y: float = 0.5  # Position as percentage (0-1)
         self.font_size: int = 24
         self.color: str = "#000000"  # Hex color
+        self.font_name: str = "DejaVuSans"
+        self.centered: bool = True
         
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -125,6 +128,8 @@ class TextOverlay:
             "y": self.y,
             "font_size": self.font_size,
             "color": self.color,
+            "font_name": self.font_name,
+            "centered": self.centered,
         }
     
     @classmethod
@@ -135,6 +140,8 @@ class TextOverlay:
         overlay.y = data.get("y", 0.5)
         overlay.font_size = data.get("font_size", 24)
         overlay.color = data.get("color", "#000000")
+        overlay.font_name = data.get("font_name", "DejaVuSans")
+        overlay.centered = data.get("centered", True)
         return overlay
 
 
@@ -271,7 +278,6 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
     
     # Add text overlays
     if text_overlays:
-        from PIL import ImageFont
         draw = ImageDraw.Draw(result)
         
         for overlay in text_overlays:
@@ -282,39 +288,101 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
             x = int(overlay.x * target_width)
             y = int(overlay.y * target_height)
             
-            # Try to load a font. Scale the requested font size based on the
-            # target image resolution so slider values feel consistent across
-            # preview (lower DPI) and print (higher DPI).
+            # Determine scaled font size so slider values map sensibly between
+            # preview DPI and print DPI.
             try:
                 default_card_h_px = mm_to_pixels(CARD_HEIGHT_MM, DEFAULT_DPI)
-                if default_card_h_px <= 0:
-                    scale = 1.0
-                else:
-                    scale = target_height / default_card_h_px
+                scale = (target_height / default_card_h_px) if default_card_h_px > 0 else 1.0
                 font_size_px = max(1, int(overlay.font_size * scale))
             except Exception:
-                font_size_px = overlay.font_size or 24
+                font_size_px = int(overlay.font_size or 24)
 
+            # Attempt to load a scalable TrueType font. Prefer the overlay's
+            # chosen font name, falling back to common system fonts.
+            font = None
             try:
-                # Try to use a TrueType font
-                font = ImageFont.truetype("arial.ttf", font_size_px)
+                from PIL import ImageFont
             except Exception:
-                try:
-                    # Try default font (Pillow's load_default has fixed size)
-                    font = ImageFont.load_default()
-                except Exception:
-                    # Fallback to no font
-                    font = None
+                ImageFont = None
+
+            if ImageFont is not None:
+                # Candidate font paths by friendly name
+                font_candidates = {
+                    "DejaVuSans": [
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                        "DejaVuSans.ttf",
+                    ],
+                    "LiberationSans": [
+                        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                        "LiberationSans-Regular.ttf",
+                    ],
+                    "Arial": [
+                        "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf",
+                        "/usr/share/fonts/truetype/msttcorefonts/arial.ttf",
+                        "/Library/Fonts/Arial.ttf",
+                        "/System/Library/Fonts/Supplemental/Arial.ttf",
+                        "arial.ttf",
+                    ],
+                }
+
+                # Start with preferred font if specified
+                preferred = getattr(overlay, "font_name", None) or "DejaVuSans"
+                tried = []
+                candidates = font_candidates.get(preferred, []) + [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf",
+                    "/Library/Fonts/Arial.ttf",
+                    "DejaVuSans.ttf",
+                    "arial.ttf",
+                ]
+
+                for fp in candidates:
+                    if not fp or fp in tried:
+                        continue
+                    tried.append(fp)
+                    try:
+                        font = ImageFont.truetype(fp, font_size_px)
+                        logger.debug(f"Using font {fp} size {font_size_px}")
+                        break
+                    except Exception:
+                        font = None
+
+                if font is None:
+                    try:
+                        font = ImageFont.load_default()
+                    except Exception:
+                        font = None
             
             # Convert hex color to RGB
             color = overlay.color.lstrip('#')
             rgb_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
             
-            # Draw text
-            if font:
-                draw.text((x, y), overlay.text, fill=rgb_color, font=font)
+            # Draw text. If overlay.centered is True, position is interpreted
+            # as the text center; otherwise it's the top-left corner.
+            try:
+                if font is not None:
+                    bbox = draw.textbbox((0, 0), overlay.text, font=font)
+                    text_w = bbox[2] - bbox[0]
+                    text_h = bbox[3] - bbox[1]
+                else:
+                    # fallback measurement
+                    text_w, text_h = draw.textsize(overlay.text)
+            except Exception:
+                # If measurement fails, fall back to naive placement
+                text_w, text_h = 0, 0
+
+            if getattr(overlay, "centered", False):
+                draw_x = x - (text_w // 2)
+                draw_y = y - (text_h // 2)
             else:
-                draw.text((x, y), overlay.text, fill=rgb_color)
+                draw_x = x
+                draw_y = y
+
+            if font:
+                draw.text((draw_x, draw_y), overlay.text, fill=rgb_color, font=font)
+            else:
+                draw.text((draw_x, draw_y), overlay.text, fill=rgb_color)
     
     return result
 
@@ -364,6 +432,14 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
     margin_px = mm_to_pixels(margin_mm, dpi)
     
     # Place each cover
+    # Decide scale multiplier for overprint/underprint/exact fit
+    if print_mode == PrintMode.OVERPRINT:
+        size_multiplier = 1.02
+    elif print_mode == PrintMode.UNDERPRINT:
+        size_multiplier = 0.98
+    else:
+        size_multiplier = 1.0
+
     for idx, cover_img in enumerate(cover_images):
         if idx >= cols * rows:
             break  # Can't fit more on this page
@@ -376,23 +452,35 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
         y = margin_px + row * (card_h_px + margin_px)
         
         try:
-            # Process and place image
+            # Compute target size based on print mode multiplier so overprint
+            # images are slightly larger and underprint slightly smaller.
+            target_w = max(1, int(card_w_px * size_multiplier))
+            target_h = max(1, int(card_h_px * size_multiplier))
+
+            # Process and place image at the computed target size
             processed = process_image(
                 cover_img.path,
                 cover_img.fit_mode,
                 cover_img.crop_position,
-                card_w_px,
-                card_h_px,
+                target_w,
+                target_h,
                 cover_img.crop_offset_x,
                 cover_img.crop_offset_y,
                 cover_img.text_overlays,
             )
             
-            # Mirror for underprint
-            if print_mode == PrintMode.UNDERPRINT:
-                processed = processed.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-            
-            page_img.paste(processed, (x, y))
+            # Center processed image on the card slot. If processed is larger
+            # than the card (overprint) paste it offset negatively so it
+            # overhangs evenly; if smaller (underprint) it will be centered.
+            paste_x = x - max(0, (processed.width - card_w_px) // 2)
+            paste_y = y - max(0, (processed.height - card_h_px) // 2)
+            # If processed is smaller, we want to centre inside the card
+            if processed.width <= card_w_px:
+                paste_x = x + (card_w_px - processed.width) // 2
+            if processed.height <= card_h_px:
+                paste_y = y + (card_h_px - processed.height) // 2
+
+            page_img.paste(processed, (paste_x, paste_y))
             
             # Draw cut lines
             if show_cut_lines:
@@ -488,6 +576,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         options=[
             ft.dropdown.Option(PrintMode.OVERPRINT.value, "Overprint"),
             ft.dropdown.Option(PrintMode.UNDERPRINT.value, "Underprint"),
+            ft.dropdown.Option(PrintMode.EXACT.value, "Exact (same size)"),
         ],
         width=150,
     )
@@ -581,10 +670,23 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     
     font_size_slider = ft.Slider(
         min=8,
-        max=72,
+        max=300,
         value=24,
-        divisions=32,
+        divisions=292,
         label="Size: {value}",
+        width=200,
+    )
+
+    # Font selection dropdown
+    font_dropdown = ft.Dropdown(
+        label="Font",
+        value="DejaVuSans",
+        options=[
+            ft.dropdown.Option("DejaVuSans", "DejaVu Sans"),
+            ft.dropdown.Option("LiberationSans", "Liberation Sans"),
+            ft.dropdown.Option("Arial", "Arial"),
+            ft.dropdown.Option("Default", "Default"),
+        ],
         width=200,
     )
     
@@ -598,6 +700,25 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         icon=ft.Icons.COLOR_LENS,
         tooltip="Pick Color",
         icon_size=20,
+    )
+
+    # Position dropdown (relative to text centre)
+    text_position_dropdown = ft.Dropdown(
+        label="Position",
+        value="Center",
+        options=[
+            ft.dropdown.Option("Center", "Center"),
+            ft.dropdown.Option("Top", "Top"),
+            ft.dropdown.Option("Bottom", "Bottom"),
+            ft.dropdown.Option("Left", "Left"),
+            ft.dropdown.Option("Right", "Right"),
+            ft.dropdown.Option("Top-Left", "Top Left"),
+            ft.dropdown.Option("Top-Right", "Top Right"),
+            ft.dropdown.Option("Bottom-Left", "Bottom Left"),
+            ft.dropdown.Option("Bottom-Right", "Bottom Right"),
+            ft.dropdown.Option("Custom", "Custom"),
+        ],
+        width=160,
     )
     
     def on_color_picker_click(e):
@@ -667,6 +788,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         page.update()
     
     text_color_picker_btn.on_click = on_color_picker_click
+    # Wire font dropdown change to auto-update
+    def on_font_dropdown_change(e):
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    font_dropdown.on_change = on_font_dropdown_change
     
     # Auto-update on text field changes
     def on_text_input_change(e):
@@ -729,8 +855,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ),
             ft.Divider(),
             text_input,
-            ft.Row([ft.Text("Font Size:"), font_size_slider]),
-            ft.Row([text_color_field, text_color_picker_btn]),
+            ft.Row([ft.Text("Font Size:"), font_size_slider, font_dropdown]),
+            ft.Row([text_color_field, text_color_picker_btn, text_position_dropdown]),
             ft.Row([ft.Text("Position X:"), text_x_slider]),
             ft.Row([ft.Text("Position Y:"), text_y_slider]),
             ft.Row([
@@ -793,9 +919,29 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 overlay = img.text_overlays[index]
                 text_input.value = overlay.text
                 font_size_slider.value = overlay.font_size
+                font_dropdown.value = overlay.font_name
                 text_color_field.value = overlay.color
                 text_x_slider.value = overlay.x
                 text_y_slider.value = overlay.y
+                # Determine nearest preset position for dropdown
+                def closest_pos_label(xv, yv):
+                    presets = {
+                        "Center": (0.5, 0.5),
+                        "Top": (0.5, 0.0),
+                        "Bottom": (0.5, 1.0),
+                        "Left": (0.0, 0.5),
+                        "Right": (1.0, 0.5),
+                        "Top-Left": (0.0, 0.0),
+                        "Top-Right": (1.0, 0.0),
+                        "Bottom-Left": (0.0, 1.0),
+                        "Bottom-Right": (1.0, 1.0),
+                    }
+                    for label, (px, py) in presets.items():
+                        if abs(px - xv) < 0.05 and abs(py - yv) < 0.05:
+                            return label
+                    return "Custom"
+
+                text_position_dropdown.value = closest_pos_label(overlay.x, overlay.y)
         
         update_text_overlay_list()
     
@@ -805,6 +951,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img = cover_images[selected_image_index]
             overlay = TextOverlay(text_input.value or "New Text")
             overlay.font_size = int(font_size_slider.value)
+            overlay.font_name = font_dropdown.value or "DejaVuSans"
             overlay.color = text_color_field.value
             overlay.x = text_x_slider.value
             overlay.y = text_y_slider.value
@@ -812,6 +959,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_text_overlay_list()
             update_preview()
             show_snack("Text overlay added")
+            # set position dropdown to match new overlay
+            text_position_dropdown.value = "Center" if overlay.centered else "Custom"
+            page.update()
     
     def update_text_overlay():
         """Update the selected text overlay."""
@@ -821,9 +971,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 overlay = img.text_overlays[selected_text_overlay_index]
                 overlay.text = text_input.value
                 overlay.font_size = int(font_size_slider.value)
+                overlay.font_name = font_dropdown.value or "DejaVuSans"
                 overlay.color = text_color_field.value
                 overlay.x = text_x_slider.value
                 overlay.y = text_y_slider.value
+                # Update centered flag based on dropdown choice
+                overlay.centered = (text_position_dropdown.value != "Custom")
                 update_text_overlay_list()
                 update_preview()
                 show_snack("Text overlay updated")
@@ -839,6 +992,40 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 update_text_overlay_list()
                 update_preview()
                 show_snack("Text overlay deleted")
+
+            def on_text_position_change(e):
+                """Handle preset position selection from dropdown."""
+                if selected_image_index is None or selected_image_index < 0 or selected_image_index >= len(cover_images):
+                    return
+                img = cover_images[selected_image_index]
+                if selected_text_overlay_index is None or selected_text_overlay_index < 0 or selected_text_overlay_index >= len(img.text_overlays):
+                    return
+                overlay = img.text_overlays[selected_text_overlay_index]
+                pos = text_position_dropdown.value
+                mapping = {
+                    "Center": (0.5, 0.5),
+                    "Top": (0.5, 0.0),
+                    "Bottom": (0.5, 1.0),
+                    "Left": (0.0, 0.5),
+                    "Right": (1.0, 0.5),
+                    "Top-Left": (0.0, 0.0),
+                    "Top-Right": (1.0, 0.0),
+                    "Bottom-Left": (0.0, 1.0),
+                    "Bottom-Right": (1.0, 1.0),
+                }
+                if pos in mapping:
+                    overlay.x, overlay.y = mapping[pos]
+                    overlay.centered = True
+                    # update sliders and preview
+                    text_x_slider.value = overlay.x
+                    text_y_slider.value = overlay.y
+                    update_text_overlay()
+                else:
+                    # Custom - leave as-is; mark not centered
+                    overlay.centered = False
+                    update_text_overlay()
+
+            text_position_dropdown.on_change = on_text_position_change
     
     def update_image_list():
         """Update the image list display."""

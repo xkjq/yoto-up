@@ -1,5 +1,74 @@
 # Covers Tab Features
 
+The Covers tab allows you to create and print covers for Yoto cards (54mm × 85.6mm).
+
+## Features
+
+### 1. Image Management
+- Add multiple images at once
+- View and manage an image list (select, edit, delete)
+
+### 2. Image Editing
+When you select an image from the list, you can edit:
+
+- Fit Mode:
+  - Resize: Stretch to exactly fit (may distort)
+  - Crop: Crop to fit while maintaining aspect ratio
+  - Scale: Scale to fit with borders (maintains aspect ratio)
+
+- Crop Position (when using Crop mode):
+  - Preset positions: Center, Top, Bottom, Left, Right, corners
+  - Custom Offsets: Sliders to fine-tune horizontal and vertical crop position (-1.0..1.0)
+
+### 3. Text Overlays
+Add text with full control per overlay:
+
+- Text content
+- Font size: adjustable from 8 up to 300 points
+- Font selection: choose from several fonts (DejaVu Sans, Liberation Sans, Arial, Default). If a scalable TrueType font is available, the slider affects rendered size.
+- Color: hex color entry and picker dialog
+- Position: X and Y as percentages (0.0..1.0)
+- Multiple overlays per image; edit or delete overlays from a list
+
+### 4. Print Settings
+- Paper Size: A4, Letter, Legal
+- Print Mode:
+  - Overprint: Render slightly larger than card (default ~2% bleed)
+  - Underprint: Render slightly smaller than card (default ~2% inset). Underprint is NOT mirrored.
+  - Exact: Render exactly the card dimensions (no bleed/inset)
+- Cut lines: Toggle dotted cut lines around each cover
+- Margin: Adjust margins between covers (0–20 mm)
+
+### 5. Preview
+- Automatic layout: optimises number of covers per sheet
+- Interactive zoom & pan (including Ctrl+scroll)
+- Zoom controls (in/out/reset) and zoom-level display
+- Preview regenerates at appropriate resolution for zoom level
+- Cut guides are drawn for every possible card slot on the sheet (cols × rows), even when slots are empty
+
+### 6. Printing
+- Generates high-resolution print-ready images (300 DPI recommended)
+- Saves to a temp file and attempts to open the system viewer for printing
+
+## Workflow
+
+1. Add images
+2. Select an image and configure fit/crop and any text overlays
+3. Configure paper size, margins and print mode (Overprint / Underprint / Exact)
+4. Use preview and zoom to verify layout
+5. Print to generate a high-resolution layout file
+
+## Notes & Tips
+- Overprint/Underprint are implemented by scaling the rendered image slightly relative to the card size; you can request different bleed/inset amounts if desired.
+- If the system lacks scalable TrueType fonts, the renderer may fall back to a fixed-size font that will not reflect slider changes; bundling a TTF in the repo is recommended for consistent results across environments.
+
+## Requirements
+- PIL/Pillow for image processing
+- Flet for the UI
+- Images in common formats: PNG, JPG, JPEG, BMP, GIF
+
+# Covers Tab Features
+
 The Covers tab allows you to create and print covers for Yoto cards (54mm x 85.6mm).
 
 ## Features
