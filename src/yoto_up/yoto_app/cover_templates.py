@@ -37,7 +37,7 @@ def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont
     return (0, 0)
 
 
-def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True) -> str:
+def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12) -> str:
     """Return an HTML string for the requested template.
 
     image_url can be a file:// URL or a remote URL supported by the renderer.
@@ -61,6 +61,25 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     elif title_style == "small":
         title_font_size = "6vw"
 
+    # Build optional overlay (top/bottom blend) CSS if requested
+    overlay_css = ""
+    try:
+        if top_blend_color or bottom_blend_color:
+            top_c = top_blend_color or "transparent"
+            bottom_c = bottom_blend_color or "transparent"
+            # ensure percentages are reasonable
+            tp = max(0.0, min(1.0, float(top_blend_pct))) * 100
+            bp = max(0.0, min(1.0, float(bottom_blend_pct))) * 100
+            # Create a gradient that blends to transparent in the middle
+            overlay_css = f"linear-gradient(to bottom, {top_c} {tp}%, rgba(0,0,0,0) {tp + 0.5}%, rgba(0,0,0,0) {100 - bp - 0.5}%, {bottom_c} 100%), "
+    except Exception:
+        overlay_css = ""
+
+    # Title transform for edge-stretch effect
+    title_transform_css = ""
+    if title_edge_stretch:
+        title_transform_css = "transform: scaleY(1.35);"
+
     if template_name == "classic":
         html = f"""
 <!doctype html>
@@ -73,8 +92,39 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; background:white; position:relative; }}
     .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; }}
   .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
-    .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:8px; }}
+            .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:8px; }}
+            .overlay {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; border-radius:8px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
     .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:10%; background:{accent_color}; display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; border-radius:6px; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">{safe_title}</div>
+    <div class="hero"><img src="{image_url}" alt="cover"/></div>
+        <div class="overlay"></div>
+    <div class="footer">{footer}</div>
+  </div>
+</body>
+</html>
+"""
+    elif template_name == "frozen":
+        # Frozen-like icy template: large uppercase title with subtle shadow,
+        # icy gradient background, large hero area and small footer.
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; position:relative; 
+                     background: {overlay_css} url('{image_url}'); background-size: cover; background-position: center; color: #eaf6ff; }}
+    .title {{ position:absolute; top:4%; left:6%; right:6%; text-align:center; font-size:10vw; font-weight:900; 
+                        text-transform:uppercase; letter-spacing:2px; color:#eaf6ff; text-shadow: 0 6px 18px rgba(6,40,80,0.45); {title_transform_css} }}
+    .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
+        .hero img {{ width:100%; height:100%; object-fit:{object_fit}; border-radius:10px; box-shadow: 0 18px 48px rgba(6,40,80,0.28); opacity:0.98; }}
+  .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:8%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#08384a; background: rgba(255,255,255,0.6); border-radius:6px; }}
 </style>
 </head>
 <body>
@@ -98,7 +148,8 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
   .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; }}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
-    .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
+        .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
+        .overlay {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; border-radius:6px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
     .footer {{ position:absolute; bottom:4%; left:8%; right:8%; height:8%; display:flex; align-items:center; justify-content:flex-end; font-weight:600; color:#333; }}
 </style>
 </head>
@@ -106,6 +157,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   <div class="card">
     <div class="title">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
+        <div class="overlay"></div>
     <div class="footer">{footer}</div>
   </div>
 </body>
@@ -114,7 +166,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     return html
 
 
-def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True):
+def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
     """Fallback renderer using Pillow. Returns PIL.Image (RGB).
 
     This creates a simple layout approximating the HTML templates.
@@ -274,6 +326,40 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
 
         # For scale mode where hero_resized is exactly hw x hh we paste at hero_box origin
         base.paste(paste_img, (hero_box[0], hero_box[1]))
+
+        # Apply optional top/bottom blend overlays (fade image into a solid colour)
+        def _hex_to_rgb(hx: Optional[str], fallback=(255,255,255)):
+            try:
+                if not hx:
+                    return fallback
+                a = hx.lstrip('#')
+                return tuple(int(a[i:i+2], 16) for i in (0, 2, 4))
+            except Exception:
+                return fallback
+
+        try:
+            tb_rgb = _hex_to_rgb(top_blend_color)
+            bb_rgb = _hex_to_rgb(bottom_blend_color)
+            # Only draw if colours were provided
+            if top_blend_color or bottom_blend_color:
+                overlay = Image.new('RGBA', (width_px, height_px), (0,0,0,0))
+                o_draw = ImageDraw.Draw(overlay)
+                # Top gradient
+                h_top = int(height_px * max(0.0, min(1.0, float(top_blend_pct))))
+                for i in range(h_top):
+                    alpha = int(255 * (1.0 - (i / max(1, h_top))))
+                    col = (tb_rgb[0], tb_rgb[1], tb_rgb[2], alpha)
+                    o_draw.line([(0, i), (width_px, i)], fill=col)
+                # Bottom gradient
+                h_bot = int(height_px * max(0.0, min(1.0, float(bottom_blend_pct))))
+                for j in range(h_bot):
+                    y = height_px - 1 - j
+                    alpha = int(255 * (1.0 - (j / max(1, h_bot))))
+                    col = (bb_rgb[0], bb_rgb[1], bb_rgb[2], alpha)
+                    o_draw.line([(0, y), (width_px, y)], fill=col)
+                base = Image.alpha_composite(base.convert('RGBA'), overlay).convert('RGB')
+        except Exception:
+            pass
 
         # Footer band
         # Use provided footer or default to filename stem

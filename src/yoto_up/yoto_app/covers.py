@@ -92,6 +92,12 @@ class CoverImage:
         self.template_accent_color: str = "#f1c40f"
         # Template presentation options
         self.template_title_style: str = "classic"
+        # Additional visual options
+        self.template_title_edge_stretch: bool = False
+        self.template_top_blend_color: Optional[str] = None
+        self.template_bottom_blend_color: Optional[str] = None
+        self.template_top_blend_pct: float = 0.12
+        self.template_bottom_blend_pct: float = 0.12
         # Image-fit options specifically for templates (allow customizing
         # how the image is used inside a template)
         self.template_image_fit: ImageFitMode = ImageFitMode.SCALE
@@ -116,6 +122,11 @@ class CoverImage:
             "template_footer": self.template_footer,
             "template_accent_color": self.template_accent_color,
             "template_title_style": self.template_title_style,
+            "template_title_edge_stretch": self.template_title_edge_stretch,
+            "template_top_blend_color": self.template_top_blend_color,
+            "template_bottom_blend_color": self.template_bottom_blend_color,
+            "template_top_blend_pct": self.template_top_blend_pct,
+            "template_bottom_blend_pct": self.template_bottom_blend_pct,
             "template_image_fit": self.template_image_fit.value,
             "template_crop_position": self.template_crop_position.value,
             "template_crop_offset_x": self.template_crop_offset_x,
@@ -139,6 +150,11 @@ class CoverImage:
         img.template_footer = data.get("template_footer", "")
         img.template_accent_color = data.get("template_accent_color", "#f1c40f")
         img.template_title_style = data.get("template_title_style", "classic")
+        img.template_title_edge_stretch = data.get("template_title_edge_stretch", False)
+        img.template_top_blend_color = data.get("template_top_blend_color", None)
+        img.template_bottom_blend_color = data.get("template_bottom_blend_color", None)
+        img.template_top_blend_pct = data.get("template_top_blend_pct", 0.12)
+        img.template_bottom_blend_pct = data.get("template_bottom_blend_pct", 0.12)
         img.template_image_fit = ImageFitMode(data.get("template_image_fit", ImageFitMode.SCALE.value))
         img.template_crop_position = CropPosition(data.get("template_crop_position", CropPosition.CENTER.value))
         img.template_crop_offset_x = data.get("template_crop_offset_x", 0.0)
@@ -807,6 +823,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_dropdown = ft.Dropdown(label="Template", value="classic", options=[
         ft.dropdown.Option("classic", "Classic"),
         ft.dropdown.Option("modern", "Modern"),
+        ft.dropdown.Option("frozen", "Frozen"),
     ], width=150)
     # Additional template-editable fields
     img_template_footer_field = ft.TextField(label="Template Footer", width=260)
@@ -815,6 +832,27 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         icon=ft.Icons.COLOR_LENS,
         tooltip="Pick Accent Color",
         icon_size=20,
+    )
+    # Title edge-stretch option (mirrors generate_html_template title_edge_stretch)
+    img_template_title_edge_stretch_chk = ft.Checkbox(label="Title edge stretch", value=False)
+    # Top/bottom blend colours and percentages (applied as overlays)
+    img_template_top_blend_field = ft.TextField(label="Top blend color", value="", width=120)
+    img_template_bottom_blend_field = ft.TextField(label="Bottom blend color", value="", width=120)
+    img_template_top_blend_pct_slider = ft.Slider(
+        min=0.0,
+        max=1.0,
+        value=0.12,
+        divisions=100,
+        label="Top blend: {value:.2f}",
+        width=200,
+    )
+    img_template_bottom_blend_pct_slider = ft.Slider(
+        min=0.0,
+        max=1.0,
+        value=0.12,
+        divisions=100,
+        label="Bottom blend: {value:.2f}",
+        width=200,
     )
     template_title_style_dropdown = ft.Dropdown(
         label="Title Style",
@@ -1181,9 +1219,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     template_controls = ft.Container(
         content=ft.Column([
             ft.Row([img_template_title_field, img_template_dropdown]),
-            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk]),
+            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk, img_template_title_edge_stretch_chk]),
             img_template_footer_field,
             ft.Row([img_template_accent_field, img_template_accent_picker_btn]),
+            ft.Row([img_template_top_blend_field, img_template_bottom_blend_field]),
+            ft.Row([ft.Text("Top Blend:"), img_template_top_blend_pct_slider]),
+            ft.Row([ft.Text("Bottom Blend:"), img_template_bottom_blend_pct_slider]),
             ft.Divider(),
             ft.Text("Template Image Settings", weight=ft.FontWeight.BOLD),
             tpl_fit_mode_dropdown,
@@ -1441,6 +1482,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 tpl_crop_offset_x_slider.value = getattr(img, "template_crop_offset_x", 0.0)
                 tpl_crop_offset_y_slider.value = getattr(img, "template_crop_offset_y", 0.0)
                 img_template_full_bleed_chk.value = getattr(img, "template_cover_full_bleed", True)
+                # populate new template presentation options
+                img_template_title_edge_stretch_chk.value = bool(getattr(img, "template_title_edge_stretch", False))
+                img_template_top_blend_field.value = getattr(img, "template_top_blend_color", "") or ""
+                img_template_bottom_blend_field.value = getattr(img, "template_bottom_blend_color", "") or ""
+                img_template_top_blend_pct_slider.value = getattr(img, "template_top_blend_pct", 0.12)
+                img_template_bottom_blend_pct_slider.value = getattr(img, "template_bottom_blend_pct", 0.12)
             except Exception:
                 # ignore if controls aren't available for some reason
                 pass
@@ -1554,6 +1601,44 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.template_title_style = template_title_style_dropdown.value
             update_preview()
 
+    def on_img_title_edge_stretch_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title_edge_stretch = bool(img_template_title_edge_stretch_chk.value)
+            update_preview()
+
+    def on_img_top_blend_color_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            val = img_template_top_blend_field.value.strip() or None
+            img.template_top_blend_color = val
+            update_preview()
+
+    def on_img_bottom_blend_color_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            val = img_template_bottom_blend_field.value.strip() or None
+            img.template_bottom_blend_color = val
+            update_preview()
+
+    def on_img_top_blend_pct_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            try:
+                img.template_top_blend_pct = float(img_template_top_blend_pct_slider.value)
+            except Exception:
+                img.template_top_blend_pct = 0.12
+            update_preview()
+
+    def on_img_bottom_blend_pct_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            try:
+                img.template_bottom_blend_pct = float(img_template_bottom_blend_pct_slider.value)
+            except Exception:
+                img.template_bottom_blend_pct = 0.12
+            update_preview()
+
     def on_tpl_fit_mode_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
@@ -1593,6 +1678,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_accent_field.on_change = on_img_template_accent_change
     img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
     template_title_style_dropdown.on_change = on_img_template_title_style_change
+    img_template_title_edge_stretch_chk.on_change = on_img_title_edge_stretch_change
+    img_template_top_blend_field.on_change = on_img_top_blend_color_change
+    img_template_bottom_blend_field.on_change = on_img_bottom_blend_color_change
+    img_template_top_blend_pct_slider.on_change = on_img_top_blend_pct_change
+    img_template_bottom_blend_pct_slider.on_change = on_img_bottom_blend_pct_change
     tpl_fit_mode_dropdown.on_change = on_tpl_fit_mode_change
     tpl_crop_position_dropdown.on_change = on_tpl_crop_position_change
     tpl_crop_offset_x_slider.on_change = on_tpl_crop_offset_x_change
