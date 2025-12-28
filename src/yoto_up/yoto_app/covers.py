@@ -282,16 +282,28 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
             x = int(overlay.x * target_width)
             y = int(overlay.y * target_height)
             
-            # Try to load a font
+            # Try to load a font. Scale the requested font size based on the
+            # target image resolution so slider values feel consistent across
+            # preview (lower DPI) and print (higher DPI).
+            try:
+                default_card_h_px = mm_to_pixels(CARD_HEIGHT_MM, DEFAULT_DPI)
+                if default_card_h_px <= 0:
+                    scale = 1.0
+                else:
+                    scale = target_height / default_card_h_px
+                font_size_px = max(1, int(overlay.font_size * scale))
+            except Exception:
+                font_size_px = overlay.font_size or 24
+
             try:
                 # Try to use a TrueType font
-                font = ImageFont.truetype("arial.ttf", overlay.font_size)
+                font = ImageFont.truetype("arial.ttf", font_size_px)
             except Exception:
                 try:
-                    # Try default font with size
+                    # Try default font (Pillow's load_default has fixed size)
                     font = ImageFont.load_default()
                 except Exception:
-                    # Fallback to basic font
+                    # Fallback to no font
                     font = None
             
             # Convert hex color to RGB
@@ -411,7 +423,30 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
             # Draw error box
             draw.rectangle([x, y, x + card_w_px, y + card_h_px], outline="red", width=2)
             draw.text((x + 10, y + 10), f"Error: {cover_img.name}", fill="red")
-    
+
+    # Ensure cut lines are visible for all possible card slots even if no
+    # image was placed there. This helps with layout/punch/cut alignment.
+    if show_cut_lines and cols > 0 and rows > 0:
+        line_color = (200, 200, 200)
+        line_width = 1
+        dash_length = mm_to_pixels(2, dpi)
+        for row in range(rows):
+            for col in range(cols):
+                x = margin_px + col * (card_w_px + margin_px)
+                y = margin_px + row * (card_h_px + margin_px)
+                # Top
+                for dx in range(0, card_w_px, dash_length * 2):
+                    draw.line([(x + dx, y), (x + min(dx + dash_length, card_w_px), y)], fill=line_color, width=line_width)
+                # Bottom
+                for dx in range(0, card_w_px, dash_length * 2):
+                    draw.line([(x + dx, y + card_h_px), (x + min(dx + dash_length, card_w_px), y + card_h_px)], fill=line_color, width=line_width)
+                # Left
+                for dy in range(0, card_h_px, dash_length * 2):
+                    draw.line([(x, y + dy), (x, y + min(dy + dash_length, card_h_px))], fill=line_color, width=line_width)
+                # Right
+                for dy in range(0, card_h_px, dash_length * 2):
+                    draw.line([(x + card_w_px, y + dy), (x + card_w_px, y + min(dy + dash_length, card_h_px))], fill=line_color, width=line_width)
+
     return page_img
 
 
