@@ -399,6 +399,20 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
                 draw_x = x
                 draw_y = y
 
+            # Clamp so the rotated text is fully visible inside the card area
+            max_x = target_width - rotated.width
+            max_y = target_height - rotated.height
+            if max_x < 0:
+                # rotated wider than target; align to left
+                draw_x = 0
+            else:
+                draw_x = max(0, min(int(draw_x), int(max_x)))
+            if max_y < 0:
+                # rotated taller than target; align to top
+                draw_y = 0
+            else:
+                draw_y = max(0, min(int(draw_y), int(max_y)))
+
             # Composite onto base image using alpha mask
             base_rgba.paste(rotated, (int(draw_x), int(draw_y)), rotated)
 
