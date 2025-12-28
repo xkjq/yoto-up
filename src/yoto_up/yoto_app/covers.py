@@ -92,6 +92,8 @@ class CoverImage:
         self.template_accent_color: str = "#f1c40f"
         # Template presentation options
         self.template_title_style: str = "classic"
+        self.template_title_color: str = "#111111"
+        self.template_footer_style: str = "bar"
         # Additional visual options
         # Replace edge-stretch (broken) with title shadow and font selection
         self.template_title_shadow: bool = False
@@ -126,6 +128,8 @@ class CoverImage:
             "template_footer": self.template_footer,
             "template_accent_color": self.template_accent_color,
             "template_title_style": self.template_title_style,
+            "template_title_color": self.template_title_color,
+            "template_footer_style": self.template_footer_style,
             "template_title_shadow": self.template_title_shadow,
             "template_title_font": self.template_title_font,
             "template_title_shadow_color": self.template_title_shadow_color,
@@ -156,6 +160,8 @@ class CoverImage:
         img.template_footer = data.get("template_footer", "")
         img.template_accent_color = data.get("template_accent_color", "#f1c40f")
         img.template_title_style = data.get("template_title_style", "classic")
+        img.template_title_color = data.get("template_title_color", "#111111")
+        img.template_footer_style = data.get("template_footer_style", "bar")
         img.template_title_shadow = data.get("template_title_shadow", False)
         img.template_title_font = data.get("template_title_font", "DejaVuSans")
         img.template_title_shadow_color = data.get("template_title_shadow_color", "#008000")
@@ -602,6 +608,8 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         footer_text=getattr(cover_img, "template_footer", None),
                         accent_color=getattr(cover_img, "template_accent_color", None),
                         title_style=getattr(cover_img, "template_title_style", "classic"),
+                        title_color=getattr(cover_img, "template_title_color", "#111111"),
+                        footer_style=getattr(cover_img, "template_footer_style", "bar"),
                         image_fit=getattr(cover_img, "template_image_fit", ImageFitMode.SCALE).value,
                         crop_position=getattr(cover_img, "template_crop_position", CropPosition.CENTER).value,
                         crop_offset_x=getattr(cover_img, "template_crop_offset_x", 0.0),
@@ -839,6 +847,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         ft.dropdown.Option("classic", "Classic"),
         ft.dropdown.Option("modern", "Modern"),
         ft.dropdown.Option("frozen", "Frozen"),
+        ft.dropdown.Option("vintage", "Vintage"),
+        ft.dropdown.Option("minimal", "Minimal"),
+        ft.dropdown.Option("bold", "Bold"),
+        ft.dropdown.Option("polaroid", "Polaroid"),
+        ft.dropdown.Option("comic", "Comic"),
     ], width=150)
     # Additional template-editable fields
     img_template_footer_field = ft.TextField(label="Template Footer", width=180)
@@ -847,6 +860,24 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         icon=ft.Icons.COLOR_LENS,
         tooltip="Pick Accent Color",
         icon_size=20,
+    )
+    # Title color and style options
+    img_template_title_color_field = ft.TextField(label="Title Color (hex)", value="#111111", width=120)
+    img_template_title_color_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Title Color",
+        icon_size=20,
+    )
+    # Footer style options
+    img_template_footer_style_dropdown = ft.Dropdown(
+        label="Footer Style",
+        value="bar",
+        options=[
+            ft.dropdown.Option("bar", "Bar"),
+            ft.dropdown.Option("text", "Text"),
+            ft.dropdown.Option("badge", "Badge"),
+        ],
+        width=140,
     )
     # Title presentation options: shadow toggle and title font
     img_template_title_shadow_chk = ft.Checkbox(label="Title shadow", value=False)
@@ -904,6 +935,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.dropdown.Option("classic", "Classic"),
             ft.dropdown.Option("large", "Large"),
             ft.dropdown.Option("small", "Small"),
+            ft.dropdown.Option("uppercase", "Uppercase"),
+            ft.dropdown.Option("italic", "Italic"),
+            ft.dropdown.Option("bold", "Bold"),
+            ft.dropdown.Option("light", "Light"),
+            ft.dropdown.Option("outline", "Outline"),
+            ft.dropdown.Option("condensed", "Condensed"),
         ],
         width=160,
     )
@@ -1262,23 +1299,44 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     # Use a wrapping layout and make the container scrollable so controls
     # don't clip on narrow windows. Fields have been given smaller widths
     # where appropriate so they can pack more compactly.
+    # Organize controls by logical groups: Template selection, Title options, Footer options, Image blend options
     template_controls = ft.Container(
         content=ft.Column([
-            ft.Row([img_template_title_field, img_template_dropdown], spacing=8),
-            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk], spacing=8),
-            ft.Row([img_template_title_shadow_chk, img_template_title_font_dropdown], spacing=8),
+            # Template selection group
+            ft.Text("Template", weight=ft.FontWeight.BOLD, size=14),
+            ft.Row([img_template_dropdown, img_template_full_bleed_chk], spacing=8),
+            ft.Divider(height=1),
+            
+            # Title customization group
+            ft.Text("Title Options", weight=ft.FontWeight.BOLD, size=14),
+            img_template_title_field,
+            ft.Row([template_title_style_dropdown], spacing=8),
+            ft.Row([img_template_title_color_field, img_template_title_color_picker_btn], spacing=8),
+            ft.Row([img_template_title_font_dropdown, img_template_title_shadow_chk], spacing=8),
             ft.Row([img_template_title_shadow_color_field, img_template_title_shadow_picker_btn], spacing=8),
+            ft.Divider(height=1),
+            
+            # Footer customization group
+            ft.Text("Footer Options", weight=ft.FontWeight.BOLD, size=14),
             img_template_footer_field,
             ft.Row([img_template_accent_field, img_template_accent_picker_btn], spacing=8),
-            ft.Row([img_template_top_blend_field, img_template_top_blend_picker_btn, img_template_bottom_blend_field, img_template_bottom_blend_picker_btn], spacing=8),
-            ft.Row([ft.Text("Top Blend:"), img_template_top_blend_pct_slider]),
-            ft.Row([ft.Text("Bottom Blend:"), img_template_bottom_blend_pct_slider]),
-            ft.Divider(),
-            ft.Text("Template Image Settings", weight=ft.FontWeight.BOLD),
+            ft.Row([img_template_footer_style_dropdown], spacing=8),
+            ft.Divider(height=1),
+            
+            # Image blend/overlay group
+            ft.Text("Image Overlays", weight=ft.FontWeight.BOLD, size=14),
+            ft.Row([img_template_top_blend_field, img_template_top_blend_picker_btn], spacing=8),
+            ft.Row([ft.Text("Top Blend %:", size=12), img_template_top_blend_pct_slider]),
+            ft.Row([img_template_bottom_blend_field, img_template_bottom_blend_picker_btn], spacing=8),
+            ft.Row([ft.Text("Bottom Blend %:", size=12), img_template_bottom_blend_pct_slider]),
+            ft.Divider(height=1),
+            
+            # Template image positioning group
+            ft.Text("Template Image Settings", weight=ft.FontWeight.BOLD, size=14),
             tpl_fit_mode_dropdown,
             tpl_crop_position_dropdown,
-            ft.Row([ft.Text("Tpl Horiz. Offset:"), tpl_crop_offset_x_slider]),
-            ft.Row([ft.Text("Tpl Vert. Offset:"), tpl_crop_offset_y_slider]),
+            ft.Row([ft.Text("Horiz. Offset:", size=12), tpl_crop_offset_x_slider]),
+            ft.Row([ft.Text("Vert. Offset:", size=12), tpl_crop_offset_y_slider]),
         ], spacing=8, scroll=ft.ScrollMode.AUTO),
         padding=5,
         visible=False,
@@ -1525,6 +1583,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 img_template_footer_field.value = getattr(img, "template_footer", "")
                 img_template_accent_field.value = getattr(img, "template_accent_color", "#f1c40f")
                 template_title_style_dropdown.value = getattr(img, "template_title_style", "classic")
+                img_template_title_color_field.value = getattr(img, "template_title_color", "#111111")
+                img_template_footer_style_dropdown.value = getattr(img, "template_footer_style", "bar")
                 tpl_fit_mode_dropdown.value = getattr(img, "template_image_fit", ImageFitMode.SCALE).value
                 tpl_crop_position_dropdown.value = getattr(img, "template_crop_position", CropPosition.CENTER).value
                 tpl_crop_offset_x_slider.value = getattr(img, "template_crop_offset_x", 0.0)
@@ -1649,6 +1709,49 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
             img.template_title_style = template_title_style_dropdown.value
+            update_preview()
+    
+    def on_img_template_title_color_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title_color = img_template_title_color_field.value
+            update_preview()
+    
+    def on_img_template_title_color_picker_click(e):
+        def on_color_change(color_value):
+            img_template_title_color_field.value = color_value
+            page.update()
+            if selected_image_index is not None:
+                cover_images[selected_image_index].template_title_color = color_value
+                update_preview()
+
+        color_options = ["#111111", "#FFFFFF", "#000000", "#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
+        color_buttons = []
+        for c in color_options:
+            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+
+        custom_color_input = ft.TextField(
+            label="Custom Hex Color",
+            value=img_template_title_color_field.value,
+            width=200,
+        )
+
+        def on_custom_color(e):
+            on_color_change(custom_color_input.value)
+            page.close(color_dialog)
+
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Title Color"),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+        )
+        page.open(color_dialog)
+        page.update()
+    
+    def on_img_template_footer_style_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_footer_style = img_template_footer_style_dropdown.value
             update_preview()
 
     def on_img_title_shadow_change(e):
@@ -1833,6 +1936,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_accent_field.on_change = on_img_template_accent_change
     img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
     template_title_style_dropdown.on_change = on_img_template_title_style_change
+    img_template_title_color_field.on_change = on_img_template_title_color_change
+    img_template_title_color_picker_btn.on_click = on_img_template_title_color_picker_click
+    img_template_footer_style_dropdown.on_change = on_img_template_footer_style_change
     img_template_title_shadow_chk.on_change = on_img_title_shadow_change
     img_template_title_font_dropdown.on_change = on_img_template_title_font_change
     img_template_title_shadow_color_field.on_change = on_img_template_title_shadow_color_change

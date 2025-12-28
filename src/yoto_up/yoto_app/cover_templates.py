@@ -38,7 +38,7 @@ def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont
     return (0, 0)
 
 
-def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12) -> str:
+def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12, title_color: str = "#111111", footer_style: str = "bar") -> str:
     """Return an HTML string for the requested template.
 
     image_url can be a file:// URL or a remote URL supported by the renderer.
@@ -57,13 +57,52 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     else:
         object_fit = "contain" if image_fit in ("scale", "resize") else "cover"
 
-    # Title style tweaks
+    # Title style tweaks - provide more visually distinct options
     title_font_size = "8vw"
-    title_color = "#111"
+    title_weight = "700"
+    title_transform = "none"
+    title_align = "center"
+    title_extra_css = ""
+    
     if title_style == "large":
         title_font_size = "10vw"
+        title_weight = "900"
     elif title_style == "small":
         title_font_size = "6vw"
+        title_weight = "600"
+    elif title_style == "uppercase":
+        title_font_size = "7vw"
+        title_weight = "900"
+        title_transform = "uppercase"
+        title_extra_css = "letter-spacing: 2px;"
+    elif title_style == "italic":
+        title_font_size = "8.5vw"
+        title_weight = "600"
+        title_extra_css = "font-style: italic;"
+    elif title_style == "bold":
+        title_font_size = "9vw"
+        title_weight = "900"
+    elif title_style == "light":
+        title_font_size = "8vw"
+        title_weight = "300"
+    elif title_style == "outline":
+        title_font_size = "9vw"
+        title_weight = "900"
+        title_extra_css = "-webkit-text-stroke: 2px #000; -webkit-text-fill-color: transparent;"
+    elif title_style == "condensed":
+        title_font_size = "7vw"
+        title_weight = "800"
+        title_extra_css = "letter-spacing: -1px; transform: scaleX(0.85);"
+    
+    # Footer style options
+    footer_display_css = ""
+    if footer_style == "text":
+        # Simple text footer, no bar
+        footer_display_css = "background:transparent; height:auto; padding:8px 0;"
+    elif footer_style == "badge":
+        # Small badge-style footer
+        footer_display_css = "background:{accent_color}; border-radius:20px; padding:6px 16px; height:auto; width:auto; margin:0 auto;"
+    # Default "bar" style uses the existing styling
 
     # Build optional overlay (top/bottom blend) CSS if requested
     overlay_css = ""
@@ -122,11 +161,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; {bg_css} position:relative; }}
-        .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; {title_font_css} {title_shadow_css} }}
+        .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:{title_align}; font-size:{title_font_size}; color:{title_color}; font-weight:{title_weight}; text-transform:{title_transform}; {title_extra_css} {title_font_css} {title_shadow_css} }}
     .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
                         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; border-radius:8px; }}
             .overlay {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; border-radius:8px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
-    .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:10%; background:{accent_color}; display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; border-radius:6px; }}
+    .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:10%; background:{accent_color}; display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; border-radius:6px; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -168,6 +207,166 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </body>
 </html>
 """
+    elif template_name == "vintage":
+        # Vintage/retro template: ornate border, serif title, aged paper feel
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; position:relative; 
+                     background: linear-gradient(135deg, #f5e6d3 0%, #e8d5b7 100%); 
+                     border: 12px solid #8b7355; }}
+    .title {{ position:absolute; top:8%; left:10%; right:10%; text-align:center; font-size:7vw; font-weight:700; 
+                        color:#3a2f23; text-transform:capitalize; letter-spacing:1px; {title_font_css} {title_shadow_css} 
+                        border-top: 2px solid #8b7355; border-bottom: 2px solid #8b7355; padding:8px 0; }}
+    .hero {{ position:absolute; top:25%; left:10%; right:10%; bottom:25%; display:flex; align-items:center; justify-content:center;
+                    border: 4px double #8b7355; background: {overlay_css} #fff; }}
+        .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
+  .footer {{ position:absolute; bottom:6%; left:10%; right:10%; text-align:center; font-weight:600; 
+                    color:#3a2f23; font-size:4.5vw; font-style:italic; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">{safe_title}</div>
+    <div class="hero"><img src="{image_url}" alt="cover"/></div>
+    <div class="footer">{footer}</div>
+  </div>
+</body>
+</html>
+"""
+    elif template_name == "minimal":
+        # Ultra minimal template: just image with subtle title overlay and thin accent line
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
+                     background: {overlay_css} url('{image_url}'); background-size: cover; background-position: center; }}
+    .title {{ position:absolute; bottom:12%; left:6%; right:6%; text-align:left; font-size:7vw; font-weight:300; 
+                        color:#ffffff; letter-spacing:2px; {title_font_css} {title_shadow_css} 
+                        background: linear-gradient(90deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+                        padding: 12px 16px; }}
+  .footer {{ position:absolute; bottom:6%; left:6%; right:6%; height:2px; background:{accent_color}; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">{safe_title}</div>
+    <div class="footer"></div>
+  </div>
+</body>
+</html>
+"""
+    elif template_name == "bold":
+        # Bold geometric template: strong colors, geometric shapes, high contrast
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
+                     background: #000; }}
+    .title-bar {{ position:absolute; top:0; left:0; right:0; height:18%; background:{accent_color}; 
+                            display:flex; align-items:center; justify-content:center; clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%); }}
+    .title {{ font-size:8vw; font-weight:900; color:#000; text-transform:uppercase; letter-spacing:1px; 
+                    {title_font_css} {title_shadow_css} }}
+    .hero {{ position:absolute; top:20%; left:4%; right:4%; bottom:16%; display:flex; align-items:center; justify-content:center;
+                    background: {overlay_css} #fff; border: 4px solid {accent_color}; }}
+        .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
+  .footer {{ position:absolute; bottom:0; left:0; right:0; height:14%; background:{accent_color}; 
+                    display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; 
+                    font-size:5vw; clip-path: polygon(0 20%, 100% 0, 100% 100%, 0 100%); }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title-bar"><div class="title">{safe_title}</div></div>
+    <div class="hero"><img src="{image_url}" alt="cover"/></div>
+    <div class="footer">{footer}</div>
+  </div>
+</body>
+</html>
+"""
+    elif template_name == "polaroid":
+        # Polaroid/photo frame style: white border, centered image, handwritten-style caption
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
+                     background: {overlay_css} #e8e8e8; padding:6%; }}
+    .polaroid {{ width:100%; height:100%; background:#fff; box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
+                        position:relative; padding:8% 8% 18% 8%; box-sizing:border-box; }}
+    .title {{ position:absolute; top:2%; left:8%; right:8%; text-align:center; font-size:5.5vw; font-weight:400; 
+                        color:#333; {title_font_css} {title_shadow_css} }}
+    .hero {{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }}
+        .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; }}
+  .footer {{ position:absolute; bottom:4%; left:8%; right:8%; text-align:center; font-weight:400; 
+                    color:#555; font-size:4.5vw; font-style:italic; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="polaroid">
+      <div class="title">{safe_title}</div>
+      <div class="hero"><img src="{image_url}" alt="cover"/></div>
+      <div class="footer">{footer}</div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    elif template_name == "comic":
+        # Comic book style: bold outlines, action lines, vibrant colors
+        html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
+  html,body {{ margin:0; padding:0; width:100%; height:100%; }}
+    .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
+                     background: radial-gradient(circle at 50% 50%, {accent_color} 0%, #000 100%); 
+                     border: 8px solid #000; }}
+    .title {{ position:absolute; top:8%; left:8%; right:8%; text-align:center; font-size:9vw; font-weight:900; 
+                        color:{accent_color}; text-transform:uppercase; letter-spacing:1px; 
+                        text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; 
+                        {title_font_css} transform:rotate(-2deg); }}
+    .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center;
+                    border: 6px solid #000; background: {overlay_css} #fff; transform:rotate(1deg); 
+                    box-shadow: 4px 4px 0 rgba(0,0,0,0.3); }}
+        .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
+  .footer {{ position:absolute; bottom:6%; left:8%; right:8%; text-align:center; font-weight:900; 
+                    color:#fff; font-size:5vw; text-transform:uppercase; 
+                    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">{safe_title}</div>
+    <div class="hero"><img src="{image_url}" alt="cover"/></div>
+    <div class="footer">{footer}</div>
+  </div>
+</body>
+</html>
+"""
     else:
         # simple modern template
         html = f"""
@@ -198,7 +397,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     return html
 
 
-def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
+def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12, title_color: str = "#111111", footer_style: str = "bar"):
     """Fallback renderer using Pillow. Returns PIL.Image (RGB).
 
     This creates a simple layout approximating the HTML templates.
@@ -535,7 +734,7 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     return base
 
 
-def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
+def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12, title_color: str = "#111111", footer_style: str = "bar"):
     """Try to render using HTML+WeasyPrint; fall back to Pillow.
 
     Returns a PIL Image.
@@ -575,6 +774,8 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             bottom_blend_color=bottom_blend_color,
             top_blend_pct=top_blend_pct,
             bottom_blend_pct=bottom_blend_pct,
+            title_color=title_color,
+            footer_style=footer_style,
         )
         # WeasyPrint can write to PNG directly via write_png
         png_bytes = HTML(string=html).write_png(stylesheets=None, presentational_hints=True)
@@ -612,4 +813,6 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             bottom_blend_color=bottom_blend_color,
             top_blend_pct=top_blend_pct,
             bottom_blend_pct=bottom_blend_pct,
+            title_color=title_color,
+            footer_style=footer_style,
         )
