@@ -415,7 +415,7 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     return base
 
 
-def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True):
+def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_edge_stretch: bool = False, top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12):
     """Try to render using HTML+WeasyPrint; fall back to Pillow.
 
     Returns a PIL Image.
@@ -437,7 +437,23 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
     # Attempt to use weasyprint if installed
     try:
         from weasyprint import HTML
-        html = generate_html_template(title, Path(image_path).as_uri(), template_name, width_px, height_px, footer_text=footer_text, accent_color=(accent_color or "#f1c40f"), title_style=title_style, image_fit=image_fit, cover_full_bleed=cover_full_bleed)
+        html = generate_html_template(
+            title,
+            Path(image_path).as_uri(),
+            template_name,
+            width_px,
+            height_px,
+            footer_text=footer_text,
+            accent_color=(accent_color or "#f1c40f"),
+            title_style=title_style,
+            image_fit=image_fit,
+            cover_full_bleed=cover_full_bleed,
+            title_edge_stretch=title_edge_stretch,
+            top_blend_color=top_blend_color,
+            bottom_blend_color=bottom_blend_color,
+            top_blend_pct=top_blend_pct,
+            bottom_blend_pct=bottom_blend_pct,
+        )
         # WeasyPrint can write to PNG directly via write_png
         png_bytes = HTML(string=html).write_png(stylesheets=None, presentational_hints=True)
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
@@ -453,4 +469,23 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
         ip = image_path
         if footer_text is not None or accent_color is not None:
             ip = (image_path, footer_text, accent_color or "#f1c40f")
-        return render_template_with_pillow(title, ip, template_name, width_px, height_px, footer_text=footer_text, accent_color=accent_color, title_style=title_style, image_fit=image_fit, crop_position=crop_position, crop_offset_x=crop_offset_x, crop_offset_y=crop_offset_y, cover_full_bleed=cover_full_bleed)
+        return render_template_with_pillow(
+            title,
+            ip,
+            template_name,
+            width_px,
+            height_px,
+            footer_text=footer_text,
+            accent_color=accent_color,
+            title_style=title_style,
+            image_fit=image_fit,
+            crop_position=crop_position,
+            crop_offset_x=crop_offset_x,
+            crop_offset_y=crop_offset_y,
+            cover_full_bleed=cover_full_bleed,
+            title_edge_stretch=title_edge_stretch,
+            top_blend_color=top_blend_color,
+            bottom_blend_color=bottom_blend_color,
+            top_blend_pct=top_blend_pct,
+            bottom_blend_pct=bottom_blend_pct,
+        )

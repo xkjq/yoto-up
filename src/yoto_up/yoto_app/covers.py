@@ -599,6 +599,11 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         crop_offset_x=getattr(cover_img, "template_crop_offset_x", 0.0),
                         crop_offset_y=getattr(cover_img, "template_crop_offset_y", 0.0),
                         cover_full_bleed=getattr(cover_img, "template_cover_full_bleed", True),
+                        title_edge_stretch=getattr(cover_img, "template_title_edge_stretch", False),
+                        top_blend_color=getattr(cover_img, "template_top_blend_color", None),
+                        bottom_blend_color=getattr(cover_img, "template_bottom_blend_color", None),
+                        top_blend_pct=getattr(cover_img, "template_top_blend_pct", 0.12),
+                        bottom_blend_pct=getattr(cover_img, "template_bottom_blend_pct", 0.12),
                     )
                     processed = tpl
                 except Exception as tpl_err:
