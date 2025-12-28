@@ -37,7 +37,7 @@ def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont
     return (0, 0)
 
 
-def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f") -> str:
+def generate_html_template(title: str, image_url: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: str = "#f1c40f", title_style: str = "classic", image_fit: str = "scale", cover_full_bleed: bool = True) -> str:
     """Return an HTML string for the requested template.
 
     image_url can be a file:// URL or a remote URL supported by the renderer.
@@ -46,6 +46,21 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     safe_title = (title or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     footer = footer_text if footer_text is not None else Path(image_url).stem
+
+    # Decide object-fit for hero image depending on image_fit / cover_full_bleed
+    if cover_full_bleed:
+        object_fit = "cover"
+    else:
+        object_fit = "contain" if image_fit in ("scale", "resize") else "cover"
+
+    # Title style tweaks
+    title_font_size = "8vw"
+    title_color = "#111"
+    if title_style == "large":
+        title_font_size = "10vw"
+    elif title_style == "small":
+        title_font_size = "6vw"
+
     if template_name == "classic":
         html = f"""
 <!doctype html>
@@ -56,9 +71,9 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   @font-face {{ font-family: 'DejaVuSans'; src: local('DejaVu Sans'); }}
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; background:white; position:relative; }}
-  .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:8vw; color:#111; font-weight:700; }}
+    .title {{ position:absolute; top:6%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; color:{title_color}; font-weight:700; }}
   .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
-  .hero img {{ max-width:100%; max-height:100%; object-fit:contain; border-radius:8px; }}
+    .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:8px; }}
     .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:10%; background:{accent_color}; display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; border-radius:6px; }}
 </style>
 </head>
@@ -83,7 +98,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
   .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; }}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
-  .hero img {{ max-width:100%; max-height:100%; object-fit:cover; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
+    .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
     .footer {{ position:absolute; bottom:4%; left:8%; right:8%; height:8%; display:flex; align-items:center; justify-content:flex-end; font-weight:600; color:#333; }}
 </style>
 </head>
@@ -99,7 +114,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     return html
 
 
-def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856):
+def render_template_with_pillow(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True):
     """Fallback renderer using Pillow. Returns PIL.Image (RGB).
 
     This creates a simple layout approximating the HTML templates.
@@ -107,7 +122,26 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     if not HAS_PIL:
         raise RuntimeError("Pillow is required for fallback rendering")
 
-    # Open and prepare hero image
+    # Determine footer and accent defaults (allow override via kwargs)
+    footer = footer_text
+    accent = accent_color or "#f1c40f"
+
+    # Backwards-compatible tuple hack: callers may pass (image_path, footer, accent)
+    if isinstance(image_path, tuple) and len(image_path) >= 1:
+        try:
+            # Unpack tuple; prefer explicit kwargs if provided
+            ipath = image_path[0]
+            t_footer = image_path[1] if len(image_path) > 1 else None
+            t_accent = image_path[2] if len(image_path) > 2 else None
+            image_path = ipath
+            if footer is None and t_footer is not None:
+                footer = t_footer
+            if (accent_color is None or accent_color == "") and t_accent is not None:
+                accent = t_accent
+        except Exception:
+            # defensive: fall back to first element
+            image_path = image_path[0]
+
     hero = Image.open(image_path).convert("RGBA")
 
     # Create base
@@ -122,14 +156,20 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         font_title = ImageFont.load_default()
         font_footer = ImageFont.load_default()
 
-    # Allow passing footer and accent via image_path tuple hack if caller
-    # passes them (backwards-compatible). Prefer explicit args when
-    # render_template calls this function.
-    footer = None
-    accent = "#f1c40f"
-    if isinstance(image_path, tuple) and len(image_path) == 3:
-        # (image_path, footer_text, accent_color)
-        image_path, footer, accent = image_path
+    # footer and accent were already determined above (either from kwargs
+    # or from a tuple passed as image_path). Ensure we have sensible defaults
+    # for later drawing.
+    if footer is None:
+        footer = Path(image_path).stem
+    if not accent:
+        accent = "#f1c40f"
+
+    # Title styling
+    title_font_size = max(18, width_px // 10)
+    if title_style == "large":
+        title_font_size = max(title_font_size, width_px // 8)
+    elif title_style == "small":
+        title_font_size = max(12, width_px // 12)
 
     if template_name == "classic":
         # Title at top centered
@@ -142,14 +182,98 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         w, h = _measure_text(draw, title, font_title)
         draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=(10,10,10))
 
-        # Paste hero scaled to hero_box
+        # Paste hero according to image_fit / cover_full_bleed
         hw = hero_box[2] - hero_box[0]
         hh = hero_box[3] - hero_box[1]
         hero_thumb = hero.copy()
-        hero_thumb.thumbnail((hw, hh), Image.LANCZOS)
-        paste_x = hero_box[0] + (hw - hero_thumb.width)//2
-        paste_y = hero_box[1] + (hh - hero_thumb.height)//2
-        base.paste(hero_thumb.convert("RGB"), (paste_x, paste_y))
+
+        # Decide behaviour: resize (stretch), scale (contain) or crop (cover)
+        fit = image_fit or "scale"
+        if cover_full_bleed:
+            fit = "crop"
+
+        if fit == "resize":
+            hero_resized = hero_thumb.resize((hw, hh), Image.LANCZOS)
+        elif fit == "scale":
+            # contain
+            hero_resized = hero_thumb.copy()
+            hero_resized.thumbnail((hw, hh), Image.LANCZOS)
+            # create canvas same size and paste centered
+            canvas = Image.new("RGBA", (hw, hh), (255,255,255,0))
+            paste_x = (hw - hero_resized.width)//2
+            paste_y = (hh - hero_resized.height)//2
+            canvas.paste(hero_resized, (paste_x, paste_y))
+            hero_resized = canvas
+        else:
+            # crop / cover behaviour
+            target_ratio = hw / hh if hh > 0 else 1.0
+            img_ratio = hero_thumb.width / hero_thumb.height if hero_thumb.height > 0 else 1.0
+
+            if img_ratio > target_ratio:
+                # Image wider than target: crop width
+                new_height = hero_thumb.height
+                new_width = int(new_height * target_ratio)
+            else:
+                new_width = hero_thumb.width
+                new_height = int(new_width / target_ratio)
+
+            # Determine crop origin using crop_position and offsets
+            # crop_position can be 'center','top','bottom','left','right', etc.
+            cp = (crop_position or "center")
+            if cp == "center":
+                left = (hero_thumb.width - new_width)//2
+                top = (hero_thumb.height - new_height)//2
+            elif cp == "top":
+                left = (hero_thumb.width - new_width)//2
+                top = 0
+            elif cp == "bottom":
+                left = (hero_thumb.width - new_width)//2
+                top = hero_thumb.height - new_height
+            elif cp == "left":
+                left = 0
+                top = (hero_thumb.height - new_height)//2
+            elif cp == "right":
+                left = hero_thumb.width - new_width
+                top = (hero_thumb.height - new_height)//2
+            elif cp == "top_left":
+                left = 0
+                top = 0
+            elif cp == "top_right":
+                left = hero_thumb.width - new_width
+                top = 0
+            elif cp == "bottom_left":
+                left = 0
+                top = hero_thumb.height - new_height
+            elif cp == "bottom_right":
+                left = hero_thumb.width - new_width
+                top = hero_thumb.height - new_height
+            else:
+                left = (hero_thumb.width - new_width)//2
+                top = (hero_thumb.height - new_height)//2
+
+            # Apply offsets (-1..1) relative to available movement
+            max_offset_x = max(0, (hero_thumb.width - new_width)//2)
+            max_offset_y = max(0, (hero_thumb.height - new_height)//2)
+            try:
+                left += int(crop_offset_x * max_offset_x)
+                top += int(crop_offset_y * max_offset_y)
+            except Exception:
+                pass
+
+            left = max(0, min(left, hero_thumb.width - new_width))
+            top = max(0, min(top, hero_thumb.height - new_height))
+
+            cropped = hero_thumb.crop((left, top, left + new_width, top + new_height))
+            hero_resized = cropped.resize((hw, hh), Image.LANCZOS)
+
+        # If hero_resized is a canvas with RGBA, paste it centered into base at hero_box
+        if hero_resized.mode != "RGB":
+            paste_img = hero_resized.convert("RGB")
+        else:
+            paste_img = hero_resized
+
+        # For scale mode where hero_resized is exactly hw x hh we paste at hero_box origin
+        base.paste(paste_img, (hero_box[0], hero_box[1]))
 
         # Footer band
         # Use provided footer or default to filename stem
@@ -172,10 +296,32 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         hw = hero_box[2] - hero_box[0]
         hh = hero_box[3] - hero_box[1]
         hero_thumb = hero.copy()
-        hero_thumb.thumbnail((hw, hh), Image.LANCZOS)
-        paste_x = hero_box[0] + (hw - hero_thumb.width)//2
-        paste_y = hero_box[1] + (hh - hero_thumb.height)//2
-        base.paste(hero_thumb.convert("RGB"), (paste_x, paste_y))
+        fit = image_fit or "scale"
+        if cover_full_bleed:
+            fit = "crop"
+        if fit == "resize":
+            hero_resized = hero_thumb.resize((hw, hh), Image.LANCZOS)
+        elif fit == "scale":
+            hero_resized = hero_thumb.copy()
+            hero_resized.thumbnail((hw, hh), Image.LANCZOS)
+            canvas = Image.new("RGBA", (hw, hh), (255,255,255,0))
+            canvas.paste(hero_resized, ((hw - hero_resized.width)//2, (hh - hero_resized.height)//2))
+            hero_resized = canvas
+        else:
+            # crop
+            target_ratio = hw / hh if hh > 0 else 1.0
+            img_ratio = hero_thumb.width / hero_thumb.height if hero_thumb.height > 0 else 1.0
+            if img_ratio > target_ratio:
+                new_height = hero_thumb.height
+                new_width = int(new_height * target_ratio)
+            else:
+                new_width = hero_thumb.width
+                new_height = int(new_width / target_ratio)
+            left = (hero_thumb.width - new_width)//2
+            top = (hero_thumb.height - new_height)//2
+            cropped = hero_thumb.crop((left, top, left + new_width, top + new_height))
+            hero_resized = cropped.resize((hw, hh), Image.LANCZOS)
+        base.paste(hero_resized.convert("RGB"), (hero_box[0], hero_box[1]))
     footer_text = footer if footer is not None else Path(image_path).stem
     fw, fh = _measure_text(draw, footer_text, font_footer)
     draw.text((int(width_px * 0.92) - fw, int(height_px * 0.92) - fh), footer_text, font=font_footer, fill=(50,50,50))
@@ -183,15 +329,29 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     return base
 
 
-def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None):
+def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True):
     """Try to render using HTML+WeasyPrint; fall back to Pillow.
 
     Returns a PIL Image.
     """
+    # Allow callers to pass a tuple (image_path, footer, accent) and honour it
+    if isinstance(image_path, tuple) and len(image_path) >= 1:
+        try:
+            # unpack but don't override explicit kwargs unless not set
+            ipath, ip_footer, ip_accent = image_path
+            image_path = ipath
+            if footer_text is None:
+                footer_text = ip_footer
+            if accent_color is None:
+                accent_color = ip_accent
+        except Exception:
+            # keep image_path as-is if unpack fails
+            pass
+
     # Attempt to use weasyprint if installed
     try:
         from weasyprint import HTML
-        html = generate_html_template(title, Path(image_path).as_uri(), template_name, width_px, height_px, footer_text=footer_text, accent_color=(accent_color or "#f1c40f"))
+        html = generate_html_template(title, Path(image_path).as_uri(), template_name, width_px, height_px, footer_text=footer_text, accent_color=(accent_color or "#f1c40f"), title_style=title_style, image_fit=image_fit, cover_full_bleed=cover_full_bleed)
         # WeasyPrint can write to PNG directly via write_png
         png_bytes = HTML(string=html).write_png(stylesheets=None, presentational_hints=True)
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
@@ -207,4 +367,4 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
         ip = image_path
         if footer_text is not None or accent_color is not None:
             ip = (image_path, footer_text, accent_color or "#f1c40f")
-        return render_template_with_pillow(title, ip, template_name, width_px, height_px)
+        return render_template_with_pillow(title, ip, template_name, width_px, height_px, footer_text=footer_text, accent_color=accent_color, title_style=title_style, image_fit=image_fit, crop_position=crop_position, crop_offset_x=crop_offset_x, crop_offset_y=crop_offset_y, cover_full_bleed=cover_full_bleed)

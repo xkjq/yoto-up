@@ -577,6 +577,12 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         height_px=target_h,
                         footer_text=getattr(cover_img, "template_footer", None),
                         accent_color=getattr(cover_img, "template_accent_color", None),
+                        title_style=getattr(cover_img, "template_title_style", "classic"),
+                        image_fit=getattr(cover_img, "template_image_fit", ImageFitMode.SCALE).value,
+                        crop_position=getattr(cover_img, "template_crop_position", CropPosition.CENTER).value,
+                        crop_offset_x=getattr(cover_img, "template_crop_offset_x", 0.0),
+                        crop_offset_y=getattr(cover_img, "template_crop_offset_y", 0.0),
+                        cover_full_bleed=getattr(cover_img, "template_cover_full_bleed", True),
                     )
                     processed = tpl
                 except Exception as tpl_err:
@@ -815,9 +821,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         value="classic",
         options=[
             ft.dropdown.Option("classic", "Classic"),
-            ft.dropdown.Option("modern", "Modern"),
-            ft.dropdown.Option("bold", "Bold"),
-            ft.dropdown.Option("outline", "Outline"),
+            ft.dropdown.Option("large", "Large"),
+            ft.dropdown.Option("small", "Small"),
         ],
         width=160,
     )
