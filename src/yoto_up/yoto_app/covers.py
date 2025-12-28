@@ -76,6 +76,11 @@ class CoverImage:
         self.fit_mode: ImageFitMode = ImageFitMode.SCALE
         self.crop_position: CropPosition = CropPosition.CENTER
         self.name = Path(path).name
+        # For custom crop positioning (percentage offsets from center)
+        self.crop_offset_x: float = 0.0  # -1.0 to 1.0
+        self.crop_offset_y: float = 0.0  # -1.0 to 1.0
+        # Text overlays
+        self.text_overlays: List['TextOverlay'] = []
         
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -84,6 +89,9 @@ class CoverImage:
             "fit_mode": self.fit_mode.value,
             "crop_position": self.crop_position.value,
             "name": self.name,
+            "crop_offset_x": self.crop_offset_x,
+            "crop_offset_y": self.crop_offset_y,
+            "text_overlays": [overlay.to_dict() for overlay in self.text_overlays],
         }
     
     @classmethod
@@ -93,7 +101,41 @@ class CoverImage:
         img.fit_mode = ImageFitMode(data.get("fit_mode", ImageFitMode.SCALE.value))
         img.crop_position = CropPosition(data.get("crop_position", CropPosition.CENTER.value))
         img.name = data.get("name", Path(data["path"]).name)
+        img.crop_offset_x = data.get("crop_offset_x", 0.0)
+        img.crop_offset_y = data.get("crop_offset_y", 0.0)
+        img.text_overlays = [TextOverlay.from_dict(t) for t in data.get("text_overlays", [])]
         return img
+
+
+class TextOverlay:
+    """Represents text overlay on a cover image."""
+    
+    def __init__(self, text: str = ""):
+        self.text = text
+        self.x: float = 0.5  # Position as percentage (0-1)
+        self.y: float = 0.5  # Position as percentage (0-1)
+        self.font_size: int = 24
+        self.color: str = "#000000"  # Hex color
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "text": self.text,
+            "x": self.x,
+            "y": self.y,
+            "font_size": self.font_size,
+            "color": self.color,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TextOverlay':
+        """Deserialize from dictionary."""
+        overlay = cls(data.get("text", ""))
+        overlay.x = data.get("x", 0.5)
+        overlay.y = data.get("y", 0.5)
+        overlay.font_size = data.get("font_size", 24)
+        overlay.color = data.get("color", "#000000")
+        return overlay
 
 
 def mm_to_pixels(mm: float, dpi: int = DEFAULT_DPI) -> int:
@@ -130,7 +172,8 @@ def calculate_layout(num_cards: int, paper_size: tuple[float, float],
 
 
 def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosition,
-                 target_width: int, target_height: int) -> Image.Image:
+                 target_width: int, target_height: int, crop_offset_x: float = 0.0,
+                 crop_offset_y: float = 0.0, text_overlays: Optional[List['TextOverlay']] = None) -> Image.Image:
     """
     Process an image according to fit mode and crop position.
     
@@ -140,6 +183,9 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
         crop_position: Where to crop if needed
         target_width: Target width in pixels
         target_height: Target height in pixels
+        crop_offset_x: Custom horizontal crop offset (-1.0 to 1.0)
+        crop_offset_y: Custom vertical crop offset (-1.0 to 1.0)
+        text_overlays: List of text overlays to add
     
     Returns: Processed PIL Image
     """
@@ -151,7 +197,7 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
     
     if fit_mode == ImageFitMode.RESIZE:
         # Simple resize (may distort)
-        return img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        result = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
     
     elif fit_mode == ImageFitMode.SCALE:
         # Scale to fit, maintaining aspect ratio
@@ -161,7 +207,6 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
         paste_x = (target_width - img.width) // 2
         paste_y = (target_height - img.height) // 2
         result.paste(img, (paste_x, paste_y))
-        return result
     
     elif fit_mode == ImageFitMode.CROP:
         # Crop to fit, maintaining aspect ratio
@@ -209,10 +254,57 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
             left = (img.width - new_width) // 2
             top = (img.height - new_height) // 2
         
+        # Apply custom offsets
+        max_offset_x = (img.width - new_width) // 2
+        max_offset_y = (img.height - new_height) // 2
+        left += int(crop_offset_x * max_offset_x)
+        top += int(crop_offset_y * max_offset_y)
+        
+        # Clamp to valid range
+        left = max(0, min(left, img.width - new_width))
+        top = max(0, min(top, img.height - new_height))
+        
         cropped = img.crop((left, top, left + new_width, top + new_height))
-        return cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        result = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    else:
+        result = img
     
-    return img
+    # Add text overlays
+    if text_overlays:
+        from PIL import ImageFont
+        draw = ImageDraw.Draw(result)
+        
+        for overlay in text_overlays:
+            if not overlay.text:
+                continue
+            
+            # Calculate position
+            x = int(overlay.x * target_width)
+            y = int(overlay.y * target_height)
+            
+            # Try to load a font
+            try:
+                # Try to use a TrueType font
+                font = ImageFont.truetype("arial.ttf", overlay.font_size)
+            except Exception:
+                try:
+                    # Try default font with size
+                    font = ImageFont.load_default()
+                except Exception:
+                    # Fallback to basic font
+                    font = None
+            
+            # Convert hex color to RGB
+            color = overlay.color.lstrip('#')
+            rgb_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+            
+            # Draw text
+            if font:
+                draw.text((x, y), overlay.text, fill=rgb_color, font=font)
+            else:
+                draw.text((x, y), overlay.text, fill=rgb_color)
+    
+    return result
 
 
 def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4",
@@ -278,7 +370,10 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                 cover_img.fit_mode,
                 cover_img.crop_position,
                 card_w_px,
-                card_h_px
+                card_h_px,
+                cover_img.crop_offset_x,
+                cover_img.crop_offset_y,
+                cover_img.text_overlays,
             )
             
             # Mirror for underprint
@@ -334,9 +429,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     # State
     cover_images: List[CoverImage] = []
     selected_image_index: Optional[int] = None
+    selected_text_overlay_index: Optional[int] = None
     
     # Preview image storage
     preview_path: Optional[str] = None
+    zoom_level: float = 1.0
     
     # Controls
     paper_size_dropdown = ft.Dropdown(
@@ -370,6 +467,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         label="Margin: {value}mm",
         width=200,
     )
+    
+    # Zoom controls
+    zoom_text = ft.Text(f"Zoom: {int(zoom_level * 100)}%")
+    
+    def update_zoom_text():
+        zoom_text.value = f"Zoom: {int(zoom_level * 100)}%"
+        page.update()
     
     # Image list
     image_list = ft.ListView(expand=True, spacing=5, padding=10)
@@ -411,17 +515,189 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         visible=False,
     )
     
+    # Crop offset sliders
+    crop_offset_x_slider = ft.Slider(
+        min=-1.0,
+        max=1.0,
+        value=0.0,
+        divisions=20,
+        label="H-Offset: {value:.2f}",
+        width=200,
+        visible=False,
+    )
+    
+    crop_offset_y_slider = ft.Slider(
+        min=-1.0,
+        max=1.0,
+        value=0.0,
+        divisions=20,
+        label="V-Offset: {value:.2f}",
+        width=200,
+        visible=False,
+    )
+    
+    # Text overlay controls
+    text_overlay_list = ft.ListView(spacing=5, padding=5, height=150)
+    
+    text_input = ft.TextField(
+        label="Text",
+        width=250,
+    )
+    
+    font_size_slider = ft.Slider(
+        min=8,
+        max=72,
+        value=24,
+        divisions=32,
+        label="Size: {value}",
+        width=200,
+    )
+    
+    text_color_field = ft.TextField(
+        label="Color (hex)",
+        value="#000000",
+        width=120,
+    )
+    
+    text_x_slider = ft.Slider(
+        min=0.0,
+        max=1.0,
+        value=0.5,
+        divisions=20,
+        label="X: {value:.2f}",
+        width=200,
+    )
+    
+    text_y_slider = ft.Slider(
+        min=0.0,
+        max=1.0,
+        value=0.5,
+        divisions=20,
+        label="Y: {value:.2f}",
+        width=200,
+    )
+    
+    text_edit_panel = ft.Container(
+        content=ft.Column([
+            ft.Text("Text Overlays", weight=ft.FontWeight.BOLD),
+            ft.Container(
+                content=text_overlay_list,
+                border=ft.border.all(1, ft.Colors.GREY_300),
+                border_radius=5,
+            ),
+            ft.Divider(),
+            text_input,
+            ft.Row([ft.Text("Font Size:"), font_size_slider]),
+            text_color_field,
+            ft.Row([ft.Text("Position X:"), text_x_slider]),
+            ft.Row([ft.Text("Position Y:"), text_y_slider]),
+            ft.Row([
+                ft.ElevatedButton("Add Text", on_click=lambda e: add_text_overlay()),
+                ft.ElevatedButton("Update", on_click=lambda e: update_text_overlay()),
+                ft.ElevatedButton("Delete", on_click=lambda e: delete_text_overlay()),
+            ]),
+        ], spacing=5),
+        padding=10,
+        visible=False,
+    )
+    
     edit_panel = ft.Container(
         content=ft.Column([
             ft.Text("Edit Selected Image", weight=ft.FontWeight.BOLD),
             fit_mode_dropdown,
             crop_position_dropdown,
+            ft.Row([ft.Text("Horiz. Offset:"), crop_offset_x_slider]),
+            ft.Row([ft.Text("Vert. Offset:"), crop_offset_y_slider]),
+            ft.Divider(),
+            text_edit_panel,
         ], spacing=10),
         padding=10,
         visible=False,
     )
     
     # Functions
+    def update_text_overlay_list():
+        """Update the text overlay list display."""
+        text_overlay_list.controls.clear()
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            for idx, overlay in enumerate(img.text_overlays):
+                is_selected = idx == selected_text_overlay_index
+                
+                def make_on_click(index):
+                    def on_click(e):
+                        select_text_overlay(index)
+                    return on_click
+                
+                row = ft.Container(
+                    content=ft.Text(f"{idx + 1}. {overlay.text[:20]}..." if len(overlay.text) > 20 else f"{idx + 1}. {overlay.text}"),
+                    bgcolor=ft.Colors.BLUE_100 if is_selected else None,
+                    padding=5,
+                    border_radius=3,
+                    on_click=make_on_click(idx),
+                    ink=True,
+                )
+                text_overlay_list.controls.append(row)
+        page.update()
+    
+    def select_text_overlay(index: int):
+        """Select a text overlay for editing."""
+        nonlocal selected_text_overlay_index
+        selected_text_overlay_index = index
+        
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            if 0 <= index < len(img.text_overlays):
+                overlay = img.text_overlays[index]
+                text_input.value = overlay.text
+                font_size_slider.value = overlay.font_size
+                text_color_field.value = overlay.color
+                text_x_slider.value = overlay.x
+                text_y_slider.value = overlay.y
+        
+        update_text_overlay_list()
+    
+    def add_text_overlay():
+        """Add a new text overlay."""
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            overlay = TextOverlay(text_input.value or "New Text")
+            overlay.font_size = int(font_size_slider.value)
+            overlay.color = text_color_field.value
+            overlay.x = text_x_slider.value
+            overlay.y = text_y_slider.value
+            img.text_overlays.append(overlay)
+            update_text_overlay_list()
+            update_preview()
+            show_snack("Text overlay added")
+    
+    def update_text_overlay():
+        """Update the selected text overlay."""
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            if selected_text_overlay_index is not None and 0 <= selected_text_overlay_index < len(img.text_overlays):
+                overlay = img.text_overlays[selected_text_overlay_index]
+                overlay.text = text_input.value
+                overlay.font_size = int(font_size_slider.value)
+                overlay.color = text_color_field.value
+                overlay.x = text_x_slider.value
+                overlay.y = text_y_slider.value
+                update_text_overlay_list()
+                update_preview()
+                show_snack("Text overlay updated")
+    
+    def delete_text_overlay():
+        """Delete the selected text overlay."""
+        nonlocal selected_text_overlay_index
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            if selected_text_overlay_index is not None and 0 <= selected_text_overlay_index < len(img.text_overlays):
+                img.text_overlays.pop(selected_text_overlay_index)
+                selected_text_overlay_index = None
+                update_text_overlay_list()
+                update_preview()
+                show_snack("Text overlay deleted")
+    
     def update_image_list():
         """Update the image list display."""
         image_list.controls.clear()
@@ -463,28 +739,38 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     
     def select_image(index: int):
         """Select an image for editing."""
-        nonlocal selected_image_index
+        nonlocal selected_image_index, selected_text_overlay_index
         selected_image_index = index
+        selected_text_overlay_index = None
         
         if 0 <= index < len(cover_images):
             img = cover_images[index]
             fit_mode_dropdown.value = img.fit_mode.value
             crop_position_dropdown.value = img.crop_position.value
             crop_position_dropdown.visible = (img.fit_mode == ImageFitMode.CROP)
+            crop_offset_x_slider.value = img.crop_offset_x
+            crop_offset_x_slider.visible = (img.fit_mode == ImageFitMode.CROP)
+            crop_offset_y_slider.value = img.crop_offset_y
+            crop_offset_y_slider.visible = (img.fit_mode == ImageFitMode.CROP)
             edit_panel.visible = True
+            text_edit_panel.visible = True
+            update_text_overlay_list()
         else:
             edit_panel.visible = False
+            text_edit_panel.visible = False
         
         update_image_list()
     
     def delete_image(index: int):
         """Delete an image from the list."""
-        nonlocal selected_image_index
+        nonlocal selected_image_index, selected_text_overlay_index
         if 0 <= index < len(cover_images):
             cover_images.pop(index)
             if selected_image_index == index:
                 selected_image_index = None
+                selected_text_overlay_index = None
                 edit_panel.visible = False
+                text_edit_panel.visible = False
             elif selected_image_index is not None and selected_image_index > index:
                 selected_image_index -= 1
             update_image_list()
@@ -495,6 +781,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img = cover_images[selected_image_index]
             img.fit_mode = ImageFitMode(fit_mode_dropdown.value)
             crop_position_dropdown.visible = (img.fit_mode == ImageFitMode.CROP)
+            crop_offset_x_slider.visible = (img.fit_mode == ImageFitMode.CROP)
+            crop_offset_y_slider.visible = (img.fit_mode == ImageFitMode.CROP)
             update_image_list()
             update_preview()
     
@@ -505,8 +793,24 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.crop_position = CropPosition(crop_position_dropdown.value)
             update_preview()
     
+    def on_crop_offset_x_change(e):
+        """Handle crop horizontal offset change."""
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.crop_offset_x = crop_offset_x_slider.value
+            update_preview()
+    
+    def on_crop_offset_y_change(e):
+        """Handle crop vertical offset change."""
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.crop_offset_y = crop_offset_y_slider.value
+            update_preview()
+    
     fit_mode_dropdown.on_change = on_fit_mode_change
     crop_position_dropdown.on_change = on_crop_position_change
+    crop_offset_x_slider.on_change = on_crop_offset_x_change
+    crop_offset_y_slider.on_change = on_crop_offset_y_change
     
     def update_preview():
         """Generate and display preview."""
@@ -615,10 +919,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     
     def on_clear_all(e):
         """Clear all images."""
-        nonlocal selected_image_index, preview_path
+        nonlocal selected_image_index, selected_text_overlay_index, preview_path
         cover_images.clear()
         selected_image_index = None
+        selected_text_overlay_index = None
         edit_panel.visible = False
+        text_edit_panel.visible = False
         preview_image.visible = False
         if preview_path:
             try:
@@ -627,6 +933,34 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 pass
             preview_path = None
         update_image_list()
+    
+    def on_zoom_in(e):
+        """Zoom in on preview."""
+        nonlocal zoom_level
+        zoom_level = min(zoom_level * 1.2, 5.0)
+        preview_image.width = None if zoom_level == 1.0 else None  # Let container handle it
+        preview_image.height = None if zoom_level == 1.0 else None
+        # For now, we just update the text. True zoom would require canvas support
+        update_zoom_text()
+        page.update()
+    
+    def on_zoom_out(e):
+        """Zoom out on preview."""
+        nonlocal zoom_level
+        zoom_level = max(zoom_level / 1.2, 0.2)
+        preview_image.width = None if zoom_level == 1.0 else None
+        preview_image.height = None if zoom_level == 1.0 else None
+        update_zoom_text()
+        page.update()
+    
+    def on_zoom_reset(e):
+        """Reset zoom to 100%."""
+        nonlocal zoom_level
+        zoom_level = 1.0
+        preview_image.width = None
+        preview_image.height = None
+        update_zoom_text()
+        page.update()
     
     # Layout update triggers
     paper_size_dropdown.on_change = lambda e: update_preview()
@@ -676,8 +1010,24 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         content=ft.Column([
             ft.Row([
                 ft.Text("Preview", weight=ft.FontWeight.BOLD, size=16, expand=True),
+                zoom_text,
+                ft.IconButton(
+                    icon=ft.Icons.ZOOM_IN,
+                    tooltip="Zoom In",
+                    on_click=on_zoom_in,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.ZOOM_OUT,
+                    tooltip="Zoom Out",
+                    on_click=on_zoom_out,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.ZOOM_OUT_MAP,
+                    tooltip="Reset Zoom",
+                    on_click=on_zoom_reset,
+                ),
                 ft.ElevatedButton(
-                    text="Generate Preview",
+                    text="Refresh",
                     icon=ft.Icons.REFRESH,
                     on_click=on_generate_preview,
                 ),
