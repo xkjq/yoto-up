@@ -559,6 +559,106 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         width=120,
     )
     
+    text_color_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Color",
+        icon_size=20,
+    )
+    
+    def on_color_picker_click(e):
+        """Open color picker dialog."""
+        def on_color_change(color_value):
+            text_color_field.value = color_value
+            page.update()
+            # Auto-update preview if editing existing overlay
+            if selected_text_overlay_index is not None:
+                update_text_overlay()
+        
+        # Create a simple color picker with common colors
+        color_options = [
+            ("#000000", "Black"),
+            ("#FFFFFF", "White"),
+            ("#FF0000", "Red"),
+            ("#00FF00", "Green"),
+            ("#0000FF", "Blue"),
+            ("#FFFF00", "Yellow"),
+            ("#FF00FF", "Magenta"),
+            ("#00FFFF", "Cyan"),
+            ("#FFA500", "Orange"),
+            ("#800080", "Purple"),
+            ("#FFC0CB", "Pink"),
+            ("#A52A2A", "Brown"),
+            ("#808080", "Gray"),
+        ]
+        
+        color_buttons = []
+        for color_hex, color_name in color_options:
+            btn = ft.ElevatedButton(
+                text=color_name,
+                bgcolor=color_hex,
+                color="#FFFFFF" if color_hex in ["#000000", "#0000FF", "#800080", "#A52A2A"] else "#000000",
+                on_click=lambda e, c=color_hex: (on_color_change(c), page.close(color_dialog)),
+            )
+            color_buttons.append(btn)
+        
+        # Add custom color input
+        custom_color_input = ft.TextField(
+            label="Custom Hex Color",
+            value=text_color_field.value,
+            width=200,
+        )
+        
+        def on_custom_color(e):
+            on_color_change(custom_color_input.value)
+            page.close(color_dialog)
+        
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Text Color"),
+            content=ft.Column([
+                ft.Text("Common Colors:"),
+                ft.Container(
+                    content=ft.Column(color_buttons, spacing=5, scroll=ft.ScrollMode.AUTO),
+                    height=300,
+                ),
+                ft.Divider(),
+                custom_color_input,
+                ft.ElevatedButton("Use Custom Color", on_click=on_custom_color),
+            ], tight=True, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog)),
+            ],
+        )
+        page.open(color_dialog)
+        page.update()
+    
+    text_color_picker_btn.on_click = on_color_picker_click
+    
+    # Auto-update on text field changes
+    def on_text_input_change(e):
+        """Auto-update preview when text changes."""
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    
+    def on_font_size_change(e):
+        """Auto-update preview when font size changes."""
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    
+    def on_text_color_change(e):
+        """Auto-update preview when text color changes."""
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    
+    def on_text_x_change(e):
+        """Auto-update preview when X position changes."""
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    
+    def on_text_y_change(e):
+        """Auto-update preview when Y position changes."""
+        if selected_text_overlay_index is not None:
+            update_text_overlay()
+    
     text_x_slider = ft.Slider(
         min=0.0,
         max=1.0,
@@ -577,6 +677,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         width=200,
     )
     
+    # Set up auto-update handlers after all controls are defined
+    text_input.on_change = on_text_input_change
+    font_size_slider.on_change = on_font_size_change
+    text_color_field.on_change = on_text_color_change
+    text_x_slider.on_change = on_text_x_change
+    text_y_slider.on_change = on_text_y_change
+    
     text_edit_panel = ft.Container(
         content=ft.Column([
             ft.Text("Text Overlays", weight=ft.FontWeight.BOLD),
@@ -588,7 +695,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Divider(),
             text_input,
             ft.Row([ft.Text("Font Size:"), font_size_slider]),
-            text_color_field,
+            ft.Row([text_color_field, text_color_picker_btn]),
             ft.Row([ft.Text("Position X:"), text_x_slider]),
             ft.Row([ft.Text("Position Y:"), text_y_slider]),
             ft.Row([
@@ -937,30 +1044,66 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     def on_zoom_in(e):
         """Zoom in on preview."""
         nonlocal zoom_level
+        old_zoom = zoom_level
         zoom_level = min(zoom_level * 1.2, 5.0)
-        preview_image.width = None if zoom_level == 1.0 else None  # Let container handle it
-        preview_image.height = None if zoom_level == 1.0 else None
-        # For now, we just update the text. True zoom would require canvas support
-        update_zoom_text()
+        if old_zoom != zoom_level:
+            update_zoom_text()
+            # Regenerate preview at new size for better quality
+            regenerate_preview_with_zoom()
         page.update()
     
     def on_zoom_out(e):
         """Zoom out on preview."""
         nonlocal zoom_level
+        old_zoom = zoom_level
         zoom_level = max(zoom_level / 1.2, 0.2)
-        preview_image.width = None if zoom_level == 1.0 else None
-        preview_image.height = None if zoom_level == 1.0 else None
-        update_zoom_text()
+        if old_zoom != zoom_level:
+            update_zoom_text()
+            # Regenerate preview at new size for better quality
+            regenerate_preview_with_zoom()
         page.update()
     
     def on_zoom_reset(e):
         """Reset zoom to 100%."""
         nonlocal zoom_level
+        old_zoom = zoom_level
         zoom_level = 1.0
-        preview_image.width = None
-        preview_image.height = None
-        update_zoom_text()
+        if old_zoom != zoom_level:
+            update_zoom_text()
+            # Regenerate preview at original size
+            regenerate_preview_with_zoom()
         page.update()
+    
+    def regenerate_preview_with_zoom():
+        """Regenerate preview at current zoom level."""
+        if not cover_images or not HAS_PIL:
+            return
+        
+        try:
+            # Generate layout at appropriate resolution for zoom level
+            dpi = int(150 * zoom_level)  # Adjust DPI based on zoom
+            dpi = max(50, min(dpi, 300))  # Clamp between 50 and 300
+            
+            layout_img = generate_print_layout(
+                cover_images,
+                paper_size=paper_size_dropdown.value,
+                print_mode=PrintMode(print_mode_dropdown.value),
+                show_cut_lines=cut_lines_checkbox.value,
+                dpi=dpi,
+                margin_mm=margin_slider.value,
+            )
+            
+            # Save to temp file
+            nonlocal preview_path
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                preview_path = tmp.name
+                layout_img.save(preview_path, "PNG")
+            
+            preview_image.src = preview_path
+            preview_image.visible = True
+            
+        except Exception as e:
+            logger.error(f"Error regenerating preview with zoom: {e}")
     
     # Layout update triggers
     paper_size_dropdown.on_change = lambda e: update_preview()
@@ -1038,7 +1181,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 ),
             ]),
             ft.Container(
-                content=preview_image,
+                content=ft.InteractiveViewer(
+                    content=preview_image,
+                    min_scale=0.2,
+                    max_scale=5.0,
+                    boundary_margin=ft.Margin(20, 20, 20, 20),
+                ),
                 expand=True,
                 border=ft.border.all(1, ft.Colors.GREY_300),
                 border_radius=5,
