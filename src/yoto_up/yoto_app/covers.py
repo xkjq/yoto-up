@@ -377,12 +377,24 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
                 # Skip empty measurement
                 continue
 
+            # Create text image and draw text offset by bbox origin so descenders
+            # and glyph parts outside the nominal ascent are included.
             text_img = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
             text_draw = ImageDraw.Draw(text_img)
+            # If bbox had non-zero origin (it can, depending on font metrics),
+            # draw at negative offset so the glyphs fit inside the image.
+            try:
+                if font is not None:
+                    draw_offset = (-bbox[0], -bbox[1])
+                else:
+                    draw_offset = (0, 0)
+            except Exception:
+                draw_offset = (0, 0)
+
             if font:
-                text_draw.text((0, 0), overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255), font=font)
+                text_draw.text(draw_offset, overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255), font=font)
             else:
-                text_draw.text((0, 0), overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255))
+                text_draw.text(draw_offset, overlay.text, fill=(rgb_color[0], rgb_color[1], rgb_color[2], 255))
 
             # Rotate image if needed
             rotation = getattr(overlay, "rotation", 0.0) or 0.0
