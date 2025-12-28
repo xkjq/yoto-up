@@ -191,11 +191,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; position:relative; 
                      background: {overlay_css} url('{image_url}'); background-size: cover; background-position: center; color: #eaf6ff; }}
-    .title {{ position:absolute; top:4%; left:6%; right:6%; text-align:center; font-size:10vw; font-weight:900; 
-                        text-transform:uppercase; letter-spacing:2px; color:#eaf6ff; text-shadow: 0 6px 18px rgba(6,40,80,0.45); {title_font_css} {title_shadow_css} }}
+    .title {{ position:absolute; top:4%; left:6%; right:6%; text-align:center; font-size:{title_font_size}; font-weight:{title_weight}; 
+                        text-transform:{title_transform}; letter-spacing:2px; color:{title_color}; text-shadow: 0 6px 18px rgba(6,40,80,0.45); {title_extra_css} {title_font_css} {title_shadow_css} }}
     .hero {{ position:absolute; top:18%; left:6%; right:6%; bottom:18%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; border-radius:10px; box-shadow: 0 18px 48px rgba(6,40,80,0.28); opacity:0.98; }}
-  .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:8%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#08384a; background: rgba(255,255,255,0.6); border-radius:6px; }}
+  .footer {{ position:absolute; bottom:4%; left:6%; right:6%; height:8%; display:flex; align-items:center; justify-content:center; font-weight:700; color:#08384a; background: rgba(255,255,255,0.6); border-radius:6px; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -220,14 +220,14 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', serif; position:relative; 
                      background: linear-gradient(135deg, #f5e6d3 0%, #e8d5b7 100%); 
                      border: 12px solid #8b7355; }}
-    .title {{ position:absolute; top:8%; left:10%; right:10%; text-align:center; font-size:7vw; font-weight:700; 
-                        color:#3a2f23; text-transform:capitalize; letter-spacing:1px; {title_font_css} {title_shadow_css} 
+    .title {{ position:absolute; top:8%; left:10%; right:10%; text-align:center; font-size:{title_font_size}; font-weight:{title_weight}; 
+                        color:{title_color}; text-transform:{title_transform}; letter-spacing:1px; {title_extra_css} {title_font_css} {title_shadow_css} 
                         border-top: 2px solid #8b7355; border-bottom: 2px solid #8b7355; padding:8px 0; }}
     .hero {{ position:absolute; top:25%; left:10%; right:10%; bottom:25%; display:flex; align-items:center; justify-content:center;
                     border: 4px double #8b7355; background: {overlay_css} #fff; }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
   .footer {{ position:absolute; bottom:6%; left:10%; right:10%; text-align:center; font-weight:600; 
-                    color:#3a2f23; font-size:4.5vw; font-style:italic; }}
+                    color:#3a2f23; font-size:4.5vw; font-style:italic; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -251,11 +251,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
                      background: {overlay_css} url('{image_url}'); background-size: cover; background-position: center; }}
-    .title {{ position:absolute; bottom:12%; left:6%; right:6%; text-align:left; font-size:7vw; font-weight:300; 
-                        color:#ffffff; letter-spacing:2px; {title_font_css} {title_shadow_css} 
+    .title {{ position:absolute; bottom:12%; left:6%; right:6%; text-align:left; font-size:{title_font_size}; font-weight:{title_weight}; 
+                        color:{title_color}; letter-spacing:2px; text-transform:{title_transform}; {title_extra_css} {title_font_css} {title_shadow_css} 
                         background: linear-gradient(90deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
                         padding: 12px 16px; }}
-  .footer {{ position:absolute; bottom:6%; left:6%; right:6%; height:2px; background:{accent_color}; }}
+  .footer {{ position:absolute; bottom:6%; left:6%; right:6%; height:2px; background:{accent_color}; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -280,14 +280,14 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
                      background: #000; }}
     .title-bar {{ position:absolute; top:0; left:0; right:0; height:18%; background:{accent_color}; 
                             display:flex; align-items:center; justify-content:center; clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%); }}
-    .title {{ font-size:8vw; font-weight:900; color:#000; text-transform:uppercase; letter-spacing:1px; 
-                    {title_font_css} {title_shadow_css} }}
+    .title {{ font-size:{title_font_size}; font-weight:{title_weight}; color:{title_color}; text-transform:{title_transform}; letter-spacing:1px; 
+                    {title_extra_css} {title_font_css} {title_shadow_css} }}
     .hero {{ position:absolute; top:20%; left:4%; right:4%; bottom:16%; display:flex; align-items:center; justify-content:center;
                     background: {overlay_css} #fff; border: 4px solid {accent_color}; }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
   .footer {{ position:absolute; bottom:0; left:0; right:0; height:14%; background:{accent_color}; 
                     display:flex; align-items:center; justify-content:center; font-weight:700; color:#000; 
-                    font-size:5vw; clip-path: polygon(0 20%, 100% 0, 100% 100%, 0 100%); }}
+                    font-size:5vw; clip-path: polygon(0 20%, 100% 0, 100% 100%, 0 100%); {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -313,12 +313,12 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
                      background: {overlay_css} #e8e8e8; padding:6%; }}
     .polaroid {{ width:100%; height:100%; background:#fff; box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
                         position:relative; padding:8% 8% 18% 8%; box-sizing:border-box; }}
-    .title {{ position:absolute; top:2%; left:8%; right:8%; text-align:center; font-size:5.5vw; font-weight:400; 
-                        color:#333; {title_font_css} {title_shadow_css} }}
+    .title {{ position:absolute; top:2%; left:8%; right:8%; text-align:center; font-size:{title_font_size}; font-weight:{title_weight}; 
+                        color:{title_color}; text-transform:{title_transform}; {title_extra_css} {title_font_css} {title_shadow_css} }}
     .hero {{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; }}
   .footer {{ position:absolute; bottom:4%; left:8%; right:8%; text-align:center; font-weight:400; 
-                    color:#555; font-size:4.5vw; font-style:italic; }}
+                    color:#555; font-size:4.5vw; font-style:italic; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -345,17 +345,17 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     .card {{ box-sizing:border-box; width:100%; height:100%; font-family: 'DejaVuSans', sans-serif; position:relative; 
                      background: radial-gradient(circle at 50% 50%, {accent_color} 0%, #000 100%); 
                      border: 8px solid #000; }}
-    .title {{ position:absolute; top:8%; left:8%; right:8%; text-align:center; font-size:9vw; font-weight:900; 
-                        color:{accent_color}; text-transform:uppercase; letter-spacing:1px; 
+    .title {{ position:absolute; top:8%; left:8%; right:8%; text-align:center; font-size:{title_font_size}; font-weight:{title_weight}; 
+                        color:{title_color}; text-transform:{title_transform}; letter-spacing:1px; 
                         text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; 
-                        {title_font_css} transform:rotate(-2deg); }}
+                        {title_extra_css} {title_font_css} transform:rotate(-2deg); }}
     .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center;
                     border: 6px solid #000; background: {overlay_css} #fff; transform:rotate(1deg); 
                     box-shadow: 4px 4px 0 rgba(0,0,0,0.3); }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
   .footer {{ position:absolute; bottom:6%; left:8%; right:8%; text-align:center; font-weight:900; 
                     color:#fff; font-size:5vw; text-transform:uppercase; 
-                    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000; }}
+                    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -377,11 +377,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 <style>
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
-      .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:6.5vw; color:#003366; font-weight:700; {title_font_css} {title_shadow_css} }}
+      .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:{title_font_size}; color:{title_color}; font-weight:{title_weight}; text-transform:{title_transform}; {title_extra_css} {title_font_css} {title_shadow_css} }}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
         .overlay {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; border-radius:6px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
-    .footer {{ position:absolute; bottom:4%; left:8%; right:8%; height:8%; display:flex; align-items:center; justify-content:flex-end; font-weight:600; color:#333; }}
+    .footer {{ position:absolute; bottom:4%; left:8%; right:8%; height:8%; display:flex; align-items:center; justify-content:flex-end; font-weight:600; color:#333; {footer_display_css} }}
 </style>
 </head>
 <body>
@@ -465,7 +465,7 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         except Exception:
             return None
 
-    font_title = _choose_title_font(title_font, max(18, width_px // 10))
+    # Font initialization - title font will be set after calculating size based on style
     try:
         font_footer = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", max(12, width_px // 20))
     except Exception:
@@ -479,12 +479,31 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     if not accent:
         accent = "#f1c40f"
 
-    # Title styling
-    title_font_size = max(18, width_px // 10)
+    # Title styling - calculate size based on title_style
+    base_title_size = max(18, width_px // 10)
+    title_font_size = base_title_size
+    
     if title_style == "large":
-        title_font_size = max(title_font_size, width_px // 8)
+        title_font_size = max(base_title_size, int(width_px * 0.1))  # 10% of width
     elif title_style == "small":
-        title_font_size = max(12, width_px // 12)
+        title_font_size = max(12, int(width_px * 0.06))  # 6% of width
+    elif title_style == "uppercase":
+        title_font_size = max(15, int(width_px * 0.07))  # 7% of width
+    elif title_style == "italic":
+        title_font_size = max(18, int(width_px * 0.085))  # 8.5% of width
+    elif title_style == "bold":
+        title_font_size = max(20, int(width_px * 0.09))  # 9% of width
+    elif title_style == "light":
+        title_font_size = max(18, int(width_px * 0.08))  # 8% of width
+    elif title_style == "outline":
+        title_font_size = max(20, int(width_px * 0.09))  # 9% of width
+    elif title_style == "condensed":
+        title_font_size = max(15, int(width_px * 0.07))  # 7% of width
+    else:  # classic
+        title_font_size = max(18, int(width_px * 0.08))  # 8% of width
+    
+    # Recreate title font with the calculated size
+    font_title = _choose_title_font(title_font, title_font_size)
 
     if template_name == "classic":
         # Title at top centered
@@ -492,6 +511,16 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
         hero_box = (int(width_px * 0.06), int(height_px * 0.15), int(width_px * 0.94), int(height_px * 0.78))
         footer_box_h = int(height_px * 0.08)
         footer_box = (int(width_px * 0.06), int(height_px * 0.78) + int(height_px * 0.02), int(width_px * 0.94), int(height_px * 0.78) + footer_box_h + int(height_px * 0.02))
+
+        # Parse title_color to RGB
+        def _hex_to_rgb(hx: str, fallback=(10, 10, 10)):
+            try:
+                a = hx.lstrip('#')
+                return (int(a[0:2], 16), int(a[2:4], 16), int(a[4:6], 16))
+            except Exception:
+                return fallback
+        
+        title_rgb = _hex_to_rgb(title_color, (10, 10, 10))
 
         # Draw title; support optional text shadow and title font selection
         w, h = _measure_text(draw, title, font_title)
@@ -523,9 +552,9 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
                 base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
                 # Recreate draw after compositing so further drawing targets the updated image
                 draw = ImageDraw.Draw(base)
-            draw.text((x, y), title, font=font_title, fill=(10, 10, 10))
+            draw.text((x, y), title, font=font_title, fill=title_rgb)
         except Exception:
-            draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=(10,10,10))
+            draw.text(((width_px - w) / 2, title_y), title, font=font_title, fill=title_rgb)
 
         # Decide where the hero image should be pasted. If cover_full_bleed is
         # requested, use the entire card as the target; otherwise use the
@@ -682,6 +711,17 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
     else:
         # modern template
         title_y = int(height_px * 0.06)
+        
+        # Parse title_color to RGB
+        def _hex_to_rgb_modern(hx: str, fallback=(0, 51, 102)):
+            try:
+                a = hx.lstrip('#')
+                return (int(a[0:2], 16), int(a[2:4], 16), int(a[4:6], 16))
+            except Exception:
+                return fallback
+        
+        title_rgb = _hex_to_rgb_modern(title_color, (0, 51, 102))
+        
         # Draw title: support optional text-shadow and title font
         try:
             w, h = _measure_text(draw, title, font_title)
@@ -694,9 +734,9 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
                 od.text((x + shadow_off[0], y + shadow_off[1]), title, font=font_title, fill=(0, 0, 0, 160))
                 base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
                 draw = ImageDraw.Draw(base)
-            draw.text((x, y), title, font=font_title, fill=(0,51,102))
+            draw.text((x, y), title, font=font_title, fill=title_rgb)
         except Exception:
-            draw.text((int(width_px * 0.08), title_y), title, font=font_title, fill=(0,51,102))
+            draw.text((int(width_px * 0.08), title_y), title, font=font_title, fill=title_rgb)
         hero_box = (int(width_px * 0.08), int(height_px * 0.24), int(width_px * 0.92), int(height_px * 0.80))
         hw = hero_box[2] - hero_box[0]
         hh = hero_box[3] - hero_box[1]
