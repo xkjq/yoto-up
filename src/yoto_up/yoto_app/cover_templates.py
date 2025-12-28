@@ -5,14 +5,23 @@ Provides:
 - generate_html_template(title, image_url, template_name, width_px, height_px) -> str
 - render_template(title, image_path, template_name, width_px, height_px) -> PIL.Image
 
-The renderer will try to use WeasyPrint (HTML/CSS -> PNG) when available, otherwise falls back to a simple Pillow-based renderer that approximates layouts.
+The renderer will try to use Flet's WebRenderer (HTML/CSS -> PNG) when available,
+then html2image if available, and finally falls back to a Pillow-based renderer
+that approximates layouts.
 """
 from typing import Optional
 import io
 import re
+import base64
 from pathlib import Path
 
 from loguru import logger
+
+# Last used renderer name for UI/status reporting. One of 'flet', 'html2image', or 'pillow'.
+LAST_RENDERER: Optional[str] = None
+_FLET_WEB_RENDERER_TRIED: bool = False
+_FLET_WEB_RENDERER_AVAILABLE: Optional[bool] = None
+_FLET_WEB_RENDERER_ERROR: Optional[str] = None
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -20,6 +29,38 @@ try:
     from PIL import ImageOps
 except Exception:
     HAS_PIL = False
+
+
+def _image_to_data_url(image_path: str) -> str:
+    """Convert an image file to a base64 data URL for embedding in HTML.
+    
+    This is useful for html2image which can't access file:// URLs due to browser security.
+    """
+    try:
+        path = Path(image_path)
+        # Read the image file
+        with open(path, 'rb') as f:
+            image_data = f.read()
+        
+        # Determine MIME type from extension
+        ext = path.suffix.lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.bmp': 'image/bmp',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_types.get(ext, 'image/png')
+        
+        # Encode to base64
+        b64_data = base64.b64encode(image_data).decode('utf-8')
+        return f"data:{mime_type};base64,{b64_data}"
+    except Exception as e:
+        logger.debug(f"Failed to convert image to data URL: {e}")
+        # Fall back to file:// URL
+        return Path(image_path).as_uri()
 
 
 def _measure_text(draw: ImageDraw.ImageDraw, text: str, font: Optional[ImageFont.FreeTypeFont]):
@@ -837,7 +878,7 @@ def render_template_with_pillow(title: str, image_path: str, template_name: str 
 
 
 def render_template(title: str, image_path: str, template_name: str = "classic", width_px: int = 540, height_px: int = 856, footer_text: Optional[str] = None, accent_color: Optional[str] = None, title_style: str = "classic", image_fit: str = "scale", crop_position: str = "center", crop_offset_x: float = 0.0, crop_offset_y: float = 0.0, cover_full_bleed: bool = True, title_shadow: bool = False, title_font: Optional[str] = None, title_shadow_color: str = "#008000", top_blend_color: Optional[str] = None, bottom_blend_color: Optional[str] = None, top_blend_pct: float = 0.12, bottom_blend_pct: float = 0.12, title_color: str = "#111111", footer_style: str = "bar", title_font_size_px: Optional[int] = None, footer_font_size_px: Optional[int] = None):
-    """Try to render using HTML+WeasyPrint; fall back to Pillow.
+    """Try to render using Flet WebRenderer or html2image; fall back to Pillow.
 
     Returns a PIL Image.
     """
@@ -855,58 +896,98 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             # keep image_path as-is if unpack fails
             pass
 
-    # First, attempt to render using a headless Chromium (Playwright) if
-    # available — this avoids WeasyPrint entirely and produces high-fidelity
-    # PNGs from HTML/CSS.
-    try:
-        from playwright.sync_api import sync_playwright
-        try:
-            html = generate_html_template(
-                title,
-                Path(image_path).as_uri(),
-                template_name,
-                width_px,
-                height_px,
-                footer_text=footer_text,
-                accent_color=(accent_color or "#f1c40f"),
-                title_style=title_style,
-                image_fit=image_fit,
-                cover_full_bleed=cover_full_bleed,
-                title_shadow=title_shadow,
-                title_font=title_font,
-                title_shadow_color=title_shadow_color,
-                top_blend_color=top_blend_color,
-                bottom_blend_color=bottom_blend_color,
-                top_blend_pct=top_blend_pct,
-                bottom_blend_pct=bottom_blend_pct,
-                title_color=title_color,
-                footer_style=footer_style,
-                title_font_size_px=title_font_size_px,
-                footer_font_size_px=footer_font_size_px,
-            )
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=True)
-                page = browser.new_page(viewport={"width": width_px, "height": height_px})
-                page.set_content(html, wait_until="networkidle")
-                png_bytes = page.screenshot(full_page=True)
-                browser.close()
-            img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-            return img
-        except Exception as e:
-            logger.debug(f"Chromium rendering failed: {e}")
-    except Exception:
-        # Playwright not available; continue to WeasyPrint path
-        pass
+    # Allow updating the module-level renderer indicator
+    global LAST_RENDERER
 
-    # Attempt to use weasyprint if installed. The old write_png API has been
-    # removed — use write_pdf and try to rasterize the resulting PDF. If
-    # rasterization isn't available in this environment we'll fall back to
-    # the Pillow renderer.
+    # First, generate the HTML and attempt to render it using an embedded
+    # web renderer for preview (prefer Flet's WebRenderer when available).
+    html = generate_html_template(
+        title,
+        Path(image_path).as_uri(),
+        template_name,
+        width_px,
+        height_px,
+        footer_text=footer_text,
+        accent_color=(accent_color or "#f1c40f"),
+        title_style=title_style,
+        image_fit=image_fit,
+        cover_full_bleed=cover_full_bleed,
+        title_shadow=title_shadow,
+        title_font=title_font,
+        title_shadow_color=title_shadow_color,
+        top_blend_color=top_blend_color,
+        bottom_blend_color=bottom_blend_color,
+        top_blend_pct=top_blend_pct,
+        bottom_blend_pct=bottom_blend_pct,
+        title_color=title_color,
+        footer_style=footer_style,
+        title_font_size_px=title_font_size_px,
+        footer_font_size_px=footer_font_size_px,
+    )
+    # Try Flet's WebRenderer first (if present)
     try:
-        from weasyprint import HTML
-        html = generate_html_template(
+        import flet
+        from flet import WebRenderer
+        
+        logger.debug("Attempting to use Flet WebRenderer")
+        renderer = WebRenderer()
+        
+        # Try common method names for rendering
+        for method_name in ("render_html", "screenshot_html", "render"):
+            func = getattr(renderer, method_name, None)
+            if not callable(func):
+                continue
+            
+            try:
+                logger.debug(f"Trying Flet method: {method_name}")
+                # Try with width/height parameters
+                try:
+                    result = func(html, width=width_px, height=height_px)
+                except TypeError:
+                    # Try without parameters
+                    result = func(html)
+                
+                if result:
+                    # Handle different return types
+                    if isinstance(result, (bytes, bytearray)):
+                        img = Image.open(io.BytesIO(result)).convert("RGB")
+                        LAST_RENDERER = 'flet'
+                        logger.debug("Successfully rendered with Flet WebRenderer")
+                        return img
+                    elif isinstance(result, str) and Path(result).exists():
+                        img = Image.open(Path(result)).convert("RGB")
+                        LAST_RENDERER = 'flet'
+                        logger.debug("Successfully rendered with Flet WebRenderer (file path)")
+                        return img
+                    elif hasattr(result, "read"):
+                        buf = result.read()
+                        img = Image.open(io.BytesIO(buf)).convert("RGB")
+                        LAST_RENDERER = 'flet'
+                        logger.debug("Successfully rendered with Flet WebRenderer (file-like)")
+                        return img
+                    elif hasattr(result, "convert"):
+                        LAST_RENDERER = 'flet'
+                        logger.debug("Successfully rendered with Flet WebRenderer (PIL Image)")
+                        return result.convert("RGB")
+            except Exception as e_method:
+                logger.debug(f"Flet method {method_name} failed: {e_method}")
+                continue
+    except ImportError:
+        logger.debug("Flet not available or WebRenderer not found")
+    except Exception as e_flet:
+        logger.debug(f"Flet WebRenderer setup failed: {e_flet}")
+
+    # If Flet didn't produce an image, try html2image as a secondary HTML
+    # -> PNG renderer. This covers environments where flet isn't usable.
+    try:
+        from html2image import Html2Image
+        
+        # html2image can't access file:// URLs due to browser security restrictions.
+        # We need to regenerate the HTML with base64-encoded data URLs for images.
+        logger.debug("Attempting html2image render with base64 data URL")
+        html_for_h2i = generate_html_template(
             title,
-            Path(image_path).as_uri(),
+            _image_to_data_url(image_path),  # Convert to base64 data URL
             template_name,
             width_px,
             height_px,
@@ -927,149 +1008,47 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             title_font_size_px=title_font_size_px,
             footer_font_size_px=footer_font_size_px,
         )
-
-        # Prefer write_pdf on HTML or on the rendered Document
-        doc = HTML(string=html)
-        pdf_bytes = None
+        
+        hti = Html2Image()
+        tmpfile_name = "cover.png"
         try:
-            if hasattr(doc, "write_pdf"):
-                pdf_bytes = doc.write_pdf(stylesheets=None, presentational_hints=True)
+            # html2image screenshot method: html_str, css_str, save_as (filename only), size (tuple)
+            hti.screenshot(
+                html_str=html_for_h2i,
+                save_as=tmpfile_name,
+                size=(width_px, height_px)
+            )
+            # Html2Image saves to its output_path (default is current dir or can be set)
+            # We need to find the file it created
+            tmpf = Path(hti.output_path) / tmpfile_name
+            if tmpf.exists():
+                img = Image.open(tmpf).convert("RGB")
+                LAST_RENDERER = 'html2image'
+                logger.debug(f"Successfully rendered with html2image: {tmpf}")
+                # Clean up the generated file
+                try:
+                    tmpf.unlink()
+                except Exception:
+                    pass
+                return img
             else:
-                rendered = doc.render()
-                if hasattr(rendered, "write_pdf"):
-                    pdf_bytes = rendered.write_pdf(stylesheets=None, presentational_hints=True)
-                else:
-                    try:
-                        pdf_bytes = rendered.write_pdf()
-                    except Exception:
-                        raise RuntimeError("WeasyPrint does not provide a write_pdf API on HTML or rendered Document")
-        except Exception:
-            # propagate to outer except so we fall back cleanly
-            raise
+                logger.debug(f"html2image did not create expected file at {tmpf}")
+        except Exception as e_inner:
+            logger.debug(f"html2image rendering failed: {e_inner}")
+    except ImportError:
+        logger.debug("html2image not available")
+    except Exception as e_h2i:
+        logger.debug(f"html2image setup failed: {e_h2i}")
 
-        if not pdf_bytes:
-            raise RuntimeError("WeasyPrint produced no PDF data")
-
-        # Rasterize the produced PDF using a robust path:
-        # 1) PyMuPDF (fitz) if installed — fast and self-contained.
-        # 2) pdf2image (poppler) if available.
-        # 3) As a last resort, attempt Pillow's PDF handler.
-        try:
-            # Try PyMuPDF first
-            try:
-                import fitz
-                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                page = doc.load_page(0)
-                rect = page.rect
-                # Compute scaling matrix to target pixel dimensions
-                zoom_x = (width_px / rect.width) if rect.width else 1.0
-                zoom_y = (height_px / rect.height) if rect.height else 1.0
-                mat = fitz.Matrix(zoom_x, zoom_y)
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                png_bytes = pix.tobytes("png")
-                img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                return img
-            except Exception as e_fit:
-                logger.debug(f"PyMuPDF rasterization failed: {e_fit}")
-
-            # Next try pdf2image (requires poppler)
-            try:
-                from pdf2image import convert_from_bytes
-                pages = convert_from_bytes(pdf_bytes, size=(width_px, height_px))
-                if pages:
-                    img = pages[0].convert("RGB")
-                    return img
-            except Exception as e_pdf2:
-                logger.debug(f"pdf2image rasterization failed: {e_pdf2}")
-
-            # Finally, attempt Pillow's PDF loader as a last resort
-            try:
-                img = Image.open(io.BytesIO(pdf_bytes))
-                if getattr(img, "n_frames", 1) > 1:
-                    try:
-                        img.seek(0)
-                    except Exception:
-                        pass
-                img = img.convert("RGB")
-                return img
-            except Exception as e_pil:
-                logger.debug(f"Pillow PDF rasterization failed: {e_pil}")
-
-            # If none of the rasterizers worked, fall back to the HTML->Pillow
-            # renderer to ensure we always return a valid Image.
-            logger.error("PDF rasterization via PyMuPDF/pdf2image/Pillow failed; falling back to internal Pillow renderer")
-            ip = image_path
-            if footer_text is not None or accent_color is not None:
-                ip = (image_path, footer_text, accent_color or "#f1c40f")
-            return render_template_with_pillow(
-                title,
-                ip,
-                template_name,
-                width_px,
-                height_px,
-                footer_text=footer_text,
-                accent_color=accent_color,
-                title_style=title_style,
-                image_fit=image_fit,
-                crop_position=crop_position,
-                crop_offset_x=crop_offset_x,
-                crop_offset_y=crop_offset_y,
-                cover_full_bleed=cover_full_bleed,
-                title_shadow=title_shadow,
-                title_font=title_font,
-                title_shadow_color=title_shadow_color,
-                top_blend_color=top_blend_color,
-                bottom_blend_color=bottom_blend_color,
-                top_blend_pct=top_blend_pct,
-                bottom_blend_pct=bottom_blend_pct,
-                title_color=title_color,
-                footer_style=footer_style,
-                title_font_size_px=title_font_size_px,
-                footer_font_size_px=footer_font_size_px,
-            )
-        except Exception:
-            # Ensure we don't propagate unexpected exceptions from the
-            # rasterization attempts; fall back to Pillow renderer.
-            ip = image_path
-            if footer_text is not None or accent_color is not None:
-                ip = (image_path, footer_text, accent_color or "#f1c40f")
-            return render_template_with_pillow(
-                title,
-                ip,
-                template_name,
-                width_px,
-                height_px,
-                footer_text=footer_text,
-                accent_color=accent_color,
-                title_style=title_style,
-                image_fit=image_fit,
-                crop_position=crop_position,
-                crop_offset_x=crop_offset_x,
-                crop_offset_y=crop_offset_y,
-                cover_full_bleed=cover_full_bleed,
-                title_shadow=title_shadow,
-                title_font=title_font,
-                title_shadow_color=title_shadow_color,
-                top_blend_color=top_blend_color,
-                bottom_blend_color=bottom_blend_color,
-                top_blend_pct=top_blend_pct,
-                bottom_blend_pct=bottom_blend_pct,
-                title_color=title_color,
-                footer_style=footer_style,
-            )
-    except Exception as e:
-        logger.debug(f"Weasyprint rendering failed: {e}")
-        # Fall back
-        if not HAS_PIL:
-            raise RuntimeError("Neither WeasyPrint nor Pillow are available for template rendering")
-        # Fall back: render_template_with_pillow accepts only positional
-        # image_path currently; pass a tuple carrying footer/accent if
-        # provided so the small fallback can access them without changing
-        # too many call sites.
-        ip = image_path
-        if footer_text is not None or accent_color is not None:
-            ip = (image_path, footer_text, accent_color or "#f1c40f")
-        return render_template_with_pillow(
+    # If Flet's WebRenderer didn't produce an image, fall back to the
+    # internal Pillow renderer to guarantee an image is returned.
+    if not HAS_PIL:
+        raise RuntimeError("Pillow is required for template rendering")
+    ip = image_path
+    if footer_text is not None or accent_color is not None:
+        ip = (image_path, footer_text, accent_color or "#f1c40f")
+    try:
+        img = render_template_with_pillow(
             title,
             ip,
             template_name,
@@ -1095,3 +1074,8 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             title_font_size_px=title_font_size_px,
             footer_font_size_px=footer_font_size_px,
         )
+        LAST_RENDERER = 'pillow'
+        return img
+    except Exception as e_pf:
+        logger.error("Pillow fallback failed in render_template: " + str(e_pf))
+        raise

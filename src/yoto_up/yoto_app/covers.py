@@ -18,7 +18,7 @@ from enum import Enum
 
 import flet as ft
 from loguru import logger
-from yoto_up.yoto_app.cover_templates import render_template
+from yoto_up.yoto_app import cover_templates
 
 try:
     from PIL import Image, ImageDraw
@@ -613,7 +613,7 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
             # cover and use it; otherwise process the raw image as before.
             if getattr(cover_img, "template_enabled", False):
                 try:
-                    tpl = render_template(
+                    tpl = cover_templates.render_template(
                         (getattr(cover_img, "template_title", None) or cover_img.name),
                         cover_img.path,
                         getattr(cover_img, "template_name", "classic"),
@@ -640,6 +640,76 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         bottom_blend_pct=getattr(cover_img, "template_bottom_blend_pct", 0.12),
                     )
                     processed = tpl
+                    # If render_template returned something other than a PIL Image,
+                    # try to coerce common types into an Image. If coercion fails
+                    # fall back to the Pillow renderer and log the last used renderer.
+                    try:
+                        from PIL import Image as PILImage
+                    except Exception:
+                        PILImage = None
+
+                    coerced = False
+                    if PILImage is not None and not isinstance(processed, PILImage.Image):
+                        try:
+                            if isinstance(processed, (bytes, bytearray)):
+                                processed = Image.open(io.BytesIO(processed)).convert("RGB")
+                                coerced = True
+                            elif isinstance(processed, str):
+                                try:
+                                    processed = Image.open(Path(processed)).convert("RGB")
+                                    coerced = True
+                                except Exception:
+                                    coerced = False
+                            elif hasattr(processed, "read"):
+                                try:
+                                    buf = processed.read()
+                                    processed = Image.open(io.BytesIO(buf)).convert("RGB")
+                                    coerced = True
+                                except Exception:
+                                    coerced = False
+                        except Exception:
+                            coerced = False
+
+                    if processed is None or (PILImage is not None and not isinstance(processed, PILImage.Image)):
+                        logger.error(f"Template renderer returned no image for {cover_img.name} (renderer={cover_templates.LAST_RENDERER}); falling back to Pillow renderer")
+                        ip = cover_img.path
+                        if getattr(cover_img, "template_footer", None) is not None or getattr(cover_img, "template_accent_color", None) is not None:
+                            ip = (cover_img.path, getattr(cover_img, "template_footer", None), getattr(cover_img, "template_accent_color", None) or "#f1c40f")
+                        try:
+                            processed = render_template_with_pillow(
+                                (getattr(cover_img, "template_title", None) or cover_img.name),
+                                ip,
+                                getattr(cover_img, "template_name", "classic"),
+                                target_w,
+                                target_h,
+                                footer_text=getattr(cover_img, "template_footer", None),
+                                accent_color=getattr(cover_img, "template_accent_color", None),
+                                title_style=getattr(cover_img, "template_title_style", "classic"),
+                                image_fit=getattr(cover_img, "template_image_fit", ImageFitMode.SCALE).value,
+                                crop_position=getattr(cover_img, "template_crop_position", CropPosition.CENTER).value,
+                                crop_offset_x=getattr(cover_img, "template_crop_offset_x", 0.0),
+                                crop_offset_y=getattr(cover_img, "template_crop_offset_y", 0.0),
+                                cover_full_bleed=getattr(cover_img, "template_cover_full_bleed", True),
+                                title_shadow=getattr(cover_img, "template_title_shadow", False),
+                                title_font=getattr(cover_img, "template_title_font", "DejaVuSans"),
+                                title_shadow_color=getattr(cover_img, "template_title_shadow_color", "#008000"),
+                                top_blend_color=getattr(cover_img, "template_top_blend_color", None),
+                                bottom_blend_color=getattr(cover_img, "template_bottom_blend_color", None),
+                                top_blend_pct=getattr(cover_img, "template_top_blend_pct", 0.12),
+                                bottom_blend_pct=getattr(cover_img, "template_bottom_blend_pct", 0.12),
+                            )
+                        except Exception:
+                            # Last-resort: try the plain process_image on source
+                            processed = process_image(
+                                cover_img.path,
+                                cover_img.fit_mode,
+                                cover_img.crop_position,
+                                target_w,
+                                target_h,
+                                cover_img.crop_offset_x,
+                                cover_img.crop_offset_y,
+                                cover_img.text_overlays,
+                            )
                 except Exception as tpl_err:
                     logger.error(f"Error rendering template for {cover_img.name}: {tpl_err}")
                     # Fallback to normal processing
@@ -804,6 +874,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         fit=ft.ImageFit.CONTAIN,
         visible=False,
     )
+
+    # Renderer indicator for previews
+    renderer_label = ft.Text("Renderer: -", size=12)
     
     # Image editing panel (shown when an image is selected)
     fit_mode_dropdown = ft.Dropdown(
@@ -2061,6 +2134,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 margin_mm=margin_slider.value,
             )
             
+            # Update renderer label based on last used renderer
+            try:
+                renderer_label.value = f"Renderer: {cover_templates.LAST_RENDERER or 'pillow'}"
+            except Exception:
+                renderer_label.value = "Renderer: -"
+
             # Save to temp file
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 preview_path = tmp.name
@@ -2295,6 +2374,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                     icon=ft.Icons.REFRESH,
                     on_click=on_generate_preview,
                 ),
+                renderer_label,
                 ft.ElevatedButton(
                     text="Print",
                     icon=ft.Icons.PRINT,
