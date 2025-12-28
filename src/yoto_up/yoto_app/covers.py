@@ -1546,13 +1546,20 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     left_panel = ft.Column([
         settings_panel,
         image_management,
+    ], spacing=10, scroll=ft.ScrollMode.AUTO)
+
+    # Right-side panel holds the image editor so it appears to the right of the preview
+    right_panel = ft.Column([
         edit_panel,
     ], spacing=10, scroll=ft.ScrollMode.AUTO)
-    
+
     main_content = ft.Row([
         ft.Container(content=left_panel, width=400),
         ft.VerticalDivider(width=1),
-        preview_panel,
+        # Preview in the center (expand)
+        ft.Container(content=preview_panel, expand=True),
+        ft.VerticalDivider(width=1),
+        ft.Container(content=right_panel, width=360),
     ], expand=True)
     
     return {
