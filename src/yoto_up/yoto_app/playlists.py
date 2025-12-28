@@ -30,6 +30,13 @@ import time
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.paths import save_playlists, VERSIONS_DIR
 
+# Guard against duplicate/overlapping playlist fetches (many UI actions
+# may trigger a refresh on startup). Use a simple lock + cooldown so that
+# rapid repeated calls only perform one actual API request.
+_playlists_fetch_lock = threading.Lock()
+_playlists_last_fetch = 0.0
+_playlists_fetch_cooldown = 2.0  # seconds
+
 
 
 def build_playlists_panel(
@@ -1464,6 +1471,21 @@ def build_playlists_panel(
     show_card_details = None
 
     async def fetch_playlists(e=None):
+        # Avoid overlapping / repeated fetches
+        global _playlists_last_fetch
+        now = time.time()
+        if _playlists_fetch_lock.locked():
+            # another fetch in progress; skip this invocation
+            logger.debug("fetch_playlists: fetch already in progress; skipping")
+            return
+        if now - _playlists_last_fetch < _playlists_fetch_cooldown:
+            logger.debug("fetch_playlists: recent fetch within cooldown; skipping")
+            return
+        acquired = _playlists_fetch_lock.acquire(blocking=False)
+        if not acquired:
+            logger.debug("fetch_playlists: failed to acquire lock; skipping")
+            return
+        _playlists_last_fetch = now
         print("Fetching playlists...")
         # Clean any stale/invalid controls before touching the page
         _clean_controls()
@@ -1477,6 +1499,11 @@ def build_playlists_panel(
         except Exception as ex:
             print("fetch_playlists error:", ex)
             return
+        finally:
+            try:
+                _playlists_fetch_lock.release()
+            except Exception:
+                pass
 
         playlists_list.controls.clear()
         if not cards:
@@ -1551,6 +1578,20 @@ def build_playlists_panel(
             pass
 
     def fetch_playlists_sync(e=None):
+        # Avoid overlapping / repeated fetches
+        global _playlists_last_fetch
+        now = time.time()
+        if _playlists_fetch_lock.locked():
+            logger.debug("fetch_playlists_sync: fetch already in progress; skipping")
+            return
+        if now - _playlists_last_fetch < _playlists_fetch_cooldown:
+            logger.debug("fetch_playlists_sync: recent fetch within cooldown; skipping")
+            return
+        acquired = _playlists_fetch_lock.acquire(blocking=False)
+        if not acquired:
+            logger.debug("fetch_playlists_sync: failed to acquire lock; skipping")
+            return
+        _playlists_last_fetch = now
         print("Fetching playlists...")
         try:
             # Clean invalid controls before showing snack / updating page
@@ -1747,6 +1788,11 @@ def build_playlists_panel(
             logger.error(f"fetch_playlists_sync error: {ex}")
             traceback.print_exc(file=sys.stderr)
             show_snack("Unable to fetch playlists", error=True)
+        finally:
+            try:
+                _playlists_fetch_lock.release()
+            except Exception:
+                pass
 
     filter_btn.on_click = lambda e: threading.Thread(
         target=lambda: fetch_playlists_sync(e), daemon=True
