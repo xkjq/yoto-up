@@ -90,6 +90,15 @@ class CoverImage:
         # Additional template fields (customisable per-card)
         self.template_footer: str = ""
         self.template_accent_color: str = "#f1c40f"
+        # Template presentation options
+        self.template_title_style: str = "classic"
+        # Image-fit options specifically for templates (allow customizing
+        # how the image is used inside a template)
+        self.template_image_fit: ImageFitMode = ImageFitMode.SCALE
+        self.template_crop_position: CropPosition = CropPosition.CENTER
+        self.template_crop_offset_x: float = 0.0
+        self.template_crop_offset_y: float = 0.0
+        self.template_cover_full_bleed: bool = True
         
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -106,6 +115,12 @@ class CoverImage:
             "template_title": self.template_title,
             "template_footer": self.template_footer,
             "template_accent_color": self.template_accent_color,
+            "template_title_style": self.template_title_style,
+            "template_image_fit": self.template_image_fit.value,
+            "template_crop_position": self.template_crop_position.value,
+            "template_crop_offset_x": self.template_crop_offset_x,
+            "template_crop_offset_y": self.template_crop_offset_y,
+            "template_cover_full_bleed": self.template_cover_full_bleed,
         }
     
     @classmethod
@@ -123,6 +138,12 @@ class CoverImage:
         img.template_title = data.get("template_title", "")
         img.template_footer = data.get("template_footer", "")
         img.template_accent_color = data.get("template_accent_color", "#f1c40f")
+        img.template_title_style = data.get("template_title_style", "classic")
+        img.template_image_fit = ImageFitMode(data.get("template_image_fit", ImageFitMode.SCALE.value))
+        img.template_crop_position = CropPosition(data.get("template_crop_position", CropPosition.CENTER.value))
+        img.template_crop_offset_x = data.get("template_crop_offset_x", 0.0)
+        img.template_crop_offset_y = data.get("template_crop_offset_y", 0.0)
+        img.template_cover_full_bleed = data.get("template_cover_full_bleed", True)
         return img
 
 
@@ -554,6 +575,8 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         getattr(cover_img, "template_name", "classic"),
                         width_px=target_w,
                         height_px=target_h,
+                        footer_text=getattr(cover_img, "template_footer", None),
+                        accent_color=getattr(cover_img, "template_accent_color", None),
                     )
                     processed = tpl
                 except Exception as tpl_err:
@@ -779,6 +802,77 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         ft.dropdown.Option("classic", "Classic"),
         ft.dropdown.Option("modern", "Modern"),
     ], width=150)
+    # Additional template-editable fields
+    img_template_footer_field = ft.TextField(label="Template Footer", width=260)
+    img_template_accent_field = ft.TextField(label="Accent Color (hex)", value="#f1c40f", width=120)
+    img_template_accent_picker_btn = ft.IconButton(
+        icon=ft.Icons.COLOR_LENS,
+        tooltip="Pick Accent Color",
+        icon_size=20,
+    )
+    template_title_style_dropdown = ft.Dropdown(
+        label="Title Style",
+        value="classic",
+        options=[
+            ft.dropdown.Option("classic", "Classic"),
+            ft.dropdown.Option("modern", "Modern"),
+            ft.dropdown.Option("bold", "Bold"),
+            ft.dropdown.Option("outline", "Outline"),
+        ],
+        width=160,
+    )
+
+    # Template-specific image fit controls (so templates can control cropping/scaling)
+    tpl_fit_mode_dropdown = ft.Dropdown(
+        label="Image Fit (template)",
+        value=ImageFitMode.SCALE.value,
+        options=[
+            ft.dropdown.Option(ImageFitMode.RESIZE.value, "Resize (may distort)"),
+            ft.dropdown.Option(ImageFitMode.CROP.value, "Crop (maintain ratio)"),
+            ft.dropdown.Option(ImageFitMode.SCALE.value, "Scale (maintain ratio)"),
+        ],
+        width=250,
+    )
+
+    tpl_crop_position_dropdown = ft.Dropdown(
+        label="Crop Position (template)",
+        value=CropPosition.CENTER.value,
+        options=[
+            ft.dropdown.Option(CropPosition.CENTER.value, "Center"),
+            ft.dropdown.Option(CropPosition.TOP.value, "Top"),
+            ft.dropdown.Option(CropPosition.BOTTOM.value, "Bottom"),
+            ft.dropdown.Option(CropPosition.LEFT.value, "Left"),
+            ft.dropdown.Option(CropPosition.RIGHT.value, "Right"),
+            ft.dropdown.Option(CropPosition.TOP_LEFT.value, "Top Left"),
+            ft.dropdown.Option(CropPosition.TOP_RIGHT.value, "Top Right"),
+            ft.dropdown.Option(CropPosition.BOTTOM_LEFT.value, "Bottom Left"),
+            ft.dropdown.Option(CropPosition.BOTTOM_RIGHT.value, "Bottom Right"),
+        ],
+        width=200,
+        visible=False,
+    )
+
+    tpl_crop_offset_x_slider = ft.Slider(
+        min=-1.0,
+        max=1.0,
+        value=0.0,
+        divisions=20,
+        label="Tpl H-Offset: {value:.2f}",
+        width=200,
+        visible=False,
+    )
+
+    tpl_crop_offset_y_slider = ft.Slider(
+        min=-1.0,
+        max=1.0,
+        value=0.0,
+        divisions=20,
+        label="Tpl V-Offset: {value:.2f}",
+        width=200,
+        visible=False,
+    )
+
+    img_template_full_bleed_chk = ft.Checkbox(label="Full bleed image", value=True)
     
     # Text overlay controls
     text_overlay_list = ft.ListView(spacing=5, padding=5, height=150)
@@ -1082,6 +1176,15 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     template_controls = ft.Container(
         content=ft.Column([
             ft.Row([img_template_title_field, img_template_dropdown]),
+            ft.Row([template_title_style_dropdown, img_template_full_bleed_chk]),
+            img_template_footer_field,
+            ft.Row([img_template_accent_field, img_template_accent_picker_btn]),
+            ft.Divider(),
+            ft.Text("Template Image Settings", weight=ft.FontWeight.BOLD),
+            tpl_fit_mode_dropdown,
+            tpl_crop_position_dropdown,
+            ft.Row([ft.Text("Tpl Horiz. Offset:"), tpl_crop_offset_x_slider]),
+            ft.Row([ft.Text("Tpl Vert. Offset:"), tpl_crop_offset_y_slider]),
         ], spacing=8),
         padding=5,
         visible=False,
@@ -1124,6 +1227,11 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             crop_position_dropdown.visible = crop_visible
             crop_offset_x_slider.visible = crop_visible
             crop_offset_y_slider.visible = crop_visible
+            # Template-specific crop visibility
+            tpl_crop_visible = (tpl_fit_mode_dropdown.value == ImageFitMode.CROP.value) and bool(enabled)
+            tpl_crop_position_dropdown.visible = tpl_crop_visible
+            tpl_crop_offset_x_slider.visible = tpl_crop_visible
+            tpl_crop_offset_y_slider.visible = tpl_crop_visible
             text_edit_panel.visible = not bool(enabled)
             page.update()
         except Exception:
@@ -1319,6 +1427,15 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 img_template_enabled_chk.value = bool(getattr(img, "template_enabled", False))
                 img_template_dropdown.value = getattr(img, "template_name", "classic")
                 img_template_title_field.value = getattr(img, "template_title", "")
+                # populate additional template fields
+                img_template_footer_field.value = getattr(img, "template_footer", "")
+                img_template_accent_field.value = getattr(img, "template_accent_color", "#f1c40f")
+                template_title_style_dropdown.value = getattr(img, "template_title_style", "classic")
+                tpl_fit_mode_dropdown.value = getattr(img, "template_image_fit", ImageFitMode.SCALE).value
+                tpl_crop_position_dropdown.value = getattr(img, "template_crop_position", CropPosition.CENTER).value
+                tpl_crop_offset_x_slider.value = getattr(img, "template_crop_offset_x", 0.0)
+                tpl_crop_offset_y_slider.value = getattr(img, "template_crop_offset_y", 0.0)
+                img_template_full_bleed_chk.value = getattr(img, "template_cover_full_bleed", True)
             except Exception:
                 # ignore if controls aren't available for some reason
                 pass
@@ -1392,6 +1509,90 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_enabled_chk.on_change = on_img_template_enabled_change
     img_template_dropdown.on_change = on_img_template_name_change
     img_template_title_field.on_change = on_img_template_title_change
+    def on_img_template_footer_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_footer = img_template_footer_field.value
+            update_preview()
+
+    def on_img_template_accent_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_accent_color = img_template_accent_field.value
+            update_preview()
+
+    def on_img_template_accent_picker_click(e):
+        # reuse simple color chooser from text color picker but update accent field
+        def on_color_change(color_value):
+            img_template_accent_field.value = color_value
+            page.update()
+            if selected_image_index is not None:
+                cover_images[selected_image_index].template_accent_color = color_value
+                update_preview()
+
+        color_options = ["#f1c40f", "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF"]
+        color_buttons = []
+        for c in color_options:
+            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+
+        color_dialog = ft.AlertDialog(
+            title=ft.Text("Choose Accent Color"),
+            content=ft.Column([ft.Column(color_buttons, spacing=5)], tight=True),
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+        )
+        page.open(color_dialog)
+        page.update()
+
+    def on_img_template_title_style_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_title_style = template_title_style_dropdown.value
+            update_preview()
+
+    def on_tpl_fit_mode_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_image_fit = ImageFitMode(tpl_fit_mode_dropdown.value)
+            # Update visibility of template crop controls
+            tpl_crop_visible = (tpl_fit_mode_dropdown.value == ImageFitMode.CROP.value)
+            tpl_crop_position_dropdown.visible = tpl_crop_visible
+            tpl_crop_offset_x_slider.visible = tpl_crop_visible
+            tpl_crop_offset_y_slider.visible = tpl_crop_visible
+            update_preview()
+
+    def on_tpl_crop_position_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_crop_position = CropPosition(tpl_crop_position_dropdown.value)
+            update_preview()
+
+    def on_tpl_crop_offset_x_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_crop_offset_x = tpl_crop_offset_x_slider.value
+            update_preview()
+
+    def on_tpl_crop_offset_y_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_crop_offset_y = tpl_crop_offset_y_slider.value
+            update_preview()
+
+    def on_img_template_full_bleed_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            img.template_cover_full_bleed = bool(img_template_full_bleed_chk.value)
+            update_preview()
+
+    img_template_footer_field.on_change = on_img_template_footer_change
+    img_template_accent_field.on_change = on_img_template_accent_change
+    img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
+    template_title_style_dropdown.on_change = on_img_template_title_style_change
+    tpl_fit_mode_dropdown.on_change = on_tpl_fit_mode_change
+    tpl_crop_position_dropdown.on_change = on_tpl_crop_position_change
+    tpl_crop_offset_x_slider.on_change = on_tpl_crop_offset_x_change
+    tpl_crop_offset_y_slider.on_change = on_tpl_crop_offset_y_change
+    img_template_full_bleed_chk.on_change = on_img_template_full_bleed_change
     
     def on_crop_offset_x_change(e):
         """Handle crop horizontal offset change."""
