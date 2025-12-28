@@ -107,6 +107,9 @@ class CoverImage:
         self.template_title_font: str = "DejaVuSans"
         # Shadow color for title text (hex)
         self.template_title_shadow_color: str = "#008000"
+        # Optional explicit font-size overrides (pixels)
+        self.template_title_font_size: Optional[int] = None
+        self.template_footer_font_size: Optional[int] = None
         self.template_top_blend_color: Optional[str] = None
         self.template_bottom_blend_color: Optional[str] = None
         self.template_top_blend_pct: float = 0.12
@@ -140,6 +143,8 @@ class CoverImage:
             "template_title_shadow": self.template_title_shadow,
             "template_title_font": self.template_title_font,
             "template_title_shadow_color": self.template_title_shadow_color,
+            "template_title_font_size": self.template_title_font_size,
+            "template_footer_font_size": self.template_footer_font_size,
             "template_top_blend_color": self.template_top_blend_color,
             "template_bottom_blend_color": self.template_bottom_blend_color,
             "template_top_blend_pct": self.template_top_blend_pct,
@@ -172,6 +177,8 @@ class CoverImage:
         img.template_title_shadow = data.get("template_title_shadow", False)
         img.template_title_font = data.get("template_title_font", "DejaVuSans")
         img.template_title_shadow_color = data.get("template_title_shadow_color", "#008000")
+        img.template_title_font_size = data.get("template_title_font_size", None)
+        img.template_footer_font_size = data.get("template_footer_font_size", None)
         img.template_top_blend_color = data.get("template_top_blend_color", None)
         img.template_bottom_blend_color = data.get("template_bottom_blend_color", None)
         img.template_top_blend_pct = data.get("template_top_blend_pct", 0.12)
@@ -625,6 +632,8 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         title_shadow=getattr(cover_img, "template_title_shadow", False),
                         title_font=getattr(cover_img, "template_title_font", "DejaVuSans"),
                         title_shadow_color=getattr(cover_img, "template_title_shadow_color", "#008000"),
+                        	    title_font_size_px=getattr(cover_img, "template_title_font_size", None),
+                        	    footer_font_size_px=getattr(cover_img, "template_footer_font_size", None),
                         top_blend_color=getattr(cover_img, "template_top_blend_color", None),
                         bottom_blend_color=getattr(cover_img, "template_bottom_blend_color", None),
                         top_blend_pct=getattr(cover_img, "template_top_blend_pct", 0.12),
@@ -898,6 +907,23 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.dropdown.Option("Default", "Default"),
         ],
         width=140,
+    )
+    # Optional numeric overrides for title/footer font sizes (pixels) — use sliders
+    img_template_title_size_field = ft.Slider(
+        min=8,
+        max=200,
+        value=48,
+        divisions=192,
+        label="Title size: {value:.0f}px",
+        width=260,
+    )
+    img_template_footer_size_field = ft.Slider(
+        min=6,
+        max=80,
+        value=12,
+        divisions=74,
+        label="Footer size: {value:.0f}px",
+        width=200,
     )
     # Shadow color field + picker
     img_template_title_shadow_color_field = ft.TextField(label="Shadow Color (hex)", value="#008000", width=120)
@@ -1321,12 +1347,14 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Row([img_template_title_color_field, img_template_title_color_picker_btn], spacing=8),
             ft.Row([img_template_title_font_dropdown, img_template_title_shadow_chk], spacing=8),
             ft.Row([img_template_title_shadow_color_field, img_template_title_shadow_picker_btn], spacing=8),
+            ft.Row([img_template_title_size_field], spacing=8),
             ft.Divider(height=1),
             
             # Footer customization group
             ft.Text("Footer Options", weight=ft.FontWeight.BOLD, size=14),
             img_template_footer_field,
             ft.Row([img_template_accent_field, img_template_accent_picker_btn], spacing=8),
+            ft.Row([img_template_footer_size_field], spacing=8),
             ft.Row([img_template_footer_style_dropdown], spacing=8),
             ft.Divider(height=1),
             
@@ -1601,6 +1629,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 img_template_title_shadow_chk.value = bool(getattr(img, "template_title_shadow", False))
                 img_template_title_font_dropdown.value = getattr(img, "template_title_font", "DejaVuSans")
                 img_template_title_shadow_color_field.value = getattr(img, "template_title_shadow_color", "#008000")
+                # populate numeric font-size overrides if present (fall back to sensible defaults)
+                img_template_title_size_field.value = getattr(img, "template_title_font_size", 48) or 48
+                img_template_footer_size_field.value = getattr(img, "template_footer_font_size", 12) or 12
                 img_template_top_blend_field.value = getattr(img, "template_top_blend_color", "") or ""
                 img_template_bottom_blend_field.value = getattr(img, "template_bottom_blend_color", "") or ""
                 img_template_top_blend_pct_slider.value = getattr(img, "template_top_blend_pct", 0.12)
@@ -1773,6 +1804,26 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.template_title_font = img_template_title_font_dropdown.value
             update_preview()
 
+    def on_img_template_title_size_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            try:
+                v = int(round(float(img_template_title_size_field.value)))
+            except Exception:
+                v = None
+            img.template_title_font_size = v
+            update_preview()
+
+    def on_img_template_footer_size_change(e):
+        if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
+            img = cover_images[selected_image_index]
+            try:
+                v = int(round(float(img_template_footer_size_field.value)))
+            except Exception:
+                v = None
+            img.template_footer_font_size = v
+            update_preview()
+
     def on_img_template_title_shadow_color_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
             img = cover_images[selected_image_index]
@@ -1942,6 +1993,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_footer_field.on_change = on_img_template_footer_change
     img_template_accent_field.on_change = on_img_template_accent_change
     img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
+    img_template_title_size_field.on_change = on_img_template_title_size_change
+    img_template_footer_size_field.on_change = on_img_template_footer_size_change
     template_title_style_dropdown.on_change = on_img_template_title_style_change
     img_template_title_color_field.on_change = on_img_template_title_color_change
     img_template_title_color_picker_btn.on_click = on_img_template_title_color_picker_click
