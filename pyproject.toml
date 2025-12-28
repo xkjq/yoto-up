@@ -70,6 +70,13 @@ web = [
   "flet[web]",
 ]
 
+
+renderers = [
+  "weasyprint",
+  "PyMuPDF",
+  "pdf2image",
+]
+
 # additional extras for docs/build or dev
 docs = ["mkdocs-material", "pymdown-extensions"]
 

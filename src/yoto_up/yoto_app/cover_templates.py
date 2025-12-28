@@ -9,7 +9,10 @@ The renderer will try to use WeasyPrint (HTML/CSS -> PNG) when available, otherw
 """
 from typing import Optional
 import io
+import re
 from pathlib import Path
+
+from loguru import logger
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -394,6 +397,20 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </body>
 </html>
 """
+    # Replace any CSS `vw` units with pixel equivalents because WeasyPrint
+    # does not support viewport units; compute px from provided width_px.
+    try:
+        def _vw_to_px(match):
+            try:
+                val = float(match.group(1))
+                px = max(1, int((width_px * val) / 100.0))
+                return f"{px}px"
+            except Exception:
+                return match.group(0)
+        html = re.sub(r"([0-9]*\.?[0-9]+)vw", _vw_to_px, html)
+    except Exception:
+        pass
+
     return html
 
 
@@ -793,7 +810,51 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             # keep image_path as-is if unpack fails
             pass
 
-    # Attempt to use weasyprint if installed
+    # First, attempt to render using a headless Chromium (Playwright) if
+    # available — this avoids WeasyPrint entirely and produces high-fidelity
+    # PNGs from HTML/CSS.
+    try:
+        from playwright.sync_api import sync_playwright
+        try:
+            html = generate_html_template(
+                title,
+                Path(image_path).as_uri(),
+                template_name,
+                width_px,
+                height_px,
+                footer_text=footer_text,
+                accent_color=(accent_color or "#f1c40f"),
+                title_style=title_style,
+                image_fit=image_fit,
+                cover_full_bleed=cover_full_bleed,
+                title_shadow=title_shadow,
+                title_font=title_font,
+                title_shadow_color=title_shadow_color,
+                top_blend_color=top_blend_color,
+                bottom_blend_color=bottom_blend_color,
+                top_blend_pct=top_blend_pct,
+                bottom_blend_pct=bottom_blend_pct,
+                title_color=title_color,
+                footer_style=footer_style,
+            )
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(headless=True)
+                page = browser.new_page(viewport={"width": width_px, "height": height_px})
+                page.set_content(html, wait_until="networkidle")
+                png_bytes = page.screenshot(full_page=True)
+                browser.close()
+            img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            return img
+        except Exception as e:
+            logger.debug(f"Chromium rendering failed: {e}")
+    except Exception:
+        # Playwright not available; continue to WeasyPrint path
+        pass
+
+    # Attempt to use weasyprint if installed. The old write_png API has been
+    # removed — use write_pdf and try to rasterize the resulting PDF. If
+    # rasterization isn't available in this environment we'll fall back to
+    # the Pillow renderer.
     try:
         from weasyprint import HTML
         html = generate_html_template(
@@ -817,11 +878,136 @@ def render_template(title: str, image_path: str, template_name: str = "classic",
             title_color=title_color,
             footer_style=footer_style,
         )
-        # WeasyPrint can write to PNG directly via write_png
-        png_bytes = HTML(string=html).write_png(stylesheets=None, presentational_hints=True)
-        img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-        return img
-    except Exception:
+
+        # Prefer write_pdf on HTML or on the rendered Document
+        doc = HTML(string=html)
+        pdf_bytes = None
+        try:
+            if hasattr(doc, "write_pdf"):
+                pdf_bytes = doc.write_pdf(stylesheets=None, presentational_hints=True)
+            else:
+                rendered = doc.render()
+                if hasattr(rendered, "write_pdf"):
+                    pdf_bytes = rendered.write_pdf(stylesheets=None, presentational_hints=True)
+                else:
+                    try:
+                        pdf_bytes = rendered.write_pdf()
+                    except Exception:
+                        raise RuntimeError("WeasyPrint does not provide a write_pdf API on HTML or rendered Document")
+        except Exception:
+            # propagate to outer except so we fall back cleanly
+            raise
+
+        if not pdf_bytes:
+            raise RuntimeError("WeasyPrint produced no PDF data")
+
+        # Rasterize the produced PDF using a robust path:
+        # 1) PyMuPDF (fitz) if installed — fast and self-contained.
+        # 2) pdf2image (poppler) if available.
+        # 3) As a last resort, attempt Pillow's PDF handler.
+        try:
+            # Try PyMuPDF first
+            try:
+                import fitz
+                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                page = doc.load_page(0)
+                rect = page.rect
+                # Compute scaling matrix to target pixel dimensions
+                zoom_x = (width_px / rect.width) if rect.width else 1.0
+                zoom_y = (height_px / rect.height) if rect.height else 1.0
+                mat = fitz.Matrix(zoom_x, zoom_y)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                png_bytes = pix.tobytes("png")
+                img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                return img
+            except Exception as e_fit:
+                logger.debug(f"PyMuPDF rasterization failed: {e_fit}")
+
+            # Next try pdf2image (requires poppler)
+            try:
+                from pdf2image import convert_from_bytes
+                pages = convert_from_bytes(pdf_bytes, size=(width_px, height_px))
+                if pages:
+                    img = pages[0].convert("RGB")
+                    return img
+            except Exception as e_pdf2:
+                logger.debug(f"pdf2image rasterization failed: {e_pdf2}")
+
+            # Finally, attempt Pillow's PDF loader as a last resort
+            try:
+                img = Image.open(io.BytesIO(pdf_bytes))
+                if getattr(img, "n_frames", 1) > 1:
+                    try:
+                        img.seek(0)
+                    except Exception:
+                        pass
+                img = img.convert("RGB")
+                return img
+            except Exception as e_pil:
+                logger.debug(f"Pillow PDF rasterization failed: {e_pil}")
+
+            # If none of the rasterizers worked, fall back to the HTML->Pillow
+            # renderer to ensure we always return a valid Image.
+            logger.error("PDF rasterization via PyMuPDF/pdf2image/Pillow failed; falling back to internal Pillow renderer")
+            ip = image_path
+            if footer_text is not None or accent_color is not None:
+                ip = (image_path, footer_text, accent_color or "#f1c40f")
+            return render_template_with_pillow(
+                title,
+                ip,
+                template_name,
+                width_px,
+                height_px,
+                footer_text=footer_text,
+                accent_color=accent_color,
+                title_style=title_style,
+                image_fit=image_fit,
+                crop_position=crop_position,
+                crop_offset_x=crop_offset_x,
+                crop_offset_y=crop_offset_y,
+                cover_full_bleed=cover_full_bleed,
+                title_shadow=title_shadow,
+                title_font=title_font,
+                title_shadow_color=title_shadow_color,
+                top_blend_color=top_blend_color,
+                bottom_blend_color=bottom_blend_color,
+                top_blend_pct=top_blend_pct,
+                bottom_blend_pct=bottom_blend_pct,
+                title_color=title_color,
+                footer_style=footer_style,
+            )
+        except Exception:
+            # Ensure we don't propagate unexpected exceptions from the
+            # rasterization attempts; fall back to Pillow renderer.
+            ip = image_path
+            if footer_text is not None or accent_color is not None:
+                ip = (image_path, footer_text, accent_color or "#f1c40f")
+            return render_template_with_pillow(
+                title,
+                ip,
+                template_name,
+                width_px,
+                height_px,
+                footer_text=footer_text,
+                accent_color=accent_color,
+                title_style=title_style,
+                image_fit=image_fit,
+                crop_position=crop_position,
+                crop_offset_x=crop_offset_x,
+                crop_offset_y=crop_offset_y,
+                cover_full_bleed=cover_full_bleed,
+                title_shadow=title_shadow,
+                title_font=title_font,
+                title_shadow_color=title_shadow_color,
+                top_blend_color=top_blend_color,
+                bottom_blend_color=bottom_blend_color,
+                top_blend_pct=top_blend_pct,
+                bottom_blend_pct=bottom_blend_pct,
+                title_color=title_color,
+                footer_style=footer_style,
+            )
+    except Exception as e:
+        logger.debug(f"Weasyprint rendering failed: {e}")
         # Fall back
         if not HAS_PIL:
             raise RuntimeError("Neither WeasyPrint nor Pillow are available for template rendering")

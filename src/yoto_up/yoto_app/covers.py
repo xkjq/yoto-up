@@ -27,6 +27,13 @@ except ImportError:
     HAS_PIL = False
     logger.warning("PIL/Pillow not available for covers functionality")
 
+try:
+    import weasyprint
+    HAS_WEASYPRINT = True
+except ImportError:
+    HAS_WEASYPRINT = False
+    logger.warning("WeasyPrint not available - template rendering will use fallback mode")
+
 
 # Card dimensions in mm
 CARD_WIDTH_MM = 54.0
@@ -2269,14 +2276,41 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         edit_panel,
     ], spacing=10, scroll=ft.ScrollMode.AUTO)
 
-    main_content = ft.Row([
-        ft.Container(content=left_panel, width=400),
-        ft.VerticalDivider(width=1),
-        # Preview in the center (expand)
-        ft.Container(content=preview_panel, expand=True),
-        ft.VerticalDivider(width=1),
-        ft.Container(content=right_panel, width=360),
-    ], expand=True)
+    # Warning banner if WeasyPrint is not installed
+    warning_banner = None
+    if not HAS_WEASYPRINT:
+        warning_banner = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE_700, size=20),
+                ft.Text(
+                    "WeasyPrint not installed. Template rendering will use fallback mode with limited features. "
+                    "Install with: pip install weasyprint",
+                    color=ft.Colors.ORANGE_700,
+                    size=12,
+                ),
+            ], spacing=10),
+            bgcolor=ft.Colors.ORANGE_50,
+            padding=10,
+            border=ft.border.all(1, ft.Colors.ORANGE_300),
+            border_radius=5,
+        )
+    
+    # Build main content with optional warning banner
+    content_children = []
+    if warning_banner:
+        content_children.append(warning_banner)
+    content_children.append(
+        ft.Row([
+            ft.Container(content=left_panel, width=400),
+            ft.VerticalDivider(width=1),
+            # Preview in the center (expand)
+            ft.Container(content=preview_panel, expand=True),
+            ft.VerticalDivider(width=1),
+            ft.Container(content=right_panel, width=360),
+        ], expand=True)
+    )
+    
+    main_content = ft.Column(content_children, spacing=0, expand=True)
     
     return {
         "panel": main_content,
