@@ -844,6 +844,40 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     text_color_field.on_change = on_text_color_change
     text_x_slider.on_change = on_text_x_change
     text_y_slider.on_change = on_text_y_change
+
+    def on_text_position_change(e):
+        """Handle preset position selection from dropdown (moves overlay and updates sliders/preview)."""
+        if selected_image_index is None or selected_image_index < 0 or selected_image_index >= len(cover_images):
+            return
+        img = cover_images[selected_image_index]
+        if selected_text_overlay_index is None or selected_text_overlay_index < 0 or selected_text_overlay_index >= len(img.text_overlays):
+            return
+        overlay = img.text_overlays[selected_text_overlay_index]
+        pos = text_position_dropdown.value
+        mapping = {
+            "Center": (0.5, 0.5),
+            "Top": (0.5, 0.0),
+            "Bottom": (0.5, 1.0),
+            "Left": (0.0, 0.5),
+            "Right": (1.0, 0.5),
+            "Top-Left": (0.0, 0.0),
+            "Top-Right": (1.0, 0.0),
+            "Bottom-Left": (0.0, 1.0),
+            "Bottom-Right": (1.0, 1.0),
+        }
+        if pos in mapping:
+            overlay.x, overlay.y = mapping[pos]
+            overlay.centered = True
+            # update sliders and preview
+            text_x_slider.value = overlay.x
+            text_y_slider.value = overlay.y
+            update_text_overlay()
+        else:
+            # Custom - leave as-is; mark not centered
+            overlay.centered = False
+            update_text_overlay()
+
+    text_position_dropdown.on_change = on_text_position_change
     
     text_edit_panel = ft.Container(
         content=ft.Column([
@@ -992,40 +1026,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 update_text_overlay_list()
                 update_preview()
                 show_snack("Text overlay deleted")
-
-            def on_text_position_change(e):
-                """Handle preset position selection from dropdown."""
-                if selected_image_index is None or selected_image_index < 0 or selected_image_index >= len(cover_images):
-                    return
-                img = cover_images[selected_image_index]
-                if selected_text_overlay_index is None or selected_text_overlay_index < 0 or selected_text_overlay_index >= len(img.text_overlays):
-                    return
-                overlay = img.text_overlays[selected_text_overlay_index]
-                pos = text_position_dropdown.value
-                mapping = {
-                    "Center": (0.5, 0.5),
-                    "Top": (0.5, 0.0),
-                    "Bottom": (0.5, 1.0),
-                    "Left": (0.0, 0.5),
-                    "Right": (1.0, 0.5),
-                    "Top-Left": (0.0, 0.0),
-                    "Top-Right": (1.0, 0.0),
-                    "Bottom-Left": (0.0, 1.0),
-                    "Bottom-Right": (1.0, 1.0),
-                }
-                if pos in mapping:
-                    overlay.x, overlay.y = mapping[pos]
-                    overlay.centered = True
-                    # update sliders and preview
-                    text_x_slider.value = overlay.x
-                    text_y_slider.value = overlay.y
-                    update_text_overlay()
-                else:
-                    # Custom - leave as-is; mark not centered
-                    overlay.centered = False
-                    update_text_overlay()
-
-            text_position_dropdown.on_change = on_text_position_change
+            
     
     def update_image_list():
         """Update the image list display."""
