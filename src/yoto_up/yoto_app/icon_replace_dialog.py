@@ -576,8 +576,9 @@ class IconReplaceDialog:
             threading.Thread(target=_worker, daemon=True).start()
 
         # Build a Tabs control inside the dialog so user can switch between Search and My Icons
+        # In Flet 0.80, Tab objects are just labels, content is passed separately to Tabs
         search_tab = ft.Tab(label="Search")
-        search_tab.content = ft.Column([
+        search_content = ft.Column([
             ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
             # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
             (lambda: ft.Row(
@@ -585,13 +586,19 @@ class IconReplaceDialog:
             ))(),
              results_list
          ], width=900, expand=True)
+        search_content.visible = True
         
         my_icons_tab = ft.Tab(label="My Icons")
-        my_icons_tab.content = ft.Column([
+        my_icons_content = ft.Column([
             saved_icons_list
         ], width=900, expand=True)
+        my_icons_content.visible = True
         
-        tabs = ft.Tabs(selected_index=0, tabs=[search_tab, my_icons_tab], expand=True)
+        # Separate tab labels and content panels for Flet 0.80
+        all_tab_labels = [search_tab, my_icons_tab]
+        all_tab_content = [search_content, my_icons_content]
+        tabs = ft.Tabs(content=all_tab_content, length=len(all_tab_content), selected_index=0, expand=True)
+        tabs.tabs = all_tab_labels
 
         # include a "Use marked icon" action so the user can apply the icon selected from the browser
         use_selected_btn = ft.TextButton("Selected icon", on_click=use_selected_icon)

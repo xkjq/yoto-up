@@ -1,6 +1,8 @@
 import flet as ft
 from loguru import logger
 import httpx
+import shutil
+import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
 
@@ -44,9 +46,35 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             logger.error(f"Remove cover error: {e}")
             page.update()
     url_field = ft.TextField(label="Image URL (leave empty to upload file)")
-    picker = ft.FilePicker()
-    page.overlay.append(picker)
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+    try:
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+    except Exception:
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+
+    picker = ft.FilePicker() if _file_picker_supported else None
+    if picker is not None:
+        try:
+            page.services.append(picker)
+        except Exception:
+            pass
     file_label = ft.Text("No file chosen")
+
+    def _warn_missing_file_picker():
+        try:
+            page.snack_bar = ft.SnackBar(
+                ft.Text(
+                    "File dialogs are unavailable because 'zenity' is not installed. "
+                    "On Ubuntu/Debian: sudo apt-get install zenity"
+                ),
+                bgcolor=ft.Colors.RED,
+                duration=12000,
+            )
+            page.show_dialog(page.snack_bar)
+            page.update()
+        except Exception:
+            pass
 
     # If the card already has a cover, try to locate a suitable image URL/path
     cover_src = None
@@ -101,7 +129,20 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
         except Exception:
             logger.error("Error in on_pick_result")
 
-    picker.on_result = on_pick_result
+    async def _pick_cover_file(_e=None):
+        if picker is None:
+            _warn_missing_file_picker()
+            return
+        files = await picker.pick_files(allow_multiple=False)
+        # mimic previous on_result flow
+        try:
+            class _E:
+                pass
+            ev = _E()
+            ev.files = files
+            on_pick_result(ev)
+        except Exception:
+            pass
 
 
     def do_upload(_e=None):
@@ -436,9 +477,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             [
                 ft.TextButton(
                     "Pick file...",
-                    on_click=lambda e: picker.pick_files(
-                        allow_multiple=False
-                    ),
+                    on_click=_pick_cover_file,
                 ),
                 file_label,
             ]

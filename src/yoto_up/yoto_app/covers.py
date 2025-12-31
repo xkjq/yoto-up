@@ -13,6 +13,8 @@ Features:
 
 import tempfile
 from pathlib import Path
+import shutil
+import sys
 from typing import Any, Dict, List, Optional
 from enum import Enum
 
@@ -1210,7 +1212,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 color_name,
                 bgcolor=color_hex,
                 color="#FFFFFF" if color_hex in ["#000000", "#0000FF", "#800080", "#A52A2A"] else "#000000",
-                on_click=lambda e, c=color_hex: (on_color_change(c), page.close(color_dialog)),
+                on_click=lambda e, c=color_hex: (on_color_change(c), page.pop_dialog()),
             )
             color_buttons.append(btn)
         
@@ -1223,7 +1225,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         
         def on_custom_color(e):
             on_color_change(custom_color_input.value)
-            page.close(color_dialog)
+            page.pop_dialog()
         
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Text Color"),
@@ -1238,7 +1240,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 ft.Button("Use Custom Color", on_click=on_custom_color),
             ], tight=True, scroll=ft.ScrollMode.AUTO),
             actions=[
-                ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog)),
+                ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
             ],
         )
         page.show_dialog(color_dialog)
@@ -1807,12 +1809,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#f1c40f", "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Accent Color"),
             content=ft.Column([ft.Column(color_buttons, spacing=5)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(color_dialog)
         page.update()
@@ -1840,7 +1842,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#111111", "#FFFFFF", "#000000", "#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1850,12 +1852,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         def on_custom_color(e):
             on_color_change(custom_color_input.value)
-            page.close(color_dialog)
+            page.pop_dialog()
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Title Color"),
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(color_dialog)
         page.update()
@@ -1915,7 +1917,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#008000", "#000000", "#FFFFFF", "#FF0000", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1925,12 +1927,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         def on_custom_color(e):
             on_color_change(custom_color_input.value)
-            page.close(color_dialog)
+            page.pop_dialog()
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Shadow Color"),
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(color_dialog)
         page.update()
@@ -1953,7 +1955,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1963,12 +1965,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         def on_custom_color(e):
             on_color_change(custom_color_input.value)
-            page.close(color_dialog)
+            page.pop_dialog()
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Top Blend Color"),
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(color_dialog)
         page.update()
@@ -1991,7 +1993,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -2001,12 +2003,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         def on_custom_color(e):
             on_color_change(custom_color_input.value)
-            page.close(color_dialog)
+            page.pop_dialog()
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Bottom Blend Color"),
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
+            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(color_dialog)
         page.update()
@@ -2163,16 +2165,41 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_preview()
             show_snack(f"Added {len(e.files)} image(s)")
     
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_add_images_result
-    page.overlay.append(file_picker)
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+    try:
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+    except Exception:
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+
+    file_picker = ft.FilePicker() if _file_picker_supported else None
+    if file_picker is not None:
+        try:
+            page.services.append(file_picker)
+        except Exception:
+            pass
     
-    def on_add_images(e):
+    async def on_add_images(e):
         """Open file picker to add images."""
-        file_picker.pick_files(
+        if file_picker is None:
+            show_snack(
+                "Adding images requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
+                error=True,
+            )
+            return
+        files = await file_picker.pick_files(
             allowed_extensions=["png", "jpg", "jpeg", "bmp", "gif"],
             allow_multiple=True,
         )
+        # mimic previous on_result flow
+        if files:
+            for f in files:
+                if getattr(f, "path", None):
+                    cover_img = CoverImage(f.path)
+                    cover_images.append(cover_img)
+            update_image_list()
+            update_preview()
+            show_snack(f"Added {len(files)} image(s)")
     
     def on_generate_preview(e):
         """Generate preview button handler."""

@@ -332,8 +332,8 @@ def start_replace_icons_background(
                             title=ft.Text("Autoselect status"),
                             content=ft.Text(badge_text.value),
                             actions=[
-                                ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.close(dlg))),
-                                ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                                ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.pop_dialog())),
+                                ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
                             ],
                         )
                         page.show_dialog(dlg)

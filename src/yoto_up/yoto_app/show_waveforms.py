@@ -158,7 +158,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                         gain_adjusted_files.pop(filepath, None)
                 finally:
                     if progress_dlg:
-                        page.close(progress_dlg)
+                        page.pop_dialog()
                         page.update()
                 page.update()
             gain_slider.on_change_end = on_gain_change
@@ -192,7 +192,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 except Exception as ex:
                     show_snack(f"Failed to save adjusted audio: {ex}", error=True)
                 finally:
-                    page.close(progress_dlg)
+                    page.pop_dialog()
                     page.update()
             save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_click, tooltip="Save gain-adjusted audio to a temp file for upload")
             col.controls.append(label)
@@ -224,7 +224,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             progress_text2.value = f"Processed {completed} of {total} tracks"
             progress_bar2.value = completed / total
             page.update()
-        page.close(progress_dlg2)
+        page.pop_dialog()
         page.update()
         # Reopen the waveform popup after applying global gain, so waveforms are regenerated
         show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files, audio_adjust_utils, waveform_cache)
@@ -282,7 +282,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 completed += 1
                 progress_bar3.value = completed / total
                 page.update()
-            page.close(progress_dlg3)
+            page.pop_dialog()
             page.update()
             if errors:
                 show_snack(f"Some files failed: {'; '.join(errors)}", error=True)
@@ -298,7 +298,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             for s in skipped_files:
                 msg += f"\n- {s}"
         images = [ft.Text(msg, color=ft.Colors.RED)]
-        dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+        dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
     else:
         images.append(global_gain_slider)
         images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
@@ -312,9 +312,9 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 images.append(col)
         images.insert(0, ft.Text(f"Generated {n_images} waveform(s) for {len(files)} file(s).", color=ft.Colors.GREEN))
         if save_btn:
-            dlg_actions = [save_btn, ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+            dlg_actions = [save_btn, ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
         else:
-            dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.close(dlg))]
+            dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
 
     dlg = ft.AlertDialog(
         title=ft.Text("Waveforms for files to be uploaded"),
@@ -324,6 +324,6 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     )
     global WAVEFORM_DIALOG
     WAVEFORM_DIALOG = dlg
-    page.close(progress_dlg)
+    page.pop_dialog()
     page.show_dialog(dlg)
     page.update()

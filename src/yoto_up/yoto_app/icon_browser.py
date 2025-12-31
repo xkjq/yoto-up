@@ -553,7 +553,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         #        ft.Text(f"Name: {os.path.basename(path)}"),
         #        ft.Text(f"Source: {'Official cache' if path.startswith('.yoto_icon_cache') else ('YotoIcons' if path.startswith('.yotoicons_cache') else 'Local')}"),
         #    ], scroll=ft.ScrollMode.AUTO)
-        #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))], scrollable=True)
+        #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())], scrollable=True)
         #    page.show_dialog(dlg)
         #except Exception:
         #    pass

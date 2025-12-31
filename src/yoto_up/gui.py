@@ -165,6 +165,19 @@ To authenticate with your Yoto account:
 
 
 def main(page):
+    try:
+        _main_impl(page)
+    except Exception as e:
+        error_msg = f"The application encountered an error: {type(e).__name__}: {e}"
+        print(error_msg, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # Show error in page
+        page.clean()
+        page.add(ft.Text(error_msg, color=ft.Colors.RED, size=16))
+        page.update()
+        raise
+
+def _main_impl(page):
 
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     waveform_cache = {}
@@ -351,7 +364,7 @@ def main(page):
             dlg = ft.AlertDialog(
                 title=ft.Text("About Yoto Up"),
                 content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
-                actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
+                actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
             )
             page.show_dialog(dlg)
             page.update()
@@ -367,7 +380,7 @@ def main(page):
                 fallback = ft.AlertDialog(
                     title=ft.Text("About Yoto Up"),
                     content=ft.Text("Unable to build full About dialog at this time."),
-                    actions=[ft.TextButton("Close", on_click=lambda e: page.close(fallback))],
+                    actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
                 )
                 page.show_dialog(fallback)
                 page.update()
@@ -465,7 +478,7 @@ def main(page):
                 style=ft.ButtonStyle(color=ft.Colors.BLUE),
             ),
             ]),
-            actions=[ft.TextButton("OK", on_click=lambda e: page.close(dlg))],
+            actions=[ft.TextButton("OK", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(dlg)
         page.update()
@@ -511,11 +524,20 @@ def main(page):
     overall_text = ft.Text("")
     file_rows_column = ft.Column()
 
-    # File picker and folder controls
-    browse = ft.FilePicker()
-    browse_files = ft.FilePicker()
-    page.overlay.append(browse)
-    page.overlay.append(browse_files)
+    # File picker and folder controls.
+    # On Linux desktop, FilePicker depends on "zenity". If it's missing,
+    # Flet may surface a confusing "Unknown control: FilePicker" error.
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+    try:
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+    except Exception:
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+    if not _file_picker_supported:
+        logger.warning("Zenity not found; disabling FilePicker dialogs on Linux desktop")
+
+    browse = ft.FilePicker() if _file_picker_supported else None
+    browse_files = ft.FilePicker() if _file_picker_supported else None
     # When a folder is chosen we will populate file_rows_column
     folder = ft.TextField(label="Folder", width=400)
 
@@ -759,62 +781,29 @@ def main(page):
 
 
 
-    def on_pick_result(e: ft.FilePickerResultEvent):
-        logger.debug("[on_pick_result] picked folder")
-        if e.files:
-            # use the first file's folder as the folder path
-            first = e.files[0]
-            # In desktop mode, path is available as "path"
-            if hasattr(first, "path") and first.path:
-                folder.value = str(Path(first.path).parent)
-                # populate the file rows immediately when a folder is chosen
-                try:
-                    if folder.value:
-                        populate_file_rows(folder.value)
-                except Exception:
-                    logger.error("on_pick_result: populate_file_rows failed", None)
-            else:
-                # web mode: save files to temp? For simplicity, just inform user
-                folder.value = "(web file picker used - paste local folder path instead)"
-            update_show_waveforms_btn()
+    async def _handle_picked_files(files: list[ft.FilePickerFile] | None):
+        if not files:
+            return
+
+        logger.debug(f"[_handle_picked_files] picked {len(files)} files")
+        if getattr(page, "web", False):
+            logger.debug("[_handle_picked_files] running in web mode")
+            to_upload: list[ft.FilePickerUploadFile] = []
+            for f in files:
+                if getattr(f, "name", None):
+                    upload_url = page.get_upload_url(f"queue/{f.name}", 60)
+                    to_upload.append(ft.FilePickerUploadFile(f.name, upload_url))
+            if to_upload and browse_files is not None:
+                await browse_files.upload(to_upload)
+        else:
+            for f in files:
+                logger.debug(f"[_handle_picked_files] processing {getattr(f, 'name', '')}")
+                path = getattr(f, "path", None)
+                if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
+                    file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
+                    file_rows_column.controls.append(file_row.row)
+        update_show_waveforms_btn()
         page.update()
-
-    def on_pick_files_result(e: ft.FilePickerResultEvent):
-        logger.debug("[on_pick_files_result] picked files")
-
-        logger.debug(f"[on_pick_files_result] platform: {e.page.platform}")
-        logger.debug(f"[on_pick_files_result] web: {e.page.web}")
-
-        if e.files:
-            logger.debug(f"[on_pick_result] picked {len(e.files)} files")
-            if e.page.web:
-                logger.debug("[on_pick_files_result] running in web mode")
-                # In web mode, we need to save the files to a temp directory
-                temp_dir = os.path.join(tempfile.gettempdir(), "yoto_up_uploads")
-                os.makedirs(temp_dir, exist_ok=True)
-                to_upload = []
-                for f in e.files:
-                    if hasattr(f, "name") and f.name:
-                        upload_url = page.get_upload_url(f"queue/{f.name}", 60)
-                        to_upload.append(ft.FilePickerUploadFile(f.name, upload_url))
-                
-                browse_files.upload(to_upload)
-            else:
-                for f in e.files:
-                    # Add each selected file to the file_rows_column if not already present
-                    logger.debug(f"[on_pick_files_result] processing {f.name}")
-                    path = getattr(f, "path", None)
-                    if path and not any(getattr(row, "filename", None) == path for row in file_rows_column.controls):
-                        try:
-                            file_row = FileUploadRow(path, maybe_page=page, maybe_column=file_rows_column)
-                            file_rows_column.controls.append(file_row.row)
-                        except Exception as _:
-                            raise RuntimeError(f"Failed to create FileUploadRow for {path}")
-            update_show_waveforms_btn()
-            page.update()
-
-    browse.on_result = on_pick_result
-    browse_files.on_result = on_pick_files_result
 
     def on_upload_file_result(e: ft.FilePickerUploadEvent):
         logger.debug(f"[on_upload_file_result] uploaded {e} ")
@@ -831,7 +820,38 @@ def main(page):
             update_show_waveforms_btn()
             page.update()
 
-    browse_files.on_upload = on_upload_file_result
+    if browse_files is not None:
+        browse_files.on_upload = on_upload_file_result
+
+    def _require_file_picker() -> bool:
+        if _file_picker_supported:
+            return True
+        show_snack(
+            "File dialogs are disabled because 'zenity' is not installed. "
+            "On Ubuntu/Debian: sudo apt-get install zenity",
+            error=True,
+            duration=12000,
+        )
+        return False
+
+    async def _open_folder_picker(_e=None):
+        if not _require_file_picker() or browse is None:
+            return
+        selected_dir = await browse.get_directory_path()
+        if selected_dir:
+            folder.value = selected_dir
+            try:
+                populate_file_rows(folder.value)
+            except Exception:
+                logger.error("_open_folder_picker: populate_file_rows failed", None)
+            update_show_waveforms_btn()
+            page.update()
+
+    async def _open_files_picker(_e=None):
+        if not _require_file_picker() or browse_files is None:
+            return
+        files = await browse_files.pick_files(allow_multiple=True)
+        await _handle_picked_files(files)
 
     # When the folder TextField is changed (user pastes or types a path), update the file list immediately
     def _on_folder_change(ev=None):
@@ -1038,13 +1058,13 @@ def main(page):
 
         def _cancel(ev):
             try:
-                page.close(dlg)
+                page.pop_dialog()
             except Exception:
                 pass
 
         def _confirm(ev):
             try:
-                page.close(dlg)
+                page.pop_dialog()
             except Exception:
                 pass
             api = ensure_api(api_ref)  # ensure api_ref has an API instance
@@ -1084,13 +1104,13 @@ def main(page):
 
         def _cancel(ev=None):
             try:
-                page.close(dlg)
+                page.pop_dialog()
             except Exception:
                 pass
 
         def _confirm(ev=None):
             try:
-                page.close(dlg)
+                page.pop_dialog()
             except Exception:
                 pass
 
@@ -1329,7 +1349,7 @@ def main(page):
         dlg = AlertDialog(
             title=Text("Card Details"),
             content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
-            actions=[TextButton("Close", on_click=lambda e: page.close(dlg))],
+            actions=[TextButton("Close", on_click=lambda e: page.pop_dialog())],
             scrollable=True
         )
         page.show_dialog(dlg)
@@ -1620,7 +1640,7 @@ def main(page):
 
                             # Close the preparing dialog
                             try:
-                                page.close(preview_dlg)
+                                page.pop_dialog()
                             except Exception:
                                 pass
 
@@ -1880,7 +1900,7 @@ def main(page):
                             pass
 
                 try:
-                    page.close(trim_dlg)
+                    page.pop_dialog()
                     page.update()
                 except Exception:
                     pass
@@ -1894,7 +1914,7 @@ def main(page):
                     confirm_text = ft.Text(f'You are about to trim {comp_val:.2f}s from {total_to_trim} file(s).\n\nThis will modify the selected files. Proceed?')
                     def _on_proceed(e=None):
                         try:
-                            page.close(confirm_dlg)
+                            page.pop_dialog()
                         except Exception:
                             pass
                         # start the trimming worker after closing the confirm dialog
@@ -1902,7 +1922,7 @@ def main(page):
 
                     def _on_cancel(e=None):
                         try:
-                            page.close(confirm_dlg)
+                            page.pop_dialog()
                         except Exception:
                             pass
 
@@ -1972,7 +1992,7 @@ def main(page):
 
         run_btn = ft.Button('Run analysis', on_click=on_run)
         trim_btn = ft.Button('Trim selected', disabled=True)
-        close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
+        close_btn = ft.TextButton('Close', on_click=lambda e: page.pop_dialog())
 
         dlg = ft.AlertDialog(
             title=ft.Text('Analyze intro/outro'),
@@ -2034,7 +2054,7 @@ def main(page):
         pass
 
     # Wrap in a container to preserve top/bottom margins
-    _local_norm_container = ft.Container(content=local_norm_expander, margin=ft.margin.only(top=6, bottom=6))
+    _local_norm_container = ft.Container(content=local_norm_expander, margin=ft.Margin(top=6, bottom=6, left=0, right=0))
 
     upload_column = ft.Column([
         ft.Row([
@@ -2050,8 +2070,8 @@ def main(page):
         _local_norm_container,
         ft.Row([
             folder, 
-            ft.TextButton("Browse Folder...", on_click=lambda e: browse.pick_files(allow_multiple=True)),
-            ft.TextButton("Add Files...", on_click=lambda e: browse_files.pick_files(allow_multiple=True)),
+            ft.TextButton("Browse Folder...", on_click=_open_folder_picker),
+            ft.TextButton("Add Files...", on_click=_open_files_picker),
             ft.TextButton("Clear Queue", on_click=clear_queue),
             show_waveforms_btn,
             analyze_intro_btn,
@@ -2221,8 +2241,8 @@ def main(page):
                 title=ft.Text("Autoselect status"),
                 content=content_col,
                 actions=[
-                    ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set() if cancel_event else None, page.close(dlg))),
-                    ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
+                    ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set() if cancel_event else None, page.pop_dialog())),
+                    ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
                 ],
             )
             page.show_dialog(dlg)
@@ -2345,45 +2365,77 @@ def main(page):
         editor = None
         editor_tab = None
 
+    # Create tab labels
     auth_tab = ft.Tab(label="Auth")
-    auth_tab.content = auth_column
-    
     playlists_tab = ft.Tab(label="Playlists", visible=False)
-    playlists_tab.content = playlists_column
-    
     upload_tab = ft.Tab(label="Upload", visible=False)
-    upload_tab.content = upload_column
-    
     icons_tab = ft.Tab(label="Icons", visible=False)
-    icons_tab.content = icon_panel
-    
     covers_tab = ft.Tab(label="Covers", visible=False)
-    covers_tab.content = covers_panel
     
     # Editor tab (if created) - inserted before Icons
     if editor_tab is None:
-        editor_tab = ft.Tab(label="Editor")
-        editor_tab.content = ft.Text("Editor unavailable")
+        editor_tab = ft.Tab(label="Editor", visible=False)
+        editor_fallback = ft.Text("Editor unavailable")
+        editor_fallback.visible = True
+        editor_content = editor_fallback
+    else:
+        # Editor tab was created - extract content stored on tab object
+        if hasattr(editor_tab, '_editor_content'):
+            editor_content = editor_tab._editor_content
+            if hasattr(editor_content, 'visible'):
+                editor_content.visible = True
+        else:
+            # No content found, add placeholder
+            editor_fallback = ft.Text("Editor unavailable")
+            editor_fallback.visible = True
+            editor_content = editor_fallback
+        # Tab label is already correct, no need to recreate
     
+    # Ensure all content is visible
+    auth_column.visible = True
+    playlists_column.visible = True
+    upload_column.visible = True
+    icon_panel.visible = True
+    covers_panel.visible = True
+    
+    # Create Tabs with separate tab labels and content panels
+    # Note: In Flet 0.80, Tabs.content takes list of Control objects (panels)
+    #       and tabs property is set with list of Tab objects (labels)
+    all_tab_labels = [auth_tab, playlists_tab, upload_tab, icons_tab, covers_tab, editor_tab]
+    all_tab_content = [auth_column, playlists_column, upload_column, icon_panel, covers_panel, editor_content]
+    
+    # Create Tabs control with both tabs and content specified
     tabs_control = ft.Tabs(
+         content=all_tab_content,
+         length=len(all_tab_content),
          selected_index=0,
-         tabs=[auth_tab, playlists_tab, upload_tab, icons_tab, covers_tab, editor_tab],
          expand=True,
      )
+    tabs_control.tabs = all_tab_labels
     # Place About button above tabs
     page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, autoselect_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
+    
+    # Register service controls after page has content
+    page.services.extend([p for p in (browse, browse_files) if p is not None])
+    page.update()
     
     # Define functions that reference tabs_control after it's created
     def invalidate_authentication():
         """Invalidate authentication: clear API, hide tabs, switch to Auth tab, and update UI."""
         # Clear API instance
         api_ref["api"] = None
-        # Hide Playlists and Upload tabs
-        tabs_control.tabs[1].visible = False
-        tabs_control.tabs[2].visible = False
-        tabs_control.tabs[3].visible = False  # Icons tab
-        tabs_control.tabs[4].visible = False  # Editor tab
+        # Hide non-auth tabs
+        try:
+            for i in range(1, len(tabs_control.tabs)):
+                tabs_control.tabs[i].visible = False
+        except Exception:
+            pass
+        try:
+            for i in range(1, len(tabs_control.content)):
+                tabs_control.content[i].visible = False
+        except Exception:
+            pass
         # Switch to Auth tab
         tabs_control.selected_index = 0
         # Update instructions/status
@@ -2404,11 +2456,16 @@ def main(page):
 
     def auth_complete():
         logger.debug("Auth complete")
-        tabs_control.tabs[1].visible = True  # Playlists
-        tabs_control.tabs[2].visible = True  # Upload
-        tabs_control.tabs[3].visible = True  # Icons tab
-        tabs_control.tabs[4].visible = True  # Covers tab
-        tabs_control.tabs[5].visible = True  # Editor tab
+        try:
+            for i in range(1, len(tabs_control.tabs)):
+                tabs_control.tabs[i].visible = True
+        except Exception:
+            pass
+        try:
+            for i in range(1, len(tabs_control.content)):
+                tabs_control.content[i].visible = True
+        except Exception:
+            pass
 
         api = api_ref.get("api")
         if api:
@@ -2495,7 +2552,48 @@ def main(page):
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
 def start_gui():
-    ft.run(main, assets_dir="assets", upload_dir="assets/uploads")
+    # Patch Flet logging to capture all errors to stderr
+    import logging
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
+    
+    # Create a handler that writes everything to stderr
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)
+    
+    # Capture Flet's internal loggers
+    for logger_name in ['flet', 'flet.core', 'flet_core', 'flet_runtime']:
+        flet_logger = logging.getLogger(logger_name)
+        flet_logger.addHandler(stderr_handler)
+        flet_logger.setLevel(logging.WARNING)
+    
+    def main_wrapper(page):
+        try:
+            # Set page error handler to print to stderr
+            def page_error_handler(e):
+                error_msg = f"[FLET PAGE ERROR] {e.data if hasattr(e, 'data') else str(e)}"
+                print(error_msg, file=sys.stderr)
+                sys.stderr.flush()
+            
+            if hasattr(page, 'on_error'):
+                page.on_error = page_error_handler
+            
+            main(page)
+        except Exception as e:
+            error_msg = f"GUI Error: {type(e).__name__}: {e}"
+            print(error_msg, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+            # Also show in GUI if possible
+            try:
+                import flet as ft
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: {e}"), bgcolor=ft.Colors.RED)
+                page.show_dialog(page.snack_bar)
+                page.update()
+            except Exception:
+                pass
+            raise
+    
+    ft.run(main_wrapper, assets_dir="assets", upload_dir="assets/uploads")
 
 if __name__ == "__main__":
     start_gui()

@@ -3403,8 +3403,10 @@ class PixelArtEditor:
             content = ft.Column(
                 [self.container], scroll=ft.ScrollMode.AUTO, expand=True
             )
+            content.visible = True
             tab = ft.Tab(label=title)
-            tab.content = content
+            # Store content separately - Tab objects are just labels in Flet 0.80
+            tab._editor_content = content
             self._tab = tab
             return tab
         except Exception:
@@ -3412,7 +3414,10 @@ class PixelArtEditor:
             # fallback: return a plain container wrapped as a Tab-like object
             try:
                 tab = ft.Tab(label=title)
-                tab.content = self.container
+                if hasattr(self.container, 'visible'):
+                    self.container.visible = True
+                # Store content separately - Tab objects are just labels in Flet 0.80
+                tab._editor_content = self.container
                 self._tab = tab
                 return tab
             except Exception:

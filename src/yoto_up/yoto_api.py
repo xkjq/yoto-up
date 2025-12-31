@@ -181,7 +181,12 @@ class YotoAPI:
                     level = logger.level(record.levelname).name
                 except ValueError:
                     level = record.levelno
-                logger.log(level, record.getMessage())
+                # Add traceback info if available for errors
+                msg = record.getMessage()
+                if record.exc_info:
+                    import traceback
+                    msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+                logger.log(level, msg)
         logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO)
         httpx_logger = logging.getLogger("httpx")
         httpx_logger.propagate = True

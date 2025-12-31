@@ -6,6 +6,7 @@ import json
 import traceback
 from pathlib import Path
 from typing import Any, Dict
+import shutil
 
 
 import flet as ft
@@ -90,13 +91,21 @@ def build_playlists_panel(
     export_selected_btn = ft.Button("Export Selected", disabled=True)
     export_selected_btn.visible = False
     # Import card controls
-    import_picker = ft.FilePicker()
-    # append picker to page overlay if page supports overlay (gui.py appends similar pickers)
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
     try:
-        page.overlay.append(import_picker)
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
     except Exception:
-        # page may be a SimpleNamespace in some tests; ignore if overlay isn't available
-        pass
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+
+    import_picker = ft.FilePicker() if _file_picker_supported else None
+    # FilePicker is a service in Flet 0.80+; register it with page.services.
+    if import_picker is not None:
+        try:
+            page.services.append(import_picker)
+        except Exception:
+            # page may be a SimpleNamespace in some tests; ignore if services isn't available
+            pass
     import_card_btn = ft.Button("Import Card(s)")
     restore_versions_btn = ft.Button("Restore Versions")
     def _open_versions_dialog(_e=None):
@@ -609,7 +618,7 @@ def build_playlists_panel(
         nonlocal multi_select_mode
         try:
             multi_select_mode = not multi_select_mode
-            multi_select_btn.text = "Done" if multi_select_mode else "Select"
+            multi_select_btn.content = "Done" if multi_select_mode else "Select"
             delete_selected_btn.visible = multi_select_mode
             export_selected_btn.visible = multi_select_mode
             add_tags_btn.visible = multi_select_mode
@@ -618,7 +627,7 @@ def build_playlists_panel(
             select_all_btn.visible = multi_select_mode
             if not multi_select_mode:
                 try:
-                    select_all_btn.text = "Select all"
+                    select_all_btn.content = "Select all"
                     select_all_btn.update()
                 except Exception:
                     pass
@@ -648,6 +657,7 @@ def build_playlists_panel(
 
     # Select All / Deselect All control (visible only in multi-select mode)
     select_all_btn = ft.Button("Select all", visible=False)
+    select_all_selected = False
 
     def _update_multiselect_buttons():
         """Central helper to set disabled state for multiselect action buttons."""
@@ -712,13 +722,16 @@ def build_playlists_panel(
             pass
 
     def select_all_toggle(ev=None):
+        nonlocal select_all_selected
         try:
-            if select_all_btn.text == "Select all":
+            if not select_all_selected:
                 _set_all_checkboxes(True)
-                select_all_btn.text = "Deselect all"
+                select_all_btn.content = "Deselect all"
+                select_all_selected = True
             else:
                 _set_all_checkboxes(False)
-                select_all_btn.text = "Select all"
+                select_all_btn.content = "Select all"
+                select_all_selected = False
             _update_multiselect_buttons()
             try:
                 select_all_btn.update()
@@ -1853,7 +1866,7 @@ def build_playlists_panel(
                 bgcolor=ft.Colors.GREY_100,
                 border_radius=4,
                 height=None,
-                alignment=ft.alignment.Alignment.TOP_LEFT,
+                alignment=ft.Alignment.TOP_LEFT,
             )
         ],
     )
@@ -1888,13 +1901,13 @@ def build_playlists_panel(
     )
 
     # Import picker result handling
-    def _on_import_pick_result(e: ft.FilePickerResultEvent):
+    def _on_import_pick_result(files: list[ft.FilePickerFile] | None):
         try:
-            if not e.files:
+            if not files:
                 show_snack("No file selected for import", error=True)
                 return
             # use first selected file
-            for f in e.files:
+            for f in files:
                 path = getattr(f, "path", None)
                 if not path:
                     show_snack("Selected file has no path (web picker unsupported)", error=True)
@@ -1946,11 +1959,16 @@ def build_playlists_panel(
             logger.error(f"_on_import_pick_result unexpected error: {exc}")
             show_snack("Unexpected error during import", error=True)
 
-    import_picker.on_result = _on_import_pick_result
-
-    def _on_import_card_click(e=None):
+    async def _on_import_card_click(e=None):
         try:
-            import_picker.pick_files(dialog_title="Select Card JSON file(s) to import", allow_multiple=True)
+            if import_picker is None:
+                show_snack(
+                    "Import requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
+                    error=True,
+                )
+                return
+            files = await import_picker.pick_files(dialog_title="Select Card JSON file(s) to import", allow_multiple=True)
+            _on_import_pick_result(files)
         except Exception as ex:
             logger.error(f"import_card click failed: {ex}")
             show_snack("Failed to open file picker", error=True)

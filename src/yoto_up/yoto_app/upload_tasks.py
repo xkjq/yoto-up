@@ -123,7 +123,7 @@ class FileUploadRow:
             else:
                 for k, v in tags.items():
                     lines.append(Text(f"{k}: {v}"))
-            dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[Button('OK', on_click=lambda e: page.close(dlg))])
+            dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[Button('OK', on_click=lambda e: page.pop_dialog())])
             page.show_dialog(dlg)
             page.update()
         except Exception as e:
