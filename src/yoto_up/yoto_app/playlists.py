@@ -262,7 +262,7 @@ def build_playlists_panel(
 
         dlg = ft.AlertDialog(title=ft.Text("Restore deleted cards"), content=lv, actions=[ft.TextButton("Restore Selected", on_click=do_restore), ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
         try:
-            page.open(dlg)
+            page.show_dialog(dlg)
             page.update()
         except Exception:
             try:
@@ -572,7 +572,7 @@ def build_playlists_panel(
                 ft.TextButton("No", on_click=confirm_no),
             ],
         )
-        page.open(confirm_dialog)
+        page.show_dialog(confirm_dialog)
 
     def _on_export_selected(ev):
         def confirm_yes(_e=None):
@@ -600,7 +600,7 @@ def build_playlists_panel(
                 ft.TextButton("No", on_click=confirm_no),
             ],
         )
-        page.open(confirm_dialog)
+        page.show_dialog(confirm_dialog)
 
     delete_selected_btn.on_click = _on_delete_selected
     export_selected_btn.on_click = _on_export_selected
@@ -859,7 +859,7 @@ def build_playlists_panel(
                 ],
             )
             try:
-                page.open(confirm_dialog)
+                page.show_dialog(confirm_dialog)
             except Exception:
                 try:
                     page.dialog = confirm_dialog
@@ -1081,7 +1081,7 @@ def build_playlists_panel(
                 ],
             )
             try:
-                page.open(dlg)
+                page.show_dialog(dlg)
             except Exception:
                 try:
                     page.dialog = dlg
@@ -1150,7 +1150,7 @@ def build_playlists_panel(
                 ],
             )
             try:
-                page.open(add_tags_dialog)
+                page.show_dialog(add_tags_dialog)
             except Exception:
                 try:
                     page.dialog = add_tags_dialog
@@ -1236,7 +1236,7 @@ def build_playlists_panel(
                 ],
             )
             try:
-                page.open(dlg)
+                page.show_dialog(dlg)
             except Exception:
                 try:
                     page.dialog = dlg
@@ -1780,8 +1780,10 @@ def build_playlists_panel(
             if "401" in str(http_ex) or "403" in str(http_ex):
                 show_snack("Authentication error. Please log in again.", error=True)
                 delete_tokens_file()
-                page.invalidate_authentication()
-                page.switch_to_auth_tab()
+                if hasattr(page, 'invalidate_authentication'):
+                    page.invalidate_authentication()
+                if hasattr(page, 'switch_to_auth_tab'):
+                    page.switch_to_auth_tab()
                 page.update()
 
         except Exception as ex:

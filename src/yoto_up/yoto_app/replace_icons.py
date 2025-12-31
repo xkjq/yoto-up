@@ -69,7 +69,7 @@ Continue?"""
                             content=prog_col,
                             actions=[ft.TextButton("Cancel", on_click=do_cancel)],
                         )
-                        page.open(replace_dialog)
+                        page.show_dialog(replace_dialog)
 
                         def work():
                             new_card = None
@@ -223,7 +223,7 @@ Continue?"""
                                 ft.TextButton("Cancel", on_click=lambda e: (setattr(secondary, "open", False), page.update())),
                             ],
                         )
-                        page.open(secondary)
+                        page.show_dialog(secondary)
                     except Exception:
                         threading.Thread(target=_start_worker, daemon=True).start()
                 else:
@@ -263,7 +263,7 @@ Continue?"""
         )
 
         try:
-            page.open(confirm_dialog)
+            page.show_dialog(confirm_dialog)
         except Exception:
             try:
                 page.dialog = confirm_dialog
@@ -336,7 +336,7 @@ def start_replace_icons_background(
                                 ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
                             ],
                         )
-                        page.open(dlg)
+                        page.show_dialog(dlg)
                         page.update()
                     except Exception:
                         pass

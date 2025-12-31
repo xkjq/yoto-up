@@ -119,8 +119,8 @@ def open_image_stamp_dialog(editor, e):
 
     files = []
     status = ft.Text("")
-    preview = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
-    preview_applied = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+    preview = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
+    preview_applied = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
 
     provided_dir = STAMPS_DIR / 'provided'
     seed_stamps_if_empty(provided_dir)
@@ -194,7 +194,7 @@ def open_image_stamp_dialog(editor, e):
         dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("OK", on_click=lambda ev: page.close(dlg))], open=False)
         STAMP_DIALOG = dlg
         if page:
-            page.open(dlg)
+            page.show_dialog(dlg)
         return
 
     # build dropdown (labels mark imported vs stamps)
@@ -245,7 +245,7 @@ def open_image_stamp_dialog(editor, e):
             pass
 
         page = ev.page if ev and hasattr(ev, 'page') else None
-        page.open(STAMP_DIALOG)
+        page.show_dialog(STAMP_DIALOG)
 
         
 
@@ -324,7 +324,7 @@ def open_image_stamp_dialog(editor, e):
                 tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
                 thumb.save(tmpf.name)
 
-                img_widget = ft.Image(src=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.ImageFit.CONTAIN)
+                img_widget = ft.Image(src=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.BoxFit.CONTAIN)
                 try:
                     img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, lbl=label: select_stamp(lbl, ev))
                 except Exception:
@@ -387,7 +387,7 @@ def open_image_stamp_dialog(editor, e):
 
                                 confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {lbl}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(confirm_dlg)), ft.TextButton("Delete", on_click=_do_delete)], open=False)
                                 try:
-                                    page.open(confirm_dlg)
+                                    page.show_dialog(confirm_dlg)
                                 except Exception:
                                     pass
                             except Exception:
@@ -1054,14 +1054,14 @@ def open_image_stamp_dialog(editor, e):
             finally:
                 try:
                     global STAMP_GALLERY_DIALOG
-                    page.open(STAMP_GALLERY_DIALOG)
+                    page.show_dialog(STAMP_GALLERY_DIALOG)
                 except Exception:
                     pass
 
         global STAMP_GALLERY_DIALOG
-        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {os.path.basename(mapped)}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.open(STAMP_GALLERY_DIALOG)), ft.TextButton("Delete", on_click=_do_delete_selected)], open=False)
+        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {os.path.basename(mapped)}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.show_dialog(STAMP_GALLERY_DIALOG)), ft.TextButton("Delete", on_click=_do_delete_selected)], open=False)
         try:
-            page.open(confirm_dlg)
+            page.show_dialog(confirm_dlg)
         except Exception:
             pass
 
@@ -1205,7 +1205,7 @@ def open_image_stamp_dialog(editor, e):
 
         group_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Column([group_dropdown, info], spacing=8), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(group_dlg)), ft.TextButton("Delete", on_click=_do_delete_group)], open=False)
         try:
-            page.open(group_dlg)
+            page.show_dialog(group_dlg)
         except Exception:
             pass
 
@@ -1231,7 +1231,7 @@ def open_image_stamp_dialog(editor, e):
     STAMP_DIALOG = dlg
     if page:
         page.dialog = dlg
-        page.open(dlg)
+        page.show_dialog(dlg)
         try:
             if not dropdown.value and dropdown.options:
                 dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)

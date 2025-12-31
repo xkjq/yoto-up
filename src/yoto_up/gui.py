@@ -353,7 +353,7 @@ def main(page):
                 content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
                 actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))],
             )
-            page.open(dlg)
+            page.show_dialog(dlg)
             page.update()
         except Exception as ex:
             # If anything goes wrong building the rich About dialog (for
@@ -369,7 +369,7 @@ def main(page):
                     content=ft.Text("Unable to build full About dialog at this time."),
                     actions=[ft.TextButton("Close", on_click=lambda e: page.close(fallback))],
                 )
-                page.open(fallback)
+                page.show_dialog(fallback)
                 page.update()
             except Exception:
                 pass
@@ -467,29 +467,8 @@ def main(page):
             ]),
             actions=[ft.TextButton("OK", on_click=lambda e: page.close(dlg))],
         )
-        page.open(dlg)
+        page.show_dialog(dlg)
         page.update()
-    def invalidate_authentication():
-        """Invalidate authentication: clear API, hide tabs, switch to Auth tab, and update UI."""
-        # Clear API instance
-        api_ref["api"] = None
-        # Hide Playlists and Upload tabs
-        tabs_control.tabs[1].visible = False
-        tabs_control.tabs[2].visible = False
-        tabs_control.tabs[3].visible = False  # Icons tab
-        tabs_control.tabs[4].visible = False  # Editor tab
-        # Switch to Auth tab
-        tabs_control.selected_index = 0
-        # Update instructions/status
-        auth_instructions.controls.clear()
-        auth_instructions.controls.append(ft.Text(AUTHENTICATE_TEXT, size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED))
-        page.update()
-    def switch_to_auth_tab():
-        """Switch to the Auth tab (index 0) and update the page."""
-        tabs_control.selected_index = 0
-        page.update()
-    page.switch_to_auth_tab = switch_to_auth_tab
-    page.invalidate_authentication = invalidate_authentication
 
     # Shared runtime state
     # Counters for overall progress
@@ -509,7 +488,7 @@ def main(page):
         print(f"[gui] show_snack: {message}")
         bg = ft.Colors.RED if error else None
         page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg, duration=duration)
-        page.open(page.snack_bar)
+        page.show_dialog(page.snack_bar)
         try:
             page.update()
         except AssertionError:
@@ -1084,7 +1063,7 @@ def main(page):
             ft.TextButton("Confirm", on_click=_confirm),
         ]
 
-        page.open(dlg)
+        page.show_dialog(dlg)
         page.update()
 
     reset_btn = ft.TextButton("Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False))
@@ -1187,7 +1166,7 @@ def main(page):
             ft.TextButton("Cancel", on_click=_cancel),
             ft.TextButton("Confirm", on_click=_confirm),
         ]
-        page.open(dlg)
+        page.show_dialog(dlg)
         page.update()
 
     # clear_data_btn removed; Clear action is available from the About dialog
@@ -1353,7 +1332,7 @@ def main(page):
             actions=[TextButton("Close", on_click=lambda e: page.close(dlg))],
             scrollable=True
         )
-        page.open(dlg)
+        page.show_dialog(dlg)
         page.update()
 
     def show_card_info(card):
@@ -1576,13 +1555,13 @@ def main(page):
                         logger.debug(f"TEST")
                         global INTRO_OUTRO_DIALOG
                         logger.debug(f"open_intro_outro_dialog: reopening dialog: {INTRO_OUTRO_DIALOG}")
-                        page.open(INTRO_OUTRO_DIALOG)
+                        page.show_dialog(INTRO_OUTRO_DIALOG)
 
                     # Create a preview dialog so the user sees progress while we extract
                     preview_content = ft.Column([ft.Row([ft.ProgressRing(), ft.Text('Preparing preview...')], alignment=ft.MainAxisAlignment.CENTER)], scroll=ft.ScrollMode.AUTO)
                     preview_dlg = ft.AlertDialog(title=ft.Text('Preview'), content=preview_content, actions=[ft.TextButton('Close', on_click=lambda e: open_intro_outro_dialog(e))], modal=True)
                     try:
-                        page.open(preview_dlg)
+                        page.show_dialog(preview_dlg)
                         page.update()
                     except Exception:
                         pass
@@ -1705,7 +1684,7 @@ def main(page):
 
                             try:
                                 result_dlg = make_result_dialog(wav_ok)
-                                page.open(result_dlg)
+                                page.show_dialog(result_dlg)
                                 page.update()
                             except Exception:
                                 try:
@@ -1759,7 +1738,7 @@ def main(page):
                 trim_label = ft.Text(f'Trimming 0/{total_to_trim}')
                 trim_dlg = ft.AlertDialog(title=ft.Text('Trimming...'), content=ft.Column([trim_label, trim_progress]), actions=[])
                 try:
-                    page.open(trim_dlg)
+                    page.show_dialog(trim_dlg)
                     page.update()
                 except Exception:
                     pass
@@ -1930,7 +1909,7 @@ def main(page):
                     proceed_btn = ft.Button('Proceed', on_click=_on_proceed)
                     cancel_btn = ft.TextButton('Cancel', on_click=_on_cancel)
                     confirm_dlg = ft.AlertDialog(title=ft.Text('Confirm trimming'), content=confirm_text, actions=[proceed_btn, cancel_btn])
-                    page.open(confirm_dlg)
+                    page.show_dialog(confirm_dlg)
                     page.update()
                 else:
                     # No removal requested (0s) — start trimming immediately
@@ -2009,7 +1988,7 @@ def main(page):
         # expose dlg to inner closures
         global INTRO_OUTRO_DIALOG
         INTRO_OUTRO_DIALOG = dlg
-        page.open(dlg)
+        page.show_dialog(dlg)
         page.update()
 
     analyze_intro_btn.on_click = open_analysis_dialog
@@ -2246,7 +2225,7 @@ def main(page):
                     ft.TextButton("Close", on_click=lambda e: page.close(dlg)),
                 ],
             )
-            page.open(dlg)
+            page.show_dialog(dlg)
             page.update()
         except Exception:
             pass
@@ -2366,22 +2345,61 @@ def main(page):
         editor = None
         editor_tab = None
 
+    auth_tab = ft.Tab(label="Auth")
+    auth_tab.content = auth_column
+    
+    playlists_tab = ft.Tab(label="Playlists", visible=False)
+    playlists_tab.content = playlists_column
+    
+    upload_tab = ft.Tab(label="Upload", visible=False)
+    upload_tab.content = upload_column
+    
+    icons_tab = ft.Tab(label="Icons", visible=False)
+    icons_tab.content = icon_panel
+    
+    covers_tab = ft.Tab(label="Covers", visible=False)
+    covers_tab.content = covers_panel
+    
+    # Editor tab (if created) - inserted before Icons
+    if editor_tab is None:
+        editor_tab = ft.Tab(label="Editor")
+        editor_tab.content = ft.Text("Editor unavailable")
+    
     tabs_control = ft.Tabs(
          selected_index=0,
-         tabs=[
-             ft.Tab(label="Auth", content=auth_column),
-             ft.Tab(label="Playlists", content=playlists_column, visible=False),
-             ft.Tab(label="Upload", content=upload_column, visible=False),
-             ft.Tab(label="Icons", content=icon_panel, visible=False),
-             ft.Tab(label="Covers", content=covers_panel, visible=False),
-             # Editor tab (if created) - inserted before Icons
-             editor_tab if editor_tab is not None else ft.Tab(label="Editor", content=ft.Text("Editor unavailable")),
-         ],
+         tabs=[auth_tab, playlists_tab, upload_tab, icons_tab, covers_tab, editor_tab],
          expand=True,
      )
     # Place About button above tabs
     page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, autoselect_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
+    
+    # Define functions that reference tabs_control after it's created
+    def invalidate_authentication():
+        """Invalidate authentication: clear API, hide tabs, switch to Auth tab, and update UI."""
+        # Clear API instance
+        api_ref["api"] = None
+        # Hide Playlists and Upload tabs
+        tabs_control.tabs[1].visible = False
+        tabs_control.tabs[2].visible = False
+        tabs_control.tabs[3].visible = False  # Icons tab
+        tabs_control.tabs[4].visible = False  # Editor tab
+        # Switch to Auth tab
+        tabs_control.selected_index = 0
+        # Update instructions/status
+        auth_instructions.controls.clear()
+        auth_instructions.controls.append(ft.Text(AUTHENTICATE_TEXT, size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED))
+        page.update()
+    
+    def switch_to_auth_tab():
+        """Switch to the Auth tab (index 0) and update the page."""
+        tabs_control.selected_index = 0
+        page.update()
+    
+    # Assign functions to page so they can be called elsewhere
+    page.switch_to_auth_tab = switch_to_auth_tab
+    page.invalidate_authentication = invalidate_authentication
+    
     show_dev_warning()
 
     def auth_complete():

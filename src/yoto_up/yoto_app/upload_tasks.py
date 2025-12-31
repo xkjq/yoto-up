@@ -124,7 +124,7 @@ class FileUploadRow:
                 for k, v in tags.items():
                     lines.append(Text(f"{k}: {v}"))
             dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[Button('OK', on_click=lambda e: page.close(dlg))])
-            page.open(dlg)
+            page.show_dialog(dlg)
             page.update()
         except Exception as e:
             print(f"[on_view_details] error: {e}")

@@ -330,7 +330,7 @@ class ColourPicker:
         if page and getattr(self, 'caller_page_dialog', None):
             logger.debug("Reopening caller dialog")
             page.dialog = self.caller_page_dialog
-            page.open(page.dialog)
+            page.show_dialog(page.dialog)
             self.caller_page_dialog = None
         else:
             self.color_picker_dialog.open = False

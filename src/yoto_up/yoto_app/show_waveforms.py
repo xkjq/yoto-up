@@ -29,7 +29,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         actions=[],
         modal=True
     )
-    page.open(progress_dlg)
+    page.show_dialog(progress_dlg)
     page.update()
 
     def progress_callback(completed, total):
@@ -144,7 +144,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 progress_dlg = None
                 if show_progress:
                     progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
-                    page.open(progress_dlg)
+                    page.show_dialog(progress_dlg)
                     page.update()
                 try:
                     if abs(gain_db) > 0.01:
@@ -167,7 +167,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                     show_snack("audio_adjust_utils could not be loaded", error=True)
                     return
                 progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
-                page.open(progress_dlg)
+                page.show_dialog(progress_dlg)
                 page.update()
                 try:
                     temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
@@ -211,7 +211,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         progress_text2 = ft.Text("Applying global gain to all tracks...", size=14)
         progress_bar2 = ft.ProgressBar(width=300, value=0)
         progress_dlg2 = ft.AlertDialog(title=ft.Text("Applying Global Gain..."), content=ft.Column([progress_text2, progress_bar2]), modal=True)
-        page.open(progress_dlg2)
+        page.show_dialog(progress_dlg2)
         page.update()
         total = len(per_track)
         completed = 0
@@ -244,8 +244,8 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             "- If you need to normalize loudness precisely, consider using LUFS-based normalisation tools outside this dialog.",
         ]
         help_text = "\n\n".join(help_lines)
-        help_dlg = ft.AlertDialog(title=ft.Text("Gain adjustment help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page.open(WAVEFORM_DIALOG))])
-        page.open(help_dlg)
+        help_dlg = ft.AlertDialog(title=ft.Text("Gain adjustment help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page.show_dialog(WAVEFORM_DIALOG))])
+        page.show_dialog(help_dlg)
 
     save_btn = None
     if n_images > 0:
@@ -256,7 +256,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             progress_text3 = ft.Text("Saving gain-adjusted audio for all tracks...", size=14)
             progress_bar3 = ft.ProgressBar(width=300, value=0)
             progress_dlg3 = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.Column([progress_text3, progress_bar3]), modal=True)
-            page.open(progress_dlg3)
+            page.show_dialog(progress_dlg3)
             page.update()
             total = n_images
             completed = 0
@@ -325,5 +325,5 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
     global WAVEFORM_DIALOG
     WAVEFORM_DIALOG = dlg
     page.close(progress_dlg)
-    page.open(dlg)
+    page.show_dialog(dlg)
     page.update()

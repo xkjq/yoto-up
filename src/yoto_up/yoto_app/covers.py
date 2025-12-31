@@ -871,7 +871,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     # Preview
     preview_image = ft.Image(
         src="",
-        fit=ft.ImageFit.CONTAIN,
+        fit=ft.BoxFit.CONTAIN,
         visible=False,
     )
 
@@ -1207,7 +1207,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_buttons = []
         for color_hex, color_name in color_options:
             btn = ft.Button(
-                text=color_name,
+                color_name,
                 bgcolor=color_hex,
                 color="#FFFFFF" if color_hex in ["#000000", "#0000FF", "#800080", "#A52A2A"] else "#000000",
                 on_click=lambda e, c=color_hex: (on_color_change(c), page.close(color_dialog)),
@@ -1241,7 +1241,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog)),
             ],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
     
     text_color_picker_btn.on_click = on_color_picker_click
@@ -1814,7 +1814,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             content=ft.Column([ft.Column(color_buttons, spacing=5)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
 
     def on_img_template_title_style_change(e):
@@ -1857,7 +1857,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
     
     def on_img_template_footer_style_change(e):
@@ -1932,7 +1932,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
 
     def on_img_top_blend_color_change(e):
@@ -1970,7 +1970,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
 
     def on_img_bottom_blend_color_change(e):
@@ -2008,7 +2008,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
-        page.open(color_dialog)
+        page.show_dialog(color_dialog)
         page.update()
 
     def on_img_top_blend_pct_change(e):
@@ -2163,7 +2163,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_preview()
             show_snack(f"Added {len(e.files)} image(s)")
     
-    file_picker = ft.FilePicker(on_result=on_add_images_result)
+    file_picker = ft.FilePicker()
+    file_picker.on_result = on_add_images_result
     page.overlay.append(file_picker)
     
     def on_add_images(e):
@@ -2370,13 +2371,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                     on_click=on_zoom_reset,
                 ),
                 ft.Button(
-                    text="Refresh",
+                    "Refresh",
                     icon=ft.Icons.REFRESH,
                     on_click=on_generate_preview,
                 ),
                 renderer_label,
                 ft.Button(
-                    text="Print",
+                    "Print",
                     icon=ft.Icons.PRINT,
                     on_click=on_print,
                 ),

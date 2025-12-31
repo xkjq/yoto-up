@@ -627,7 +627,7 @@ def make_show_card_details(
                                 item = tr_list.pop(old)
                                 tr_list.insert(new, item)
                                 try:
-                                    page.open(dialog)
+                                    page.show_dialog(dialog)
                                     page.update()
                                 except Exception:
                                     page.update()
@@ -709,7 +709,7 @@ def make_show_card_details(
                         except Exception:
                             pass
                         try:
-                            page.open(dialog)
+                            page.show_dialog(dialog)
                             page.update()
                         except Exception:
                             page.update()
@@ -754,7 +754,7 @@ def make_show_card_details(
                                     tr.display = (type(tr.display)() if hasattr(tr, "display") else None)
                                 tr.display.icon16x16 = chapter_icon
                                 api.update_card(full, return_card_model=False)
-                                page.open(dialog)
+                                page.show_dialog(dialog)
                                 page.update()
                                 show_snack("Track icon updated to chapter icon")
                             except Exception as ee:
@@ -879,7 +879,7 @@ def make_show_card_details(
                 ],
             )
             try:
-                page.open(json_dialog)
+                page.show_dialog(json_dialog)
             except Exception:
                 try:
                     page.dialog = json_dialog
@@ -983,7 +983,7 @@ def make_show_card_details(
                                 ft.TextButton("No", on_click=lambda e: (setattr(confirm, 'open', False), page.update())),
                             ],
                         )
-                        page.open(confirm)
+                        page.show_dialog(confirm)
                         page.update()
                     except Exception:
                         show_snack("Failed to start restore confirmation", error=True)
@@ -1017,7 +1017,7 @@ def make_show_card_details(
                 actions=actions,
             )
             try:
-                page.open(vjson_dialog)
+                page.show_dialog(vjson_dialog)
             except Exception:
                 try:
                     page.dialog = vjson_dialog
@@ -1134,7 +1134,7 @@ def make_show_card_details(
                                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                                         ],
                                     )
-                                    page.open(confirm_dialog)
+                                    page.show_dialog(confirm_dialog)
                                     page.update()
                                 except Exception:
                                     show_snack("Failed to show restore confirmation", error=True)
@@ -1170,7 +1170,7 @@ def make_show_card_details(
                                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_del, 'open', False), page.update())),
                                         ],
                                     )
-                                    page.open(confirm_del)
+                                    page.show_dialog(confirm_del)
                                     page.update()
                                 except Exception:
                                     show_snack("Failed to show delete confirmation", error=True)
@@ -1245,7 +1245,7 @@ def make_show_card_details(
                                     ft.TextButton("No", on_click=lambda e: (setattr(confirm_all, 'open', False), page.update())),
                                 ],
                             )
-                            page.open(confirm_all)
+                            page.show_dialog(confirm_all)
                             page.update()
                         except Exception:
                             show_snack("Failed to show delete-all confirmation", error=True)
@@ -1261,7 +1261,7 @@ def make_show_card_details(
                     ],
                 )
                 try:
-                    page.open(versions_dialog)
+                    page.show_dialog(versions_dialog)
                     page.update()
                 except Exception:
                     try:
@@ -1382,7 +1382,7 @@ Merging will result in:
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                     ],
                 )
-                page.open(confirm_dialog)
+                page.show_dialog(confirm_dialog)
             except Exception:
                 show_snack("Failed to start merge chapters operation", error=True)
 
@@ -1430,7 +1430,7 @@ Merging will result in:
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_expand, 'open', False), page.update())),
                     ],
                 )
-                page.open(confirm_expand)
+                page.show_dialog(confirm_expand)
                 page.update()
             except Exception:
                 show_snack("Failed to start expand operation", error=True)
@@ -1589,7 +1589,7 @@ Renumbering keys will assign sequential keys to all tracks.
                     ],
                 )
                 try:
-                    page.open(tracks_dialog)
+                    page.show_dialog(tracks_dialog)
                     page.update()
                 except Exception:
                     try:
@@ -1774,7 +1774,7 @@ Renumbering keys will assign sequential keys to all tracks.
             ],
         )
         try:
-            page.open(dialog)
+            page.show_dialog(dialog)
         except Exception:
             try:
                 page.dialog = dialog

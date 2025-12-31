@@ -173,7 +173,7 @@ def show_edit_card_dialog(
                         ],
                     )
                     try:
-                        page.open(confirm_dialog)
+                        page.show_dialog(confirm_dialog)
                     except Exception:
                         try:
                             page.dialog = confirm_dialog
@@ -467,5 +467,5 @@ def show_edit_card_dialog(
         ],
     )
 
-    page.open(edit_dialog)
+    page.show_dialog(edit_dialog)
     page.update()

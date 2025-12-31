@@ -475,10 +475,10 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         new_w, new_h = (min(160, 160), min(160, 160))
                 else:
                     new_w, new_h = (min(160, 160), min(160, 160))
-                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.BoxFit.CONTAIN)
             except Exception:
                 # final fallback
-                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.ImageFit.CONTAIN)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.BoxFit.CONTAIN)
             small_preview = ft.Image(src=get_base64_from_path(Path(src)), width=16, height=16)
             details_panel.controls.append(large_preview)
             details_panel.controls.append(small_preview)
@@ -554,7 +554,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         #        ft.Text(f"Source: {'Official cache' if path.startswith('.yoto_icon_cache') else ('YotoIcons' if path.startswith('.yotoicons_cache') else 'Local')}"),
         #    ], scroll=ft.ScrollMode.AUTO)
         #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))], scrollable=True)
-        #    page.open(dlg)
+        #    page.show_dialog(dlg)
         #except Exception:
         #    pass
         page.update()
@@ -611,7 +611,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 try:
                     dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
                     page.dialog = dlg
-                    page.open(dlg)
+                    page.show_dialog(dlg)
                     page.update()
                 except Exception:
                     logger.exception("Failed to open editor dialog fallback")

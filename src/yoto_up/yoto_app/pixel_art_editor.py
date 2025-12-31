@@ -677,7 +677,7 @@ class PixelArtEditor:
             options=[ft.dropdown.Option(k) for k in self.color_sets.keys()],
             value="Default",
             width=160,
-            on_change=self.on_color_set_change,
+            on_select=self.on_color_set_change,
         )
 
         # Make the main container scrollable so controls remain accessible on small windows
@@ -781,7 +781,7 @@ class PixelArtEditor:
                             src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                         self.repl_preview.bgcolor = None
                     except Exception:
@@ -1154,14 +1154,14 @@ class PixelArtEditor:
                     logger.exception("Error checking parent dialog content")
                     dlg._parent_dialog = None
             if page:
-                page.open(dlg)
+                page.show_dialog(dlg)
                 page.update()
         except Exception:
             logger.exception("Error opening dialog")
             # best-effort fallback
             try:
                 if page:
-                    page.open(dlg)
+                    page.show_dialog(dlg)
                     page.update()
             except Exception:
                 pass
@@ -1199,7 +1199,7 @@ class PixelArtEditor:
                 )
             if parent and page:
                 try:
-                    page.open(parent)
+                    page.show_dialog(parent)
                     page.update()
                 except Exception:
                     logger.exception("Error reopening parent dialog")
@@ -1414,7 +1414,7 @@ class PixelArtEditor:
                                 src=self.CHECK_IMAGE_BASE64,
                                 width=24,
                                 height=24,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             # fallback to text marker
@@ -1809,7 +1809,7 @@ class PixelArtEditor:
                         src=self.CHECK_IMAGE_BASE64,
                         width=self.pixel_size - 4,
                         height=self.pixel_size - 4,
-                        fit=ft.ImageFit.COVER,
+                        fit=ft.BoxFit.COVER,
                     )
                 except Exception:
                     # fallback: no content
@@ -1839,7 +1839,7 @@ class PixelArtEditor:
                     src=self.CHECK_IMAGE_BASE64,
                     width=self.pixel_size - 4,
                     height=self.pixel_size - 4,
-                    fit=ft.ImageFit.COVER,
+                    fit=ft.BoxFit.COVER,
                 )
             except Exception:
                 cell_content = None
@@ -1894,7 +1894,7 @@ class PixelArtEditor:
                             src=self.CHECK_IMAGE_BASE64,
                             width=self.pixel_size - 4,
                             height=self.pixel_size - 4,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                     except Exception:
                         try:
@@ -2040,7 +2040,7 @@ class PixelArtEditor:
                             src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                         repl_preview.bgcolor = None
                     except Exception:
@@ -2219,7 +2219,7 @@ class PixelArtEditor:
                                 src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             cell.content = None
@@ -2566,7 +2566,7 @@ class PixelArtEditor:
             options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")],
             value="5x7",
             width=100,
-            on_change=lambda ev: update_preview(),
+            on_select=lambda ev: update_preview(),
         )
         # allow smaller scales for stamping (fractions and integers)
         scale_options = ["0.25", "0.5", "0.75", "1", "2", "3", "4"]
@@ -2579,8 +2579,8 @@ class PixelArtEditor:
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
-        preview_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
-        preview_applied_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+        preview_img = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
+        preview_applied_img = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
 
         def on_color_selected(hex_color):
             color_field.value = hex_color
@@ -2950,7 +2950,7 @@ class PixelArtEditor:
                 ],
             )
             if page:
-                page.open(dlg)
+                page.show_dialog(dlg)
                 page.update()
             return
 
@@ -3403,14 +3403,16 @@ class PixelArtEditor:
             content = ft.Column(
                 [self.container], scroll=ft.ScrollMode.AUTO, expand=True
             )
-            tab = ft.Tab(label=title, content=content)
+            tab = ft.Tab(label=title)
+            tab.content = content
             self._tab = tab
             return tab
         except Exception:
             logger.exception("Failed to create editor tab")
             # fallback: return a plain container wrapped as a Tab-like object
             try:
-                tab = ft.Tab(label=title, content=self.container)
+                tab = ft.Tab(label=title)
+                tab.content = self.container
                 self._tab = tab
                 return tab
             except Exception:
@@ -3652,7 +3654,7 @@ class PixelArtEditor:
                                 src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             cell.content = None
@@ -3694,7 +3696,7 @@ class PixelArtEditor:
                 except Exception:
                     self._parent_dialog = None
                 try:
-                    self.page.open(self.dialog)
+                    self.page.show_dialog(self.dialog)
                     self.page.update()
                 except Exception:
                     pass
@@ -3714,7 +3716,7 @@ class PixelArtEditor:
                 # reopen parent if we hidden one
                 if getattr(self, "_parent_dialog", None) and self.page:
                     try:
-                        self.page.open(self._parent_dialog)
+                        self.page.show_dialog(self._parent_dialog)
                         self.page.update()
                     except Exception:
                         pass

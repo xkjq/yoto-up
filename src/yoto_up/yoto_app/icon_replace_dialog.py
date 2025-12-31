@@ -116,7 +116,7 @@ class IconReplaceDialog:
 
         # Selected-icon preview (hidden when no selection). Will be shown next to the "Selected icon" button.
         preview_label = ft.Text("Selected icon", size=12, weight=ft.FontWeight.BOLD, visible=False)
-        preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.ImageFit.CONTAIN)
+        preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.BoxFit.CONTAIN)
         preview_name = ft.Text('', size=12, visible=False)
         # pack preview into a small column
         preview_column = ft.Column([preview_label, preview_image, preview_name], alignment=ft.MainAxisAlignment.CENTER, visible=True)
@@ -576,19 +576,22 @@ class IconReplaceDialog:
             threading.Thread(target=_worker, daemon=True).start()
 
         # Build a Tabs control inside the dialog so user can switch between Search and My Icons
-        tabs = ft.Tabs(selected_index=0, tabs=[
-            ft.Tab(label="Search", content=ft.Column([
-                ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
-                # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
-                (lambda: ft.Row(
-                    [c for c in ([include_yoto] + ([apply_to_first_track] if apply_to_first_track else []) + [max_searches_field, top_n_field])]
-                ))(),
-                 results_list
-             ], width=900, expand=True)),
-            ft.Tab(label="My Icons", content=ft.Column([
-                saved_icons_list
-            ], width=900, expand=True))
-        ], expand=True)
+        search_tab = ft.Tab(label="Search")
+        search_tab.content = ft.Column([
+            ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
+            # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
+            (lambda: ft.Row(
+                [c for c in ([include_yoto] + ([apply_to_first_track] if apply_to_first_track else []) + [max_searches_field, top_n_field])]
+            ))(),
+             results_list
+         ], width=900, expand=True)
+        
+        my_icons_tab = ft.Tab(label="My Icons")
+        my_icons_tab.content = ft.Column([
+            saved_icons_list
+        ], width=900, expand=True)
+        
+        tabs = ft.Tabs(selected_index=0, tabs=[search_tab, my_icons_tab], expand=True)
 
         # include a "Use marked icon" action so the user can apply the icon selected from the browser
         use_selected_btn = ft.TextButton("Selected icon", on_click=use_selected_icon)
@@ -606,7 +609,7 @@ class IconReplaceDialog:
             actions=[use_selected_btn, preview_column, ft.TextButton('Close', on_click=close_replace)],
         )
 
-        self.page.open(self.dialog)
+        self.page.show_dialog(self.dialog)
         # initialize preview to current page.replace_icon_path (if any)
         try:
             marked_now = getattr(self.page, "replace_icon_path", None)

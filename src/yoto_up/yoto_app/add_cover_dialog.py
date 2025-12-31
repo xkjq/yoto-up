@@ -264,7 +264,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                             img_url = album.get("artworkUrl100") or album.get("artworkUrl60")
                             if img_url:
                                 img_url = img_url.replace("100x100bb.jpg", "600x600bb.jpg")
-                                img = ft.Image(src=img_url, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+                                img = ft.Image(src=img_url, width=100, height=100, fit=ft.BoxFit.CONTAIN)
                                 btn = ft.GestureDetector(
                                     content=img,
                                     on_tap=lambda e, url=img_url: select_image(url),
@@ -393,13 +393,13 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                         page.update()
                     confirm_dialog = ft.AlertDialog(
                         title=ft.Text("Use this cover image?"),
-                        content=ft.Image(src=img_url, width=300, height=300, fit=ft.ImageFit.CONTAIN),
+                        content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
                         actions=[
                             ft.TextButton("Use this image", on_click=do_confirm_upload),
                             ft.TextButton("Cancel", on_click=do_cancel),
                         ],
                     )
-                    page.open(confirm_dialog)
+                    page.show_dialog(confirm_dialog)
 
 
 
@@ -415,7 +415,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                     ft.TextButton("Close", on_click=lambda e: setattr(search_dialog, 'open', False) or page.update()),
                 ],
             )
-            page.open(search_dialog)
+            page.show_dialog(search_dialog)
             # Trigger initial search when dialog opens
             do_search_action()
         except Exception:
@@ -425,7 +425,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
     content_children = []
     if cover_src:
         try:
-            preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.ImageFit.CONTAIN)
+            preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.BoxFit.CONTAIN)
             content_children.append(ft.Column([ft.Text("Current cover"), preview], spacing=6))
         except Exception:
             pass
@@ -463,5 +463,5 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             ft.TextButton("Cancel", on_click=close_add),
         ],
     )
-    page.open(dialog)
+    page.show_dialog(dialog)
     return dialog
