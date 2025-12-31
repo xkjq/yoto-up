@@ -78,16 +78,16 @@ def build_playlists_panel(
     )
 
     tags_filter = ft.TextField(label="Tags (comma separated)", width=200)
-    filter_btn = ft.ElevatedButton(text="Apply Filter")
-    clear_filter_btn = ft.TextButton(text="Clear")
+    filter_btn = ft.Button("Apply Filter")
+    clear_filter_btn = ft.TextButton("Clear")
 
     # Multi-select state for playlists
     selected_playlist_ids = set()
     last_selected_index = None
     multi_select_mode = False
-    delete_selected_btn = ft.ElevatedButton(text="Delete Selected", disabled=True)
+    delete_selected_btn = ft.Button("Delete Selected", disabled=True)
     delete_selected_btn.visible = False
-    export_selected_btn = ft.ElevatedButton(text="Export Selected", disabled=True)
+    export_selected_btn = ft.Button("Export Selected", disabled=True)
     export_selected_btn.visible = False
     # Import card controls
     import_picker = ft.FilePicker()
@@ -97,8 +97,8 @@ def build_playlists_panel(
     except Exception:
         # page may be a SimpleNamespace in some tests; ignore if overlay isn't available
         pass
-    import_card_btn = ft.ElevatedButton(text="Import Card(s)")
-    restore_versions_btn = ft.ElevatedButton(text="Restore Versions")
+    import_card_btn = ft.Button("Import Card(s)")
+    restore_versions_btn = ft.Button("Restore Versions")
     def _open_versions_dialog(_e=None):
         try:
             api = ensure_api(api_ref, CLIENT_ID)
@@ -271,14 +271,14 @@ def build_playlists_panel(
             except Exception:
                 pass
     restore_versions_btn.on_click = _open_versions_dialog
-    multi_select_btn = ft.ElevatedButton(text="Select Multiple")
-    add_tags_btn = ft.ElevatedButton(text="Add Tags to Selected", disabled=True)
+    multi_select_btn = ft.Button("Select Multiple")
+    add_tags_btn = ft.Button("Add Tags to Selected", disabled=True)
     add_tags_btn.visible = False
     # Bulk edit category button
-    edit_category_btn = ft.ElevatedButton(text="Edit Category for Selected", disabled=True)
+    edit_category_btn = ft.Button("Edit Category for Selected", disabled=True)
     edit_category_btn.visible = False
     # Bulk edit author button
-    edit_author_btn = ft.ElevatedButton(text="Edit Author for Selected", disabled=True)
+    edit_author_btn = ft.Button("Edit Author for Selected", disabled=True)
     edit_author_btn.visible = False
 
     # Sorting control
@@ -300,7 +300,7 @@ def build_playlists_panel(
         current_sort["key"] = sort_dropdown.value
         fetch_playlists_sync()
 
-    sort_dropdown.on_change = on_sort_change
+    sort_dropdown.on_select = on_sort_change
 
     # Track shift key state globally
     shift_key_down = {"value": False}
@@ -647,7 +647,7 @@ def build_playlists_panel(
     multi_select_btn.on_click = toggle_multi_select
 
     # Select All / Deselect All control (visible only in multi-select mode)
-    select_all_btn = ft.ElevatedButton(text="Select all", visible=False)
+    select_all_btn = ft.Button("Select all", visible=False)
 
     def _update_multiselect_buttons():
         """Central helper to set disabled state for multiselect action buttons."""
@@ -756,8 +756,8 @@ def build_playlists_panel(
     clear_filter_btn.on_click = clear_filters
 
     # Header fetch button wired to the synchronous fetch helper
-    fetch_btn = ft.ElevatedButton(
-        text="Fetch Playlists", bgcolor="#2196F3", color="white"
+    fetch_btn = ft.Button(
+        "Fetch Playlists", bgcolor="#2196F3", color="white"
     )
     fetch_btn.on_click = lambda e: threading.Thread(
         target=lambda: fetch_playlists_sync(e), daemon=True
@@ -1851,7 +1851,7 @@ def build_playlists_panel(
                 bgcolor=ft.Colors.GREY_100,
                 border_radius=4,
                 height=None,
-                alignment=ft.alignment.top_left,
+                alignment=ft.alignment.Alignment.TOP_LEFT,
             )
         ],
     )

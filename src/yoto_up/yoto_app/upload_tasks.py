@@ -26,11 +26,11 @@ class FileUploadRow:
         self.progress = ProgressBar(width=300, visible=False)
         self.inner_row = Row([
             Text(self.name, width=300),
-            ElevatedButton('Preview', on_click=self.on_preview),
+            Button('Preview', on_click=self.on_preview),
             self.progress,
             self.status_text,
-            ElevatedButton('View details', on_click=self.on_view_details),
-            ElevatedButton('Remove', on_click=self.on_remove)
+            Button('View details', on_click=self.on_view_details),
+            Button('Remove', on_click=self.on_remove)
         ])
         from flet import Container
         self.row = Container(content=self.inner_row, bgcolor=None, padding=0)
@@ -123,7 +123,7 @@ class FileUploadRow:
             else:
                 for k, v in tags.items():
                     lines.append(Text(f"{k}: {v}"))
-            dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[ElevatedButton('OK', on_click=lambda e: page.close(dlg))])
+            dlg = AlertDialog(title=Text(f"Media details: {self.name}"), content=Column(lines), actions=[Button('OK', on_click=lambda e: page.close(dlg))])
             page.open(dlg)
             page.update()
         except Exception as e:

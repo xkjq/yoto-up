@@ -515,7 +515,7 @@ def open_import_dialog(editor, ev):
                                 display_img.save(buf, format='PNG')
                                 b64 = base64.b64encode(buf.getvalue()).decode('ascii')
                                 # append directly to wrap container so items wrap automatically
-                                preview_container.controls.append(ft.Container(content=ft.Image(src_base64=b64, width=display_img.width, height=display_img.height)))
+                                preview_container.controls.append(ft.Container(content=ft.Image(src=b64, width=display_img.width, height=display_img.height)))
                             except Exception:
                                 pass
                         else:
@@ -1666,7 +1666,7 @@ def open_import_dialog(editor, ev):
                 ft.Container(content=ft.Row([
                     ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
                     ft.Column([ft.Row([edge_mode_field], spacing=8)]),
-                    ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
+                    ft.Column([ft.Button('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
                 ], spacing=12), padding=0),
                 ft.Container(content=ft.Row([sheet_crop_mode_field, apply_sheet_crop_btn], spacing=8), padding=0),
             ],

@@ -125,7 +125,7 @@ class PixelArtEditor:
             border=ft.border.all(1, "#888888"),
         )
         # Advanced color picker dialog
-        self.advanced_picker_btn = ft.ElevatedButton(
+        self.advanced_picker_btn = ft.Button(
             "Advanced Color Picker", on_click=self.open_color_picker
         )
         self.color_picker_dialog = None
@@ -187,10 +187,10 @@ class PixelArtEditor:
             )
         except Exception:
             pass
-        self.clear_btn = ft.ElevatedButton("Clear", on_click=self.on_clear)
-        # self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
-        # self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
-        self.import_icon_btn = ft.ElevatedButton(
+        self.clear_btn = ft.Button("Clear", on_click=self.on_clear)
+        # self.export_btn = ft.Button("Export", on_click=self.on_export)
+        # self.import_btn = ft.Button("Import", on_click=self.on_import)
+        self.import_icon_btn = ft.Button(
             "Import Icon from Cache", on_click=self.on_import_icon
         )
         self.sampler_mode = False
@@ -203,12 +203,12 @@ class PixelArtEditor:
             label="Fill mode (bucket)", value=False, on_change=self.on_fill_toggle
         )
         # Save / Load created icons
-        self.save_btn = ft.ElevatedButton("Save Icon", on_click=self.on_save_png)
-        self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
+        self.save_btn = ft.Button("Save Icon", on_click=self.on_save_png)
+        self.load_btn = ft.Button("Load Icon", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
-        self.text_btn = ft.ElevatedButton("Stamp text", on_click=self._open_text_dialog)
+        self.text_btn = ft.Button("Stamp text", on_click=self._open_text_dialog)
         # Stamp small images/pictures onto the grid
-        self.stamp_image_btn = ft.ElevatedButton(
+        self.stamp_image_btn = ft.Button(
             "Stamp image", on_click=lambda e: open_image_stamp_dialog(self, e)
         )
         # Persistent metadata fields (visible/editable while creating icon)
@@ -729,8 +729,8 @@ class PixelArtEditor:
         )
 
         # Undo / Redo buttons
-        self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
-        self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
+        self.undo_btn = ft.Button("Undo", on_click=self.on_undo)
+        self.redo_btn = ft.Button("Redo", on_click=self.on_redo)
 
         # Inline "Fill Similar" expander (replaces dialog-based flow)
         self.target_field = ft.TextField(
@@ -778,7 +778,7 @@ class PixelArtEditor:
                 if r is None:
                     try:
                         self.repl_preview.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
                             fit=ft.ImageFit.COVER,
@@ -883,7 +883,7 @@ class PixelArtEditor:
                     [
                         ft.Text("Tolerance (use slider at right)"),
                         ft.TextButton("Sample target", on_click=_sample_target_inline),
-                        ft.ElevatedButton("Fill", on_click=_do_fill_inline),
+                        ft.Button("Fill", on_click=_do_fill_inline),
                     ]
                 ),
                 self._fill_similar_status,
@@ -987,24 +987,24 @@ class PixelArtEditor:
             expand=True,
         )
         # Add flip and rotate buttons
-        self.flip_horizontal_btn = ft.ElevatedButton(
+        self.flip_horizontal_btn = ft.Button(
             "Flip Horizontal", on_click=lambda e: self.on_flip_image(e, "horizontal")
         )
-        self.flip_vertical_btn = ft.ElevatedButton(
+        self.flip_vertical_btn = ft.Button(
             "Flip Vertical", on_click=lambda e: self.on_flip_image(e, "vertical")
         )
-        self.rotate_left_btn = ft.ElevatedButton(
+        self.rotate_left_btn = ft.Button(
             "Rotate Left", on_click=lambda e: self.on_rotate_image(e, -90)
         )
-        self.rotate_right_btn = ft.ElevatedButton(
+        self.rotate_right_btn = ft.Button(
             "Rotate Right", on_click=lambda e: self.on_rotate_image(e, 90)
         )
 
         # Add filter buttons
-        self.blur_filter_btn = ft.ElevatedButton(
+        self.blur_filter_btn = ft.Button(
             "Apply Blur", on_click=lambda e: self.on_apply_filter(e, "BLUR")
         )
-        self.sharpen_filter_btn = ft.ElevatedButton(
+        self.sharpen_filter_btn = ft.Button(
             "Apply Sharpen", on_click=lambda e: self.on_apply_filter(e, "SHARPEN")
         )
 
@@ -1025,36 +1025,36 @@ class PixelArtEditor:
         )
 
         # Add buttons for new color manipulation features
-        self.invert_colors_btn = ft.ElevatedButton(
+        self.invert_colors_btn = ft.Button(
             "Invert Colors", on_click=self.on_invert_colors
         )
-        self.grayscale_btn = ft.ElevatedButton(
+        self.grayscale_btn = ft.Button(
             "Convert to Grayscale", on_click=self.on_convert_to_grayscale
         )
-        self.hue_adjust_btn = ft.ElevatedButton(
+        self.hue_adjust_btn = ft.Button(
             "Adjust Hue", on_click=lambda e: self.on_adjust_hue(e, 30)
         )
-        self.color_replace_btn = ft.ElevatedButton(
+        self.color_replace_btn = ft.Button(
             "Replace Color",
             on_click=lambda e: self.on_replace_color(e, "#FF0000", "#00FF00"),
         )
-        self.gradient_overlay_btn = ft.ElevatedButton(
+        self.gradient_overlay_btn = ft.Button(
             "Apply Gradient Overlay",
             on_click=lambda e: self.on_apply_gradient_overlay(e, "#FF0000"),
         )
-        self.opacity_adjust_btn = ft.ElevatedButton(
+        self.opacity_adjust_btn = ft.Button(
             "Adjust Opacity", on_click=lambda e: self.on_adjust_opacity(e, 0.5)
         )
-        self.sepia_tone_btn = ft.ElevatedButton(
+        self.sepia_tone_btn = ft.Button(
             "Apply Sepia Tone", on_click=self.on_apply_sepia_tone
         )
-        self.pixelate_btn = ft.ElevatedButton(
+        self.pixelate_btn = ft.Button(
             "Pixelate", on_click=lambda e: self.on_pixelate(e, 5)
         )
-        self.quantize_colors_btn = ft.ElevatedButton(
+        self.quantize_colors_btn = ft.Button(
             "Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16)
         )
-        self.brightness_contrast_region_btn = ft.ElevatedButton(
+        self.brightness_contrast_region_btn = ft.Button(
             "Adjust Brightness/Contrast (Region)",
             on_click=lambda e: self.on_adjust_brightness_contrast_region(
                 e, (0, 0, 8, 8), 1.5, 1.2
@@ -1411,7 +1411,7 @@ class PixelArtEditor:
                     if hex_color is None:
                         try:
                             self.color_preview.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=24,
                                 height=24,
                                 fit=ft.ImageFit.COVER,
@@ -1543,7 +1543,7 @@ class PixelArtEditor:
                 if page:
                     page.update()
 
-        dropdown.on_change = on_select
+        dropdown.on_select = on_select
 
         def do_import(ev):
             sel = dropdown.value
@@ -1806,7 +1806,7 @@ class PixelArtEditor:
                 # show checker image if available
                 try:
                     e.control.content = ft.Image(
-                        src_base64=self.CHECK_IMAGE_BASE64,
+                        src=self.CHECK_IMAGE_BASE64,
                         width=self.pixel_size - 4,
                         height=self.pixel_size - 4,
                         fit=ft.ImageFit.COVER,
@@ -1836,7 +1836,7 @@ class PixelArtEditor:
         if val is None:
             try:
                 cell_content = ft.Image(
-                    src_base64=self.CHECK_IMAGE_BASE64,
+                    src=self.CHECK_IMAGE_BASE64,
                     width=self.pixel_size - 4,
                     height=self.pixel_size - 4,
                     fit=ft.ImageFit.COVER,
@@ -1891,7 +1891,7 @@ class PixelArtEditor:
                         c.bgcolor = "#00000000"
                     try:
                         c.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=self.pixel_size - 4,
                             height=self.pixel_size - 4,
                             fit=ft.ImageFit.COVER,
@@ -2037,7 +2037,7 @@ class PixelArtEditor:
                     # show checker for transparent
                     try:
                         repl_preview.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
                             fit=ft.ImageFit.COVER,
@@ -2216,7 +2216,7 @@ class PixelArtEditor:
                         # transparent: show checker image
                         try:
                             cell.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
                                 fit=ft.ImageFit.COVER,
@@ -2672,7 +2672,7 @@ class PixelArtEditor:
         # Attach update_preview to all relevant fields
         text_field.on_change = update_preview
         color_field.on_change = update_preview
-        scale_dropdown.on_change = update_preview
+        scale_dropdown.on_select = update_preview
         pos_x.on_change = update_preview
         pos_y.on_change = update_preview
 
@@ -3013,7 +3013,7 @@ class PixelArtEditor:
                 preview.src = ""
             preview.update()
 
-        dropdown.on_change = on_select
+        dropdown.on_select = on_select
 
         def do_load(ev):
             v = dropdown.value
@@ -3403,14 +3403,14 @@ class PixelArtEditor:
             content = ft.Column(
                 [self.container], scroll=ft.ScrollMode.AUTO, expand=True
             )
-            tab = ft.Tab(text=title, content=content)
+            tab = ft.Tab(label=title, content=content)
             self._tab = tab
             return tab
         except Exception:
             logger.exception("Failed to create editor tab")
             # fallback: return a plain container wrapped as a Tab-like object
             try:
-                tab = ft.Tab(text=title, content=self.container)
+                tab = ft.Tab(label=title, content=self.container)
                 self._tab = tab
                 return tab
             except Exception:
@@ -3649,7 +3649,7 @@ class PixelArtEditor:
                         cell.bgcolor = None
                         try:
                             cell.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
                                 fit=ft.ImageFit.COVER,

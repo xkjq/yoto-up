@@ -58,7 +58,7 @@ BugTracker = "https://github.com/xkjq/yoto-up/issues"
 [project.optional-dependencies]
 # Desktop target: full feature set (audio libs, numpy, plotting)
 gui = [
-  "flet[desktop]>=0.28.3",
+  "flet[desktop]>=0.80.0",
   "pydub>=0.25",
   "librosa>=0.10",
   "pyloudnorm>=0.1",
@@ -67,7 +67,7 @@ gui = [
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and
 # heavy scientific packages which are not compatible with the browser runtime.
 web = [
-  "flet[web]",
+  "flet[web]>=0.80.0",
 ]
 
 
@@ -86,7 +86,7 @@ app.module = "yoto_up.gui"
 
 [tool.uv]
 dev-dependencies = [
-    "flet[all]==0.28.3",
+    "flet[all]==0.80.0",
 ]
 
 [tool.setuptools]

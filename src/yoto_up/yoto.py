@@ -2038,8 +2038,8 @@ def gui():
             import flet as ft
 
             # Use the same assets/upload dirs as gui.py
-            ft.app(
-                target=gui_mod.main, assets_dir="assets", upload_dir="assets/uploads"
+            ft.run(
+                gui_mod.main, assets_dir="assets", upload_dir="assets/uploads"
             )
             return
         except Exception as e:

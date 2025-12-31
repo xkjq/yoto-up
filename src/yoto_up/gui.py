@@ -501,7 +501,7 @@ def main(page):
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
     #client_id = ft.TextField(label="Client ID", value="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5", width=400, disabled=True)
-    auth_btn = ft.ElevatedButton(text="Authenticate")
+    auth_btn = ft.Button("Authenticate")
     status = ft.Text("")
     auth_instructions = ft.Column([ft.Text(AUTHENTICATE_TEXT)])
 
@@ -553,7 +553,7 @@ def main(page):
         value='intro',
         options=[ft.dropdown.Option('intro'), ft.dropdown.Option('outro')],
         width=100,
-        on_change=lambda e: save_ui_state(),
+        on_select=lambda e: save_ui_state(),
     )
     intro_seconds = ft.TextField(label='Segment seconds', value='10.0', width=80, on_change=lambda e: save_ui_state())
     similarity_threshold = ft.TextField(label='Similarity threshold', value='0.75', width=80, on_change=lambda e: save_ui_state())
@@ -603,7 +603,7 @@ def main(page):
         except Exception as exc:
             logger.error(f"[_on_upload_target_change] failed: {exc}")
 
-    upload_target_dropdown.on_change = _on_upload_target_change
+    upload_target_dropdown.on_select = _on_upload_target_change
 
 
     def remove_uploaded_files(ev=None):
@@ -611,13 +611,13 @@ def main(page):
         file_rows_column.controls = [c for c in file_rows_column.controls if not (hasattr(c, '_fileuploadrow') and getattr(c._fileuploadrow, 'uploaded', False))]
         page.update()
 
-    start_btn = ft.ElevatedButton('Start Upload')
-    stop_btn = ft.ElevatedButton('Stop Upload', disabled=True)
-    fetch_btn = ft.ElevatedButton('Fetch Playlists')
-    multi_select_btn = ft.ElevatedButton('Select Multiple')
-    delete_selected_btn = ft.ElevatedButton('Delete Selected', disabled=True)
-    export_selected_btn = ft.ElevatedButton('Export Selected', disabled=True)
-    remove_uploaded_btn = ft.ElevatedButton('Remove Uploaded', on_click=remove_uploaded_files)
+    start_btn = ft.Button('Start Upload')
+    stop_btn = ft.Button('Stop Upload', disabled=True)
+    fetch_btn = ft.Button('Fetch Playlists')
+    multi_select_btn = ft.Button('Select Multiple')
+    delete_selected_btn = ft.Button('Delete Selected', disabled=True)
+    export_selected_btn = ft.Button('Export Selected', disabled=True)
+    remove_uploaded_btn = ft.Button('Remove Uploaded', on_click=remove_uploaded_files)
 
     ## Add Remove Uploaded button to the UI after the action buttons
     #action_buttons_row = ft.Row([
@@ -703,7 +703,7 @@ def main(page):
                 container.controls.clear()
                 container.controls.append(ft.Text(f"Visit: {verification_uri} and enter the code displayed below.", selectable=True))
                 container.controls.append(ft.Text(f"Code: {user_code}", selectable=True))
-                container.controls.append(ft.Row([ft.Text('Alternatively open (click) this direct link: '), ft.TextButton(text=verification_uri_complete, on_click=lambda e, url=verification_uri_complete: __import__('webbrowser').open(url))]))
+                container.controls.append(ft.Row([ft.Text('Alternatively open (click) this direct link: '), ft.TextButton(verification_uri_complete, on_click=lambda e, url=verification_uri_complete: __import__('webbrowser').open(url))]))
                 container.controls.append(ft.Row([ft.Text('Doing this links you Yoto account with this app.'), ft.Text('')]))
                 container.controls.append(getattr(page, 'auth_status', ft.Text('')))
                 page.update()
@@ -897,9 +897,9 @@ def main(page):
             def chained(ev):
                 orig_on_change(ev)
                 _on_sort_change(ev)
-            sort_dropdown.on_change = chained
+            sort_dropdown.on_select = chained
         else:
-            sort_dropdown.on_change = _on_sort_change
+            sort_dropdown.on_select = _on_sort_change
 
     # Context passed into upload tasks implementation
     ctx = {
@@ -1235,7 +1235,7 @@ def main(page):
             ft.dropdown.Option('Tracks')
         ],
         width=150,
-        on_change=lambda e: save_ui_state(),
+        on_select=lambda e: save_ui_state(),
     )
 
     # Normalization controls
@@ -1404,7 +1404,7 @@ def main(page):
     )
 
     # Analyze/trim button for intro/outro detection
-    analyze_intro_btn = ft.ElevatedButton("Analyze intro/outro")
+    analyze_intro_btn = ft.Button("Analyze intro/outro")
 
     async def _do_analysis_and_show_dialog(dialog_controls):
         """Perform analysis using settings from dialog_controls and update dialog content.
@@ -1681,7 +1681,7 @@ def main(page):
                                                     continue
                                             show_snack('No available player found (ffplay/aplay/xdg-open)', error=True)
                                         threading.Thread(target=_play_thread, daemon=True).start()
-                                    items.append(ft.ElevatedButton('Play', on_click=_play))
+                                    items.append(ft.Button('Play', on_click=_play))
                                 else:
                                     items.append(ft.Text('Preview playback not available (conversion failed)'))
 
@@ -1927,7 +1927,7 @@ def main(page):
                         except Exception:
                             pass
 
-                    proceed_btn = ft.ElevatedButton('Proceed', on_click=_on_proceed)
+                    proceed_btn = ft.Button('Proceed', on_click=_on_proceed)
                     cancel_btn = ft.TextButton('Cancel', on_click=_on_cancel)
                     confirm_dlg = ft.AlertDialog(title=ft.Text('Confirm trimming'), content=confirm_text, actions=[proceed_btn, cancel_btn])
                     page.open(confirm_dlg)
@@ -1991,8 +1991,8 @@ def main(page):
 
             threading.Thread(target=_runner, daemon=True).start()
 
-        run_btn = ft.ElevatedButton('Run analysis', on_click=on_run)
-        trim_btn = ft.ElevatedButton('Trim selected', disabled=True)
+        run_btn = ft.Button('Run analysis', on_click=on_run)
+        trim_btn = ft.Button('Trim selected', disabled=True)
         close_btn = ft.TextButton('Close', on_click=lambda e: page.close(dlg))
 
         dlg = ft.AlertDialog(
@@ -2219,7 +2219,7 @@ def main(page):
                 except Exception:
                     pass
 
-            hide_checkbox.on_change = on_hide_change
+            hide_checkbox.on_select = on_hide_change
 
             status_txt = ft.Text(autoselect_badge_text.value or "Autoselect running...")
             # Keep a reference on the page so the progress updater can refresh this control
@@ -2369,13 +2369,13 @@ def main(page):
     tabs_control = ft.Tabs(
          selected_index=0,
          tabs=[
-             ft.Tab(text="Auth", content=auth_column),
-             ft.Tab(text="Playlists", content=playlists_column, visible=False),
-             ft.Tab(text="Upload", content=upload_column, visible=False),
-             ft.Tab(text="Icons", content=icon_panel, visible=False),
-             ft.Tab(text="Covers", content=covers_panel, visible=False),
+             ft.Tab(label="Auth", content=auth_column),
+             ft.Tab(label="Playlists", content=playlists_column, visible=False),
+             ft.Tab(label="Upload", content=upload_column, visible=False),
+             ft.Tab(label="Icons", content=icon_panel, visible=False),
+             ft.Tab(label="Covers", content=covers_panel, visible=False),
              # Editor tab (if created) - inserted before Icons
-             editor_tab if editor_tab is not None else ft.Tab(text="Editor", content=ft.Text("Editor unavailable")),
+             editor_tab if editor_tab is not None else ft.Tab(label="Editor", content=ft.Text("Editor unavailable")),
          ],
          expand=True,
      )
@@ -2477,7 +2477,7 @@ def main(page):
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
 def start_gui():
-    ft.app(target=main, assets_dir="assets", upload_dir="assets/uploads")
+    ft.run(main, assets_dir="assets", upload_dir="assets/uploads")
 
 if __name__ == "__main__":
     start_gui()

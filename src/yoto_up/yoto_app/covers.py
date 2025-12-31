@@ -1156,8 +1156,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         width=200,
     )
 
-    rotate_minus_btn = ft.ElevatedButton("-90°")
-    rotate_plus_btn = ft.ElevatedButton("+90°")
+    rotate_minus_btn = ft.Button("-90°")
+    rotate_plus_btn = ft.Button("+90°")
 
     # Position dropdown (relative to text centre)
     text_position_dropdown = ft.Dropdown(
@@ -1206,7 +1206,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         
         color_buttons = []
         for color_hex, color_name in color_options:
-            btn = ft.ElevatedButton(
+            btn = ft.Button(
                 text=color_name,
                 bgcolor=color_hex,
                 color="#FFFFFF" if color_hex in ["#000000", "#0000FF", "#800080", "#A52A2A"] else "#000000",
@@ -1235,7 +1235,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 ),
                 ft.Divider(),
                 custom_color_input,
-                ft.ElevatedButton("Use Custom Color", on_click=on_custom_color),
+                ft.Button("Use Custom Color", on_click=on_custom_color),
             ], tight=True, scroll=ft.ScrollMode.AUTO),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog)),
@@ -1249,7 +1249,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     def on_font_dropdown_change(e):
         if selected_text_overlay_index is not None:
             update_text_overlay()
-    font_dropdown.on_change = on_font_dropdown_change
+    font_dropdown.on_select = on_font_dropdown_change
     
     # Auto-update on text field changes
     def on_text_input_change(e):
@@ -1375,7 +1375,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             overlay.centered = False
             update_text_overlay()
 
-    text_position_dropdown.on_change = on_text_position_change
+    text_position_dropdown.on_select = on_text_position_change
     
     text_edit_panel = ft.Container(
         content=ft.Column([
@@ -1393,9 +1393,9 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Row([ft.Text("Position X:"), text_x_slider]),
             ft.Row([ft.Text("Position Y:"), text_y_slider]),
             ft.Row([
-                ft.ElevatedButton("Add Text", on_click=lambda e: add_text_overlay()),
-                ft.ElevatedButton("Update", on_click=lambda e: update_text_overlay()),
-                ft.ElevatedButton("Delete", on_click=lambda e: delete_text_overlay()),
+                ft.Button("Add Text", on_click=lambda e: add_text_overlay()),
+                ft.Button("Update", on_click=lambda e: update_text_overlay()),
+                ft.Button("Delete", on_click=lambda e: delete_text_overlay()),
             ]),
         ], spacing=5),
         padding=10,
@@ -1781,7 +1781,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_preview()
 
     img_template_enabled_chk.on_change = on_img_template_enabled_change
-    img_template_dropdown.on_change = on_img_template_name_change
+    img_template_dropdown.on_select = on_img_template_name_change
     img_template_title_field.on_change = on_img_template_title_change
     def on_img_template_footer_change(e):
         if selected_image_index is not None and 0 <= selected_image_index < len(cover_images):
@@ -1807,7 +1807,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#f1c40f", "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Accent Color"),
@@ -1840,7 +1840,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#111111", "#FFFFFF", "#000000", "#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1854,7 +1854,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Title Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
         page.open(color_dialog)
@@ -1915,7 +1915,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#008000", "#000000", "#FFFFFF", "#FF0000", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1929,7 +1929,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Shadow Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
         page.open(color_dialog)
@@ -1953,7 +1953,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -1967,7 +1967,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Top Blend Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
         page.open(color_dialog)
@@ -1991,7 +1991,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
         color_buttons = []
         for c in color_options:
-            color_buttons.append(ft.ElevatedButton(text=c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
+            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.close(color_dialog))))
 
         custom_color_input = ft.TextField(
             label="Custom Hex Color",
@@ -2005,7 +2005,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
         color_dialog = ft.AlertDialog(
             title=ft.Text("Choose Bottom Blend Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.ElevatedButton("Use Custom Color", on_click=on_custom_color)], tight=True),
+            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
             actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(color_dialog))],
         )
         page.open(color_dialog)
@@ -2069,12 +2069,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_accent_picker_btn.on_click = on_img_template_accent_picker_click
     img_template_title_size_field.on_change = on_img_template_title_size_change
     img_template_footer_size_field.on_change = on_img_template_footer_size_change
-    template_title_style_dropdown.on_change = on_img_template_title_style_change
+    template_title_style_dropdown.on_select = on_img_template_title_style_change
     img_template_title_color_field.on_change = on_img_template_title_color_change
     img_template_title_color_picker_btn.on_click = on_img_template_title_color_picker_click
-    img_template_footer_style_dropdown.on_change = on_img_template_footer_style_change
+    img_template_footer_style_dropdown.on_select = on_img_template_footer_style_change
     img_template_title_shadow_chk.on_change = on_img_title_shadow_change
-    img_template_title_font_dropdown.on_change = on_img_template_title_font_change
+    img_template_title_font_dropdown.on_select = on_img_template_title_font_change
     img_template_title_shadow_color_field.on_change = on_img_template_title_shadow_color_change
     img_template_title_shadow_picker_btn.on_click = on_img_template_title_shadow_color_picker_click
     img_template_top_blend_field.on_change = on_img_top_blend_color_change
@@ -2083,8 +2083,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     img_template_bottom_blend_picker_btn.on_click = on_img_bottom_blend_picker_click
     img_template_top_blend_pct_slider.on_change = on_img_top_blend_pct_change
     img_template_bottom_blend_pct_slider.on_change = on_img_bottom_blend_pct_change
-    tpl_fit_mode_dropdown.on_change = on_tpl_fit_mode_change
-    tpl_crop_position_dropdown.on_change = on_tpl_crop_position_change
+    tpl_fit_mode_dropdown.on_select = on_tpl_fit_mode_change
+    tpl_crop_position_dropdown.on_select = on_tpl_crop_position_change
     tpl_crop_offset_x_slider.on_change = on_tpl_crop_offset_x_change
     tpl_crop_offset_y_slider.on_change = on_tpl_crop_offset_y_change
     img_template_full_bleed_chk.on_change = on_img_template_full_bleed_change
@@ -2103,8 +2103,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             img.crop_offset_y = crop_offset_y_slider.value
             update_preview()
     
-    fit_mode_dropdown.on_change = on_fit_mode_change
-    crop_position_dropdown.on_change = on_crop_position_change
+    fit_mode_dropdown.on_select = on_fit_mode_change
+    crop_position_dropdown.on_select = on_crop_position_change
     crop_offset_x_slider.on_change = on_crop_offset_x_change
     crop_offset_y_slider.on_change = on_crop_offset_y_change
 
@@ -2303,8 +2303,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             logger.error(f"Error regenerating preview with zoom: {e}")
     
     # Layout update triggers
-    paper_size_dropdown.on_change = lambda e: update_preview()
-    print_mode_dropdown.on_change = lambda e: update_preview()
+    paper_size_dropdown.on_select = lambda e: update_preview()
+    print_mode_dropdown.on_select = lambda e: update_preview()
     cut_lines_checkbox.on_change = lambda e: update_preview()
     margin_slider.on_change = lambda e: update_preview()
     
@@ -2369,13 +2369,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                     tooltip="Reset Zoom",
                     on_click=on_zoom_reset,
                 ),
-                ft.ElevatedButton(
+                ft.Button(
                     text="Refresh",
                     icon=ft.Icons.REFRESH,
                     on_click=on_generate_preview,
                 ),
                 renderer_label,
-                ft.ElevatedButton(
+                ft.Button(
                     text="Print",
                     icon=ft.Icons.PRINT,
                     on_click=on_print,

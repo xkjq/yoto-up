@@ -324,7 +324,7 @@ def open_image_stamp_dialog(editor, e):
                 tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
                 thumb.save(tmpf.name)
 
-                img_widget = ft.Image(src_base64=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.ImageFit.CONTAIN)
+                img_widget = ft.Image(src=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.ImageFit.CONTAIN)
                 try:
                     img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, lbl=label: select_stamp(lbl, ev))
                 except Exception:
@@ -432,7 +432,7 @@ def open_image_stamp_dialog(editor, e):
                     build_stamp_grid(filter_dropdown.value)
                 except Exception:
                     pass
-            filter_dropdown.on_change = on_filter_change
+            filter_dropdown.on_select = on_filter_change
             # initial build with current filter
             build_stamp_grid(filter_dropdown.value)
             # place the stamp_grid inside a scrollable Column so the gallery can scroll
@@ -460,7 +460,7 @@ def open_image_stamp_dialog(editor, e):
         except Exception:
             logger.exception("Error opening stamp gallery dialog")
 
-    import_btn = ft.ElevatedButton("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
+    import_btn = ft.Button("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
     pos_x = ft.TextField(label="X (left)", value="0", width=80)
     pos_y = ft.TextField(label="Y (top)", value="0", width=80)
     opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
@@ -947,7 +947,7 @@ def open_image_stamp_dialog(editor, e):
         except Exception as ex:
             logger.exception(f"Error previewing selected stamp image: {ex}")
 
-    dropdown.on_change = on_select
+    dropdown.on_select = on_select
 
     def do_stamp(ev):
         fn = dropdown.value
@@ -1145,7 +1145,7 @@ def open_image_stamp_dialog(editor, e):
             except Exception:
                 pass
 
-        group_dropdown.on_change = on_group_change
+        group_dropdown.on_select = on_group_change
 
         def _do_delete_group(ev3):
             try:
@@ -1211,7 +1211,7 @@ def open_image_stamp_dialog(editor, e):
 
     pos_x.on_change = lambda ev: on_select(None)
     pos_y.on_change = lambda ev: on_select(None)
-    scale_dropdown.on_change = lambda ev: on_select(None)
+    scale_dropdown.on_select = lambda ev: on_select(None)
 
     logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
 

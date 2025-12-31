@@ -234,7 +234,7 @@ def make_show_card_details(
                                 #tp = api.get_icon_cache_path(tr_icon_field)
                                 based_image = api.get_icon_b64_data(tr_icon_field)
                                 if based_image is not None:
-                                    img = ft.Image(src_base64=based_image, width=20, height=20, tooltip=f"Click to replace icon")
+                                    img = ft.Image(src=based_image, width=20, height=20, tooltip=f"Click to replace icon")
                                     tr_img = ft.GestureDetector(
                                         content=img,
                                         on_tap=lambda ev,
@@ -588,7 +588,7 @@ def make_show_card_details(
                         if api and icon_field:
                             icon_base64 = api.get_icon_b64_data(icon_field)
                             if icon_base64 is not None:
-                                img = ft.Image(src_base64=icon_base64, width=24, height=24)
+                                img = ft.Image(src=icon_base64, width=24, height=24)
                                 img_control = ft.GestureDetector(content=img, on_tap=_on_tap_ch)
                             else:
                                 img_control = ft.IconButton(icon=ft.Icons.ERROR, tooltip="Click to refresh icon cache", on_click=refresh_icon_cache)
@@ -724,7 +724,7 @@ def make_show_card_details(
                     pass
                 controls.append(chapters_rv)
 
-                controls.append(ft.Row([ft.ElevatedButton("Save Order", on_click=save_order_click)]))
+                controls.append(ft.Row([ft.Button("Save Order", on_click=save_order_click)]))
 
                 # Build a chapters_view from the controls appended after the header
                 try:
@@ -1571,13 +1571,13 @@ Renumbering keys will assign sequential keys to all tracks.
                     title=ft.Text("Track actions"),
                     content=ft.Column(body, spacing=8),
                     actions=[
-                        ft.ElevatedButton(
+                        ft.Button(
                             "Renumber overlayLabels",
                             on_click=lambda ev: (
                                 relabel_overlays(ev),
                             ),
                         ),
-                        ft.ElevatedButton(
+                        ft.Button(
                             "Renumber keys",
                             on_click=lambda ev: (
                                 relabel_keys(ev),
@@ -1691,7 +1691,7 @@ Renumbering keys will assign sequential keys to all tracks.
         # expose a Restore button in the dialog actions.
         # Place the JSON and Versions buttons in the dialog title (top-right)
         dialog_actions = [
-            ft.ElevatedButton("Save Order", on_click=save_order_click),
+            ft.Button("Save Order", on_click=save_order_click),
             ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
         ]
 

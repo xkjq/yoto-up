@@ -42,7 +42,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())
-    online_search_btn = ft.ElevatedButton("Search YotoIcons online", on_click=lambda e: do_online_search())
+    online_search_btn = ft.Button("Search YotoIcons online", on_click=lambda e: do_online_search())
     # keep the main search field and the online search button in the top row; the Filter button
     # will be visually grouped with the fuzzy controls below for clarity.
     # Group fuzzy controls + filter button into a bordered container so it's clear they belong together.
@@ -475,11 +475,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         new_w, new_h = (min(160, 160), min(160, 160))
                 else:
                     new_w, new_h = (min(160, 160), min(160, 160))
-                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
             except Exception:
                 # final fallback
-                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.ImageFit.CONTAIN)
-            small_preview = ft.Image(src_base64=get_base64_from_path(Path(src)), width=16, height=16)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.ImageFit.CONTAIN)
+            small_preview = ft.Image(src=get_base64_from_path(Path(src)), width=16, height=16)
             details_panel.controls.append(large_preview)
             details_panel.controls.append(small_preview)
             # show human-friendly title if available
@@ -538,9 +538,9 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     show_snack('Unable to open folder', True)
 
             btn_row = ft.Row([
-                ft.ElevatedButton("Use this icon", on_click=set_selected),
+                ft.Button("Use this icon", on_click=set_selected),
                 ft.TextButton("Open folder", on_click=open_in_explorer),
-                ft.ElevatedButton("Edit Icon", on_click=lambda e: open_icon_editor())
+                ft.Button("Edit Icon", on_click=lambda e: open_icon_editor())
             ])
             details_panel.controls.append(btn_row)
         except Exception:
@@ -635,7 +635,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             # Load b64 thumbnail image data for each icon
             try:
 
-                img = ft.Image(src_base64=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
+                img = ft.Image(src=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
                 # attach on_click in the constructor so Flet will register the handler
                 def _on_click(e, p=path):
                     # small debug feedback

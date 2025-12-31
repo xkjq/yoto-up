@@ -225,7 +225,7 @@ class IconReplaceDialog:
                                 row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
                             elif img_src is not None:
                                 try:
-                                    img = ft.Image(src_base64=get_base64_from_path(img_src), width=48, height=48)
+                                    img = ft.Image(src=get_base64_from_path(img_src), width=48, height=48)
                                     row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
                                 except Exception as ex:
                                     logger.exception(f"Failed to load icon image: {ex}")
@@ -236,7 +236,7 @@ class IconReplaceDialog:
                                 row_children.append(ft.GestureDetector(content=placeholder, on_tap=use_icon, mouse_cursor=ft.MouseCursor.CLICK))
                             title_text = icon.get('title') or icon.get('id') or icon.get('displayIconId') or str(icon)
                             row_children.append(ft.Column([ft.Text(title_text, selectable=True), ft.Text(', '.join(icon.get('tags', [])[:5]) if icon.get('tags') else '')]))
-                            row_children.append(ft.ElevatedButton('Use', on_click=use_icon))
+                            row_children.append(ft.Button('Use', on_click=use_icon))
                             results_list.controls.append(ft.Row(row_children, alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
                     _schedule_page_update()
                 except Exception as e:
@@ -403,13 +403,13 @@ class IconReplaceDialog:
 
                     # visual row for this saved icon
                     try:
-                        preview = ft.Image(src_base64=get_base64_from_path(p), width=48, height=48)
+                        preview = ft.Image(src=get_base64_from_path(p), width=48, height=48)
                     except Exception:
                         preview = ft.Container(width=48, height=48, bgcolor=ft.Colors.GREY_200)
                     row = ft.Row([
                         ft.Column([preview]),
                         ft.Column([ft.Text(p.name, selectable=True)]),
-                        ft.Row([ft.ElevatedButton("Edit", on_click=make_edit(p)), ft.ElevatedButton("Use", on_click=make_use(p))])
+                        ft.Row([ft.Button("Edit", on_click=make_edit(p)), ft.Button("Use", on_click=make_use(p))])
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, spacing=12)
                     saved_icons_list.controls.append(row)
             except Exception as e:
@@ -577,7 +577,7 @@ class IconReplaceDialog:
 
         # Build a Tabs control inside the dialog so user can switch between Search and My Icons
         tabs = ft.Tabs(selected_index=0, tabs=[
-            ft.Tab(text="Search", content=ft.Column([
+            ft.Tab(label="Search", content=ft.Column([
                 ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
                 # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
                 (lambda: ft.Row(
@@ -585,7 +585,7 @@ class IconReplaceDialog:
                 ))(),
                  results_list
              ], width=900, expand=True)),
-            ft.Tab(text="My Icons", content=ft.Column([
+            ft.Tab(label="My Icons", content=ft.Column([
                 saved_icons_list
             ], width=900, expand=True))
         ], expand=True)

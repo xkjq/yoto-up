@@ -143,7 +143,7 @@ def show_edit_card_dialog(
                         icon_path = api.get_icon_cache_path(icon_field)
                         if icon_path is not None:
                             if icon_path.exists():
-                                ch_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=24, height=24)
+                                ch_icon = ft.Image(src=get_base64_from_path(icon_path), width=24, height=24)
                     except Exception:
                         pass
             def make_delete_chapter(idx=ci, ch_title=ch_title):
@@ -204,7 +204,7 @@ def show_edit_card_dialog(
                                 icon_path = api.get_icon_cache_path(icon_field)
                                 if icon_path is not None:
                                     if icon_path.exists():
-                                        tr_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=20, height=20)
+                                        tr_icon = ft.Image(src=get_base64_from_path(icon_path), width=20, height=20)
                             except Exception:
                                 pass
                     def make_delete_track(ci=ci, ti=ti):
