@@ -14,6 +14,7 @@ import json
 import threading
 
 import flet as ft
+#from flet.auth import OAuthProvider
 from yoto_up.yoto_app import utils as utils_mod
 from yoto_up.yoto_app import ui_helpers as ui_helpers
 from yoto_up.yoto_app import auth as auth_mod
@@ -1007,31 +1008,31 @@ def _main_impl(page):
                 except Exception as e:
                     show_snack(f'Failed to initialize API: {e}', error=True)
 
-        # Build a generic OAuth provider using Yoto endpoints
-        provider = OAuthProvider(
-            client_id="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5",
-            client_secret=os.getenv('YOTO_CLIENT_SECRET', ''),
-            authorization_endpoint='https://login.yotoplay.com/authorize',
-            token_endpoint='https://login.yotoplay.com/oauth/token',
-            user_endpoint='https://api.yotoplay.com/user',
-            user_scopes=['profile'],
-            user_id_fn=lambda u: u.get('sub') or u.get('id') or u.get('email'),
-            redirect_url="http://localhost:8550/oauth_callback",
-        )
+        ## Build a generic OAuth provider using Yoto endpoints
+        #provider = OAuthProvider(
+        #    client_id="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5",
+        #    client_secret=os.getenv('YOTO_CLIENT_SECRET', ''),
+        #    authorization_endpoint='https://login.yotoplay.com/authorize',
+        #    token_endpoint='https://login.yotoplay.com/oauth/token',
+        #    user_endpoint='https://api.yotoplay.com/user',
+        #    user_scopes=['profile'],
+        #    user_id_fn=lambda u: u.get('sub') or u.get('id') or u.get('email'),
+        #    redirect_url="http://localhost:8550/oauth_callback",
+        #)
 
-        logger.debug(f"[on_auth_click] using OAuthProvider: {provider}")
+        #logger.debug(f"[on_auth_click] using OAuthProvider: {provider}")
 
         page.on_login = on_login
-        try:
-            # open login; fetch_user=False because we only need tokens
-            page.login(provider, fetch_user=False)
-        except Exception as ex:
-            # fallback to device auth if browser flow fails
-            logger.debug(f"Browser OAuth failed, falling back to device flow: {ex}")
-            if not can_start_thread:
-                start_device_auth(e, auth_instructions)
-            else:
-                threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
+        #try:
+        #    # open login; fetch_user=False because we only need tokens
+        #    page.login(provider, fetch_user=False)
+        #except Exception as ex:
+        # fallback to device auth if browser flow fails
+        #logger.debug(f"Browser OAuth failed, falling back to device flow: {ex}")
+        if not can_start_thread:
+            start_device_auth(e, auth_instructions)
+        else:
+            threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
         logger.debug("[on_auth_click] _auth_click done")
 
     auth_btn.on_click = _auth_click
@@ -2369,6 +2370,7 @@ def _main_impl(page):
 
     # Instantiate PixelArtEditor and expose as a dedicated tab on the main page
     try:
+        pass
         editor = PixelArtEditor(page=page)
         editor_tab = editor.as_tab("Editor") or editor.as_tab("Icon Editor")
         # keep a reference on the page for external callers if needed
@@ -2377,32 +2379,6 @@ def _main_impl(page):
         editor = None
         editor_tab = None
 
-    # Create tab labels
-    auth_tab = ft.Tab(label="Auth")
-    playlists_tab = ft.Tab(label="Playlists", disabled=True)
-    upload_tab = ft.Tab(label="Upload", disabled=True)
-    icons_tab = ft.Tab(label="Icons", disabled=True)
-    covers_tab = ft.Tab(label="Covers", disabled=True)
-    
-    # Editor tab (if created) - inserted before Icons
-    if editor_tab is None:
-        editor_tab = ft.Tab(label="Editor", disabled=True)
-        editor_fallback = ft.Text("Editor unavailable")
-        editor_fallback.visible = True
-        editor_content = editor_fallback
-    else:
-        # Editor tab was created - extract content stored on tab object
-        if hasattr(editor_tab, '_editor_content'):
-            editor_content = editor_tab._editor_content
-            if hasattr(editor_content, 'visible'):
-                editor_content.visible = True
-        else:
-            # No content found, add placeholder
-            editor_fallback = ft.Text("Editor unavailable")
-            editor_fallback.visible = True
-            editor_content = editor_fallback
-        # Tab label is already correct, no need to recreate
-    
     # Ensure all content is visible
     auth_column.visible = True
     playlists_column.visible = True
@@ -2412,51 +2388,43 @@ def _main_impl(page):
     if hasattr(covers_panel, 'visible'):
         covers_panel.visible = True
     
-    # Create Tabs with separate tab labels and content panels
-    # Note: In Flet 0.80, Tabs.content takes list of Control objects (panels)
-    #       and tabs property is set with list of Tab objects (labels)
-    # Ensure every content panel is a valid, visible Control to satisfy Flet 0.80
-    def _label_for(idx, fallback_label: str):
-        try:
-            return fallback_label
-        except Exception:
-            return fallback_label
-
+    # Ensure every content panel is a valid Control
     auth_column = _ensure_control(auth_column, "Auth")
     playlists_column = _ensure_control(playlists_column, "Playlists")
     upload_column = _ensure_control(upload_column, "Upload")
-    editor_content = _ensure_control(editor_content, "Editor")
+    editor_content = _ensure_control(editor, "Editor")
+
+    # Create tab labels for TabBar
+    auth_tab = ft.Tab(label="Auth")
+    playlists_tab = ft.Tab(label="Playlists", disabled=True)
+    upload_tab = ft.Tab(label="Upload", disabled=True)
+    icons_tab = ft.Tab(label="Icons", disabled=True)
+    covers_tab = ft.Tab(label="Covers", disabled=True)
+    editor_tab = ft.Tab(label="Editor", disabled=True)
 
     all_tab_labels = [auth_tab, playlists_tab, upload_tab, icons_tab, covers_tab, editor_tab]
     all_tab_content = [auth_column, playlists_column, upload_column, icon_panel, covers_panel, editor_content]
 
-    # Diagnostic: log each content entry's type and visible attribute before creating Tabs
-    try:
-        logger.debug(f"Tabs diagnostic: preparing to create Tabs with {len(all_tab_content)} content entries")
-        for i, c in enumerate(all_tab_content):
-            try:
-                v = getattr(c, 'visible', None)
-                logger.debug(f"Tabs diagnostic: content[{i}] type={type(c)!r} visible={v!r} repr={repr(c)!s}")
-            except Exception:
-                logger.exception(f"Tabs diagnostic: failed inspecting content[{i}]")
-        for i, t in enumerate(all_tab_labels):
-            try:
-                disabled = getattr(t, 'disabled', None)
-                logger.debug(f"Tabs diagnostic: tab_label[{i}] type={type(t)!r} disabled={disabled!r} repr={repr(t)!s}")
-            except Exception:
-                logger.exception(f"Tabs diagnostic: failed inspecting tab_label[{i}]")
-    except Exception:
-        logger.exception("Tabs diagnostic: top-level failure")
-
-    # Create Tabs control with both tabs and content specified
+    # Create Tabs control using Flet 0.80+ API:
+    # ft.Tabs(content=ft.Column([ft.TabBar(tabs=[...]), ft.TabBarView(controls=[...])]))
     try:
         tabs_control = ft.Tabs(
-             content=all_tab_content,
-             length=len(all_tab_content),
-             selected_index=0,
-             expand=True,
-         )
-        tabs_control.tabs = all_tab_labels
+            selected_index=0,
+            length=len(all_tab_labels),
+            expand=True,
+            content=ft.Column(
+                expand=True,
+                controls=[
+                    ft.TabBar(
+                        tabs=all_tab_labels
+                    ),
+                    ft.TabBarView(
+                        expand=True,
+                        controls=all_tab_content
+                    )
+                ]
+            )
+        )
     except Exception:
         # Log full traceback to both logger and stderr so we capture user-side failures
         try:
@@ -2482,20 +2450,11 @@ def _main_impl(page):
         """Invalidate authentication: clear API, hide tabs, switch to Auth tab, and update UI."""
         # Clear API instance
         api_ref["api"] = None
-        # Disable non-auth tabs (keep visible to satisfy Flet 0.80 Tabs/content mapping)
+        # Disable non-auth tabs - access TabBar from tabs_control.content.controls[0]
         try:
-            for i in range(1, len(tabs_control.tabs)):
-                tabs_control.tabs[i].disabled = True
-        except Exception:
-            pass
-        # IMPORTANT (Flet 0.80): Tabs.content panels must remain visible.
-        # Tabs itself controls which panel is displayed.
-        try:
-            for i in range(0, len(tabs_control.content)):
-                try:
-                    tabs_control.content[i].visible = True
-                except Exception:
-                    pass
+            tab_bar = tabs_control.content.controls[0]  # First control in Column is TabBar
+            for i in range(1, len(tab_bar.tabs)):
+                tab_bar.tabs[i].disabled = True
         except Exception:
             pass
         # Switch to Auth tab
@@ -2518,18 +2477,11 @@ def _main_impl(page):
 
     def auth_complete():
         logger.debug("Auth complete")
+        # Enable all tabs - access TabBar from tabs_control.content.controls[0]
         try:
-            for i in range(1, len(tabs_control.tabs)):
-                tabs_control.tabs[i].disabled = False
-        except Exception:
-            pass
-        # Keep all content panels visible; Tabs will display the selected one.
-        try:
-            for i in range(0, len(tabs_control.content)):
-                try:
-                    tabs_control.content[i].visible = True
-                except Exception:
-                    pass
+            tab_bar = tabs_control.content.controls[0]  # First control in Column is TabBar
+            for i in range(1, len(tab_bar.tabs)):
+                tab_bar.tabs[i].disabled = False
         except Exception:
             pass
 
@@ -2619,18 +2571,18 @@ def _main_impl(page):
 
 def start_gui():
     # Patch Flet logging to capture all errors to stderr
-    import logging
-    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
+    #import logging
+    #logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
     
     # Create a handler that writes everything to stderr
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setLevel(logging.WARNING)
+    #stderr_handler = logging.StreamHandler(sys.stderr)
+    #stderr_handler.setLevel(logging.DEBUG)
     
-    # Capture Flet's internal loggers
-    for logger_name in ['flet', 'flet.core', 'flet_core', 'flet_runtime']:
-        flet_logger = logging.getLogger(logger_name)
-        flet_logger.addHandler(stderr_handler)
-        flet_logger.setLevel(logging.WARNING)
+    ## Capture Flet's internal loggers
+    #for logger_name in ['flet', 'flet.core', 'flet_core', 'flet_runtime']:
+    #    flet_logger = logging.getLogger(logger_name)
+    #    flet_logger.addHandler(stderr_handler)
+    #    flet_logger.setLevel(logging.WARNING)
     
     def main_wrapper(page):
         try:
