@@ -1858,7 +1858,7 @@ def build_playlists_panel(
         [
             ft.Row(
                 [
-                    ft.Text("Playlists", style=ft.TextThemeStyle.TITLE_MEDIUM),
+                    ft.Text("Playlists"),
                     fetch_btn,
                     multi_select_btn,
                     select_all_btn,
