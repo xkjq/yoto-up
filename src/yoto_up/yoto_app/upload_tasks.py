@@ -1,8 +1,11 @@
 import asyncio
 import os
 import traceback
+import tempfile
+import shutil
 from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
+from yoto_up.normalization import AudioNormalizer
 from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
@@ -395,6 +398,43 @@ async def start_uploads(event, ctx):
         page.update()
         return
 
+    # --- Normalization Start ---
+    local_norm_enabled = ctx.get('local_normalization_enabled', False)
+    local_norm_target = ctx.get('local_normalization_target', -23.0)
+    local_norm_batch = ctx.get('local_normalization_batch', False)
+    temp_norm_dir = None
+
+    if local_norm_enabled:
+        try:
+            status.value = "Normalizing audio..."
+            page.update()
+            temp_norm_dir = tempfile.mkdtemp(prefix="yoto_norm_")
+            logger.info(f"Normalizing {len(files)} files to {temp_norm_dir} (Target: {local_norm_target}LUFS, Batch: {local_norm_batch})")
+            
+            normalizer = AudioNormalizer(target_level=local_norm_target, batch_mode=local_norm_batch)
+            
+            def norm_progress(msg, val):
+                status.value = f"Normalizing: {msg}"
+                page.update()
+
+            normalized_files = await asyncio.to_thread(
+                normalizer.normalize, files, temp_norm_dir, norm_progress
+            )
+            
+            if len(normalized_files) == len(files):
+                files = normalized_files
+                logger.info("Normalization complete. Using normalized files.")
+            else:
+                logger.error("Normalization returned different number of files. Using original files.")
+                
+        except Exception as e:
+            logger.error(f"Normalization failed: {e}")
+            status.value = f"Normalization failed: {e}"
+            page.update()
+            # Wait a bit so user sees the error
+            await asyncio.sleep(2)
+    # --- Normalization End ---
+
     # Note: intro/outro analysis is intentionally not run automatically during start_uploads.
     # Analysis should be run manually from the UI (Analyze button) prior to starting uploads.
 
@@ -689,6 +729,13 @@ async def start_uploads(event, ctx):
     except Exception as e:
         logger.error(f"[start_uploads] Error occurred while waiting for tasks: {e}")
     finally:
+        if temp_norm_dir and os.path.exists(temp_norm_dir):
+            try:
+                shutil.rmtree(temp_norm_dir)
+                logger.debug(f"Cleaned up temp normalization dir: {temp_norm_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp dir {temp_norm_dir}: {e}")
+
         status.value = "Finished"
         try:
             ctx.get('start_btn').disabled = False

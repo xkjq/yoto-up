@@ -30,6 +30,8 @@ dependencies = [
   "matplotlib>=3.7",
   "typer>=0.19.0",
   "rapidfuzz>=2.0.0",
+  "ffmpeg-normalize>=1.36.0",
+  "ffmpeg-binaries",
   # Optional NLP tools useful for desktop keyword extraction
   "nltk>=3.8.0",
 
@@ -89,3 +91,4 @@ include = ["yoto_up*"]
 
 [project.scripts]
 yoto = "yoto_up.yoto:app"
+gui = "yoto_up.gui:start_gui"
