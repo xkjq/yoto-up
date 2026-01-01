@@ -34,9 +34,8 @@ dependencies = [
   "ffmpeg-binaries",
   # Optional NLP tools useful for desktop keyword extraction
   "nltk>=3.8.0",
-
   "platformdirs>=3.0",
-
+  "flet[all]>=0.80.0",
 ]
 
 license = "MIT"

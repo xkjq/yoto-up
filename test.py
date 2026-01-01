@@ -1,32 +1,26 @@
 import flet as ft
 
-
 def main(page: ft.Page):
-    def pick_files_result(e: ft.FilePickerResultEvent):
-        selected_files.value = (
-            ", ".join(map(lambda f: f.name, e.files)) if e.files else "Cancelled!"
-        )
-        selected_files.update()
+    page.title = "Flet counter example"
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
-    pick_files_dialog = ft.FilePicker(on_result=pick_files_result)
-    selected_files = ft.Text()
+    input = ft.TextField(value="0", text_align=ft.TextAlign.RIGHT, width=100)
 
-    page.overlay.append(pick_files_dialog)
+    def minus_click(e):
+        input.value = str(int(input.value) - 1)
+
+    def plus_click(e):
+        input.value = str(int(input.value) + 1)
 
     page.add(
         ft.Row(
-            [
-                ft.ElevatedButton(
-                    "Pick files",
-                    icon=ft.Icons.UPLOAD_FILE,
-                    on_click=lambda _: pick_files_dialog.pick_files(
-                        allow_multiple=True
-                    ),
-                ),
-                selected_files,
-            ]
+            alignment=ft.MainAxisAlignment.CENTER,
+            controls=[
+                ft.IconButton(ft.Icons.REMOVE, on_click=minus_click),
+                input,
+                ft.IconButton(ft.Icons.ADD, on_click=plus_click),
+            ],
         )
     )
 
-
-ft.app(main)
+ft.run(main)

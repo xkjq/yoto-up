@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 import platform
 import sys
-from flet.auth import OAuthProvider
 
 from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents, load_playlists, save_playlists, _BASE_DATA_DIR, _BASE_CONFIG_DIR
 
@@ -13,9 +12,6 @@ from typing import cast, Any
 import traceback
 import json
 import threading
-# typing imported above
-
-import os
 
 import flet as ft
 from yoto_up.yoto_app import utils as utils_mod
@@ -2468,7 +2464,6 @@ def _main_impl(page):
         except Exception:
             pass
         try:
-            import traceback, sys
             traceback.print_exc(file=sys.stderr)
             sys.stderr.flush()
         except Exception:
