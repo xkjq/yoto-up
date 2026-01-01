@@ -2095,8 +2095,6 @@ def _main_impl(page):
         card_info_display
     ], scroll=ft.ScrollMode.AUTO, expand=True)
 
-    # Use Tabs so Auth, Playlists and Upload are on separate pages
-
     # Add About button to the top right
     about_btn = ft.IconButton(
         icon=ft.Icons.INFO_OUTLINE,
@@ -2351,33 +2349,15 @@ def _main_impl(page):
     covers_ui = build_covers_panel(page=page, show_snack=show_snack)
     covers_panel = covers_ui.get('panel') if isinstance(covers_ui, dict) else None
 
-    def _ensure_control(ctrl, label: str):
-        if ctrl is None:
-            fallback = ft.Text(f"{label} unavailable")
-            fallback.visible = True
-            return fallback
-        # Some panels might come back as unexpected types; ensure we provide a Control.
-        if not isinstance(ctrl, ft.Control):
-            fallback = ft.Text(f"{label} unavailable")
-            fallback.visible = True
-            return fallback
-        if hasattr(ctrl, "visible"):
-            ctrl.visible = True
-        return ctrl
+    # Note: removed _ensure_control wrapper per user request. If a panel
+    # is incorrectly defined it should be fixed at source rather than
+    # automatically replaced at runtime.
 
-    icon_panel = _ensure_control(icon_panel, "Icons")
-    covers_panel = _ensure_control(covers_panel, "Covers")
-
-    # Instantiate PixelArtEditor and expose as a dedicated tab on the main page
-    try:
-        pass
-        editor = PixelArtEditor(page=page)
-        editor_tab = editor.as_tab("Editor") or editor.as_tab("Icon Editor")
-        # keep a reference on the page for external callers if needed
-        page.pixel_editor = editor
-    except Exception:
-        editor = None
-        editor_tab = None
+    editor = PixelArtEditor(page=page)
+    #editor_tab = editor.as_tab("Editor") or editor.as_tab("Icon Editor")
+    # keep a reference on the page for external callers if needed
+    page.pixel_editor = editor
+    editor_content = editor.control()
 
     # Ensure all content is visible
     auth_column.visible = True
@@ -2387,12 +2367,6 @@ def _main_impl(page):
         icon_panel.visible = True
     if hasattr(covers_panel, 'visible'):
         covers_panel.visible = True
-    
-    # Ensure every content panel is a valid Control
-    auth_column = _ensure_control(auth_column, "Auth")
-    playlists_column = _ensure_control(playlists_column, "Playlists")
-    upload_column = _ensure_control(upload_column, "Upload")
-    editor_content = _ensure_control(editor, "Editor")
 
     # Create tab labels for TabBar
     auth_tab = ft.Tab(label="Auth")
@@ -2407,36 +2381,24 @@ def _main_impl(page):
 
     # Create Tabs control using Flet 0.80+ API:
     # ft.Tabs(content=ft.Column([ft.TabBar(tabs=[...]), ft.TabBarView(controls=[...])]))
-    try:
-        tabs_control = ft.Tabs(
-            selected_index=0,
-            length=len(all_tab_labels),
+    tabs_control = ft.Tabs(
+        selected_index=0,
+        length=len(all_tab_labels),
+        expand=True,
+        content=ft.Column(
             expand=True,
-            content=ft.Column(
-                expand=True,
-                controls=[
-                    ft.TabBar(
-                        tabs=all_tab_labels
-                    ),
-                    ft.TabBarView(
-                        expand=True,
-                        controls=all_tab_content
-                    )
-                ]
-            )
+            controls=[
+                ft.TabBar(
+                    tabs=all_tab_labels
+                ),
+                ft.TabBarView(
+                    expand=True,
+                    controls=all_tab_content
+                )
+            ]
         )
-    except Exception:
-        # Log full traceback to both logger and stderr so we capture user-side failures
-        try:
-            logger.exception("Failed creating main Tabs control")
-        except Exception:
-            pass
-        try:
-            traceback.print_exc(file=sys.stderr)
-            sys.stderr.flush()
-        except Exception:
-            pass
-        raise
+    )
+
     # Place About button above tabs
     page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, autoselect_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)

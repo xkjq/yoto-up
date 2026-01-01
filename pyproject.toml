@@ -71,7 +71,6 @@ web = [
 
 
 renderers = [
-  "weasyprint",
   "PyMuPDF",
   "pdf2image",
 ]

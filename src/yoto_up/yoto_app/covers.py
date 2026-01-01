@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 import shutil
 import sys
+import base64
 from typing import Any, Dict, List, Optional
 from enum import Enum
 
@@ -28,13 +29,6 @@ try:
 except ImportError:
     HAS_PIL = False
     logger.warning("PIL/Pillow not available for covers functionality")
-
-try:
-    import weasyprint
-    HAS_WEASYPRINT = True
-except ImportError:
-    HAS_WEASYPRINT = False
-    logger.warning("WeasyPrint not available - template rendering will use fallback mode")
 
 
 # Card dimensions in mm
@@ -541,6 +535,246 @@ def process_image(img_path: str, fit_mode: ImageFitMode, crop_position: CropPosi
     return result
 
 
+def _image_to_data_url(image_path: str) -> str:
+    """Convert an image file or file:// URI to a base64 data URL for embedding in HTML.
+
+    Accepts:
+    - a local filesystem path ("/path/to/img.png")
+    - a file:// URI ("file:///path/to/img.png")
+    - an existing data: URI (returns as-is)
+    Falls back to returning the original string if conversion fails.
+    """
+    try:
+        # If already a data URL, return it directly
+        if isinstance(image_path, str) and image_path.startswith("data:"):
+            return image_path
+
+        # Handle file:// URIs by extracting the local path
+        local_path = image_path
+        if isinstance(image_path, str) and image_path.startswith("file://"):
+            try:
+                from urllib.parse import urlparse
+                from urllib.request import url2pathname
+                p = urlparse(image_path)
+                local_path = url2pathname(p.path)
+            except Exception:
+                # best-effort fallback
+                local_path = image_path.replace("file://", "")
+
+        path = Path(local_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {local_path}")
+
+        with open(path, 'rb') as f:
+            image_data = f.read()
+
+        ext = path.suffix.lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.bmp': 'image/bmp',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_types.get(ext, 'image/png')
+
+        b64_data = base64.b64encode(image_data).decode('utf-8')
+        return f"data:{mime_type};base64,{b64_data}"
+    except Exception as e:
+        logger.debug(f"Failed to convert image to data URL: {e}")
+        # Fall back to original value (may be a file:// URI or remote URL)
+        return image_path
+
+
+def generate_html_preview(cover_images: List[CoverImage], paper_size: str = "A4",
+                          print_mode: PrintMode = PrintMode.OVERPRINT,
+                          show_cut_lines: bool = True,
+                          dpi: int = 150,
+                          margin_mm: float = 5.0) -> str:
+    """
+    Generate an HTML preview page with covers displayed in a grid.
+    
+    Args:
+        cover_images: List of CoverImage objects to display
+        paper_size: Paper size name (A4, Letter, etc.)
+        print_mode: Overprint or underprint (affects size)
+        show_cut_lines: Whether to show cut lines
+        dpi: DPI for display
+        margin_mm: Margin around cards in mm
+    
+    Returns: HTML string
+    """
+    if not cover_images:
+        return "<html><body><h1>No covers to preview</h1></body></html>"
+    
+    # Get paper dimensions
+    paper_w_mm, paper_h_mm = PAPER_SIZES.get(paper_size, PAPER_SIZES["A4"])
+    
+    # Calculate card dimensions in pixels (for display)
+    card_w_px = mm_to_pixels(CARD_WIDTH_MM, dpi)
+    card_h_px = mm_to_pixels(CARD_HEIGHT_MM, dpi)
+    
+    # Calculate layout
+    cols, rows = calculate_layout(
+        len(cover_images),
+        (paper_w_mm, paper_h_mm),
+        (CARD_WIDTH_MM, CARD_HEIGHT_MM),
+        margin_mm
+    )
+    
+    margin_px = mm_to_pixels(margin_mm, dpi)
+    
+    # Decide scale multiplier for overprint/underprint
+    if print_mode == PrintMode.OVERPRINT:
+        size_multiplier = 1.02
+    elif print_mode == PrintMode.UNDERPRINT:
+        size_multiplier = 0.98
+    else:
+        size_multiplier = 1.0
+    
+    # Generate HTML
+    html_parts = []
+    html_parts.append("""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Yoto Covers Preview</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .page {
+            background: white;
+            margin: 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .cover-grid {
+            display: grid;
+            gap: """ + str(margin_px) + """px;
+            padding: """ + str(margin_px) + """px;
+            grid-template-columns: repeat(""" + str(cols) + """, 1fr);
+        }
+        .cover {
+            width: """ + str(int(card_w_px * size_multiplier)) + """px;
+            height: """ + str(int(card_h_px * size_multiplier)) + """px;
+            border: """ + ("2px dashed #ccc;" if show_cut_lines else "1px solid #eee;") + """
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .cover-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 10px;
+            padding: 2px;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Yoto Covers Preview</h1>
+    <div class="page" style="width: """ + str(int(mm_to_pixels(paper_w_mm, dpi))) + """px; height: """ + str(int(mm_to_pixels(paper_h_mm, dpi))) + """px;">
+        <div class="cover-grid">
+""")
+    
+    for idx, cover_img in enumerate(cover_images):
+        if idx >= cols * rows:
+            break
+        
+        try:
+            # Generate cover content
+            if getattr(cover_img, "template_enabled", False):
+                # Use HTML template directly - extract body content
+                html_content = cover_templates.generate_html_template(
+                    (getattr(cover_img, "template_title", None) or cover_img.name),
+                    "",  # Will be replaced with data URL
+                    getattr(cover_img, "template_name", "classic"),
+                    width_px=int(card_w_px * size_multiplier),
+                    height_px=int(card_h_px * size_multiplier),
+                    footer_text=getattr(cover_img, "template_footer", None),
+                    accent_color=getattr(cover_img, "template_accent_color", None),
+                    title_style=getattr(cover_img, "template_title_style", "classic"),
+                    title_color=getattr(cover_img, "template_title_color", "#111111"),
+                    footer_style=getattr(cover_img, "template_footer_style", "bar"),
+                    image_fit=getattr(cover_img, "template_image_fit", ImageFitMode.SCALE).value,
+                    cover_full_bleed=getattr(cover_img, "template_cover_full_bleed", True),
+                    title_shadow=getattr(cover_img, "template_title_shadow", False),
+                    title_font=getattr(cover_img, "template_title_font", "DejaVuSans"),
+                    title_shadow_color=getattr(cover_img, "template_title_shadow_color", "#008000"),
+                    title_font_size_px=getattr(cover_img, "template_title_font_size", None),
+                    footer_font_size_px=getattr(cover_img, "template_footer_font_size", None),
+                    top_blend_color=getattr(cover_img, "template_top_blend_color", None),
+                    bottom_blend_color=getattr(cover_img, "template_bottom_blend_color", None),
+                    top_blend_pct=getattr(cover_img, "template_top_blend_pct", 0.12),
+                    bottom_blend_pct=getattr(cover_img, "template_bottom_blend_pct", 0.12),
+                )
+                
+                # Extract body content and styles from the full HTML
+                import re
+                # Remove the HTML wrapper and keep only the card content
+                html_content = html_content.replace('<!doctype html>', '').replace('<html>', '').replace('</html>', '').replace('<head>', '').replace('</head>', '').replace('<body>', '').replace('</body>', '')
+                # Remove html,body styles that might conflict with the main page
+                html_content = re.sub(r'html\s*,\s*body\s*\{[^}]*\}', '', html_content, flags=re.IGNORECASE)
+                # Replace the image source
+                image_data_url = _image_to_data_url(cover_img.path)
+                html_content = html_content.replace('src=""', f'src="{image_data_url}"')
+                
+                html_parts.append(f'<div class="cover">{html_content}<div class="cover-label">{cover_img.name}</div></div>')
+            else:
+                # Generate PNG with Pillow and embed as base64
+                target_w = max(1, int(card_w_px * size_multiplier))
+                target_h = max(1, int(card_h_px * size_multiplier))
+                
+                processed = process_image(
+                    cover_img.path,
+                    cover_img.fit_mode,
+                    cover_img.crop_position,
+                    target_w,
+                    target_h,
+                    cover_img.crop_offset_x,
+                    cover_img.crop_offset_y,
+                    cover_img.text_overlays,
+                )
+                
+                # Convert to base64
+                import io
+                buffer = io.BytesIO()
+                processed.save(buffer, format="PNG")
+                img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                data_url = f"data:image/png;base64,{img_base64}"
+                
+                html_parts.append(f'<div class="cover"><img src="{data_url}" alt="{cover_img.name}"><div class="cover-label">{cover_img.name}</div></div>')
+                
+        except Exception as e:
+            logger.error(f"Error processing cover {cover_img.name}: {e}")
+            html_parts.append(f'<div class="cover" style="display:flex;align-items:center;justify-content:center;background:#f0f0f0;color:red;font-size:12px;">Error: {cover_img.name}</div>')
+    
+    html_parts.append("""
+        </div>
+    </div>
+</body>
+</html>""")
+    
+    return "".join(html_parts)
+
+
 def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4",
                          print_mode: PrintMode = PrintMode.OVERPRINT,
                          show_cut_lines: bool = True,
@@ -871,9 +1105,10 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     image_list = ft.ListView(expand=True, spacing=5, padding=10)
     
     # Preview
-    preview_image = ft.Image(
-        src="",
-        fit=ft.BoxFit.CONTAIN,
+    preview_button = ft.ElevatedButton(
+        "Open Preview in Browser",
+        icon=ft.Icons.OPEN_IN_BROWSER,
+        on_click=lambda e: open_preview_in_browser(),
         visible=False,
     )
 
@@ -2112,12 +2347,18 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
 
     
     
+    def open_preview_in_browser():
+        """Open the preview HTML in the default browser."""
+        if preview_path and Path(preview_path).exists():
+            import webbrowser
+            webbrowser.open(f"file://{preview_path}")
+    
     def update_preview():
         """Generate and display preview."""
         nonlocal preview_path
         
         if not cover_images:
-            preview_image.visible = False
+            preview_button.visible = False
             page.update()
             return
         
@@ -2126,8 +2367,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             return
         
         try:
-            # Generate layout
-            layout_img = generate_print_layout(
+            # Generate HTML preview
+            html_content = generate_html_preview(
                 cover_images,
                 paper_size=paper_size_dropdown.value,
                 print_mode=PrintMode(print_mode_dropdown.value),
@@ -2136,19 +2377,23 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 margin_mm=margin_slider.value,
             )
             
-            # Update renderer label based on last used renderer
-            try:
-                renderer_label.value = f"Renderer: {cover_templates.LAST_RENDERER or 'pillow'}"
-            except Exception:
-                renderer_label.value = "Renderer: -"
+            # Update renderer label
+            renderer_label.value = "Renderer: HTML Preview"
 
-            # Save to temp file
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                preview_path = tmp.name
-                layout_img.save(preview_path, "PNG")
+            # Clean up old preview file if it exists
+            if preview_path and Path(preview_path).exists():
+                try:
+                    Path(preview_path).unlink()
+                except Exception:
+                    pass
             
-            preview_image.src = preview_path
-            preview_image.visible = True
+            # Save HTML to temp file with unique name to avoid caching
+            import time
+            with tempfile.NamedTemporaryFile(suffix=f"_{int(time.time())}.html", delete=False) as tmp:
+                preview_path = tmp.name
+                tmp.write(html_content.encode('utf-8'))
+            
+            preview_button.visible = True
             page.update()
             
         except Exception as e:
@@ -2257,7 +2502,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         selected_text_overlay_index = None
         edit_panel.visible = False
         text_edit_panel.visible = False
-        preview_image.visible = False
+        preview_button.visible = False
         if preview_path:
             try:
                 Path(preview_path).unlink(missing_ok=True)
@@ -2301,15 +2546,15 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     
     def regenerate_preview_with_zoom():
         """Regenerate preview at current zoom level."""
-        if not cover_images or not HAS_PIL:
+        if not cover_images:
             return
         
         try:
-            # Generate layout at appropriate resolution for zoom level
+            # Generate HTML at appropriate resolution for zoom level
             dpi = int(150 * zoom_level)  # Adjust DPI based on zoom
             dpi = max(50, min(dpi, 300))  # Clamp between 50 and 300
             
-            layout_img = generate_print_layout(
+            html_content = generate_html_preview(
                 cover_images,
                 paper_size=paper_size_dropdown.value,
                 print_mode=PrintMode(print_mode_dropdown.value),
@@ -2318,14 +2563,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 margin_mm=margin_slider.value,
             )
             
-            # Save to temp file
-            nonlocal preview_path
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            # Save HTML to temp file with unique name
+            import time
+            with tempfile.NamedTemporaryFile(suffix=f"_{int(time.time())}.html", delete=False) as tmp:
                 preview_path = tmp.name
-                layout_img.save(preview_path, "PNG")
+                tmp.write(html_content.encode('utf-8'))
             
-            preview_image.src = preview_path
-            preview_image.visible = True
+            preview_button.visible = True
             
         except Exception as e:
             logger.error(f"Error regenerating preview with zoom: {e}")
@@ -2410,15 +2654,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 ),
             ]),
             ft.Container(
-                content=ft.InteractiveViewer(
-                    # InteractiveViewer requires its content to be visible. Wrap the
-                    # preview image in a container that remains visible while the
-                    # image itself can be shown/hidden via its src.
-                    content=ft.Container(content=preview_image, visible=True),
-                    min_scale=0.2,
-                    max_scale=5.0,
-                    boundary_margin=ft.Margin(20, 20, 20, 20),
-                ),
+                content=ft.Column([
+                    ft.Text("HTML Preview", size=14, text_align=ft.TextAlign.CENTER),
+                    preview_button,
+                    ft.Text("Click the button above to open the preview in your browser", 
+                           size=12, color=ft.Colors.GREY_600, text_align=ft.TextAlign.CENTER),
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
                 expand=True,
                 border=ft.border.all(1, ft.Colors.GREY_300),
                 border_radius=5,
@@ -2439,29 +2680,8 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     ], spacing=10, scroll=ft.ScrollMode.AUTO)
 
     # Warning banner if WeasyPrint is not installed
-    warning_banner = None
-    if not HAS_WEASYPRINT:
-        warning_banner = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE_700, size=20),
-                ft.Text(
-                    "WeasyPrint not installed. Template rendering will use fallback mode with limited features. "
-                    "Install with: pip install weasyprint",
-                    color=ft.Colors.ORANGE_700,
-                    size=12,
-                ),
-            ], spacing=10),
-            bgcolor=ft.Colors.ORANGE_50,
-            padding=10,
-            border=ft.border.all(1, ft.Colors.ORANGE_300),
-            border_radius=5,
-        )
-    
-    # Build main content with optional warning banner
-    content_children = []
-    if warning_banner:
-        content_children.append(warning_banner)
-    content_children.append(
+    # Build main content
+    content_children = [
         ft.Row([
             ft.Container(content=left_panel, width=400),
             ft.VerticalDivider(width=1),
@@ -2470,7 +2690,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.VerticalDivider(width=1),
             ft.Container(content=right_panel, width=360),
         ], expand=True)
-    )
+    ]
     
     main_content = ft.Column(content_children, spacing=0, expand=True)
     

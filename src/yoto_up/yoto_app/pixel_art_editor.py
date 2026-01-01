@@ -3379,49 +3379,52 @@ class PixelArtEditor:
         self.refresh_grid()
 
     def control(self):
+        if not getattr(self, "_built", False):
+                    self._build()
+                    self.ensure_grid()
         return self.container
 
-    # Tab helpers: allow embedding the editor as a normal tab in the app's Tabs view.
-    def as_tab(self, title: str = "Icon Editor"):
-        """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
-        try:
-            # Ensure UI is built before creating tab
-            if not getattr(self, "_built", False):
-                try:
-                    self._build()
-                except Exception:
-                    logger.exception("Error building editor UI in as_tab")
-            # ensure the heavy grid is present when creating the tab
-            try:
-                self.ensure_grid()
-            except Exception:
-                pass
+    ## Tab helpers: allow embedding the editor as a normal tab in the app's Tabs view.
+    #def as_tab(self, title: str = "Icon Editor"):
+    #    """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
+    #    try:
+    #        # Ensure UI is built before creating tab
+    #        if not getattr(self, "_built", False):
+    #            try:
+    #                self._build()
+    #            except Exception:
+    #                logger.exception("Error building editor UI in as_tab")
+    #        # ensure the heavy grid is present when creating the tab
+    #        try:
+    #            self.ensure_grid()
+    #        except Exception:
+    #            pass
 
-            if getattr(self, "_tab", None):
-                return self._tab
-            # Wrap editor.container in a Column to ensure it expands properly inside tab content
-            content = ft.Column(
-                [self.container], scroll=ft.ScrollMode.AUTO, expand=True
-            )
-            content.visible = True
-            tab = ft.Tab(label=title)
-            # Store content separately - Tab objects are just labels in Flet 0.80
-            tab._editor_content = content
-            self._tab = tab
-            return tab
-        except Exception:
-            logger.exception("Failed to create editor tab")
-            # fallback: return a plain container wrapped as a Tab-like object
-            try:
-                tab = ft.Tab(label=title)
-                if hasattr(self.container, 'visible'):
-                    self.container.visible = True
-                # Store content separately - Tab objects are just labels in Flet 0.80
-                tab._editor_content = self.container
-                self._tab = tab
-                return tab
-            except Exception:
-                return None
+    #        if getattr(self, "_tab", None):
+    #            return self._tab
+    #        # Wrap editor.container in a Column to ensure it expands properly inside tab content
+    #        content = ft.Column(
+    #            [self.container], scroll=ft.ScrollMode.AUTO, expand=True
+    #        )
+    #        content.visible = True
+    #        tab = ft.Tab(label=title)
+    #        # Store content separately - Tab objects are just labels in Flet 0.80
+    #        tab._editor_content = content
+    #        self._tab = tab
+    #        return tab
+    #    except Exception:
+    #        logger.exception("Failed to create editor tab")
+    #        # fallback: return a plain container wrapped as a Tab-like object
+    #        try:
+    #            tab = ft.Tab(label=title)
+    #            if hasattr(self.container, 'visible'):
+    #                self.container.visible = True
+    #            # Store content separately - Tab objects are just labels in Flet 0.80
+    #            tab._editor_content = self.container
+    #            self._tab = tab
+    #            return tab
+    #        except Exception:
+    #            return None
 
     def attach_to_tabview(
         self, tabview: ft.Tabs, select: bool = True, page: ft.Page = None
