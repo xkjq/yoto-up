@@ -597,6 +597,24 @@ class IconReplaceDialog:
         # Separate tab labels and content panels for Flet 0.80
         all_tab_labels = [search_tab, my_icons_tab]
         all_tab_content = [search_content, my_icons_content]
+        # Diagnostic: log each content entry's type and visible attribute before creating Tabs
+        try:
+            logger.debug(f"Dialog Tabs diagnostic: preparing to create Tabs with {len(all_tab_content)} content entries")
+            for i, c in enumerate(all_tab_content):
+                try:
+                    v = getattr(c, 'visible', None)
+                    logger.debug(f"Dialog Tabs diagnostic: content[{i}] type={type(c)!r} visible={v!r} repr={repr(c)!s}")
+                except Exception:
+                    logger.exception(f"Dialog Tabs diagnostic: failed inspecting content[{i}]")
+            for i, t in enumerate(all_tab_labels):
+                try:
+                    disabled = getattr(t, 'disabled', None)
+                    logger.debug(f"Dialog Tabs diagnostic: tab_label[{i}] type={type(t)!r} disabled={disabled!r} repr={repr(t)!s}")
+                except Exception:
+                    logger.exception(f"Dialog Tabs diagnostic: failed inspecting tab_label[{i}]")
+        except Exception:
+            logger.exception("Dialog Tabs diagnostic: top-level failure")
+
         tabs = ft.Tabs(content=all_tab_content, length=len(all_tab_content), selected_index=0, expand=True)
         tabs.tabs = all_tab_labels
 

@@ -3459,6 +3459,35 @@ class PixelArtEditor:
             tabview.tabs.append(tab)
             if select:
                 tabview.selected_index = len(tabview.tabs) - 1
+            # Ensure the tab's content is appended to the Tabs.content list (Flet 0.80 requires content mapping)
+            try:
+                content = getattr(tab, "_editor_content", None)
+                if content is None:
+                    content = getattr(self, "container", None)
+                    if content is not None and not isinstance(content, ft.Control):
+                        content = ft.Column([content], scroll=ft.ScrollMode.AUTO, expand=True)
+                if content is not None:
+                    if hasattr(content, 'visible'):
+                        try:
+                            content.visible = True
+                        except Exception:
+                            pass
+                    if not hasattr(tabview, 'content') or tabview.content is None:
+                        try:
+                            tabview.content = []
+                        except Exception:
+                            pass
+                    try:
+                        tabview.content.append(content)
+                        # Keep length in sync
+                        try:
+                            tabview.length = len(tabview.content)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # remember the page if provided for later dialog helpers
             if page:
                 self.page = page

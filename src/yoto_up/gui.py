@@ -8,6 +8,48 @@ from flet.auth import OAuthProvider
 
 from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, atomic_write, ensure_parents, load_playlists, save_playlists, _BASE_DATA_DIR, _BASE_CONFIG_DIR
 
+import importlib.util
+from typing import cast, Any
+import traceback
+import json
+import threading
+# typing imported above
+
+import os
+
+import flet as ft
+from yoto_up.yoto_app import utils as utils_mod
+from yoto_up.yoto_app import ui_helpers as ui_helpers
+from yoto_up.yoto_app import auth as auth_mod
+from yoto_up.yoto_app import config as yoto_config
+from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.playlists import build_playlists_panel
+from loguru import logger
+from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
+from yoto_up import paths as paths_mod
+import hashlib
+
+from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
+from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
+from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_up.yoto_app.covers import build_covers_panel
+import http.server
+import socketserver
+import socket
+import subprocess
+import shutil
+try:
+    import simpleaudio as _simpleaudio
+    HAS_SIMPLEAUDIO = True
+except Exception:
+    _simpleaudio = None
+    HAS_SIMPLEAUDIO = False
+
+INTRO_OUTRO_DIALOG = None
+
+os.environ["FLET_SECRET_KEY"] = os.urandom(12).hex()
+
 # Ensure FLET storage env vars are set to a sane default if not provided by the host.
 if os.getenv("FLET_APP_STORAGE_TEMP") is None:
     os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
@@ -37,49 +79,6 @@ try:
     os.makedirs(mpl_cfg, exist_ok=True)
 except Exception:
     pass
-import importlib.util
-from typing import cast, Any
-import sys as _sys
-import sys
-import traceback
-import json
-import threading
-# typing imported above
-
-import os
-
-import flet as ft
-from yoto_up.yoto_app import utils as utils_mod
-from yoto_up.yoto_app import ui_helpers as ui_helpers
-from yoto_up.yoto_app import auth as auth_mod
-from yoto_up.yoto_app import config as yoto_config
-from yoto_up.yoto_app.api_manager import ensure_api
-from yoto_up.yoto_app.playlists import build_playlists_panel
-from loguru import logger
-from yoto_up.yoto_app.upload_tasks import start_uploads as upload_start, stop_uploads as upload_stop, FileUploadRow
-from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
-import hashlib
-from yoto_up import paths as paths_mod
-
-from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
-from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
-from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
-from yoto_up.yoto_app.covers import build_covers_panel
-import http.server
-import socketserver
-import socket
-import subprocess
-import shutil
-try:
-    import simpleaudio as _simpleaudio
-    HAS_SIMPLEAUDIO = True
-except Exception:
-    _simpleaudio = None
-    HAS_SIMPLEAUDIO = False
-
-INTRO_OUTRO_DIALOG = None
-
-os.environ["FLET_SECRET_KEY"] = os.urandom(12).hex()
 
 # Simple single-instance HTTP server to serve preview files from .tmp_trim/previews
 _preview_server = None
@@ -142,7 +141,7 @@ except Exception:
             if _spec and _spec.loader:
                 # mypy/linters can be picky about module typing; ignore here
                 audio_adjust_utils = importlib.util.module_from_spec(_spec)  # type: ignore
-                _sys.modules["audio_adjust_utils"] = audio_adjust_utils
+                sys.modules["audio_adjust_utils"] = audio_adjust_utils
                 _spec.loader.exec_module(audio_adjust_utils)  # type: ignore
         except Exception:
             audio_adjust_utils = cast(Any, None)  # type: ignore
@@ -2355,6 +2354,23 @@ def _main_impl(page):
     covers_ui = build_covers_panel(page=page, show_snack=show_snack)
     covers_panel = covers_ui.get('panel') if isinstance(covers_ui, dict) else None
 
+    def _ensure_control(ctrl, label: str):
+        if ctrl is None:
+            fallback = ft.Text(f"{label} unavailable")
+            fallback.visible = True
+            return fallback
+        # Some panels might come back as unexpected types; ensure we provide a Control.
+        if not isinstance(ctrl, ft.Control):
+            fallback = ft.Text(f"{label} unavailable")
+            fallback.visible = True
+            return fallback
+        if hasattr(ctrl, "visible"):
+            ctrl.visible = True
+        return ctrl
+
+    icon_panel = _ensure_control(icon_panel, "Icons")
+    covers_panel = _ensure_control(covers_panel, "Covers")
+
     # Instantiate PixelArtEditor and expose as a dedicated tab on the main page
     try:
         editor = PixelArtEditor(page=page)
@@ -2367,14 +2383,14 @@ def _main_impl(page):
 
     # Create tab labels
     auth_tab = ft.Tab(label="Auth")
-    playlists_tab = ft.Tab(label="Playlists", visible=False)
-    upload_tab = ft.Tab(label="Upload", visible=False)
-    icons_tab = ft.Tab(label="Icons", visible=False)
-    covers_tab = ft.Tab(label="Covers", visible=False)
+    playlists_tab = ft.Tab(label="Playlists", disabled=True)
+    upload_tab = ft.Tab(label="Upload", disabled=True)
+    icons_tab = ft.Tab(label="Icons", disabled=True)
+    covers_tab = ft.Tab(label="Covers", disabled=True)
     
     # Editor tab (if created) - inserted before Icons
     if editor_tab is None:
-        editor_tab = ft.Tab(label="Editor", visible=False)
+        editor_tab = ft.Tab(label="Editor", disabled=True)
         editor_fallback = ft.Text("Editor unavailable")
         editor_fallback.visible = True
         editor_content = editor_fallback
@@ -2395,23 +2411,69 @@ def _main_impl(page):
     auth_column.visible = True
     playlists_column.visible = True
     upload_column.visible = True
-    icon_panel.visible = True
-    covers_panel.visible = True
+    if hasattr(icon_panel, 'visible'):
+        icon_panel.visible = True
+    if hasattr(covers_panel, 'visible'):
+        covers_panel.visible = True
     
     # Create Tabs with separate tab labels and content panels
     # Note: In Flet 0.80, Tabs.content takes list of Control objects (panels)
     #       and tabs property is set with list of Tab objects (labels)
+    # Ensure every content panel is a valid, visible Control to satisfy Flet 0.80
+    def _label_for(idx, fallback_label: str):
+        try:
+            return fallback_label
+        except Exception:
+            return fallback_label
+
+    auth_column = _ensure_control(auth_column, "Auth")
+    playlists_column = _ensure_control(playlists_column, "Playlists")
+    upload_column = _ensure_control(upload_column, "Upload")
+    editor_content = _ensure_control(editor_content, "Editor")
+
     all_tab_labels = [auth_tab, playlists_tab, upload_tab, icons_tab, covers_tab, editor_tab]
     all_tab_content = [auth_column, playlists_column, upload_column, icon_panel, covers_panel, editor_content]
-    
+
+    # Diagnostic: log each content entry's type and visible attribute before creating Tabs
+    try:
+        logger.debug(f"Tabs diagnostic: preparing to create Tabs with {len(all_tab_content)} content entries")
+        for i, c in enumerate(all_tab_content):
+            try:
+                v = getattr(c, 'visible', None)
+                logger.debug(f"Tabs diagnostic: content[{i}] type={type(c)!r} visible={v!r} repr={repr(c)!s}")
+            except Exception:
+                logger.exception(f"Tabs diagnostic: failed inspecting content[{i}]")
+        for i, t in enumerate(all_tab_labels):
+            try:
+                disabled = getattr(t, 'disabled', None)
+                logger.debug(f"Tabs diagnostic: tab_label[{i}] type={type(t)!r} disabled={disabled!r} repr={repr(t)!s}")
+            except Exception:
+                logger.exception(f"Tabs diagnostic: failed inspecting tab_label[{i}]")
+    except Exception:
+        logger.exception("Tabs diagnostic: top-level failure")
+
     # Create Tabs control with both tabs and content specified
-    tabs_control = ft.Tabs(
-         content=all_tab_content,
-         length=len(all_tab_content),
-         selected_index=0,
-         expand=True,
-     )
-    tabs_control.tabs = all_tab_labels
+    try:
+        tabs_control = ft.Tabs(
+             content=all_tab_content,
+             length=len(all_tab_content),
+             selected_index=0,
+             expand=True,
+         )
+        tabs_control.tabs = all_tab_labels
+    except Exception:
+        # Log full traceback to both logger and stderr so we capture user-side failures
+        try:
+            logger.exception("Failed creating main Tabs control")
+        except Exception:
+            pass
+        try:
+            import traceback, sys
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+        except Exception:
+            pass
+        raise
     # Place About button above tabs
     page.add(ft.Row([ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True), ft.Row([icon_refresh_badge, autoselect_badge, about_btn])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
     page.add(tabs_control)
@@ -2425,15 +2487,20 @@ def _main_impl(page):
         """Invalidate authentication: clear API, hide tabs, switch to Auth tab, and update UI."""
         # Clear API instance
         api_ref["api"] = None
-        # Hide non-auth tabs
+        # Disable non-auth tabs (keep visible to satisfy Flet 0.80 Tabs/content mapping)
         try:
             for i in range(1, len(tabs_control.tabs)):
-                tabs_control.tabs[i].visible = False
+                tabs_control.tabs[i].disabled = True
         except Exception:
             pass
+        # IMPORTANT (Flet 0.80): Tabs.content panels must remain visible.
+        # Tabs itself controls which panel is displayed.
         try:
-            for i in range(1, len(tabs_control.content)):
-                tabs_control.content[i].visible = False
+            for i in range(0, len(tabs_control.content)):
+                try:
+                    tabs_control.content[i].visible = True
+                except Exception:
+                    pass
         except Exception:
             pass
         # Switch to Auth tab
@@ -2458,12 +2525,16 @@ def _main_impl(page):
         logger.debug("Auth complete")
         try:
             for i in range(1, len(tabs_control.tabs)):
-                tabs_control.tabs[i].visible = True
+                tabs_control.tabs[i].disabled = False
         except Exception:
             pass
+        # Keep all content panels visible; Tabs will display the selected one.
         try:
-            for i in range(1, len(tabs_control.content)):
-                tabs_control.content[i].visible = True
+            for i in range(0, len(tabs_control.content)):
+                try:
+                    tabs_control.content[i].visible = True
+                except Exception:
+                    pass
         except Exception:
             pass
 
