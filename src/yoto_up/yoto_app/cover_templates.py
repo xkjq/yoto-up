@@ -235,6 +235,11 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
         except Exception:
             pass
     
+    # Set title class based on style
+    title_class = "title"
+    if title_style == "folded":
+        title_class = "title folded"
+    
     # Helper to compute footer font-size CSS string with per-template default
     def _footer_css(default: str) -> str:
         try:
@@ -296,7 +301,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 
     # Folded title CSS (user-provided folded style adapted for the card title)
     folded_css = f"""
-    .title.folded {{ position: absolute; left: 6%; right: 6%; top: 6%; display: flex; justify-content: center; align-items: center; font-family: 'Source Code Pro', monospace; font-weight: 900; font-size: calc(20vw + 0.5rem); white-space: nowrap; color: lch(76 39.21 9.23 / 0.5); text-transform: uppercase; transform: skew(10deg) rotate(-10deg); {title_extra_css} text-shadow: 1px 4px 6px lch(90 2.22 62.5), 0 0 0 lch(28 26.21 12.27), 1px 4px 6px lch(90 2.22 62.5); }}
+    .title.folded {{ position: absolute; left: 6%; right: 6%; top: 6%; display: flex; justify-content: center; align-items: center; font-family: 'Source Code Pro', monospace; font-weight: 900; white-space: nowrap; color: lch(76 39.21 9.23 / 0.5); text-transform: uppercase; transform: skew(10deg) rotate(-10deg); {title_extra_css} text-shadow: 1px 4px 6px lch(90 2.22 62.5), 0 0 0 lch(28 26.21 12.27), 1px 4px 6px lch(90 2.22 62.5); }}
     .title.folded::before {{ content: attr(data-heading); position: absolute; left: 0; top: -4.8%; overflow: hidden; height: 50%; color: lch(97 2.19 62.49); transform: translate(1.6vw, 0) skew(-13deg) scale(1, 1.2); text-shadow: 2px -1px 6px rgba(0,0,0,0.2); }}
     .title.folded::after {{ content: attr(data-heading); position: absolute; left: 0; color: lch(83 2.26 62.51); transform: translate(0, 0) skew(13deg) scale(1, 0.8); clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0% 100%); text-shadow: 2px -1px 6px lch(0 0 0 / 0.3); }}
     """
@@ -328,7 +333,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
         <div class="overlay"></div>
     <div class="footer">{footer}</div>
@@ -359,7 +364,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
     <div class="footer">{footer}</div>
   </div>
@@ -382,6 +387,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
     .title {{ position:absolute; top:8%; left:10%; right:10%; text-align:center; font-size:{title_font_size}; font-weight:{title_weight}; 
                         color:{title_color}; text-transform:{title_transform}; letter-spacing:1px; {title_extra_css} {title_font_css} {title_shadow_css} 
                         border-top: 2px solid #8b7355; border-bottom: 2px solid #8b7355; padding:8px 0; }}
+    {folded_css}
     .hero {{ position:absolute; top:25%; left:10%; right:10%; bottom:25%; display:flex; align-items:center; justify-content:center;
                     border: 4px double #8b7355; background: {overlay_css} #fff; }}
         .hero img {{ width:100%; height:100%; object-fit:{object_fit}; }}
@@ -391,7 +397,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
     <div class="footer">{footer}</div>
   </div>
@@ -420,7 +426,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="footer"></div>
   </div>
 </body>
@@ -453,7 +459,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title-bar"><div class="title" data-heading="{safe_title}">{safe_title}</div></div>
+    <div class="title-bar"><div class="{title_class}" data-heading="{safe_title}">{safe_title}</div></div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
     <div class="footer">{footer}</div>
   </div>
@@ -486,7 +492,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 <body>
   <div class="card">
     <div class="polaroid">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
       <div class="hero"><img src="{image_url}" alt="cover"/></div>
       <div class="footer">{footer}</div>
     </div>
@@ -511,6 +517,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
                         color:{title_color}; text-transform:{title_transform}; letter-spacing:1px; 
                         text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; 
                         {title_extra_css} {title_font_css} transform:rotate(-2deg); }}
+    {folded_css}
     .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center;
                     border: 6px solid #000; background: {overlay_css} #fff; transform:rotate(1deg); 
                     box-shadow: 4px 4px 0 rgba(0,0,0,0.3); }}
@@ -522,7 +529,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
     <div class="footer">{footer}</div>
   </div>
@@ -540,6 +547,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
   html,body {{ margin:0; padding:0; width:100%; height:100%; }}
   .card {{ width:100%; height:100%; background:linear-gradient(180deg,#ffffff,#e6f2ff); position:relative; font-family: Arial, Helvetica, sans-serif; }}
       .title {{ position:absolute; top:6%; left:8%; right:8%; text-align:left; font-size:{title_font_size}; color:{title_color}; font-weight:{title_weight}; text-transform:{title_transform}; {title_extra_css} {title_font_css} {title_shadow_css} }}
+      {folded_css}
   .hero {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; display:flex; align-items:center; justify-content:center; }}
         .hero img {{ max-width:100%; max-height:100%; object-fit:{object_fit}; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.15); }}
         .overlay {{ position:absolute; top:24%; left:8%; right:8%; bottom:20%; border-radius:6px; pointer-events:none; background: {overlay_css} rgba(0,0,0,0); }}
@@ -548,7 +556,7 @@ def generate_html_template(title: str, image_url: str, template_name: str = "cla
 </head>
 <body>
   <div class="card">
-    <div class="title" data-heading="{safe_title}">{safe_title}</div>
+    <div class="{title_class}" data-heading="{safe_title}">{safe_title}</div>
     <div class="hero"><img src="{image_url}" alt="cover"/></div>
         <div class="overlay"></div>
     <div class="footer">{footer}</div>
