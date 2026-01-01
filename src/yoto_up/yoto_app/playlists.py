@@ -382,23 +382,6 @@ def build_playlists_panel(
         invalid controls and retrying once.
         """
         page.update()
-        return
-        try:
-            page.update()
-            return
-        except AssertionError:
-            logger.error("page.update() raised AssertionError - attempting to clean UI controls and retry")
-            try:
-                _clean_controls()
-            except Exception:
-                pass
-            try:
-                page.update()
-            except Exception as ex:
-                logger.error(f"page.update retry failed: {ex}")
-        except Exception as ex:
-            # Propagate other exceptions as before
-            logger.error(f"page.update failed: {ex}")
 
     # Expose a page-level cleanup helper so other modules (notably gui.show_snack)
     # can attempt automatic recovery when page.update() raises AssertionError.
