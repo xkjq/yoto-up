@@ -18,6 +18,9 @@ import sys
 import base64
 from typing import Any, Dict, List, Optional
 from enum import Enum
+import asyncio
+import threading
+import json
 
 import flet as ft
 from loguru import logger
@@ -28,6 +31,15 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+try:
+    import websockets
+    import watchdog
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    HAS_WATCHDOG = True
+except ImportError:
+    HAS_WATCHDOG = False
     logger.warning("PIL/Pillow not available for covers functionality")
 
 
@@ -591,7 +603,9 @@ def generate_html_preview(cover_images: List[CoverImage], paper_size: str = "A4"
                           print_mode: PrintMode = PrintMode.OVERPRINT,
                           show_cut_lines: bool = True,
                           dpi: int = 150,
-                          margin_mm: float = 5.0) -> str:
+                          margin_mm: float = 5.0,
+                          auto_reload: bool = False,
+                          websocket_port: int = 8765) -> str:
     """
     Generate an HTML preview page with covers displayed in a grid.
     
@@ -606,7 +620,36 @@ def generate_html_preview(cover_images: List[CoverImage], paper_size: str = "A4"
     Returns: HTML string
     """
     if not cover_images:
-        return "<html><body><h1>No covers to preview</h1></body></html>"
+        html = "<html><body><h1>No covers to preview</h1></body></html>"
+        if auto_reload and HAS_WATCHDOG:
+            html = html.replace("</body>", f"""
+    <script>
+        let lastCheck = Date.now();
+        function checkForReload() {{
+            fetch('http://localhost:{websocket_port}/reload-status')
+                .then(response => {{
+                    if (!response.ok) {{
+                        throw new Error('HTTP ' + response.status);
+                    }}
+                    return response.json();
+                }})
+                .then(data => {{
+                    console.log('Reload check:', data);
+                    if (data.reload) {{
+                        console.log('Reloading page due to changes...');
+                        location.reload();
+                    }}
+                }})
+                .catch(error => {{
+                    console.warn('Auto-reload check failed:', error.message);
+                }});
+        }}
+        // Check for reload every 1 second for faster response
+        setInterval(checkForReload, 1000);
+        console.log('Auto-reload polling started on port {websocket_port}');
+    </script>
+</body>""")
+        return html
     
     # Get paper dimensions
     paper_w_mm, paper_h_mm = PAPER_SIZES.get(paper_size, PAPER_SIZES["A4"])
@@ -768,7 +811,40 @@ def generate_html_preview(cover_images: List[CoverImage], paper_size: str = "A4"
     
     html_parts.append("""
         </div>
-    </div>
+    </div>""")
+    
+    # Add auto-reload polling script if enabled
+    if auto_reload and HAS_WATCHDOG:
+        html_parts.append(f"""
+    <script>
+        let lastCheck = Date.now();
+        function checkForReload() {{
+            fetch('http://localhost:{websocket_port}/reload-status?t=' + Date.now(), {{
+                cache: 'no-cache'
+            }})
+                .then(response => {{
+                    if (!response.ok) {{
+                        throw new Error('HTTP ' + response.status);
+                    }}
+                    return response.json();
+                }})
+                .then(data => {{
+                    console.log('Reload check:', data);
+                    if (data.reload) {{
+                        console.log('Reloading page due to changes...');
+                        location.reload();
+                    }}
+                }})
+                .catch(error => {{
+                    console.warn('Auto-reload check failed:', error.message);
+                }});
+        }}
+        // Check for reload every 1 second for faster response
+        setInterval(checkForReload, 1000);
+        console.log('Auto-reload polling started on port {websocket_port}');
+    </script>""")
+    
+    html_parts.append("""
 </body>
 </html>""")
     
@@ -1038,6 +1114,157 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                     draw.line([(x + card_w_px, y + dy), (x + card_w_px, y + min(dy + dash_length, card_h_px))], fill=line_color, width=line_width)
 
     return page_img
+
+
+# Global variables for auto-reload functionality
+_auto_reload_server = None
+_auto_reload_observer = None
+_auto_reload_reload_flag = [False]  # Use list to make it mutable across threads
+_auto_reload_http_thread = None
+_auto_reload_preview_data = {}  # Store preview data for HTTP serving
+
+class ReloadEventHandler(FileSystemEventHandler):
+    """File system event handler for auto-reload."""
+    
+    def on_modified(self, event):
+        """Called when a file is modified."""
+        if event.is_directory:
+            return
+        # Check if it's a cover image file
+        if event.src_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+            logger.info(f"Cover file changed: {event.src_path}")
+            # Set reload flag
+            _auto_reload_reload_flag[0] = True
+            logger.info("Reload flag set to True")
+
+def check_reload_status():
+    """Check if reload is needed and reset the flag."""
+    if _auto_reload_reload_flag[0]:
+        _auto_reload_reload_flag[0] = False
+        return True
+    return False
+
+def start_http_server(port: int = 8765):
+    """Start a simple HTTP server for auto-reload polling."""
+    global _auto_reload_http_thread
+    if _auto_reload_http_thread is not None:
+        logger.info("HTTP server already running")
+        return
+    
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import json
+    
+    class ReloadHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith('/reload-status'):
+                logger.debug(f"Reload status request, flag: {_auto_reload_reload_flag[0]}")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', '*')
+                self.end_headers()
+                status = {'reload': check_reload_status()}
+                logger.debug(f"Sending reload status: {status}")
+                self.wfile.write(json.dumps(status).encode())
+            elif self.path == '/preview':
+                # Serve the HTML preview
+                logger.debug("Serving HTML preview")
+                global _auto_reload_preview_data
+                logger.debug(f"Preview data keys: {list(_auto_reload_preview_data.keys())}")
+                if 'html' in _auto_reload_preview_data:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html')
+                    self.end_headers()
+                    self.wfile.write(_auto_reload_preview_data['html'].encode())
+                else:
+                    logger.debug("No HTML in preview data")
+                    self.send_response(404)
+                    self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
+        
+        def do_OPTIONS(self):
+            # Handle preflight requests
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', '*')
+            self.end_headers()
+        
+        def log_message(self, format, *args):
+            # Suppress default HTTP server logs
+            pass
+    
+    def run_server():
+        try:
+            server = HTTPServer(('127.0.0.1', port), ReloadHandler)
+            logger.info(f"HTTP server started on port {port}")
+            server.serve_forever()
+        except Exception as e:
+            logger.error(f"HTTP server error: {e}")
+    
+    _auto_reload_http_thread = threading.Thread(target=run_server, daemon=True)
+    _auto_reload_http_thread.start()
+    logger.info("HTTP server thread started")
+
+def start_file_watcher(watch_paths: List[str] = None, port: int = 8765):
+    """Start the file watcher for auto-reload."""
+    if watch_paths is None:
+        watch_paths = []
+    
+    logger.info(f"Starting file watcher for paths: {watch_paths}")
+    global _auto_reload_observer
+    if _auto_reload_observer is not None:
+        logger.info("File watcher already running")
+        return
+    
+    if not HAS_WATCHDOG:
+        logger.warning("watchdog not available, auto-reload disabled")
+        return
+    
+    # Start HTTP server for polling
+    start_http_server(port)
+    
+    if not watch_paths:
+        logger.info("No paths to watch, HTTP server started for GUI updates only")
+        return
+    
+    try:
+        event_handler = ReloadEventHandler()
+        _auto_reload_observer = Observer()
+        
+        for path in watch_paths:
+            if Path(path).exists():
+                _auto_reload_observer.schedule(event_handler, path, recursive=True)
+                logger.info(f"Watching directory: {path}")
+        
+        _auto_reload_observer.start()
+        logger.info("File watcher started")
+        
+    except Exception as e:
+        logger.error(f"Failed to start file watcher: {e}")
+
+def stop_auto_reload():
+    """Stop the auto-reload server and file watcher."""
+    global _auto_reload_server, _auto_reload_observer, _auto_reload_http_thread
+    
+    # Stop file watcher
+    if _auto_reload_observer:
+        _auto_reload_observer.stop()
+        _auto_reload_observer.join()
+        _auto_reload_observer = None
+        logger.info("File watcher stopped")
+    
+    # Stop HTTP server
+    if _auto_reload_http_thread:
+        # HTTP server will stop when the main thread exits (daemon thread)
+        _auto_reload_http_thread = None
+        logger.info("HTTP server stopped")
+    
+    # Reset reload flag
+    _auto_reload_reload_flag[0] = False
 
 
 def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
@@ -2349,9 +2576,29 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
     
     def open_preview_in_browser():
         """Open the preview HTML in the default browser."""
-        if preview_path and Path(preview_path).exists():
+        if HAS_WATCHDOG:
             import webbrowser
-            webbrowser.open(f"file://{preview_path}")
+            webbrowser.open(f"http://localhost:8765/preview")
+            
+            # Start auto-reload if watchdog is available
+            if HAS_WATCHDOG:
+                # Get unique directories containing cover images
+                watch_dirs = set()
+                for cover_img in cover_images:
+                    if hasattr(cover_img, 'path') and cover_img.path:
+                        watch_dirs.add(str(Path(cover_img.path).parent))
+                
+                logger.info(f"Cover images: {len(cover_images)}")
+                logger.info(f"Watch directories: {watch_dirs}")
+                
+                if watch_dirs:
+                    start_file_watcher(list(watch_dirs))
+                    show_snack("Auto-reload enabled - webpage will refresh when covers change")
+                else:
+                    # Still start HTTP server for GUI-triggered reloads
+                    start_file_watcher([])
+                    show_snack("Auto-reload enabled for GUI changes - webpage will refresh when settings change")
+                    logger.info("Started HTTP server for GUI-triggered reloads")
     
     def update_preview():
         """Generate and display preview."""
@@ -2375,23 +2622,28 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 show_cut_lines=cut_lines_checkbox.value,
                 dpi=150,  # Lower DPI for preview
                 margin_mm=margin_slider.value,
+                auto_reload=HAS_WATCHDOG,  # Enable auto-reload if watchdog is available
+                websocket_port=8765
             )
+            
+            # Store preview data for HTTP serving
+            global _auto_reload_preview_data
+            _auto_reload_preview_data = {
+                'html': html_content,
+                'cover_images': cover_images,
+                'paper_size': paper_size_dropdown.value,
+                'print_mode': PrintMode(print_mode_dropdown.value),
+                'show_cut_lines': cut_lines_checkbox.value,
+                'margin_mm': margin_slider.value
+            }
             
             # Update renderer label
             renderer_label.value = "Renderer: HTML Preview"
-
-            # Clean up old preview file if it exists
-            if preview_path and Path(preview_path).exists():
-                try:
-                    Path(preview_path).unlink()
-                except Exception:
-                    pass
             
-            # Save HTML to temp file with unique name to avoid caching
-            import time
-            with tempfile.NamedTemporaryFile(suffix=f"_{int(time.time())}.html", delete=False) as tmp:
-                preview_path = tmp.name
-                tmp.write(html_content.encode('utf-8'))
+            # Trigger reload for any open browser windows
+            if HAS_WATCHDOG and _auto_reload_http_thread is not None:
+                _auto_reload_reload_flag[0] = True
+                logger.debug("Preview updated, reload flag set")
             
             preview_button.visible = True
             page.update()
@@ -2561,6 +2813,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 show_cut_lines=cut_lines_checkbox.value,
                 dpi=dpi,
                 margin_mm=margin_slider.value,
+                auto_reload=HAS_WATCHDOG,  # Enable auto-reload if watchdog is available
             )
             
             # Save HTML to temp file with unique name

@@ -61,6 +61,7 @@ gui = [
   "pydub>=0.25",
   "librosa>=0.10",
   "pyloudnorm>=0.1",
+  "watchdog>=3.0.0",
 ]
 
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and
