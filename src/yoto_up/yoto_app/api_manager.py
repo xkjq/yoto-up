@@ -1,6 +1,7 @@
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app import config
 from loguru import logger
+import os
 
 
 
@@ -10,14 +11,14 @@ def ensure_api(api_ref, client=None):
     - api_ref: dict-like container where the instance is stored under 'api'
     - client: optional client id to pass to YotoAPI when creating
     """
-    logger.debug("api_manager.ensure_api called")
+    # logger.debug("api_manager.ensure_api called")  # Commented out for performance
     # prefer dict-like container
     try:
         api = api_ref.get('api') if isinstance(api_ref, dict) else None
     except Exception:
         api = None
     if api:
-        logger.debug("Using existing API instance")
+        # logger.debug("Using existing API instance")  # Commented out for performance
         return api
     cid = None
     try:
@@ -31,7 +32,9 @@ def ensure_api(api_ref, client=None):
     # Do not pass an explicit app_path into YotoAPI unless there's a strong
     # reason to override — letting YotoAPI use the centralized paths module
     # ensures GUI and API agree on cache locations.
-    api = YotoAPI(cid, auto_start_authentication=False, debug=True)
+    # Check environment variable for debug mode (default to False for performance)
+    debug_mode = os.environ.get("YOTO_DEBUG", "false").lower() in ("true", "1", "yes", "on")
+    api = YotoAPI(cid, auto_start_authentication=False, debug=debug_mode)
     try:
         if isinstance(api_ref, dict):
             api_ref['api'] = api

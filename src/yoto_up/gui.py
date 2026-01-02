@@ -494,7 +494,7 @@ def _main_impl(page):
     auth_instructions = ft.Column([ft.Text(AUTHENTICATE_TEXT)])
 
     def show_snack(message: str, error: bool = False, duration: int | None = None):
-        print(f"[gui] show_snack: {message}")
+        # print(f"[gui] show_snack: {message}")  # Commented out for performance
         bg = ft.Colors.RED if error else None
         page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg, duration=duration)
         page.show_dialog(page.snack_bar)

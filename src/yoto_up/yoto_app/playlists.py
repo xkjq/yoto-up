@@ -1482,7 +1482,7 @@ def build_playlists_panel(
             logger.debug("fetch_playlists: failed to acquire lock; skipping")
             return
         _playlists_last_fetch = now
-        print("Fetching playlists...")
+        # print("Fetching playlists...")  # Commented out for performance
         # Clean any stale/invalid controls before touching the page
         _clean_controls()
         try:
@@ -1588,7 +1588,7 @@ def build_playlists_panel(
             logger.debug("fetch_playlists_sync: failed to acquire lock; skipping")
             return
         _playlists_last_fetch = now
-        print("Fetching playlists...")
+        # print("Fetching playlists...")  # Commented out for performance
         try:
             # Clean invalid controls before showing snack / updating page
             _clean_controls()

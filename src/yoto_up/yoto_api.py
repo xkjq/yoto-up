@@ -172,7 +172,9 @@ class YotoAPI:
         self.client_id = client_id
         self.debug = debug
         logger.remove()
-        logger.add(lambda msg: print(msg, end=""), level="DEBUG" if debug else "WARNING")
+        if debug:
+            logger.add(lambda msg: print(msg, end=""), level="DEBUG")
+        # When debug=False, don't add any handler to suppress all loguru output
         # Intercept standard library logging with loguru
         import logging
         class InterceptHandler(logging.Handler):
@@ -193,8 +195,8 @@ class YotoAPI:
         httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
         if debug:
             logger.debug("Debug mode enabled for YotoAPI")
-        logger.debug(f"YotoAPI initialized with client_id: {client_id}")
-        logger.debug(f"App path: {app_path}")
+            logger.debug(f"YotoAPI initialized with client_id: {client_id}")
+            logger.debug(f"App path: {app_path}")
         self.cache_requests = cache_requests
         self.cache_max_age_seconds = cache_max_age_seconds
         self._cache_lock = threading.Lock()
