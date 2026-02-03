@@ -1273,7 +1273,7 @@ def versions(
         raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(help="Create a Yoto card from a folder of media files; uploads and optionally normalizes/transcodes them")
 def create_card_from_folder(
     folder: str = typer.Argument(..., help="Path to folder containing media files"),
     title: str = typer.Option(
@@ -1301,7 +1301,6 @@ def create_card_from_folder(
         False, help="Use batch mode for local normalization"
     ),
 ):
-    import asyncio
     from yoto_up.normalization import AudioNormalizer
 
     async def async_main():
@@ -1428,6 +1427,9 @@ def create_card_from_folder(
 
     asyncio.run(async_main())
 
+# Register a short alias for convenience: `ccf` -> `create-card-from-folder`
+# Provide a help string so `ccf --help` explains the command
+app.command(name="ccf", help="Shortcut: create a Yoto card from a folder of media files (alias for create-card-from-folder)")(create_card_from_folder)
 
 @app.command()
 def get_public_icons(show_in_console: bool = True):
