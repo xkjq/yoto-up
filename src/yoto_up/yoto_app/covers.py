@@ -2652,7 +2652,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             logger.error(f"Error generating preview: {e}")
             show_snack(f"Error generating preview: {e}", error=True)
     
-    def on_add_images_result(e: ft.FilePickerResultEvent):
+    def on_add_images_result(e):
         """Handle file picker result."""
         if e.files:
             for file in e.files:

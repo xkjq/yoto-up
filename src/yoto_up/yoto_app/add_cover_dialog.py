@@ -115,7 +115,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
     except Exception:
         cover_src = None
 
-    def on_pick_result(e: ft.FilePickerResultEvent):
+    def on_pick_result(e):
         try:
             if e.files:
                 first = e.files[0]

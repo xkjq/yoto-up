@@ -14,6 +14,8 @@ import json
 import threading
 
 import flet as ft
+
+ft.context.disable_auto_update()
 #from flet.auth import OAuthProvider
 from yoto_up.yoto_app import utils as utils_mod
 from yoto_up.yoto_app import ui_helpers as ui_helpers
@@ -40,6 +42,7 @@ try:
     import simpleaudio as _simpleaudio
     HAS_SIMPLEAUDIO = True
 except Exception:
+    logger.warning("simpleaudio module not available; audio playback disabled")
     _simpleaudio = None
     HAS_SIMPLEAUDIO = False
 
@@ -75,7 +78,7 @@ try:
     os.environ.setdefault("MPLCONFIGDIR", mpl_cfg)
     os.makedirs(mpl_cfg, exist_ok=True)
 except Exception:
-    pass
+    logger.warning("Failed to set up matplotlib config dir; font cache issues may occur")
 
 # Simple single-instance HTTP server to serve preview files from .tmp_trim/previews
 _preview_server = None
@@ -119,6 +122,7 @@ def start_preview_server_if_needed(directory: str = '.tmp_trim/previews') -> str
         _preview_server_base = f'http://127.0.0.1:{port}'
         return _preview_server_base
     except Exception:
+        logger.warning("Failed to start preview HTTP server")
         return ''
 
 
@@ -129,6 +133,7 @@ def start_preview_server_if_needed(directory: str = '.tmp_trim/previews') -> str
 try:
     import audio_adjust_utils  # type: ignore
 except Exception:
+    logger.warning("audio_adjust_utils import failed; attempting fallback load")
     audio_adjust_utils = cast(Any, None)  # type: ignore
     # fallback: attempt to load from the local source file if present
     audio_adjust_utils_path = os.path.join(os.path.dirname(__file__), "audio_adjust_utils.py")
@@ -146,7 +151,7 @@ except Exception:
 # Supported audio extensions
 AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"}
 
-logger.remove()  # Remove default handler
+#logger.remove()  # Remove default handler
 logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}")
 
 
@@ -161,20 +166,6 @@ To authenticate with your Yoto account:
 
 
 def main(page):
-    try:
-        _main_impl(page)
-    except Exception as e:
-        error_msg = f"The application encountered an error: {type(e).__name__}: {e}"
-        print(error_msg, file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        # Show error in page
-        page.clean()
-        page.add(ft.Text(error_msg, color=ft.Colors.RED, size=16))
-        page.update()
-        raise
-
-def _main_impl(page):
-
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     waveform_cache = {}
 
@@ -2532,48 +2523,7 @@ def _main_impl(page):
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
 def start_gui():
-    # Patch Flet logging to capture all errors to stderr
-    #import logging
-    #logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
-    
-    # Create a handler that writes everything to stderr
-    #stderr_handler = logging.StreamHandler(sys.stderr)
-    #stderr_handler.setLevel(logging.DEBUG)
-    
-    ## Capture Flet's internal loggers
-    #for logger_name in ['flet', 'flet.core', 'flet_core', 'flet_runtime']:
-    #    flet_logger = logging.getLogger(logger_name)
-    #    flet_logger.addHandler(stderr_handler)
-    #    flet_logger.setLevel(logging.WARNING)
-    
-    def main_wrapper(page):
-        try:
-            # Set page error handler to print to stderr
-            def page_error_handler(e):
-                error_msg = f"[FLET PAGE ERROR] {e.data if hasattr(e, 'data') else str(e)}"
-                print(error_msg, file=sys.stderr)
-                sys.stderr.flush()
-            
-            if hasattr(page, 'on_error'):
-                page.on_error = page_error_handler
-            
-            main(page)
-        except Exception as e:
-            error_msg = f"GUI Error: {type(e).__name__}: {e}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.stderr.flush()
-            # Also show in GUI if possible
-            try:
-                import flet as ft
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: {e}"), bgcolor=ft.Colors.RED)
-                page.show_dialog(page.snack_bar)
-                page.update()
-            except Exception:
-                pass
-            raise
-    
-    ft.run(main_wrapper, assets_dir="assets", upload_dir="assets/uploads")
+    ft.run(main)
 
 if __name__ == "__main__":
     start_gui()
