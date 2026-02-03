@@ -43,15 +43,24 @@ try:
         try:
             nltk.download('punkt')
         except Exception:
-            pass
+            logger.warning("NLTK punkt tokenizer data not found and download failed; using fallback tokenizer.")
+    try:
+        nltk.data.find('tokenizers/punkt_tab')
+    except Exception:
+        try:
+            nltk.download('punkt')
+            nltk.download('punkt_tab')
+        except Exception:
+            logger.warning("NLTK punkt tokenizer data not found and download failed; using fallback tokenizer.")
     try:
         nltk.data.find('corpora/stopwords')
     except Exception:
         try:
             nltk.download('stopwords')
         except Exception:
-            pass
+            logger.warning("NLTK stopwords data not found and download failed; using fallback stopwords.")
 except (ImportError, ModuleNotFoundError):
+    logger.error("NLTK not available; using fallback tokenizer and stopwords.")
     _HAVE_NLTK = False
     # Minimal fallback tokenizer and stopwords for basic keyword extraction
     def word_tokenize(text: str):
@@ -227,15 +236,26 @@ class YotoAPI:
 
         self._request_cache = self._load_cache()
         self.access_token, self.refresh_token = self.load_tokens()
-        if not self.access_token or not self.refresh_token or self.is_token_expired(self.access_token):
+        if not self.access_token or not self.refresh_token:
+            # No tokens at all - need full authentication
             logger.info("No valid token found, authenticating...")
             if auto_start_authentication:
                 self.authenticate()
             else:
                 logger.warning("No valid token found and auto_start_authentication is False. Please authenticate manually.")
-        elif self.is_token_expired(self.access_token) and auto_refresh_tokens:
-            logger.info("Token expired, refreshing...")
-            self.refresh_tokens()
+        elif self.is_token_expired(self.access_token):
+            # Token expired but we have refresh token - try refresh first
+            if auto_refresh_tokens:
+                logger.info("Token expired, refreshing with refresh token...")
+                try:
+                    self.refresh_tokens()
+                    logger.info("Token refresh successful")
+                except Exception as e:
+                    logger.warning(f"Token refresh failed: {e}, falling back to full authentication...")
+                    if auto_start_authentication:
+                        self.authenticate()
+            elif auto_start_authentication:
+                self.authenticate()
 
         self.response_history = []
 
