@@ -43,15 +43,24 @@ try:
         try:
             nltk.download('punkt')
         except Exception:
-            pass
+            logger.warning("NLTK punkt tokenizer data not found and download failed; using fallback tokenizer.")
+    try:
+        nltk.data.find('tokenizers/punkt_tab')
+    except Exception:
+        try:
+            nltk.download('punkt')
+            nltk.download('punkt_tab')
+        except Exception:
+            logger.warning("NLTK punkt tokenizer data not found and download failed; using fallback tokenizer.")
     try:
         nltk.data.find('corpora/stopwords')
     except Exception:
         try:
             nltk.download('stopwords')
         except Exception:
-            pass
+            logger.warning("NLTK stopwords data not found and download failed; using fallback stopwords.")
 except (ImportError, ModuleNotFoundError):
+    logger.error("NLTK not available; using fallback tokenizer and stopwords.")
     _HAVE_NLTK = False
     # Minimal fallback tokenizer and stopwords for basic keyword extraction
     def word_tokenize(text: str):
