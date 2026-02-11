@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "yoto-up-gui"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "yoto-up-core",
+    "PySide6>=6.6",
+]
+
+[project.scripts]
+yoto-up = "yoto_up_gui.main:main"
+
+[project.gui-scripts]
+yoto-up-gui = "yoto_up_gui.main:main"
