@@ -524,12 +524,12 @@ class AccountPage(QWidget):
         self._lufs_spin.setValue(settings.get("audio_target_lufs", -16.0))
 
     def _save_settings(self) -> None:
-        settings = {
-            "debug": self._debug_check.isChecked(),
-            "cache_enabled": self._cache_check.isChecked(),
-            "cache_max_age": self._cache_age_spin.value(),
-            "audio_target_lufs": self._lufs_spin.value(),
-        }
+        # Load existing settings first so we don't clobber unknown keys
+        settings = AppSettings.load()
+        settings["debug"] = self._debug_check.isChecked()
+        settings["cache_enabled"] = self._cache_check.isChecked()
+        settings["cache_max_age"] = self._cache_age_spin.value()
+        settings["audio_target_lufs"] = self._lufs_spin.value()
         try:
             AppSettings.save(settings)
             self._settings_status.setText("Settings saved.")

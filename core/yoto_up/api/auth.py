@@ -123,7 +123,7 @@ def poll_for_token(
                     on_status(f"Server error (HTTP {resp.status_code})")
                 continue
 
-            error = body.get("error", "")
+            error = body.get("error", "") if isinstance(body, dict) else ""
 
             if error == "authorization_pending":
                 if on_status:

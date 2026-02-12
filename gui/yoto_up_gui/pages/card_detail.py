@@ -621,7 +621,7 @@ class CardDetailOverlay(QWidget):
 
     def parentResizeEvent(self) -> None:
         """Call this from the parent's resizeEvent to keep the overlay sized."""
-        if self.parent() and self.isVisible():
+        if self.parent():
             self.setGeometry(self.parent().rect())
 
     # ------------------------------------------------------------------

@@ -43,8 +43,15 @@ def calculate_sha256(audio_path: str | Path) -> tuple[str, bytes]:
     complete file content.
     """
     path = Path(audio_path)
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    digest = h.hexdigest()
     data = path.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
     return digest, data
 
 

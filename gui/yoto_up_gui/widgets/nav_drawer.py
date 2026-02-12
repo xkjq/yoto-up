@@ -126,16 +126,16 @@ class NavigationDrawer(QFrame):
         self._anim.stop()
         self._anim.setStartValue(self.width())
         self._anim.setEndValue(EXPANDED_WIDTH)
-        self._anim.start()
         self._expanded = True
+        self._anim.start()
 
     def collapse(self) -> None:
         """Animate the drawer closed."""
         self._anim.stop()
         self._anim.setStartValue(self.width())
         self._anim.setEndValue(COLLAPSED_WIDTH)
-        self._anim.start()
         self._expanded = False
+        self._anim.start()
 
     @property
     def is_expanded(self) -> bool:  # noqa: D401

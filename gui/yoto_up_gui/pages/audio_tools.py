@@ -180,11 +180,13 @@ class _NormalizeTab(QWidget):
         self._progress.setRange(0, len(self._files))
         self._progress.setValue(0)
 
+        files_snapshot = list(self._files)
+
         def _run():
             from yoto_up.audio.normalize import get_audio_loudness
 
             results = []
-            for i, fp in enumerate(self._files):
+            for i, fp in enumerate(files_snapshot):
                 info = get_audio_loudness(fp)
                 lufs = info.get("input_i", "?") if info else "error"
                 results.append((fp, lufs))
@@ -212,12 +214,15 @@ class _NormalizeTab(QWidget):
         self._progress.setRange(0, len(self._files))
         self._progress.setValue(0)
 
+        files_snapshot = list(self._files)
+        file_count = len(files_snapshot)
+
         def _run():
             from pathlib import Path
             from yoto_up.audio.normalize import normalize_audio
 
             ok = 0
-            for fp in self._files:
+            for fp in files_snapshot:
                 p = Path(fp)
                 out = p.parent / f"{p.stem}_norm{p.suffix}"
                 if normalize_audio(fp, out, target_lufs=target):
@@ -226,7 +231,7 @@ class _NormalizeTab(QWidget):
 
         self._worker = _Worker(_run)
         self._worker.finished.connect(
-            lambda n: self._status.setText(f"Normalized {n}/{len(self._files)} files.")
+            lambda n: self._status.setText(f"Normalized {n}/{file_count} files.")
         )
         self._worker.error.connect(lambda e: self._status.setText(f"Error: {e}"))
         self._worker.start()
@@ -307,11 +312,13 @@ class _TrimTab(QWidget):
         thresh = self._thresh.value()
         min_ms = self._min_ms.value()
 
+        files_snapshot = list(self._files)
+
         def _run():
             from yoto_up.audio.trim import detect_silence
 
             results = []
-            for fp in self._files:
+            for fp in files_snapshot:
                 regions = detect_silence(fp, silence_thresh_db=thresh, min_silence_ms=min_ms)
                 results.append((fp, regions))
             return results
@@ -337,12 +344,15 @@ class _TrimTab(QWidget):
         min_ms = self._min_ms.value()
         self._status.setText("Trimming...")
 
+        files_snapshot = list(self._files)
+        file_count = len(files_snapshot)
+
         def _run():
             from pathlib import Path
             from yoto_up.audio.trim import trim_silence
 
             ok = 0
-            for fp in self._files:
+            for fp in files_snapshot:
                 p = Path(fp)
                 out = p.parent / f"{p.stem}_trimmed{p.suffix}"
                 if trim_silence(fp, out, silence_thresh_db=thresh, min_silence_ms=min_ms):
@@ -351,7 +361,7 @@ class _TrimTab(QWidget):
 
         self._worker = _Worker(_run)
         self._worker.finished.connect(
-            lambda n: self._status.setText(f"Trimmed {n}/{len(self._files)} files.")
+            lambda n: self._status.setText(f"Trimmed {n}/{file_count} files.")
         )
         self._worker.error.connect(lambda e: self._status.setText(f"Error: {e}"))
         self._worker.start()

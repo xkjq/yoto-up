@@ -13,14 +13,6 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
 
 modules:
-  - name: python3-deps
-    buildsystem: simple
-    build-commands:
-      - pip3 install --prefix=/app --no-deps .
-    sources:
-      - type: dir
-        path: ../../../
-
   - name: yoto-up
     buildsystem: simple
     build-commands:

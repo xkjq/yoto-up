@@ -49,7 +49,8 @@ class _CardFetchWorker(QThread):
 
     def run(self) -> None:
         try:
-            # Use the core API endpoint (matches api/cards.py get_card)
+            # Ensure the token is still valid (refreshes if expired)
+            self._client._ensure_valid_token()
             token = self._client.access_token
             if not token:
                 self.error.emit("Not authenticated")
@@ -78,7 +79,8 @@ class _CardDeleteWorker(QThread):
 
     def run(self) -> None:
         try:
-            # Use the core API endpoint (matches api/cards.py delete_card)
+            # Ensure the token is still valid (refreshes if expired)
+            self._client._ensure_valid_token()
             token = self._client.access_token
             if not token:
                 self.error.emit("Not authenticated")
@@ -260,7 +262,7 @@ class MainWindow(QMainWindow):
     def _track_worker(self, worker: QThread) -> None:
         """Keep a reference to *worker* and clean up when it finishes."""
         self._active_workers.append(worker)
-        worker.finished.connect(lambda: self._remove_worker(worker))
+        worker.finished.connect(lambda *_: self._remove_worker(worker))
 
     def _remove_worker(self, worker: QThread) -> None:
         try:

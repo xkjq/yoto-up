@@ -81,6 +81,7 @@ class DevicesPage(QWidget):
         self._client = None
         self._devices: list[Device] = []
         self._worker: Worker | None = None
+        self._status_worker: Worker | None = None
 
         self._build_ui()
 
@@ -459,12 +460,13 @@ class DevicesPage(QWidget):
         if self._client:
             self._status_label.setText(f"Loading status for {device.name}...")
             self._status_label.setStyleSheet(f"color: {_YELLOW}; font-size: 12px;")
-            self._worker = Worker(get_device_status, self._client, device.deviceId)
-            self._worker.finished.connect(
+            status_worker = Worker(get_device_status, self._client, device.deviceId)
+            status_worker.finished.connect(
                 lambda status, dev=device: self._on_status_loaded(dev, status)
             )
-            self._worker.error.connect(self._on_status_error)
-            self._worker.start()
+            status_worker.error.connect(self._on_status_error)
+            self._status_worker = status_worker
+            status_worker.start()
 
     def _show_device_basic(self, device: Device) -> None:
         """Populate the detail panel with data from the :class:`Device`."""
@@ -526,7 +528,7 @@ class DevicesPage(QWidget):
         free = status.freeDiskSpaceBytes
         if total and free and total > 0:
             used = total - free
-            pct = int((used / total) * 100)
+            pct = max(0, min(100, int((used / total) * 100)))
             self._storage_bar.setValue(pct)
             total_mb = total / (1024 * 1024)
             free_mb = free / (1024 * 1024)

@@ -477,6 +477,7 @@ class CardLibraryPage(QWidget):
             self._next_page()
         elif delta > 0:
             self._prev_page()
+        event.accept()
 
     def _move_selection(self, delta: int) -> None:
         """Move the selected tile index by *delta* positions."""

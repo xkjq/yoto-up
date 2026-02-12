@@ -19,8 +19,7 @@ def main():
         from importlib.resources import files
 
         style_path = files("yoto_up_gui.resources").joinpath("style.qss")
-        if style_path.is_file():
-            app.setStyleSheet(style_path.read_text())
+        app.setStyleSheet(style_path.read_text())
     except Exception:
         pass
 

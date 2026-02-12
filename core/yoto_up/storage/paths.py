@@ -29,6 +29,11 @@ _config_dir = Path(user_config_dir(APP_NAME))
 _data_dir = Path(user_data_dir(APP_NAME))
 _cache_dir = Path(user_cache_dir(APP_NAME))
 
+# Public aliases for downstream consumers (e.g. the GUI package).
+CONFIG_DIR: Path = _config_dir
+DATA_DIR: Path = _data_dir
+CACHE_DIR: Path = _cache_dir
+
 # ---------------------------------------------------------------------------
 # Standard file locations
 # ---------------------------------------------------------------------------

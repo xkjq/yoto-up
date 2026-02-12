@@ -36,12 +36,15 @@ def get_waveform_data(
             chunk = data[i:i + chunk_size]
             samples.append(float(np.abs(chunk).max()))
 
+        # Truncate to requested number of samples BEFORE normalizing
+        samples = samples[:num_samples]
+
         # Normalize to 0-1
         peak = max(samples) if samples else 1.0
         if peak > 0:
             samples = [s / peak for s in samples]
 
-        return samples[:num_samples]
+        return samples
 
     except Exception as e:
         logger.error(f"Waveform extraction failed: {e}")
