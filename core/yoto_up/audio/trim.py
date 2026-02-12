@@ -61,7 +61,12 @@ def trim_silence(
         reversed_audio = audio.reverse()
         end_trim = max(0, detect_leading_silence(reversed_audio, silence_threshold=silence_thresh_db) - keep_end_ms)
 
-        trimmed = audio[start_trim:len(audio) - end_trim]
+        end_pos = len(audio) - end_trim
+        if end_pos <= start_trim:
+            logger.warning("Trimming would produce empty audio; skipping trim")
+            return False
+
+        trimmed = audio[start_trim:end_pos]
 
         # Export
         output_format = Path(output_path).suffix.lstrip(".")

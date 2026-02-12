@@ -54,7 +54,7 @@ _SCRIM = QColor(17, 17, 27, 180)  # #11111b at ~70 % opacity
 
 def _fmt_duration(seconds: float | None) -> str:
     """Return a human-friendly ``mm:ss`` or ``hh:mm:ss`` string."""
-    if seconds is None or seconds <= 0:
+    if seconds is None or seconds < 0:
         return "--:--"
     total = int(seconds)
     h, remainder = divmod(total, 3600)

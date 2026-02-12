@@ -57,7 +57,10 @@ class YotoClient:
 
     def _auth_headers(self) -> dict[str, str]:
         """Build an ``Authorization`` header dict using the current token."""
-        return {"Authorization": f"Bearer {self.access_token}"}
+        token = self.access_token
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}"}
 
     def set_tokens(self, token_data: TokenData) -> None:
         """Store *token_data* in memory and persist to disk."""

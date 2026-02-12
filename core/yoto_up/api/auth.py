@@ -26,6 +26,10 @@ TOKEN_URL = "https://login.yotoplay.com/oauth/token"
 AUDIENCE = "https://api.yotoplay.com"
 
 
+class DeviceAuthError(Exception):
+    """Raised when the device authorisation flow encounters an unrecoverable error."""
+
+
 @dataclass
 class DeviceAuthInfo:
     """Data returned by the device authorisation endpoint."""
@@ -110,7 +114,15 @@ def poll_for_token(
                     id_token=data.get("id_token"),
                 )
 
-            body = resp.json()
+            # Guard against non-JSON error responses
+            try:
+                body = resp.json()
+            except Exception:
+                logger.error(f"Non-JSON error response: {resp.status_code}")
+                if on_status:
+                    on_status(f"Server error (HTTP {resp.status_code})")
+                continue
+
             error = body.get("error", "")
 
             if error == "authorization_pending":
@@ -130,7 +142,7 @@ def poll_for_token(
                 desc = body.get("error_description", error)
                 raise DeviceAuthError(f"Auth error: {desc}")
 
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, OSError) as exc:
             logger.error(f"HTTP error during token poll: {exc}")
             if on_status:
                 on_status(f"Network error: {exc}")
@@ -138,7 +150,3 @@ def poll_for_token(
     if on_status:
         on_status("Device code expired")
     return None
-
-
-class DeviceAuthError(Exception):
-    """Raised when the device authorisation flow encounters an unrecoverable error."""

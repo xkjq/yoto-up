@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import httpx
+from loguru import logger
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -30,7 +32,8 @@ from yoto_up_gui.pages.card_detail import CardDetailOverlay
 
 
 # ---------------------------------------------------------------------------
-# Background worker for fetching card details
+# Background workers -- each creates its OWN httpx client to avoid
+# sharing the non-thread-safe httpx.Client inside YotoClient.
 # ---------------------------------------------------------------------------
 
 class _CardFetchWorker(QThread):
@@ -46,9 +49,18 @@ class _CardFetchWorker(QThread):
 
     def run(self) -> None:
         try:
-            resp = self._client.get(f"/card/{self._card_id}")
-            resp.raise_for_status()
-            self.finished.emit(resp.json())
+            # Use the core API endpoint (matches api/cards.py get_card)
+            token = self._client.access_token
+            if not token:
+                self.error.emit("Not authenticated")
+                return
+            with httpx.Client(timeout=30.0) as http:
+                resp = http.get(
+                    f"{self._client.SERVER_URL}/content/{self._card_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                resp.raise_for_status()
+                self.finished.emit(resp.json())
         except Exception as exc:
             self.error.emit(str(exc))
 
@@ -66,9 +78,18 @@ class _CardDeleteWorker(QThread):
 
     def run(self) -> None:
         try:
-            resp = self._client.delete(f"/card/{self._card_id}")
-            resp.raise_for_status()
-            self.finished.emit()
+            # Use the core API endpoint (matches api/cards.py delete_card)
+            token = self._client.access_token
+            if not token:
+                self.error.emit("Not authenticated")
+                return
+            with httpx.Client(timeout=30.0) as http:
+                resp = http.delete(
+                    f"{self._client.SERVER_URL}/content/{self._card_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                resp.raise_for_status()
+                self.finished.emit()
         except Exception as exc:
             self.error.emit(str(exc))
 
@@ -105,7 +126,9 @@ class MainWindow(QMainWindow):
         # ---- client lifecycle ----------------------------------------------
         self._client = YotoClient()
 
-        # Workers kept alive to prevent premature garbage-collection
+        # Workers kept alive to prevent premature garbage-collection.
+        # We also track them in a list so old workers can finish cleanly.
+        self._active_workers: list[QThread] = []
         self._card_fetch_worker: _CardFetchWorker | None = None
         self._card_delete_worker: _CardDeleteWorker | None = None
 
@@ -232,6 +255,19 @@ class MainWindow(QMainWindow):
             if hasattr(page, "set_client") and callable(page.set_client):
                 page.set_client(self._client)
 
+    # ---- worker lifecycle --------------------------------------------------
+
+    def _track_worker(self, worker: QThread) -> None:
+        """Keep a reference to *worker* and clean up when it finishes."""
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: self._remove_worker(worker))
+
+    def _remove_worker(self, worker: QThread) -> None:
+        try:
+            self._active_workers.remove(worker)
+        except ValueError:
+            pass
+
     # ---- auth flow ---------------------------------------------------------
 
     def _on_auth_changed(self, logged_in: bool) -> None:
@@ -278,10 +314,12 @@ class MainWindow(QMainWindow):
         """Fetch full card data and display it in the overlay."""
         if not self._client.is_authenticated:
             return
-        self._card_fetch_worker = _CardFetchWorker(self._client, card_id)
-        self._card_fetch_worker.finished.connect(self._on_card_fetched)
-        self._card_fetch_worker.error.connect(self._on_card_fetch_error)
-        self._card_fetch_worker.start()
+        worker = _CardFetchWorker(self._client, card_id)
+        worker.finished.connect(self._on_card_fetched)
+        worker.error.connect(self._on_card_fetch_error)
+        self._card_fetch_worker = worker
+        self._track_worker(worker)
+        worker.start()
 
     def _on_card_fetched(self, card_data: dict) -> None:
         """Show the card detail overlay with the fetched data."""
@@ -316,10 +354,12 @@ class MainWindow(QMainWindow):
         """Delete the card via the API, then refresh the library."""
         if not self._client.is_authenticated:
             return
-        self._card_delete_worker = _CardDeleteWorker(self._client, card_id)
-        self._card_delete_worker.finished.connect(self._on_card_deleted)
-        self._card_delete_worker.error.connect(self._on_card_delete_error)
-        self._card_delete_worker.start()
+        worker = _CardDeleteWorker(self._client, card_id)
+        worker.finished.connect(self._on_card_deleted)
+        worker.error.connect(self._on_card_delete_error)
+        self._card_delete_worker = worker
+        self._track_worker(worker)
+        worker.start()
 
     def _on_card_deleted(self) -> None:
         """Refresh the library after a successful card deletion."""
@@ -360,3 +400,14 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._card_detail_overlay.parentResizeEvent()
+
+    # ---- cleanup (Fix 1: close YotoClient on window close) -----------------
+
+    def closeEvent(self, event) -> None:
+        """Ensure the HTTP client is closed when the window is destroyed."""
+        # Wait briefly for any running workers to finish
+        for worker in list(self._active_workers):
+            if worker.isRunning():
+                worker.wait(1000)
+        self._client.close()
+        super().closeEvent(event)

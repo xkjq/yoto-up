@@ -680,8 +680,10 @@ class CardEditorPage(QWidget):
         if cat == "none":
             cat = ""
 
-        min_age = self._min_age_spin.value() or None
-        max_age = self._max_age_spin.value() or None
+        min_age_val = self._min_age_spin.value()
+        min_age = min_age_val if min_age_val > 0 else None
+        max_age_val = self._max_age_spin.value()
+        max_age = max_age_val if max_age_val > 0 else None
 
         cover = None
         if self._cover_image_path:

@@ -3,12 +3,14 @@
 Downloads images from URLs in a background thread, caches them on disk,
 and converts them to QPixmap for display.  Includes a shared singleton
 cache to avoid redundant downloads.
+
+Thread safety: the worker loads images as ``QImage`` (which is thread-safe)
+and converts to ``QPixmap`` on the main thread via the signal handler.
 """
 from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Signal, QSize, Qt
 from PySide6.QtGui import QPixmap, QImage
@@ -41,57 +43,78 @@ def _ensure_cache_dir():
 # ---------------------------------------------------------------------------
 
 class _DownloadWorker(QThread):
-    """Download an image URL in a background thread."""
+    """Download an image URL in a background thread.
 
-    finished = Signal(str, QPixmap)  # url, pixmap
+    Emits ``image_ready(url, QImage)`` with a thread-safe QImage.  The
+    caller is responsible for converting to QPixmap on the GUI thread.
+    """
+
+    image_ready = Signal(str, QImage)  # url, image (thread-safe)
     error = Signal(str, str)  # url, error message
 
     def __init__(self, url: str, size: QSize | None = None):
         super().__init__()
         self.url = url
         self.size = size
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Request cooperative cancellation (checked between steps)."""
+        self._cancelled = True
 
     def run(self):
         try:
+            if self._cancelled:
+                return
+
             # Check disk cache first
             cache_path = _cache_path_for(self.url)
             if cache_path.exists():
-                pixmap = QPixmap(str(cache_path))
-                if not pixmap.isNull():
+                image = QImage(str(cache_path))
+                if not image.isNull():
                     if self.size:
-                        pixmap = pixmap.scaled(
+                        image = image.scaled(
                             self.size, Qt.AspectRatioMode.KeepAspectRatio,
                             Qt.TransformationMode.SmoothTransformation
                         )
-                    self.finished.emit(self.url, pixmap)
+                    if not self._cancelled:
+                        self.image_ready.emit(self.url, image)
                     return
+
+            if self._cancelled:
+                return
 
             # Download
             resp = httpx.get(self.url, timeout=15.0, follow_redirects=True)
             resp.raise_for_status()
             data = resp.content
 
+            if self._cancelled:
+                return
+
             # Save to cache
             _ensure_cache_dir()
             cache_path.write_bytes(data)
 
-            # Convert to pixmap
+            # Convert to QImage (thread-safe, unlike QPixmap)
             image = QImage()
             image.loadFromData(data)
             if image.isNull():
                 self.error.emit(self.url, "Invalid image data")
                 return
 
-            pixmap = QPixmap.fromImage(image)
             if self.size:
-                pixmap = pixmap.scaled(
+                image = image.scaled(
                     self.size, Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
-            self.finished.emit(self.url, pixmap)
+
+            if not self._cancelled:
+                self.image_ready.emit(self.url, image)
 
         except Exception as e:
-            self.error.emit(self.url, str(e))
+            if not self._cancelled:
+                self.error.emit(self.url, str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -143,19 +166,22 @@ class ImageLabel(QLabel):
         self._url = url
         self.setText("Loading...")
 
-        # Cancel previous download if any
+        # Cancel previous download cooperatively (not terminate!)
         if self._worker and self._worker.isRunning():
-            self._worker.terminate()
-            self._worker.wait(500)
+            self._worker.cancel()
+            # Don't wait -- just let the old worker finish silently;
+            # the stale-URL check in _on_loaded prevents stale images.
 
         self._worker = _DownloadWorker(url, size)
-        self._worker.finished.connect(self._on_loaded)
+        self._worker.image_ready.connect(self._on_loaded)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_loaded(self, url: str, pixmap: QPixmap) -> None:
+    def _on_loaded(self, url: str, image: QImage) -> None:
         if url != self._url:
             return  # stale response
+        # Convert QImage -> QPixmap on the main thread (thread-safe)
+        pixmap = QPixmap.fromImage(image)
         self._current_pixmap = pixmap
         self.setPixmap(pixmap)
         self.image_loaded.emit(url)
@@ -184,12 +210,13 @@ def load_image_async(
     size: QSize | None = None,
     parent: QObject | None = None,
 ) -> _DownloadWorker:
-    """Start a background download and call *callback(url, pixmap)* when done.
+    """Start a background download and call *callback(url, QImage)* when done.
 
     Returns the worker thread (caller should keep a reference to prevent GC).
+    The callback receives a QImage; convert to QPixmap on the GUI thread.
     """
     worker = _DownloadWorker(url, size)
-    worker.finished.connect(callback)
+    worker.image_ready.connect(callback)
     if error_callback:
         worker.error.connect(error_callback)
     worker.start()

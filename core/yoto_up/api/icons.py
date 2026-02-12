@@ -232,5 +232,7 @@ def _looks_like_icon_url(url: str) -> bool:
         for skip in ("favicon", "logo", "banner", "sprite", "data:image")
     ):
         return False
+    # Strip query parameters and fragments before checking extensions.
+    path_part = url_lower.split("?", 1)[0].split("#", 1)[0]
     # Accept common image extensions.
-    return any(url_lower.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))
+    return any(path_part.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))

@@ -94,11 +94,14 @@ def _parse_card(raw: dict) -> Card:
 
     The API sometimes returns metadata and content as flat dicts that need
     to be explicitly parsed into their Pydantic sub-models.
+
+    A shallow copy is made so the caller's original dict is not mutated.
     """
+    data = dict(raw)
     # Ensure nested objects are parsed through their models so that
     # validation is applied consistently.
-    if "metadata" in raw and isinstance(raw["metadata"], dict):
-        raw["metadata"] = CardMetadata(**raw["metadata"])
-    if "content" in raw and isinstance(raw["content"], dict):
-        raw["content"] = CardContent(**raw["content"])
-    return Card(**raw)
+    if "metadata" in data and isinstance(data["metadata"], dict):
+        data["metadata"] = CardMetadata(**data["metadata"])
+    if "content" in data and isinstance(data["content"], dict):
+        data["content"] = CardContent(**data["content"])
+    return Card(**data)

@@ -413,11 +413,14 @@ class DashboardPage(QWidget):
 
     def _populate_recent_cards(self, raw_cards: list[dict]) -> None:
         """Fill the recent-cards row with up to 5 tiles."""
-        # Clear existing tiles
+        # Clear existing tiles and spacer items
         while self._recent_layout.count() > 0:
             item = self._recent_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+            # Spacer items are owned by the layout; delete them explicitly
+            elif item.spacerItem():
+                del item
 
         if not raw_cards:
             self._empty_label.setVisible(True)

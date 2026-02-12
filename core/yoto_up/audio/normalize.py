@@ -1,8 +1,9 @@
 """Audio normalization using FFmpeg and loudness analysis."""
+import json
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from loguru import logger
 
 
@@ -31,8 +32,7 @@ def get_audio_loudness(audio_path: str | Path) -> dict | None:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         # Parse the JSON output from stderr
         output = result.stderr
-        # Find the JSON block in the output
-        import json
+        # Find the last JSON block in the output
         json_start = output.rfind("{")
         json_end = output.rfind("}") + 1
         if json_start >= 0 and json_end > json_start:
@@ -48,7 +48,7 @@ def normalize_audio(
     target_lufs: float = -16.0,
     target_tp: float = -1.0,
     target_lra: float = 11.0,
-    on_progress: Optional[callable] = None,
+    on_progress: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Normalize audio file to target loudness using two-pass loudnorm.
 

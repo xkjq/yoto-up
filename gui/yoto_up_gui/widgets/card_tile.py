@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -67,10 +68,11 @@ class _CoverLabel(QLabel):
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            # Centre-crop
+            # Centre-crop: source rect is the centred sub-rectangle
             x = (scaled.width() - rect.width()) // 2
             y = (scaled.height() - rect.height()) // 2
-            painter.drawPixmap(rect, scaled, scaled.rect().adjusted(x, y, 0, 0))
+            source = QRect(x, y, rect.width(), rect.height())
+            painter.drawPixmap(rect, scaled, source)
         else:
             # Coloured placeholder
             painter.setBrush(self._bg_color)
