@@ -2,167 +2,133 @@
 
 <img src="art.jpeg" alt="Artwork preview" style="max-width:100%;height:auto;">
 
+A desktop application and Python library for managing Yoto player content &mdash; cards, audio, devices, and more.
 
-A multipurpose set of command-line, terminal UI, and graphical tools for managing your Yoto content.  
+## Highlights
 
-Features include content organization, device management, and easy integration with Yoto services.
+- **Card Library** &mdash; browse, search, and inspect all your Yoto cards
+- **Card Editor** &mdash; create and edit cards with chapters, tracks, and metadata
+- **Device Manager** &mdash; view registered Yoto players, battery, storage, and firmware
+- **Audio Tools** &mdash; normalize loudness (LUFS), trim silence, and preview waveforms
+- **Icon Picker** &mdash; search and select cover art for cards
+- **Async Image Loading** &mdash; background image downloads with disk caching
+- **OAuth Device Flow** &mdash; secure login via Yoto's device authorization flow
+- **Cross-Platform** &mdash; runs on Linux, macOS, and Windows
 
-   # 🚀 Yoto-UP
+## Architecture
 
-   A toolbox for managing Yoto content from the command line, a terminal UI, or a GUI.
+The project is split into two installable Python packages:
 
-   Yoto-UP helps with content organization, device management, icon handling, and easy integration with Yoto services.
+| Package | Path | Description |
+|---------|------|-------------|
+| **yoto-up-core** | `core/` | API client, models, storage, audio processing (no GUI deps) |
+| **yoto-up-gui** | `gui/` | PySide6 desktop application that depends on the core |
 
-   ## ✨ Highlights
+```
+yoto-up/
+  core/           # yoto-up-core Python package
+    yoto_up/
+      api/        # HTTP client, auth, cards, devices, icons, media upload
+      audio/      # normalize, trim silence, waveform extraction
+      models/     # Pydantic models (Card, Device, User/TokenData)
+      storage/    # tokens, settings, cache, versions, paths
+  gui/            # yoto-up-gui Python package
+    yoto_up_gui/
+      pages/      # Dashboard, Card Library, Card Editor, Account, Devices, Audio Tools
+      widgets/    # NavigationDrawer, CardTile, ImageLabel, IconPicker
+      resources/  # Stylesheets and assets
+  packaging/      # PyInstaller, NSIS, Flatpak, AppImage, DMG configs
+  .github/        # CI/CD workflows (build + release)
+```
 
-   - 🔗 Integration with Yoto Services — simplified access to the Yoto API and helper utilities
-   - 🗂️ Playlist/Card organization — chapters, tracks and metadata management
-      - 🎵 Track titles, keys and durations
-      - 🖼️ Icon management — autoselect or pick icons via search
-      - 🖌️ Cover management — set, import, or auto-search cover art; embed into card metadata
-      - 📤 Export / 📥 Import cards
-   - 🖥️ Interfaces — CLI, TUI (terminal UI) and a small graphical UI
-   - 🔊 Audio preparation — normalize volume levels, auto-trim silence, and apply basic level adjustments before upload
-   - 🖼️ Icon editor — feature rich editor with text and image stamping
+## Installation
 
-   For full docs and examples see the project site: https://xkjq.github.io/yoto-up/
+### Requirements
 
-   ### Command Line First
+- Python 3.11+
+- FFmpeg (optional, for audio normalization)
 
-   Leveraging Python libraries like Typer, Rich, and Textual for a vibrant, user-friendly command-line experience. Creating and managing cards with text has never been easier or more colorful 🌈.
+### From Source (recommended for development)
 
-   ### Graphical Interface Included
+```bash
+git clone https://github.com/xkjq/yoto-up.git
+cd yoto-up
 
-   For tasks better suited to a visual workflow, Yoto-UP also provides a GUI built with Flet, making advanced operations accessible and sometimes even intuitive.
+# Create a virtual environment
+python -m venv .venv
+source .venv/bin/activate   # Linux/macOS
+# .venv\Scripts\activate    # Windows
 
-   ## 🛠️ Installation
+# Install both packages in editable mode
+pip install -e ./core
+pip install -e "./core[audio]"   # optional audio dependencies
+pip install -e ./gui
+```
 
-   ### With uv(x)
+### Running the GUI
 
-   1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
-   
-   2. Run with uvx _(without installing if you just want to try it out)_<sup>[1]</sup>
+```bash
+yoto-up
+# or
+python -m yoto_up_gui.main
+```
 
-      Command line
-      ```bash
-      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up" yoto [command]
-      ```
+### Running Tests
 
-      GUI
-      ```bash
-      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]" yoto gui
-      ```
+```bash
+pip install pytest
+python -m pytest core/tests/ -v
+```
 
-   3. If you like it, install with uv tool<sup>[2]</sup>
-      ```bash
-      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
-      ```
-      This should add the command `yoto` to your path, test it out with
-      ```bash
-      yoto --help
-      ```
+## Usage
 
-      or if you want the GUI
-      ```bash
-      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]"
-      ```
-      Then run
+### GUI Pages
 
-      ```bash
-      yoto gui
-      ```
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Overview with quick actions and recent cards |
+| **Card Library** | Paginated grid of all cards with search |
+| **Card Editor** | Create/edit cards with chapters, tracks, and metadata |
+| **Account** | Login/logout via device code flow, app settings, data management |
+| **Devices** | View registered Yoto players with live status (battery, storage, WiFi) |
+| **Audio Tools** | Batch normalize loudness, detect and trim silence |
 
-[1] uvx allows you to run a python tool/package without installation (by creating a temporary isolated environment).
+### Core Library (programmatic use)
 
-[2] uv tool also supports upgrading the tool once installed, see [their docs](https://docs.astral.sh/uv/guides/tools/#installing-tools) for more information.
-      
+```python
+from yoto_up.api.client import YotoClient
+from yoto_up.api.cards import get_cards
 
-   ### From source
+client = YotoClient()
+# After authenticating:
+cards = get_cards(client)
+for card in cards:
+    print(card.title, card.cardId)
+client.close()
+```
 
-   1. Clone the repository and change into it:
+## Packaging
 
-   ```bash
-   git clone https://github.com/xkjq/yoto-up.git
-   cd yoto-up
-   ```
+Pre-built binaries can be produced for all major platforms:
 
-   2. Create and activate a virtual environment
+| Platform | Format | Config |
+|----------|--------|--------|
+| Windows | NSIS installer | `packaging/windows/nsis/` |
+| Windows | MSIX | `packaging/windows/msix/` |
+| Linux | Flatpak | `packaging/linux/flatpak/` |
+| Linux | AppImage | `packaging/linux/appimage/` |
+| macOS | DMG | `packaging/macos/dmg/` |
+| All | PyInstaller | `packaging/pyinstaller.spec` |
 
-   You can use the standard Python venv workflow, but uv is recommended
+See `packaging/README.md` for build instructions.
 
-   Standard (bash / zsh / sh):
+## CI/CD
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
+GitHub Actions workflows are in `.github/workflows/`:
 
-   Standard (fish):
+- **build.yml** &mdash; lint, test, and build on every push/PR
+- **release.yml** &mdash; build platform binaries and create GitHub releases on tags
 
-   ```fish
-   python -m venv .venv
-   source .venv/bin/activate.fish
-   ```
+## License
 
-   Using `uv` (recommended if available):
-
-   ```bash
-   uv venv
-   source .venv/bin/activate
-   ```
-
-   3. Install Python dependencies:
-
-   ```bash
-   (uv) pip install -r requirements.txt
-   ```
-
-   Quick checks and notes:
-
-   - Confirm the venv Python is active: `python --version` and `which python` should point into `.venv/`.
-   - macOS / Linux: use the system `python3` if `python` is not available.
-   - Alternative workflows: `pipx` or `poetry` can be used if preferred.
-
-   ## ▶️ Usage
-
-   For more details please see the (docs)[https://xkjq.github.io/yoto-up/]
-
-   ### CLI / TUI
-   • Start the CLI (lists commands):
-
-   ```bash
-   python yoto.py --help
-   ```
-
-   • Open the terminal editor for a card:
-
-   ```bash
-   python yoto.py edit-card <CARD_ID>
-   ```
-
-   [![asciicast](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC.svg)](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC)
-   [![asciicast](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB.svg)](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB)
-
-   ### GUI
-
-   ```bash
-   python gui.py
-   ```
-
-   or 
-
-   ```bash
-   flet run gui.py
-   ```
-
-   or
-
-   ```bash
-   python yoto.py gui
-   ```
-
-
-   ## 📜 License
-
-   MIT — see `LICENSE` for details.
-
+MIT &mdash; see `LICENSE` for details.
