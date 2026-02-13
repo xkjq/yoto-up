@@ -1,0 +1,169 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint & type-check
+  # ---------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install core dependencies
+        run: pip install -e ./core[audio] ruff
+
+      - name: Ruff check
+        run: ruff check core/ gui/
+
+  # ---------------------------------------------------------------------------
+  # Unit tests (core only — no display server needed)
+  # ---------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install core + test deps
+        run: pip install -e ./core pytest
+
+      - name: Run core tests
+        run: pytest core/tests/ -v
+
+  # ---------------------------------------------------------------------------
+  # GUI syntax check (compile-test without a display server)
+  # ---------------------------------------------------------------------------
+  gui-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install core + PySide6
+        run: pip install -e ./core PySide6
+
+      - name: Compile-check all GUI Python files
+        run: |
+          python -c "
+          import py_compile, sys, pathlib
+          files = list(pathlib.Path('gui').rglob('*.py'))
+          failed = []
+          for f in files:
+              try:
+                  py_compile.compile(str(f), doraise=True)
+              except py_compile.PyCompileError as e:
+                  failed.append(str(e))
+          if failed:
+              for msg in failed:
+                  print(msg, file=sys.stderr)
+              sys.exit(1)
+          print(f'{len(files)} files OK')
+          "
+
+  # ---------------------------------------------------------------------------
+  # Build binaries with PyInstaller
+  # ---------------------------------------------------------------------------
+  build-windows:
+    needs: [lint, test, gui-syntax]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ./core
+          pip install -e ./gui
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/pyinstaller.spec --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoto-up-windows
+          path: dist/yoto-up.exe
+          if-no-files-found: warn
+
+  build-macos:
+    needs: [lint, test, gui-syntax]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ./core
+          pip install -e ./gui
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/pyinstaller.spec --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoto-up-macos
+          path: dist/yoto-up
+          if-no-files-found: warn
+
+  build-linux:
+    needs: [lint, test, gui-syntax]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon0
+
+      - name: Install dependencies
+        run: |
+          pip install -e ./core
+          pip install -e ./gui
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/pyinstaller.spec --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoto-up-linux
+          path: dist/yoto-up
+          if-no-files-found: warn

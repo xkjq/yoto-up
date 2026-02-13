@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yoto-up-core"
+version = "0.1.0"
+description = "Core library for Yoto card management"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.24",
+    "pydantic>=2.0",
+    "platformdirs>=3.0",
+    "loguru>=0.7",
+    "pillow>=9.0",
+    "rapidfuzz>=2.0",
+]
+
+[project.optional-dependencies]
+audio = [
+    "pydub>=0.25",
+    "pyloudnorm>=0.1",
+    "numpy>=1.25",
+    "scipy",
+    "soundfile",
+    "librosa>=0.10",
+]
+
+[tool.setuptools.packages.find]
+include = ["yoto_up*"]
