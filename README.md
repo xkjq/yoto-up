@@ -1,134 +1,214 @@
 # Yoto-UP
 
-<img src="art.jpeg" alt="Artwork preview" style="max-width:100%;height:auto;">
+<img src="art.jpeg" alt="Yoto-UP" style="max-width:100%;height:auto;">
 
-A desktop application and Python library for managing Yoto player content &mdash; cards, audio, devices, and more.
+A desktop app for managing your Yoto player cards, devices, and audio content.
 
-## Highlights
+Yoto-UP is a standalone application for Windows, macOS, and Linux. Download the latest release, run it, and log in with your Yoto account -- no Python or command-line knowledge required.
 
-- **Card Library** &mdash; browse, search, and inspect all your Yoto cards
-- **Card Editor** &mdash; create and edit cards with chapters, tracks, and metadata
-- **Device Manager** &mdash; view registered Yoto players, battery, storage, and firmware
-- **Audio Tools** &mdash; normalize loudness (LUFS), trim silence, and preview waveforms
-- **Icon Picker** &mdash; search and select cover art for cards
-- **Async Image Loading** &mdash; background image downloads with disk caching
-- **OAuth Device Flow** &mdash; secure login via Yoto's device authorization flow
-- **Cross-Platform** &mdash; runs on Linux, macOS, and Windows
+## Quickstart
+
+1. **Download** the latest release for your platform from [GitHub Releases](https://github.com/xkjq/yoto-up/releases)
+
+   | Platform | File |
+   |----------|------|
+   | Windows | `yoto-up.exe` |
+   | macOS | `yoto-up` (or `.dmg` installer) |
+   | Linux | `yoto-up` (or Flatpak) |
+
+2. **Run** the downloaded file
+
+3. **Log in** -- go to the Account page, click "Login", and follow the device-code instructions on screen. You'll be given a code to enter at Yoto's website in your browser.
+
+4. **Manage your cards** -- your card library loads automatically after login. Browse, edit, create, and delete cards from the GUI.
+
+## What You Can Do
+
+### Card Library
+Browse all your Yoto cards in a paginated grid. Search by title, click a card to see its details, or open it in the editor. Keyboard and mouse-wheel navigation supported.
+
+### Card Editor
+Create new cards or edit existing ones. Add chapters, reorder tracks, set metadata (title, age range, category), and pick cover art via the built-in icon picker.
+
+### Device Manager
+View all your registered Yoto players. See live status for each device: battery level, storage usage, WiFi signal, temperature, and firmware version.
+
+### Audio Tools
+Prepare audio files before uploading:
+- **Normalize** -- adjust loudness to a target LUFS level so all tracks play at a consistent volume
+- **Trim Silence** -- detect and remove silence from the start/end of audio files
+- **Waveform Preview** -- visualize audio amplitude before and after processing
+
+### Account & Settings
+Manage your Yoto login, configure application settings, and clear cached data (API cache, icon cache).
+
+## Screenshots
+
+The app uses a dark theme (Catppuccin Mocha) with a navigation drawer on the left and a toolbar at the top.
+
+```
++-------+----------------------------------------------+
+| Menu  |  Toolbar: [=] Page Title                     |
++-------+----------------------------------------------+
+|       |                                              |
+| Dash  |  +------+  +------+  +------+  +------+     |
+| Cards |  | Card |  | Card |  | Card |  | Card |     |
+| Edit  |  | Tile |  | Tile |  | Tile |  | Tile |     |
+| Acct  |  +------+  +------+  +------+  +------+     |
+| Dev   |                                              |
+| Audio |  +------+  +------+  +------+  +------+     |
+|       |  | Card |  | Card |  | Card |  | Card |     |
+|       |  | Tile |  | Tile |  | Tile |  | Tile |     |
+|       |  +------+  +------+  +------+  +------+     |
+|       |                                              |
++-------+----------------------------------------------+
+|  Status bar: Authenticated                           |
++------------------------------------------------------+
+```
 
 ## Architecture
 
-The project is split into two installable Python packages:
-
-| Package | Path | Description |
-|---------|------|-------------|
-| **yoto-up-core** | `core/` | API client, models, storage, audio processing (no GUI deps) |
-| **yoto-up-gui** | `gui/` | PySide6 desktop application that depends on the core |
+Yoto-UP is split into two Python packages that are bundled into a single binary at release time:
 
 ```
 yoto-up/
-  core/           # yoto-up-core Python package
+  core/                         # yoto-up-core -- standalone library, no GUI deps
     yoto_up/
-      api/        # HTTP client, auth, cards, devices, icons, media upload
-      audio/      # normalize, trim silence, waveform extraction
-      models/     # Pydantic models (Card, Device, User/TokenData)
-      storage/    # tokens, settings, cache, versions, paths
-  gui/            # yoto-up-gui Python package
+      api/                      # Yoto API client
+      +-- client.py             #   Authenticated HTTP client (httpx) with auto token refresh
+      +-- auth.py               #   OAuth 2.0 device-code flow
+      +-- cards.py              #   Card CRUD (list, get, create, update, delete)
+      +-- devices.py            #   Device listing and live status
+      +-- icons.py              #   Icon/cover art search and download
+      +-- media.py              #   Audio upload with SHA-256 integrity
+      audio/                    # Audio processing
+      +-- normalize.py          #   LUFS loudness normalization (via FFmpeg)
+      +-- trim.py               #   Silence detection and trimming (via pydub)
+      +-- waveform.py           #   Waveform extraction (via soundfile/numpy)
+      models/                   # Pydantic data models
+      +-- card.py               #   Card, Chapter, Track
+      +-- device.py             #   Device, DeviceStatus
+      +-- user.py               #   TokenData
+      storage/                  # Persistent local storage
+      +-- tokens.py             #   OAuth token save/load/delete
+      +-- config.py             #   App settings (JSON)
+      +-- cache.py              #   API cache (time-based) + icon cache (disk, SHA-256)
+      +-- versions.py           #   Card version snapshots
+      +-- paths.py              #   Cross-platform dirs via platformdirs
+  gui/                          # yoto-up-gui -- PySide6 desktop application
     yoto_up_gui/
-      pages/      # Dashboard, Card Library, Card Editor, Account, Devices, Audio Tools
-      widgets/    # NavigationDrawer, CardTile, ImageLabel, IconPicker
-      resources/  # Stylesheets and assets
-  packaging/      # PyInstaller, NSIS, Flatpak, AppImage, DMG configs
-  .github/        # CI/CD workflows (build + release)
+      main.py                   # Entry point: QApplication setup, stylesheet loading
+      app.py                    # MainWindow: navigation shell, page stack, workers
+      pages/
+      +-- dashboard.py          #   Welcome banner, stats, quick actions, recent cards
+      +-- card_library.py       #   Paginated card grid with search
+      +-- card_editor.py        #   Full card editor (chapters, tracks, metadata)
+      +-- card_detail.py        #   Slide-in overlay with card details
+      +-- account.py            #   Login/logout, settings, cache management
+      +-- devices.py            #   Device list with live status panels
+      +-- audio_tools.py        #   Tabbed normalize/trim/waveform interface
+      widgets/
+      +-- nav_drawer.py         #   Animated sidebar navigation
+      +-- card_tile.py          #   Card grid tile with cover art
+      +-- image_loader.py       #   Async background image loading with disk cache
+      +-- icon_picker.py        #   Icon search and selection dialog
+      resources/
+      +-- style.qss             #   Catppuccin Mocha Qt stylesheet
+  packaging/                    # Build configs for standalone binaries
+    pyinstaller.spec            #   Single-file executable (all platforms)
+    windows/nsis/               #   Windows installer (NSIS)
+    windows/msix/               #   Windows Store package
+    linux/flatpak/              #   Flatpak manifest
+    linux/appimage/             #   AppImage config
+    macos/dmg/                  #   macOS disk image script
+  .github/workflows/
+    build.yml                   #   CI: lint, test, build binaries per platform
+    release.yml                 #   CD: build + create GitHub release on tag push
 ```
 
-## Installation
+### How It Fits Together
 
-### Requirements
+```
++--------------------+          +-------------------+
+|   yoto-up-gui      |  uses    |   yoto-up-core    |
+|   (PySide6 UI)     +--------->|   (pure Python)   |
+|                    |          |                   |
+|  MainWindow        |          |  YotoClient       |
+|   +-- Pages        |          |   +-- auth        |
+|   +-- Widgets      |          |   +-- cards API   |
+|   +-- Workers      |          |   +-- devices API |
+|       (QThread)    |          |   +-- media API   |
+|                    |          |                   |
+|  Runs on GUI       |          |  Audio processing |
+|  thread only       |          |  Local storage    |
++--------+-----------+          +--------+----------+
+         |                               |
+         | Background workers            | httpx
+         | (own httpx.Client)            |
+         v                               v
++------------------------------------------------------+
+|              Yoto Cloud Services                     |
+|  api.yotoplay.com   login.yotoplay.com               |
++------------------------------------------------------+
+```
+
+Workers run API calls on background `QThread`s with their own `httpx.Client` instances (the main client is not thread-safe). `QPixmap` operations stay on the GUI thread; background image loading uses `QImage` and converts on delivery.
+
+## Building from Source
+
+This section is for **developers** contributing to Yoto-UP. End users should use the pre-built releases above.
+
+### Prerequisites
 
 - Python 3.11+
-- FFmpeg (optional, for audio normalization)
+- Git
+- FFmpeg (optional, for audio normalization features)
 
-### From Source (recommended for development)
+### Setup
 
 ```bash
 git clone https://github.com/xkjq/yoto-up.git
 cd yoto-up
 
-# Create a virtual environment
 python -m venv .venv
 source .venv/bin/activate   # Linux/macOS
 # .venv\Scripts\activate    # Windows
 
-# Install both packages in editable mode
 pip install -e ./core
-pip install -e "./core[audio]"   # optional audio dependencies
+pip install -e "./core[audio]"   # optional audio processing deps
 pip install -e ./gui
 ```
 
-### Running the GUI
+### Run
 
 ```bash
 yoto-up
-# or
-python -m yoto_up_gui.main
 ```
 
-### Running Tests
+### Test
 
 ```bash
 pip install pytest
-python -m pytest core/tests/ -v
+pytest core/tests/ -v
 ```
 
-## Usage
+### Build a Standalone Binary
 
-### GUI Pages
-
-| Page | Description |
-|------|-------------|
-| **Dashboard** | Overview with quick actions and recent cards |
-| **Card Library** | Paginated grid of all cards with search |
-| **Card Editor** | Create/edit cards with chapters, tracks, and metadata |
-| **Account** | Login/logout via device code flow, app settings, data management |
-| **Devices** | View registered Yoto players with live status (battery, storage, WiFi) |
-| **Audio Tools** | Batch normalize loudness, detect and trim silence |
-
-### Core Library (programmatic use)
-
-```python
-from yoto_up.api.client import YotoClient
-from yoto_up.api.cards import get_cards
-
-client = YotoClient()
-# After authenticating:
-cards = get_cards(client)
-for card in cards:
-    print(card.title, card.cardId)
-client.close()
+```bash
+pip install pyinstaller
+pyinstaller packaging/pyinstaller.spec --noconfirm
+# Output: dist/yoto-up (or dist/yoto-up.exe on Windows)
 ```
 
-## Packaging
+See [`packaging/README.md`](packaging/README.md) for platform-specific installer builds (NSIS, Flatpak, DMG).
 
-Pre-built binaries can be produced for all major platforms:
+## External Services
 
-| Platform | Format | Config |
-|----------|--------|--------|
-| Windows | NSIS installer | `packaging/windows/nsis/` |
-| Windows | MSIX | `packaging/windows/msix/` |
-| Linux | Flatpak | `packaging/linux/flatpak/` |
-| Linux | AppImage | `packaging/linux/appimage/` |
-| macOS | DMG | `packaging/macos/dmg/` |
-| All | PyInstaller | `packaging/pyinstaller.spec` |
-
-See `packaging/README.md` for build instructions.
-
-## CI/CD
-
-GitHub Actions workflows are in `.github/workflows/`:
-
-- **build.yml** &mdash; lint, test, and build on every push/PR
-- **release.yml** &mdash; build platform binaries and create GitHub releases on tags
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Yoto API | `api.yotoplay.com` | Card CRUD, media upload, icons |
+| Yoto OAuth | `login.yotoplay.com` | Device-code authentication |
 
 ## License
 
-MIT &mdash; see `LICENSE` for details.
+MIT -- see `LICENSE` for details.
