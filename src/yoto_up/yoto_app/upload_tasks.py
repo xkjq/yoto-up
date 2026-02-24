@@ -1661,6 +1661,48 @@ class UploadManager:
         page.services.extend([p for p in (browse, browse_files) if p is not None])
         page.update()
 
+def show_card_popup(page, card):
+    # Show a dialog with full card details
+    from flet import AlertDialog, Text, Column, TextButton, Image
+
+    lines = []
+    lines.append(
+        Text(
+            f"Title: {getattr(card, 'title', '')}",
+            size=18,
+            weight=ft.FontWeight.BOLD,
+        )
+    )
+    lines.append(Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
+    if getattr(card, "metadata", None):
+        meta = card.metadata
+        if getattr(meta, "author", None):
+            lines.append(Text(f"Author: {meta.author}"))
+        if getattr(meta, "description", None):
+            lines.append(Text(f"Description: {meta.description}"))
+        if getattr(meta, "note", None):
+            lines.append(Text(f"Note: {meta.note}"))
+        if getattr(meta, "cover", None) and getattr(meta.cover, "imageL", None):
+            lines.append(Image(src=meta.cover.imageL, width=120, height=120))
+    if getattr(card, "content", None) and getattr(card.content, "chapters", None):
+        lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
+        for ch in card.content.chapters:
+            lines.append(Text(f"- {getattr(ch, 'title', '')}"))
+    lines.append(
+        TextButton(
+            "View card",
+            on_click=lambda e: show_card_details(e, card),
+            style=ft.ButtonStyle(color=ft.Colors.BLUE),
+        )
+    )
+    dlg = AlertDialog(
+        title=Text("Card Details"),
+        content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
+        actions=[TextButton("Close", on_click=lambda e: page.pop_dialog())],
+        scrollable=True,
+    )
+    page.show_dialog(dlg)
+    page.update()
 
 def show_card_info(page, card):
     # Show a clickable card summary that launches show_card_detail
@@ -1712,7 +1754,7 @@ def show_card_info(page, card):
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
-            on_click=lambda e: show_card_popup(card),
+            on_click=lambda e: show_card_popup(page, card),
             bgcolor=ft.Colors.BLUE_50,
             padding=10,
             border_radius=8,

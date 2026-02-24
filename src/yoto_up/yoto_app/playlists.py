@@ -39,6 +39,147 @@ _playlists_fetch_lock = threading.Lock()
 _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
 
+def _extract_cover_source(card_item, api_instance):
+    try:
+        if hasattr(card_item, "model_dump"):
+            d = card_item.model_dump(exclude_none=True)
+        elif isinstance(card_item, dict):
+            d = card_item
+        else:
+            try:
+                d = json.loads(str(card_item))
+            except Exception:
+                d = {}
+        meta = d.get("metadata") or {}
+        cover = meta.get("cover") or {}
+        for k in ("imageS", "imageM", "imageL", "image"):
+            v = cover.get(k)
+            if not v:
+                continue
+            if isinstance(v, str) and v.startswith("yoto:#") and api_instance:
+                try:
+                    p = api_instance.get_icon_cache_path(v)
+                    if p and Path(p).exists():
+                        return str(p)
+                except Exception:
+                    pass
+            if isinstance(v, str) and (
+                v.startswith("http") or v.startswith("//")
+            ):
+                return v
+        return None
+    except Exception:
+        return None
+
+def get_card_id_local(card):
+    if hasattr(card, "cardId") and getattr(card, "cardId"):
+        return getattr(card, "cardId")
+    if hasattr(card, "id") and getattr(card, "id"):
+        return getattr(card, "id")
+    if hasattr(card, "contentId") and getattr(card, "contentId"):
+        return getattr(card, "contentId")
+    if isinstance(card, dict):
+        return card.get("cardId") or card.get("id") or card.get("contentId")
+    try:
+        if hasattr(card, "model_dump"):
+            d = card.model_dump(exclude_none=True)
+            return d.get("cardId") or d.get("id") or d.get("contentId")
+    except Exception:
+        pass
+    return None
+
+def delete_playlist(ev, page, card, row_container=None):
+    def do_delete(_ev=None):
+        try:
+            client = CLIENT_ID
+            api = page.ensure_api(page.api_ref, client)
+            content_id = get_card_id_local(card)
+            if not content_id:
+                page.status_ctrl.value = "Unable to determine card id to delete"
+                page.update()
+                return
+            # save a local version snapshot before deleting so it can be restored
+            try:
+                try:
+                    payload = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else None
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict):
+                    try:
+                        api.save_version(payload)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            api.delete_content(content_id)
+            try:
+                # Only remove if row_container looks like a real control and is present
+                if row_container is not None and isinstance(row_container, ft.Control) and row_container in page.playlists_list.controls:
+                    page.playlists_list.controls.remove(row_container)
+                else:
+                    # defensive fallback: remove any None entries, otherwise clear to avoid invalid payloads
+                    try:
+                        cleaned = [c for c in page.playlists_list.controls if c is not None and isinstance(c, ft.Control)]
+                        page.playlists_list.controls[:] = cleaned
+                    except Exception:
+                        try:
+                            page.playlists_list.controls.clear()
+                        except Exception:
+                            pass
+            except Exception:
+                try:
+                    page.playlists_list.controls.clear()
+                except Exception:
+                    pass
+            msg = f"Deleted {content_id}"
+            page.status_ctrl.value = msg
+            try:
+                page.show_snack(msg)
+            except Exception:
+                pass
+            page.update()
+        except Exception as ex:
+            msg = f"Delete failed: {ex}"
+            page.status_ctrl.value = msg
+            try:
+                page.show_snack(msg, error=True)
+            except Exception:
+                pass
+            page.update()
+
+    def confirm_yes(_e):
+        try:
+            confirm_dialog.open = False
+        except Exception:
+            pass
+        page.update()
+        threading.Thread(target=do_delete, daemon=True).start()
+
+    def confirm_no(_e):
+        try:
+            confirm_dialog.open = False
+        except Exception:
+            pass
+        page.update()
+
+    confirm_dialog = ft.AlertDialog(
+        title=ft.Text("Delete playlist?"),
+        content=ft.Text(
+            f"Delete playlist '{title}' (id={cid})? This cannot be undone."
+        ),
+        actions=[
+            ft.TextButton("Yes", on_click=confirm_yes),
+            ft.TextButton("No", on_click=confirm_no),
+        ],
+    )
+    try:
+        page.show_dialog(confirm_dialog)
+    except Exception:
+        try:
+            page.show_dialog(confirm_dialog)
+            page.update()
+        except Exception:
+            logger.debug("Unable to show confirmation dialog")
 
 
 def build_playlists_panel(
@@ -349,6 +490,7 @@ def build_playlists_panel(
     _start_shift_listener()
 
     playlists_list = ft.ListView(expand=True, spacing=6)
+    page.playlists_list = playlists_list  # Expose for cross-module updates
     existing_card_map = {}
     existing_card_dropdown = ft.Dropdown(label="Existing card", width=400, options=[])
 
@@ -443,22 +585,6 @@ def build_playlists_panel(
 
         return True
 
-    def get_card_id_local(card):
-        if hasattr(card, "cardId") and getattr(card, "cardId"):
-            return getattr(card, "cardId")
-        if hasattr(card, "id") and getattr(card, "id"):
-            return getattr(card, "id")
-        if hasattr(card, "contentId") and getattr(card, "contentId"):
-            return getattr(card, "contentId")
-        if isinstance(card, dict):
-            return card.get("cardId") or card.get("id") or card.get("contentId")
-        try:
-            if hasattr(card, "model_dump"):
-                d = card.model_dump(exclude_none=True)
-                return d.get("cardId") or d.get("id") or d.get("contentId")
-        except Exception:
-            pass
-        return None
 
     def _do_delete_selected():
         to_delete = list(selected_playlist_ids)
@@ -747,6 +873,7 @@ def build_playlists_panel(
     ).start()
 
     def make_playlist_row(card_obj, idx=None):
+        logger.debug(f"Building row for card: {get_card_id_local(card_obj)}")
         try:
             title = getattr(card_obj, "title", None) or (
                 card_obj.model_dump(exclude_none=True).get("title")
@@ -756,138 +883,15 @@ def build_playlists_panel(
         except Exception:
             title = str(card_obj)
         cid = get_card_id_local(card_obj) or ""
-
-        def delete_playlist(ev, card=card_obj, row_container=None):
-            def do_delete(_ev=None):
-                try:
-                    client = CLIENT_ID
-                    api = ensure_api(api_ref, client)
-                    content_id = get_card_id_local(card)
-                    if not content_id:
-                        status_ctrl.value = "Unable to determine card id to delete"
-                        page.update()
-                        return
-                    # save a local version snapshot before deleting so it can be restored
-                    try:
-                        try:
-                            payload = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else None
-                        except Exception:
-                            payload = None
-                        if isinstance(payload, dict):
-                            try:
-                                api.save_version(payload)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    api.delete_content(content_id)
-                    try:
-                        # Only remove if row_container looks like a real control and is present
-                        if row_container is not None and isinstance(row_container, ft.Control) and row_container in playlists_list.controls:
-                            playlists_list.controls.remove(row_container)
-                        else:
-                            # defensive fallback: remove any None entries, otherwise clear to avoid invalid payloads
-                            try:
-                                cleaned = [c for c in playlists_list.controls if c is not None and isinstance(c, ft.Control)]
-                                playlists_list.controls[:] = cleaned
-                            except Exception:
-                                try:
-                                    playlists_list.controls.clear()
-                                except Exception:
-                                    pass
-                    except Exception:
-                        try:
-                            playlists_list.controls.clear()
-                        except Exception:
-                            pass
-                    msg = f"Deleted {content_id}"
-                    status_ctrl.value = msg
-                    try:
-                        show_snack(msg)
-                    except Exception:
-                        pass
-                    page.update()
-                except Exception as ex:
-                    msg = f"Delete failed: {ex}"
-                    status_ctrl.value = msg
-                    try:
-                        show_snack(msg, error=True)
-                    except Exception:
-                        pass
-                    page.update()
-
-            def confirm_yes(_e):
-                try:
-                    confirm_dialog.open = False
-                except Exception:
-                    pass
-                page.update()
-                threading.Thread(target=do_delete, daemon=True).start()
-
-            def confirm_no(_e):
-                try:
-                    confirm_dialog.open = False
-                except Exception:
-                    pass
-                page.update()
-
-            confirm_dialog = ft.AlertDialog(
-                title=ft.Text("Delete playlist?"),
-                content=ft.Text(
-                    f"Delete playlist '{title}' (id={cid})? This cannot be undone."
-                ),
-                actions=[
-                    ft.TextButton("Yes", on_click=confirm_yes),
-                    ft.TextButton("No", on_click=confirm_no),
-                ],
-            )
-            try:
-                page.show_dialog(confirm_dialog)
-            except Exception:
-                try:
-                    page.dialog = confirm_dialog
-                    page.update()
-                except Exception:
-                    print("Unable to show confirmation dialog")
+        logger.debug(f"Card ID for row: {cid}")
 
         delete_btn = ft.TextButton(
             "Delete",
-            on_click=lambda ev, card=card_obj, row_container=None: delete_playlist(
-                ev, card, row_container
+            on_click=lambda ev, page=page, card=card_obj, row_container=None: delete_playlist(
+                ev, page, card, row_container
             ),
         )
 
-        def _extract_cover_source(card_item, api_instance=None):
-            try:
-                if hasattr(card_item, "model_dump"):
-                    d = card_item.model_dump(exclude_none=True)
-                elif isinstance(card_item, dict):
-                    d = card_item
-                else:
-                    try:
-                        d = json.loads(str(card_item))
-                    except Exception:
-                        d = {}
-                meta = d.get("metadata") or {}
-                cover = meta.get("cover") or {}
-                for k in ("imageS", "imageM", "imageL", "image"):
-                    v = cover.get(k)
-                    if not v:
-                        continue
-                    if isinstance(v, str) and v.startswith("yoto:#") and api_instance:
-                        try:
-                            p = api_instance.get_icon_cache_path(v)
-                            if p and Path(p).exists():
-                                return str(p)
-                        except Exception:
-                            pass
-                    if isinstance(v, str) and (
-                        v.startswith("http") or v.startswith("//")
-                    ):
-                        return v
-                return None
-            except Exception:
-                return None
 
         img_ctrl = ft.Container(width=64, height=64)
         try:
@@ -895,7 +899,9 @@ def build_playlists_panel(
             cover_src = (
                 _extract_cover_source(card_obj, api_instance=api) if api else None
             )
-            if cover_src:
+            logger.debug(f"Extracted cover source for card {cid}: {cover_src}")
+            if cover_src is not None:
+                logger.debug(f"Creating image control for cover {cover_src} of card {cid}")
                 try:
                     # Prefer cached local path from page helper if available
                     cache_fn = getattr(page, 'get_cached_cover', None)
@@ -908,10 +914,11 @@ def build_playlists_panel(
                     else:
                         img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
                 except Exception:
+                    logger.error(f"Error creating image control for cover {cover_src} of card {cid}")
                     img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
             else:
-                if not api:
-
+                logger.debug(f"No cover source found for card {cid}")
+                if api:
                     def _resolve_in_bg(card=card_obj, ctl=img_ctrl):
                         try:
                             client = CLIENT_ID
@@ -927,27 +934,29 @@ def build_playlists_panel(
                                             daemon=True,
                                         ).start()
                                     except Exception:
-                                        pass
+                                        logger.error("Error starting background thread for fetching playlists")
                                 except Exception:
-                                    pass
+                                    logger.error("Error creating image control in background thread")
                         except Exception:
-                            pass
+                            logger.error("Error resolving cover source in background thread")
 
                     threading.Thread(target=_resolve_in_bg, daemon=True).start()
-        except Exception:
-            pass
 
+        except Exception:
+            logger.error(f"Error extracting cover for card {cid}")
+
+        logger.debug(f"Creating checkbox for card {cid} with multi-select mode {multi_select_mode}")
         cb = ft.Checkbox(value=False)
         try:
             cb.visible = multi_select_mode
         except Exception:
-            pass
+            logger.error("Error setting checkbox visibility for multi-select mode")
         try:
             cb._is_playlist_checkbox = True
             cb._cid = cid
             cb._idx = idx
         except Exception:
-            pass
+            logger.error("Error setting custom attributes for playlist checkbox")
 
         def _on_checkbox_change(ev):
             try:
@@ -962,7 +971,7 @@ def build_playlists_panel(
                 _update_multiselect_buttons()
                 page.update()
             except Exception:
-                pass
+                logger.error("Error handling checkbox change event")
 
         def _on_edit_category_selected(ev):
             if not selected_playlist_ids:
@@ -1015,7 +1024,7 @@ def build_playlists_panel(
                 try:
                     show_snack(status_text.value)
                 except Exception:
-                    pass
+                    logger.error("Error showing snack message")
                 dlg.open = False
                 threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
                 page.update()
@@ -1437,8 +1446,8 @@ def build_playlists_panel(
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         delete_btn.on_click = (
-            lambda ev, card=card_obj, row_container=row: delete_playlist(
-                ev, card, row_container
+            lambda ev, page=page, card=card_obj, row_container=row: delete_playlist(
+                ev, page, card, row_container
             )
         )
         try:

@@ -1,3 +1,4 @@
+from colorlog import log
 from yoto_up.models import Card
 import asyncio
 import os
@@ -66,6 +67,7 @@ To authenticate with your Yoto account:
 """
 
 def main(page):
+    logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}", enqueue=True, catch=True)
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
 
@@ -222,7 +224,7 @@ def main(page):
 
 
 
-    # Playlists page (moved to yoto_app.playlists)
+    logger.debug("Building playlists panel")
     playlists_ui = build_playlists_panel(
         page,
         api_ref,
@@ -232,17 +234,11 @@ def main(page):
     )
     # extract controls and helpers
     playlists_column = playlists_ui["playlists_column"]
-    _ = playlists_ui["playlists_list"]
-    existing_card_dropdown = playlists_ui["existing_card_dropdown"]
-    existing_card_map = playlists_ui["existing_card_map"]
-    playlist_fetch_btn = playlists_ui["fetch_btn"]
-    playlist_multi_select_btn = playlists_ui["multi_select_btn"]
-    playlist_delete_selected_btn = playlists_ui["delete_selected_btn"]
-    playlist_export_selected_btn = playlists_ui["export_selected_btn"]
-    sort_dropdown = playlists_ui["sort_dropdown"]
-    show_card_details = playlists_ui["show_card_details"]
+    logger.debug("Playlists panel built")
 
+    logger.debug("Building upload manager")
     page.upload_manager = UploadManager(page, api_ref, show_snack)
+    logger.debug("Upload manager built")
 
     # Run the auth starter in a background thread so the UI remains responsive
     def _auth_click(e):
@@ -488,122 +484,136 @@ def main(page):
     )
 
 
-    # Ensure the original header buttons are present in the playlists header
-    try:
-        header = (
-            playlists_column.controls[0]
-            if playlists_column and len(playlists_column.controls) > 0
-            else None
-        )
-        if header and hasattr(header, "controls"):
-            try:
-                hdr = list(header.controls)
-                existing_texts = [getattr(c, "text", None) for c in hdr]
-                if "Fetch Playlists" not in existing_texts:
-                    insert_at = 1
-                    # prefer buttons returned from playlists module
-                    hdr[insert_at:insert_at] = [
-                        playlist_fetch_btn or fetch_btn,
-                        playlist_multi_select_btn or multi_select_btn,
-                        playlist_delete_selected_btn or delete_selected_btn,
-                        playlist_export_selected_btn or export_selected_btn,
-                    ]
-                    header.controls = hdr
-            except Exception as e:
-                logger.error(f"[_on_playlists_header_merge] failed: {e}")
-    except Exception:
-        pass
+    ## Ensure the original header buttons are present in the playlists header
+    #try:
+    #    header = (
+    #        playlists_column.controls[0]
+    #        if playlists_column and len(playlists_column.controls) > 0
+    #        else None
+    #    )
+    #    logger.debug(f"Playlists header: {header}")
+
+    #    if header and hasattr(header, "controls"):
+    #        try:
+    #            hdr = list(header.controls)
+    #            existing_texts = [getattr(c, "text", None) for c in hdr]
+    #            if "Fetch Playlists" not in existing_texts:
+    #                insert_at = 1
+    #                # prefer buttons returned from playlists module
+    #                hdr[insert_at:insert_at] = [
+    #                    playlist_fetch_btn or fetch_btn,
+    #                    playlist_multi_select_btn or multi_select_btn,
+    #                    playlist_delete_selected_btn or delete_selected_btn,
+    #                    playlist_export_selected_btn or export_selected_btn,
+    #                ]
+    #                header.controls = hdr
+    #                logger.debug("[_on_playlists_header_merge] Merged playlist buttons into header")
+    #            else:
+    #                logger.debug("[_on_playlists_header_merge] Header already contains playlist buttons; skipping merge")
+    #        except Exception as e:
+    #            logger.error(f"[_on_playlists_header_merge] failed: {e}")
+    #    else:
+    #        logger.error("[_on_playlists_header_merge] playlists header not found or has no controls")
+    #except Exception:
+    #    logger.error("Failed to merge header buttons into playlists panel: %s", traceback.format_exc())
 
 
 
-    # Load persisted playlists (if any) and populate the playlists list view
-    try:
-        saved = load_playlists()
-        if saved and isinstance(saved, list):
-            try:
-                pl_list = (
-                    playlists_ui.get("playlists_list")
-                    if isinstance(playlists_ui, dict)
-                    else None
-                )
-                if pl_list and hasattr(pl_list, "controls"):
-                    pl_list.controls.clear()
-                    # Resolve make_playlist_row once to avoid repeated fallback logs
-                    make_row = None
-                    try:
-                        make_row = (
-                            playlists_ui.get("make_playlist_row")
-                            if isinstance(playlists_ui, dict)
-                            else None
-                        )
-                    except Exception:
-                        make_row = None
-                    # If playlists_ui did not provide a row builder, we'll fall back
-                    # to a simple ListTile per-item. Do not try to import the nested
-                    # `make_playlist_row` from the module (it's local to the builder).
-                    if not callable(make_row):
-                        make_row = None
-                    if not callable(make_row):
-                        logger.debug(
-                            "No make_playlist_row function available in playlists_ui; using fallback ListTile"
-                        )
+    ## Load persisted playlists (if any) and populate the playlists list view
+    #try:
+    #    logger.debug("Loading persisted playlists")
+    #    saved = load_playlists()
+    #    logger.debug(f"Loaded persisted playlists: {saved}")
+    #    if saved and isinstance(saved, list):
+    #        try:
+    #            pl_list = (
+    #                playlists_ui.get("playlists_list")
+    #                if isinstance(playlists_ui, dict)
+    #                else None
+    #            )
+    #            if pl_list and hasattr(pl_list, "controls"):
+    #                pl_list.controls.clear()
+    #                # Resolve make_playlist_row once to avoid repeated fallback logs
+    #                make_row = None
+    #                try:
+    #                    make_row = (
+    #                        playlists_ui.get("make_playlist_row")
+    #                        if isinstance(playlists_ui, dict)
+    #                        else None
+    #                    )
+    #                except Exception:
+    #                    make_row = None
+    #                # If playlists_ui did not provide a row builder, we'll fall back
+    #                # to a simple ListTile per-item. Do not try to import the nested
+    #                # `make_playlist_row` from the module (it's local to the builder).
+    #                if not callable(make_row):
+    #                    make_row = None
+    #                if not callable(make_row):
+    #                    logger.debug(
+    #                        "No make_playlist_row function available in playlists_ui; using fallback ListTile"
+    #                    )
 
-                    for idx, item in enumerate(saved):
-                        try:
-                            if callable(make_row):
-                                try:
-                                    row = make_row(item, idx=idx)
-                                except Exception:
-                                    row = None
-                                # Only append a valid Control; otherwise fall back
-                                if row is not None and isinstance(row, ft.Control):
-                                    pl_list.controls.append(row)
-                                else:
-                                    title = (
-                                        item.get("title", "")
-                                        if isinstance(item, dict)
-                                        else str(item)
-                                    )
-                                    cid = (
-                                        item.get("cardId", "")
-                                        if isinstance(item, dict)
-                                        else ""
-                                    )
-                                    pl_list.controls.append(
-                                        ft.ListTile(
-                                            title=ft.Text(title),
-                                            subtitle=ft.Text(str(cid)),
-                                        )
-                                    )
-                            else:
-                                # fallback: render a simple ListTile
-                                title = (
-                                    item.get("title", "")
-                                    if isinstance(item, dict)
-                                    else str(item)
-                                )
-                                cid = (
-                                    item.get("cardId", "")
-                                    if isinstance(item, dict)
-                                    else ""
-                                )
-                                pl_list.controls.append(
-                                    ft.ListTile(
-                                        title=ft.Text(title), subtitle=ft.Text(str(cid))
-                                    )
-                                )
-                        except Exception:
-                            try:
-                                pl_list.controls.append(
-                                    ft.ListTile(title=ft.Text(str(item)))
-                                )
-                            except Exception:
-                                pass
-                    page.update()
-            except Exception:
-                pass
-    except Exception:
-        pass
+    #                for idx, item in enumerate(saved):
+    #                    try:
+    #                        if callable(make_row):
+    #                            try:
+    #                                row = make_row(item, idx=idx)
+    #                            except Exception:
+    #                                row = None
+    #                            # Only append a valid Control; otherwise fall back
+    #                            if row is not None and isinstance(row, ft.Control):
+    #                                pl_list.controls.append(row)
+    #                            else:
+    #                                title = (
+    #                                    item.get("title", "")
+    #                                    if isinstance(item, dict)
+    #                                    else str(item)
+    #                                )
+    #                                cid = (
+    #                                    item.get("cardId", "")
+    #                                    if isinstance(item, dict)
+    #                                    else ""
+    #                                )
+    #                                pl_list.controls.append(
+    #                                    ft.ListTile(
+    #                                        title=ft.Text(title),
+    #                                        subtitle=ft.Text(str(cid)),
+    #                                    )
+    #                                )
+    #                        else:
+    #                            # fallback: render a simple ListTile
+    #                            title = (
+    #                                item.get("title", "")
+    #                                if isinstance(item, dict)
+    #                                else str(item)
+    #                            )
+    #                            cid = (
+    #                                item.get("cardId", "")
+    #                                if isinstance(item, dict)
+    #                                else ""
+    #                            )
+    #                            pl_list.controls.append(
+    #                                ft.ListTile(
+    #                                    title=ft.Text(title), subtitle=ft.Text(str(cid))
+    #                                )
+    #                            )
+    #                    except Exception:
+    #                        try:
+    #                            pl_list.controls.append(
+    #                                ft.ListTile(title=ft.Text(str(item)))
+    #                            )
+    #                        except Exception:
+    #                            pass
+    #                page.update()
+    #                logger.debug("Persisted playlists loaded and UI updated")
+    #        except Exception:
+    #            logger.error(f"Failed to populate playlists list: {traceback.format_exc()}")
+    #except Exception:
+    #    logger.error(f"Failed to load persisted playlists: {traceback.format_exc()}")
+
+    #logger.debug("Persisted playlists loaded")
+
+    
 
     # Expose saver on page so other modules can persist playlists after edits
     def _page_save_playlists(items):
@@ -613,53 +623,6 @@ def main(page):
             pass
 
     page.save_playlists = _page_save_playlists
-
-
-    def show_card_popup(card):
-        # Show a dialog with full card details
-        from flet import AlertDialog, Text, Column, TextButton, Image
-
-        lines = []
-        lines.append(
-            Text(
-                f"Title: {getattr(card, 'title', '')}",
-                size=18,
-                weight=ft.FontWeight.BOLD,
-            )
-        )
-        lines.append(Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
-        if getattr(card, "metadata", None):
-            meta = card.metadata
-            if getattr(meta, "author", None):
-                lines.append(Text(f"Author: {meta.author}"))
-            if getattr(meta, "description", None):
-                lines.append(Text(f"Description: {meta.description}"))
-            if getattr(meta, "note", None):
-                lines.append(Text(f"Note: {meta.note}"))
-            if getattr(meta, "cover", None) and getattr(meta.cover, "imageL", None):
-                lines.append(Image(src=meta.cover.imageL, width=120, height=120))
-        if getattr(card, "content", None) and getattr(card.content, "chapters", None):
-            lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
-            for ch in card.content.chapters:
-                lines.append(Text(f"- {getattr(ch, 'title', '')}"))
-        lines.append(
-            TextButton(
-                "View card",
-                on_click=lambda e: show_card_details(e, card),
-                style=ft.ButtonStyle(color=ft.Colors.BLUE),
-            )
-        )
-        dlg = AlertDialog(
-            title=Text("Card Details"),
-            content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
-            actions=[TextButton("Close", on_click=lambda e: page.pop_dialog())],
-            scrollable=True,
-        )
-        page.show_dialog(dlg)
-        page.update()
-
-
-
 
     # Add About button to the top right
     about_btn = ft.IconButton(
@@ -706,7 +669,7 @@ def main(page):
     try:
         autoselect_badge.tooltip = "Selecting icons"
     except Exception:
-        pass
+        logger.error("Failed to set tooltip on autoselect badge: %s", traceback.format_exc())
 
     def _on_autoselect_click(e=None):
         try:
@@ -938,6 +901,7 @@ def main(page):
     # expose on page for other modules
     page.get_cached_cover = get_cached_cover
 
+    logger.debug("Building covers panel")
     # Create tabs and keep a reference so we can enable/disable them
     # Build icon browser panel and add as a tab
     icon_browser_ui = build_icon_browser_panel(
@@ -946,20 +910,25 @@ def main(page):
     icon_panel = (
         icon_browser_ui.get("panel") if isinstance(icon_browser_ui, dict) else None
     )
+    logger.debug("Icon browser panel built")
 
     # Build covers panel
+    logger.debug("Building covers panel")   
     covers_ui = build_covers_panel(page=page, show_snack=show_snack)
     covers_panel = covers_ui.get("panel") if isinstance(covers_ui, dict) else None
+    logger.debug("Covers panel built")
 
     # Note: removed _ensure_control wrapper per user request. If a panel
     # is incorrectly defined it should be fixed at source rather than
     # automatically replaced at runtime.
 
+    logger.debug("Building pixel editor panel")
     editor = PixelArtEditor(page=page)
     # editor_tab = editor.as_tab("Editor") or editor.as_tab("Icon Editor")
     # keep a reference on the page for external callers if needed
     page.pixel_editor = editor
     editor_content = editor.control()
+    logger.debug("Pixel editor panel built")
 
     # Ensure all content is visible
     auth_column.visible = True
@@ -1020,7 +989,9 @@ def main(page):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
     )
+    logger.debug("Tabs control created and header added")
     page.add(tabs_control)
+    logger.debug("Tabs control added to page")
 
 
     # Define functions that reference tabs_control after it's created
@@ -1079,6 +1050,8 @@ def main(page):
         )
         page.show_dialog(dlg)
         page.update()
+
+    logger.debug("Showing development warning dialog")
     show_dev_warning(page)
 
     def auth_complete():
@@ -1137,6 +1110,7 @@ def main(page):
 
     # Now that the UI controls are added to the page, try to reuse tokens.json (if present)
     try:
+        logger.debug("Checking for existing tokens...")
         api = ensure_api(api_ref)
 
         logger.debug("Checking for existing tokens...")

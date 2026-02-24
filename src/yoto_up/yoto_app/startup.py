@@ -62,6 +62,4 @@ except Exception:
         except Exception:
             audio_adjust_utils = cast(Any, None)  # type: ignore
 
-# Logger configuration (keep at module import time to ensure handlers set early)
-logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}")
 
