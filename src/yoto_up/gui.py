@@ -15,7 +15,6 @@ import threading
 
 import flet as ft
 
-ft.context.disable_auto_update()
 #from flet.auth import OAuthProvider
 from yoto_up.yoto_app import utils as utils_mod
 from yoto_up.yoto_app import ui_helpers as ui_helpers
@@ -33,6 +32,7 @@ from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
+from yoto_up.yoto_app.about_dialog import show_about_dialog
 import http.server
 import socketserver
 import socket
@@ -47,6 +47,8 @@ except Exception:
     HAS_SIMPLEAUDIO = False
 
 INTRO_OUTRO_DIALOG = None
+
+#ft.context.disable_auto_update()
 
 os.environ["FLET_SECRET_KEY"] = os.urandom(12).hex()
 
@@ -174,198 +176,7 @@ def main(page):
         )
     page.title = "Yoto Up"
     # --- About Dialog ---
-    def show_about_dialog(e=None):
-        # Collect runtime / storage info to show to the user
-        try:
-            version = "dev"
-            try:
-                import importlib.metadata as _md
-                try:
-                    version = _md.version("yoto-up")
-                except Exception:
-                    version = _md.version("yoto_up") if hasattr(_md, 'version') else version
-            except Exception:
-                # importlib.metadata may not be present in older runtimes; ignore
-                pass
-        except Exception:
-            version = "dev"
 
-        try:
-            tokens_path = Path(TOKENS_FILE) if TOKENS_FILE is not None else None
-            ui_state_path = Path(UI_STATE_PATH) if UI_STATE_PATH is not None else None
-            tokens_exist = tokens_path.exists() if tokens_path is not None else False
-            ui_exist = ui_state_path.exists() if ui_state_path is not None else False
-        except Exception:
-            tokens_path = None
-            ui_state_path = None
-            tokens_exist = False
-            ui_exist = False
-
-        # Icon cache locations (show paths and existence)
-        try:
-            # Prefer the API instance paths if an API has been initialized, so
-            # the About dialog reflects the same locations the API will use.
-            api_instance = api_ref.get('api') if isinstance(api_ref, dict) else None
-            if not api_instance:
-                # Try to initialize or retrieve the API without forcing auth
-                try:
-                    api_instance = ensure_api(api_ref)
-                except Exception:
-                    api_instance = None
-
-            if api_instance:
-                try:
-                    off_cache = getattr(api_instance, 'OFFICIAL_ICON_CACHE_DIR', None)
-                except Exception:
-                    off_cache = None
-                try:
-                    yotoicons_cache = getattr(api_instance, 'YOTOICONS_CACHE_DIR', None)
-                except Exception:
-                    yotoicons_cache = None
-                try:
-                    upload_icon_cache = getattr(api_instance, 'UPLOAD_ICON_CACHE_FILE', None)
-                except Exception:
-                    upload_icon_cache = None
-                try:
-                    api_cache = getattr(api_instance, 'CACHE_FILE', None)
-                except Exception:
-                    api_cache = None
-            else:
-                off_cache = getattr(paths_mod, 'OFFICIAL_ICON_CACHE_DIR', None)
-                yotoicons_cache = getattr(paths_mod, 'YOTOICONS_CACHE_DIR', None)
-                upload_icon_cache = getattr(paths_mod, 'UPLOAD_ICON_CACHE_FILE', None)
-                api_cache = getattr(paths_mod, 'API_CACHE_FILE', None)
-
-            try:
-                off_cache_exists = Path(off_cache).exists() if off_cache is not None else False
-            except Exception:
-                off_cache_exists = False
-            try:
-                yotoicons_cache_exists = Path(yotoicons_cache).exists() if yotoicons_cache is not None else False
-            except Exception:
-                yotoicons_cache_exists = False
-        except Exception:
-            off_cache = None
-            yotoicons_cache = None
-            upload_icon_cache = None
-            api_cache = None
-            off_cache_exists = False
-            yotoicons_cache_exists = False
-
-        flet_storage = FLET_APP_STORAGE_DATA or os.getenv("FLET_APP_STORAGE_DATA") or "(not set)"
-
-        def open_path(path_obj, notify_fn=None):
-            """Open path_obj in the platform file manager and call notify_fn(message, error=False) on failure/success."""
-            try:
-                if path_obj is None:
-                    if notify_fn:
-                        notify_fn("Path is unknown", error=True)
-                    return
-                p = str(path_obj)
-                if not os.path.exists(p):
-                    try:
-                        os.makedirs(p, exist_ok=True)
-                    except Exception:
-                        pass
-                if sys.platform.startswith('darwin'):
-                    subprocess.Popen(['open', p])
-                elif sys.platform.startswith('win'):
-                    subprocess.Popen(['explorer', p])
-                else:
-                    # assume linux/xdg-open
-                    try:
-                        subprocess.Popen(['xdg-open', p])
-                    except Exception:
-                        # fallback to opening parent
-                        subprocess.Popen(['xdg-open', os.path.dirname(p) or p])
-                if notify_fn:
-                    notify_fn(f"Opened {p}")
-            except Exception as ex:
-                if notify_fn:
-                    notify_fn(f"Failed to open {path_obj}: {ex}", error=True)
-                else:
-                    logger.exception(f"Failed to open path {path_obj}: {ex}")
-
-        content_items = [
-            ft.Row(
-                [ft.Image(src="art.jpeg", width=120, height=120)],
-                alignment=ft.MainAxisAlignment.CENTER
-            ),
-            ft.Text("Yoto Up", size=20, weight=ft.FontWeight.BOLD),
-            ft.Text(f"Version: {version}"),
-            ft.Text(f"Python: {platform.python_version()} ({platform.machine()})"),
-            ft.Text(f"Platform: {platform.platform()}"),
-            ft.Divider(),
-            ft.Text("Config:" , weight=ft.FontWeight.BOLD),
-            ft.Text(f"Flet storage (FLET_APP_STORAGE_DATA): {flet_storage}", selectable=True, size=12),
-            ft.Text(f"Tokens file: {str(tokens_path) if tokens_path is not None else '(unknown)'} {'(exists)' if tokens_exist else '(missing)'}", selectable=True, size=12),
-            ft.Text(f"UI state file: {str(ui_state_path) if ui_state_path is not None else '(unknown)'} {'(exists)' if ui_exist else '(missing)'}", selectable=True, size=12),
-            ft.Row([
-                ft.TextButton(
-                    "Open config dir",
-                    on_click=lambda e, p=_BASE_CONFIG_DIR: open_path(p, show_snack),
-                    style=ft.ButtonStyle(color=ft.Colors.BLUE),
-                ),
-            ]),
-            ft.Divider(),
-            ft.Text("Data locations:", weight=ft.FontWeight.BOLD),
-            ft.Text(f"Official icon cache: {str(off_cache) if off_cache is not None else '(unknown)'} {'(exists)' if off_cache_exists else '(missing)'}", selectable=True, size=12),
-            ft.Text(f"YotoIcons cache: {str(yotoicons_cache) if yotoicons_cache is not None else '(unknown)'} {'(exists)' if yotoicons_cache_exists else '(missing)'}", selectable=True, size=12),
-            ft.Text(f"Upload icon cache file: {str(upload_icon_cache) if upload_icon_cache is not None else '(unknown)'}", selectable=True, size=12),
-            ft.Text(f"API cache file: {str(api_cache) if api_cache is not None else '(unknown)'}", selectable=True, size=12),
-            ft.Row([
-                ft.TextButton(
-                    "Open data/cache dir",
-                    on_click=lambda e, p=_BASE_DATA_DIR: open_path(p, show_snack),
-                    style=ft.ButtonStyle(color=ft.Colors.BLUE),
-                ),
-            ]),
-            ft.Divider(),
-            ft.Text("About:", weight=ft.FontWeight.BOLD),
-            ft.Text("A desktop tool for managing Yoto cards and playlists."),
-            ft.Text("Author: xkjq"),
-            ft.TextButton(
-                "GitHub Repository",
-                url="https://github.com/xkjq/yoto-up",
-                style=ft.ButtonStyle(color=ft.Colors.BLUE),
-            ),
-            ft.Text("\nYoto Up is not affiliated with Yoto Ltd.\n"),
-            ft.Text("License: see LICENSE file in the project root."),
-            ft.Row([ft.TextButton("Clear All User Data", on_click=lambda e: clear_all_user_data_gui(e), style=ft.ButtonStyle(color=ft.Colors.RED))]),
-        ]
-        # Remove any None entries (e.g. refresh_notice may be None) so Flet
-        # receives a clean sequence of Controls.
-        try:
-            content_items = [c for c in content_items if c is not None]
-        except Exception:
-            pass
-
-        try:
-            dlg = ft.AlertDialog(
-                title=ft.Text("About Yoto Up"),
-                content=ft.Column(content_items, scroll=ft.ScrollMode.AUTO, width=520),
-                actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
-            )
-            page.show_dialog(dlg)
-            page.update()
-        except Exception as ex:
-            # If anything goes wrong building the rich About dialog (for
-            # example race with background UI updates), fall back to a very
-            # small dialog so the About button is still functional.
-            try:
-                print(f"[gui] show_about_dialog fallback due to: {ex}")
-            except Exception:
-                pass
-            try:
-                fallback = ft.AlertDialog(
-                    title=ft.Text("About Yoto Up"),
-                    content=ft.Text("Unable to build full About dialog at this time."),
-                    actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
-                )
-                page.show_dialog(fallback)
-                page.update()
-            except Exception:
-                pass
     # --- UI State Persistence ---
     # UI_STATE_PATH is a pathlib.Path pointing at the persisted UI state file.
     # save_ui_state/load_ui_state will use it directly.
@@ -2060,7 +1871,7 @@ def main(page):
     about_btn = ft.IconButton(
         icon=ft.Icons.INFO_OUTLINE,
         tooltip="About Yoto Up",
-        on_click=show_about_dialog,
+        on_click=lambda: show_about_dialog(page=page, api_ref=api_ref, show_snack=show_snack, clear_all_user_data_gui=clear_all_user_data_gui),
         style=ft.ButtonStyle(color=ft.Colors.BLUE),
     )
 
