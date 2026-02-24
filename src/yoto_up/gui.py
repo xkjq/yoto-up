@@ -62,13 +62,6 @@ if os.getenv("FLET_APP_STORAGE_DATA") is None:
     else:
         os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
 
-def _can_start_thread() -> bool:
-    if sys.platform == "emscripten":
-        return sys._emscripten_info.pthreads
-    return platform.machine() not in ("wasm32", "wasm64")
-
-can_start_thread = _can_start_thread()
-
 # Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
 # PyInstaller unpacks the app to a temporary folder which may be read-only for font cache writes.
 # Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
@@ -670,6 +663,7 @@ def main(page):
             logger.error("[populate_file_rows] error")
 
     def start_device_auth(e, instr=None):
+        logger.debug("[start_device_auth] Starting device auth flow")
         # Prefer using the YotoAPI device auth flow directly (so we reuse
         # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
         # existing auth module on any error.
@@ -999,31 +993,7 @@ def main(page):
                 except Exception as e:
                     show_snack(f'Failed to initialize API: {e}', error=True)
 
-        ## Build a generic OAuth provider using Yoto endpoints
-        #provider = OAuthProvider(
-        #    client_id="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5",
-        #    client_secret=os.getenv('YOTO_CLIENT_SECRET', ''),
-        #    authorization_endpoint='https://login.yotoplay.com/authorize',
-        #    token_endpoint='https://login.yotoplay.com/oauth/token',
-        #    user_endpoint='https://api.yotoplay.com/user',
-        #    user_scopes=['profile'],
-        #    user_id_fn=lambda u: u.get('sub') or u.get('id') or u.get('email'),
-        #    redirect_url="http://localhost:8550/oauth_callback",
-        #)
-
-        #logger.debug(f"[on_auth_click] using OAuthProvider: {provider}")
-
-        page.on_login = on_login
-        #try:
-        #    # open login; fetch_user=False because we only need tokens
-        #    page.login(provider, fetch_user=False)
-        #except Exception as ex:
-        # fallback to device auth if browser flow fails
-        #logger.debug(f"Browser OAuth failed, falling back to device flow: {ex}")
-        if not can_start_thread:
-            start_device_auth(e, auth_instructions)
-        else:
-            threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
+        threading.Thread(target=lambda: start_device_auth(e, auth_instructions), daemon=True).start()
         logger.debug("[on_auth_click] _auth_click done")
 
     auth_btn.on_click = _auth_click
