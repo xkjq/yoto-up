@@ -46,8 +46,6 @@ def build_playlists_panel(
     show_snack,
     ensure_api,
     status_ctrl=None,
-    overall_bar=None,
-    overall_text=None,
     file_rows_column=None,
 ) -> Dict[str, Any]:
     """Build full playlists UI including rows, selection, dialogs and fetch helpers.
@@ -395,10 +393,6 @@ def build_playlists_panel(
     # don't pass them (older code paths) still work.
     if status_ctrl is None:
         status_ctrl = SimpleNamespace(value="")
-    if overall_bar is None:
-        overall_bar = SimpleNamespace(value=0, visible=False)
-    if overall_text is None:
-        overall_text = SimpleNamespace(value="")
     if file_rows_column is None:
         file_rows_column = SimpleNamespace(controls=[])
 
