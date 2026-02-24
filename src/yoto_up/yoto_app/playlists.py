@@ -1,3 +1,4 @@
+from yoto_up.yoto_app.ui_state import set_state, get_state
 import sys
 import threading
 from copy import deepcopy
@@ -298,13 +299,16 @@ def build_playlists_panel(
     ft.dropdown.Option("updated_asc", "Updated (Oldest)"),
     ]
     sort_dropdown = ft.Dropdown(
-        label="Sort by", width=160, value="title_asc", options=sort_options
+        label="Sort by", width=160, value=get_state("playlists_ui", "sort_order", "title_asc"), options=sort_options
     )
-    current_sort = {"key": "title_asc"}
+    current_sort = {"key": sort_dropdown.value}
 
     def on_sort_change(ev):
         current_sort["key"] = sort_dropdown.value
         fetch_playlists_sync()
+
+        # save current ui state so it can be restored on restart
+        set_state("playlists_ui", "sort_order", sort_dropdown.value)
 
     sort_dropdown.on_select = on_sort_change
 
@@ -1838,6 +1842,8 @@ def build_playlists_panel(
         ],
     )
 
+    page.fetch_playlist_sync = fetch_playlists_sync
+
     playlists_column = ft.Column(
         [
             ft.Row(
@@ -1965,7 +1971,6 @@ def build_playlists_panel(
     return {
         "playlists_column": playlists_column,
         "fetch_playlists": fetch_playlists,
-        "fetch_playlists_sync": fetch_playlists_sync,
         "playlists_list": playlists_list,
         "existing_card_dropdown": existing_card_dropdown,
         "existing_card_map": existing_card_map,

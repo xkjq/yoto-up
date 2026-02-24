@@ -7,7 +7,7 @@ import flet as ft
 from loguru import logger
 
 from yoto_up.paths import FLET_APP_STORAGE_DATA, TOKENS_FILE, _BASE_DATA_DIR, _BASE_CONFIG_DIR
-from yoto_up.ui_state import get_state_path
+from yoto_up.yoto_app.ui_state import get_state_path
 import yoto_up.paths as paths_mod
 from yoto_up.yoto_app.api_manager import ensure_api
 

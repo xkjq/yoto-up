@@ -18,7 +18,7 @@ from yoto_up.paths import (
     _BASE_CONFIG_DIR,
 )
 
-from yoto_up.ui_state import set_state, get_state,remove_state_file, get_state_path
+from yoto_up.yoto_app.ui_state import set_state, get_state,remove_state_file, get_state_path
 
 import importlib.util
 from typing import cast, Any
@@ -43,7 +43,6 @@ from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 from yoto_up import paths as paths_mod
 import hashlib
 
-from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
@@ -51,7 +50,7 @@ from yoto_up.yoto_app.about_dialog import show_about_dialog
 import subprocess
 import shutil
 
-from yoto_up.startup import HAS_SIMPLEAUDIO
+from yoto_up.yoto_app.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
 
@@ -69,14 +68,15 @@ To authenticate with your Yoto account:
 def main(page):
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
-    gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
-    waveform_cache = {}
 
     page.cards: list[Card] = []
 
     # Shared runtime state
     # Shared API instance (so Fetch Playlists can reuse it)
     api_ref = {"api": None}
+
+    page.api_ref = api_ref  # expose on page for easy access from helpers   
+    page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
 
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
@@ -221,16 +221,6 @@ def main(page):
         threading.Thread(target=_poll_thread, daemon=True).start()
 
 
-    def run_coro_in_thread(coro, *args):
-        """Run an async coroutine in a fresh event loop inside a daemon thread."""
-
-        def _runner():
-            try:
-                asyncio.run(coro(*args))
-            except Exception as exc:
-                print("Background task error:", exc)
-
-        threading.Thread(target=_runner, daemon=True).start()
 
     # Playlists page (moved to yoto_app.playlists)
     playlists_ui = build_playlists_panel(
@@ -245,71 +235,14 @@ def main(page):
     _ = playlists_ui["playlists_list"]
     existing_card_dropdown = playlists_ui["existing_card_dropdown"]
     existing_card_map = playlists_ui["existing_card_map"]
-    _ = playlists_ui["fetch_playlists"]
-    fetch_playlists_sync = playlists_ui["fetch_playlists_sync"]
     playlist_fetch_btn = playlists_ui["fetch_btn"]
     playlist_multi_select_btn = playlists_ui["multi_select_btn"]
     playlist_delete_selected_btn = playlists_ui["delete_selected_btn"]
     playlist_export_selected_btn = playlists_ui["export_selected_btn"]
     sort_dropdown = playlists_ui["sort_dropdown"]
     show_card_details = playlists_ui["show_card_details"]
-    # Save playlist sort order on change
-    if sort_dropdown:
-
-        def _on_sort_change(ev):
-            try:
-                sd = (
-                    playlists_ui["sort_dropdown"] if isinstance(playlists_ui, dict) else None
-                )
-                set_state("gui", "playlist_sort", sd.value if sd else None)
-            except Exception:
-                logger.exception("_on_sort_change: failed to save playlist_sort")
-
-        orig_on_change = getattr(sort_dropdown, "on_change", None)
-        if orig_on_change and orig_on_change != _on_sort_change:
-
-            def chained(ev):
-                orig_on_change(ev)
-                _on_sort_change(ev)
-
-            sort_dropdown.on_select = chained
-        else:
-            sort_dropdown.on_select = _on_sort_change
 
     page.upload_manager = UploadManager(page, api_ref, show_snack)
-
-    # Context passed into upload tasks implementation
-    ctx = {
-        "page": page,
-        "folder": folder,
-        "utils_mod": utils_mod,
-        "ensure_api": ensure_api,
-        "api_ref": api_ref,
-        "concurrency": concurrency,
-        "file_rows_column": file_rows_column,
-        "overall_bar": overall_bar,
-        "overall_text": overall_text,
-        "status": status,
-        "show_snack": show_snack,
-        "update_overall": update_overall,
-        "fetch_playlists_sync": fetch_playlists_sync,
-        "upload_target_dropdown": upload_target_dropdown,
-        "new_card_title": new_card_title,
-        "existing_card_dropdown": existing_card_dropdown,
-        "existing_card_map": existing_card_map,
-        # store the control so the upload task can read current value at start
-        "strip_leading_track_numbers_control": strip_leading_checkbox,
-        "intro_outro_side_control": intro_outro_side,
-        "intro_outro_seconds_control": intro_seconds,
-        "intro_outro_threshold_control": similarity_threshold,
-        "gain_adjusted_files": gain_adjusted_files,
-        "start_btn": start_btn,
-        "stop_btn": stop_btn,
-        "remove_uploaded_btn": remove_uploaded_btn,
-    }
-
-    # Also add the control to the page so user can toggle it
-    # We'll insert it near the upload controls later when building the upload panel
 
     # Run the auth starter in a background thread so the UI remains responsive
     def _auth_click(e):
@@ -681,8 +614,6 @@ def main(page):
 
     page.save_playlists = _page_save_playlists
 
-    # Card info/link display (persistent at bottom)
-    card_info_display = ft.Column([], visible=False)
 
     def show_card_popup(card):
         # Show a dialog with full card details
@@ -727,68 +658,7 @@ def main(page):
         page.show_dialog(dlg)
         page.update()
 
-    def show_card_info(card):
-        # Show a clickable card summary that launches show_card_detail
-        card_info_display.controls.clear()
 
-        def dismiss_item(item):
-            try:
-                card_info_display.controls.remove(item)
-                if not card_info_display.controls:
-                    card_info_display.visible = False
-                page.update()
-            except Exception:
-                pass
-
-        if not card or not getattr(card, "cardId", None):
-            row = ft.Row(
-                [
-                    ft.Text("No card info available", color=ft.Colors.RED),
-                    ft.TextButton(
-                        "Dismiss",
-                        on_click=lambda e: dismiss_item(row),
-                        style=ft.ButtonStyle(color=ft.Colors.RED),
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            )
-            card_info_display.controls.append(row)
-        else:
-            summary = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Text(
-                            getattr(card, "title", ""),
-                            size=16,
-                            weight=ft.FontWeight.BOLD,
-                        ),
-                        ft.Text(
-                            f"ID: {getattr(card, 'cardId', '')}",
-                            size=12,
-                            color=ft.Colors.GREY,
-                        ),
-                        ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE),
-                        ft.TextButton(
-                            "Dismiss",
-                            on_click=lambda e: dismiss_item(summary),
-                            style=ft.ButtonStyle(color=ft.Colors.RED),
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-                on_click=lambda e: show_card_popup(card),
-                bgcolor=ft.Colors.BLUE_50,
-                padding=10,
-                border_radius=8,
-                ink=True,
-                tooltip="Click for card details",
-            )
-            card_info_display.controls.append(summary)
-        card_info_display.visible = True
-        page.update()
-
-    # Patch into ctx so upload_tasks can update it
-    ctx["show_card_info"] = show_card_info
 
 
     # Add About button to the top right
@@ -1119,7 +989,7 @@ def main(page):
     all_tab_content = [
         auth_column,
         playlists_column,
-        upload_column,
+        page.upload_manager.column,
         icon_panel,
         covers_panel,
         editor_content,
@@ -1152,9 +1022,6 @@ def main(page):
     )
     page.add(tabs_control)
 
-    # Register service controls after page has content
-    page.services.extend([p for p in (browse, browse_files) if p is not None])
-    page.update()
 
     # Define functions that reference tabs_control after it's created
     def invalidate_authentication():
