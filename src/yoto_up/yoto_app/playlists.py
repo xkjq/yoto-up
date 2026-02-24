@@ -46,7 +46,6 @@ def build_playlists_panel(
     show_snack,
     ensure_api,
     status_ctrl=None,
-    file_rows_column=None,
 ) -> Dict[str, Any]:
     """Build full playlists UI including rows, selection, dialogs and fetch helpers.
 
@@ -364,14 +363,6 @@ def build_playlists_panel(
                     playlists_list.controls[:] = cleaned
             except Exception:
                 pass
-            # Also defensively clean file_rows_column if it exists and has controls
-            try:
-                if hasattr(file_rows_column, 'controls'):
-                    cleaned_fr = [c for c in file_rows_column.controls if isinstance(c, ft.Control)]
-                    if len(cleaned_fr) != len(file_rows_column.controls):
-                        file_rows_column.controls[:] = cleaned_fr
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -393,8 +384,6 @@ def build_playlists_panel(
     # don't pass them (older code paths) still work.
     if status_ctrl is None:
         status_ctrl = SimpleNamespace(value="")
-    if file_rows_column is None:
-        file_rows_column = SimpleNamespace(controls=[])
 
     def card_matches_filters(card_obj):
         try:
@@ -1596,6 +1585,7 @@ def build_playlists_panel(
                 pass
             api = api_ref.get("api")
             cards = api.get_myo_content()
+            page.cards = cards # Cache cards on page for access by details view and other helpers
             playlists_list.controls.clear()
             if not cards:
                 playlists_list.controls.append(ft.Text("No playlists found"))
