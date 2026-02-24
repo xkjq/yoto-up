@@ -6,7 +6,8 @@ from pathlib import Path
 import flet as ft
 from loguru import logger
 
-from yoto_up.paths import UI_STATE_FILE as UI_STATE_PATH, FLET_APP_STORAGE_DATA, TOKENS_FILE, _BASE_DATA_DIR, _BASE_CONFIG_DIR
+from yoto_up.paths import FLET_APP_STORAGE_DATA, TOKENS_FILE, _BASE_DATA_DIR, _BASE_CONFIG_DIR
+from yoto_up.ui_state import get_state_path
 import yoto_up.paths as paths_mod
 from yoto_up.yoto_app.api_manager import ensure_api
 
@@ -25,7 +26,7 @@ def show_about_dialog(page, api_ref, show_snack, clear_all_user_data_gui):
 
     try:
         tokens_path = Path(TOKENS_FILE) if TOKENS_FILE is not None else None
-        ui_state_path = Path(UI_STATE_PATH) if UI_STATE_PATH is not None else None
+        ui_state_path = get_state_path() if get_state_path() is not None else None
         tokens_exist = tokens_path.exists() if tokens_path is not None else False
         ui_exist = ui_state_path.exists() if ui_state_path is not None else False
     except Exception:

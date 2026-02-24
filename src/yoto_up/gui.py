@@ -17,6 +17,8 @@ from yoto_up.paths import (
     _BASE_CONFIG_DIR,
 )
 
+from yoto_up.ui_state import set_state, get_state, save_state, remove_state_file, get_state_path
+
 import importlib.util
 from typing import cast, Any
 import traceback
@@ -71,120 +73,67 @@ def main(page):
     gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
     waveform_cache = {}
 
-    # --- UI State Persistence ---
-    # UI_STATE_PATH is a pathlib.Path pointing at the persisted UI state file.
-    # save_ui_state/load_ui_state will use it directly.
+    # --- UI State Persistence (via yoto_up.ui_state) ---
     def save_ui_state():
         sort_dropdown = (
             playlists_ui["sort_dropdown"] if isinstance(playlists_ui, dict) else None
         )
-        state = {
-            "concurrency": concurrency.value,
-            "strip_leading": strip_leading_checkbox.value,
-            "intro_outro_side": intro_outro_side.value,
-            "intro_outro_seconds": intro_seconds.value,
-            "intro_outro_threshold": similarity_threshold.value,
-            "upload_mode": upload_mode_dropdown.value,
-            "local_norm_enabled": local_norm_checkbox.value,
-            "local_norm_target": local_norm_target.value,
-            "local_norm_batch": local_norm_batch.value,
-            "playlist_sort": sort_dropdown.value if sort_dropdown else None,
-        }
         try:
-            UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with UI_STATE_PATH.open("w") as f:
-                json.dump(state, f)
+            set_state("gui", "concurrency", concurrency.value)
+            set_state("gui", "strip_leading", strip_leading_checkbox.value)
+            set_state("gui", "intro_outro_side", intro_outro_side.value)
+            set_state("gui", "intro_outro_seconds", intro_seconds.value)
+            set_state("gui", "intro_outro_threshold", similarity_threshold.value)
+            set_state("gui", "upload_mode", upload_mode_dropdown.value)
+            set_state("gui", "local_norm_enabled", local_norm_checkbox.value)
+            set_state("gui", "local_norm_target", local_norm_target.value)
+            set_state("gui", "local_norm_batch", local_norm_batch.value)
+            set_state(
+                "gui", "playlist_sort", sort_dropdown.value if sort_dropdown else None
+            )
+            save_state()
         except Exception as e:
-            print(f"[ui_state] Failed to save: {e}")
+            logger.error("save_ui_state: %s", e)
 
     def load_ui_state(playlists_ui):
         try:
-            with UI_STATE_PATH.open("r") as f:
-                state = json.load(f)
-            concurrency.value = state.get("concurrency", concurrency.value)
-            strip_leading_checkbox.value = state.get(
-                "strip_leading", strip_leading_checkbox.value
+            concurrency.value = get_state("gui", "concurrency", concurrency.value)
+            strip_leading_checkbox.value = get_state(
+                "gui", "strip_leading", strip_leading_checkbox.value
             )
-            intro_outro_side.value = state.get(
-                "intro_outro_side", intro_outro_side.value
+            intro_outro_side.value = get_state(
+                "gui", "intro_outro_side", intro_outro_side.value
             )
-            intro_seconds.value = state.get("intro_outro_seconds", intro_seconds.value)
-            similarity_threshold.value = state.get(
-                "intro_outro_threshold", similarity_threshold.value
+            intro_seconds.value = get_state(
+                "gui", "intro_outro_seconds", intro_seconds.value
             )
-            upload_mode_dropdown.value = state.get(
-                "upload_mode", upload_mode_dropdown.value
+            similarity_threshold.value = get_state(
+                "gui", "intro_outro_threshold", similarity_threshold.value
             )
-            local_norm_checkbox.value = state.get(
-                "local_norm_enabled", local_norm_checkbox.value
+            upload_mode_dropdown.value = get_state(
+                "gui", "upload_mode", upload_mode_dropdown.value
             )
-            local_norm_target.value = state.get(
-                "local_norm_target", local_norm_target.value
+            local_norm_checkbox.value = get_state(
+                "gui", "local_norm_enabled", local_norm_checkbox.value
             )
-            local_norm_batch.value = state.get(
-                "local_norm_batch", local_norm_batch.value
+            local_norm_target.value = get_state(
+                "gui", "local_norm_target", local_norm_target.value
+            )
+            local_norm_batch.value = get_state(
+                "gui", "local_norm_batch", local_norm_batch.value
             )
             sort_dropdown = (
                 playlists_ui["sort_dropdown"]
                 if isinstance(playlists_ui, dict)
                 else None
             )
-            if sort_dropdown and state.get("playlist_sort"):
-                sort_dropdown.value = state["playlist_sort"]
+            playlist_sort = get_state("gui", "playlist_sort", None)
+            if sort_dropdown and playlist_sort:
+                sort_dropdown.value = playlist_sort
                 # Also update the current_sort key in the playlists module and refresh
                 playlists_ui["current_sort"]["key"] = sort_dropdown.value
         except Exception as e:
-            logger.error(f"load_ui_state: failed to read or parse state file: {e}")
-            # Create a default UI state file so subsequent runs have a persisted
-            # baseline. Use current control values when available, otherwise
-            # fall back to sensible defaults.
-            try:
-                default_state = {
-                    "concurrency": (
-                        concurrency.value if "concurrency" in locals() else "4"
-                    ),
-                    "strip_leading": (
-                        strip_leading_checkbox.value
-                        if "strip_leading_checkbox" in locals()
-                        else True
-                    ),
-                    "intro_outro_side": (
-                        intro_outro_side.value
-                        if "intro_outro_side" in locals()
-                        else "intro"
-                    ),
-                    "intro_outro_seconds": (
-                        intro_seconds.value if "intro_seconds" in locals() else "10.0"
-                    ),
-                    "intro_outro_threshold": (
-                        similarity_threshold.value
-                        if "similarity_threshold" in locals()
-                        else "0.75"
-                    ),
-                    "upload_mode": (
-                        upload_mode_dropdown.value
-                        if "upload_mode_dropdown" in locals()
-                        else "Create new card"
-                    ),
-                    "playlist_sort": None,
-                }
-                # Write atomically to UI_STATE_PATH
-                try:
-                    UI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-                except Exception:
-                    pass
-                tmp = UI_STATE_PATH.with_suffix(".tmp")
-                with tmp.open("w") as f:
-                    json.dump(default_state, f)
-                try:
-                    tmp.replace(UI_STATE_PATH)
-                except Exception:
-                    # Fallback if atomic replace not available
-                    with UI_STATE_PATH.open("w") as f:
-                        json.dump(default_state, f)
-                logger.info("Created default UI state file: %s", UI_STATE_PATH)
-            except Exception as ex:
-                logger.error(f"Failed to create default UI state file: {ex}")
+            logger.error(f"load_ui_state: failed to load state: {e}")
 
 
     # Shared runtime state
@@ -912,9 +861,12 @@ def main(page):
                     except Exception as ex:
                         removed["errors"].append(f"tokens: {ex}")
                     try:
-                        if UI_STATE_PATH and Path(UI_STATE_PATH).exists():
-                            Path(UI_STATE_PATH).unlink()
-                            removed["files"].append(str(UI_STATE_PATH))
+                        # Use ui_state helper to remove persisted UI state
+                        try:
+                            remove_state_file()
+                            removed["files"].append(str(get_state_path()))
+                        except Exception as ex:
+                            removed["errors"].append(f"ui_state: {ex}")
                     except Exception as ex:
                         removed["errors"].append(f"ui_state: {ex}")
 
