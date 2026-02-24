@@ -47,84 +47,14 @@ from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
 from yoto_up.yoto_app.about_dialog import show_about_dialog
-import http.server
-import socketserver
-import socket
 import subprocess
 import shutil
 
-try:
-    import simpleaudio as _simpleaudio
-
-    HAS_SIMPLEAUDIO = True
-except Exception:
-    logger.warning("simpleaudio module not available; audio playback disabled")
-    _simpleaudio = None
-    HAS_SIMPLEAUDIO = False
+from yoto_up.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
 
 # ft.context.disable_auto_update()
-
-os.environ["FLET_SECRET_KEY"] = os.urandom(12).hex()
-
-# Ensure FLET storage env vars are set to a sane default if not provided by the host.
-if os.getenv("FLET_APP_STORAGE_TEMP") is None:
-    os.environ["FLET_APP_STORAGE_TEMP"] = tempfile.mkdtemp()
-if os.getenv("FLET_APP_STORAGE_DATA") is None:
-    # If the environment didn't provide a Flet storage path, prefer the
-    # platform-specific per-user data directory. UI code historically used
-    # storage/data under the project; switch to the centralized value.
-    if FLET_APP_STORAGE_DATA:
-        os.environ["FLET_APP_STORAGE_DATA"] = str(FLET_APP_STORAGE_DATA)
-    else:
-        os.environ["FLET_APP_STORAGE_DATA"] = str(Path("storage") / "data")
-
-# Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
-# PyInstaller unpacks the app to a temporary folder which may be read-only for font cache writes.
-# Setting MPLCONFIGDIR to a temp directory prevents the "Matplotlib is building the font cache" pause
-# and avoids FileNotFoundError when matplotlib tries to access a bundled source file path.
-try:
-    mpl_cfg = os.path.join(os.getenv("FLET_APP_STORAGE_TEMP"), "yoto_up_matplotlib")
-    os.environ.setdefault("MPLCONFIGDIR", mpl_cfg)
-    os.makedirs(mpl_cfg, exist_ok=True)
-except Exception:
-    logger.warning(
-        "Failed to set up matplotlib config dir; font cache issues may occur"
-    )
-
-
-# Prefer a normal import so PyInstaller will detect and include the module.
-# Fall back to loading from the source file only when the normal import fails
-# (useful in some dev workflows).
-try:
-    import audio_adjust_utils  # type: ignore
-except Exception:
-    logger.warning("audio_adjust_utils import failed; attempting fallback load")
-    audio_adjust_utils = cast(Any, None)  # type: ignore
-    # fallback: attempt to load from the local source file if present
-    audio_adjust_utils_path = os.path.join(
-        os.path.dirname(__file__), "audio_adjust_utils.py"
-    )
-    if os.path.exists(audio_adjust_utils_path):
-        try:
-            _spec = importlib.util.spec_from_file_location(
-                "audio_adjust_utils", audio_adjust_utils_path
-            )
-            if _spec and _spec.loader:
-                # mypy/linters can be picky about module typing; ignore here
-                audio_adjust_utils = importlib.util.module_from_spec(_spec)  # type: ignore
-                sys.modules["audio_adjust_utils"] = audio_adjust_utils
-                _spec.loader.exec_module(audio_adjust_utils)  # type: ignore
-        except Exception:
-            audio_adjust_utils = cast(Any, None)  # type: ignore
-
-# Supported audio extensions
-AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"}
-
-# logger.remove()  # Remove default handler
-logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}")
-
 
 AUTHENTICATE_TEXT = """Not authenticated.
 
@@ -134,7 +64,6 @@ To authenticate with your Yoto account:
 2. A code and URL will be displayed. Open the URL in your web browser.
 3. Enter the code and complete the authentication process.
 """
-
 
 def main(page):
     logger.debug("Starting Yoto Up GUI")
