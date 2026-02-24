@@ -308,6 +308,7 @@ def main(page):
     try:
         _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
     except Exception:
+        logger.warning("Error checking for zenity; assuming file picker is supported", exc_info=True)
         _zenity_missing = False
     _file_picker_supported = not _zenity_missing
     if not _file_picker_supported:
@@ -2674,7 +2675,7 @@ def main(page):
     page.switch_to_auth_tab = switch_to_auth_tab
     page.invalidate_authentication = invalidate_authentication
 
-    def show_dev_warning():
+    def show_dev_warning(page):
         dlg = ft.AlertDialog(
             title=ft.Text("Yoto Up: In Development"),
             content=ft.Column(
@@ -2693,7 +2694,7 @@ def main(page):
         )
         page.show_dialog(dlg)
         page.update()
-    show_dev_warning()
+    show_dev_warning(page)
 
     def auth_complete():
         logger.debug("Auth complete")
