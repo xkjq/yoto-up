@@ -2773,29 +2773,6 @@ def main(page):
             )
             auth_complete()
             page.update()
-        # tokens_path = Path("tokens.json")
-        # logger.debug(f"Checking for existing tokens.json at {tokens_path.resolve()}")
-        # if tokens_path.exists():
-        #    def _init_api_from_tokens():
-        #        try:
-        #            api = ensure_api(api_ref)
-        #            api_ref["api"] = api
-        #            show_snack("Authenticated (from tokens.json)")
-        #            # Replace instructions with a prominent success message
-        #            auth_instructions.controls.clear()
-        #            auth_instructions.controls.extend([
-        #                ft.Text("Authenticated (from tokens.json)", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN, ),
-        #                ft.Text(api.TOKEN_FILE, size=10)
-        #            ]
-        #            )
-        #            auth_complete()
-        #        except Exception as e:
-        #            status.value = f"Tokens present but API init failed: {e}"
-        #            show_snack(f"API init from tokens.json failed: {e}", error=True)
-        #            print("[gui] init_api_from_tokens failed:", e)
-        #        page.update()
-
-        #    threading.Thread(target=_init_api_from_tokens, daemon=True).start()
     except Exception as e:
         logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
 
