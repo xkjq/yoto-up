@@ -74,26 +74,9 @@ def main(page):
     waveform_cache = {}
 
     # --- UI State Persistence (via yoto_up.ui_state) ---
-    def save_ui_state():
-        sort_dropdown = (
-            playlists_ui["sort_dropdown"] if isinstance(playlists_ui, dict) else None
-        )
-        try:
-            set_state("gui", "concurrency", concurrency.value)
-            set_state("gui", "strip_leading", strip_leading_checkbox.value)
-            set_state("gui", "intro_outro_side", intro_outro_side.value)
-            set_state("gui", "intro_outro_seconds", intro_seconds.value)
-            set_state("gui", "intro_outro_threshold", similarity_threshold.value)
-            set_state("gui", "upload_mode", upload_mode_dropdown.value)
-            set_state("gui", "local_norm_enabled", local_norm_checkbox.value)
-            set_state("gui", "local_norm_target", local_norm_target.value)
-            set_state("gui", "local_norm_batch", local_norm_batch.value)
-            set_state(
-                "gui", "playlist_sort", sort_dropdown.value if sort_dropdown else None
-            )
-            save_state()
-        except Exception as e:
-            logger.error("save_ui_state: %s", e)
+    # UI state is persisted inline from each control's event handler using
+    # `set_state(key, value)` followed by `save_state()` so only the changed
+    # piece of state is written.
 
     def load_ui_state(playlists_ui):
         try:
@@ -201,32 +184,35 @@ def main(page):
 
     # Upload controls
     concurrency = ft.TextField(
-        label="Concurrency", value="4", width=80, on_change=lambda e: save_ui_state()
+        label="Concurrency",
+        value="4",
+        width=80,
+        on_change=lambda e: set_state("gui", "concurrency", concurrency.value),
     )
     strip_leading_checkbox = ft.Checkbox(
         label="Strip leading track numbers",
         value=True,
         tooltip="Remove common leading track number prefixes from filenames (e.g. '01 - ', '1. ', '01)', '001_')",
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "strip_leading", strip_leading_checkbox.value),
     )
     intro_outro_side = ft.Dropdown(
         label="Side",
         value="intro",
         options=[ft.dropdown.Option("intro"), ft.dropdown.Option("outro")],
         width=100,
-        on_select=lambda e: save_ui_state(),
+        on_select=lambda e: set_state("gui", "intro_outro_side", intro_outro_side.value),
     )
     intro_seconds = ft.TextField(
         label="Segment seconds",
         value="10.0",
         width=80,
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "intro_outro_seconds", intro_seconds.value),
     )
     similarity_threshold = ft.TextField(
         label="Similarity threshold",
         value="0.75",
         width=80,
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "intro_outro_threshold", similarity_threshold.value),
     )
     upload_target_dropdown = ft.Dropdown(
         label="Upload target",
@@ -626,7 +612,13 @@ def main(page):
     if sort_dropdown:
 
         def _on_sort_change(ev):
-            save_ui_state()
+            try:
+                sd = (
+                    playlists_ui["sort_dropdown"] if isinstance(playlists_ui, dict) else None
+                )
+                set_state("gui", "playlist_sort", sd.value if sd else None)
+            except Exception:
+                logger.exception("_on_sort_change: failed to save playlist_sort")
 
         orig_on_change = getattr(sort_dropdown, "on_change", None)
         if orig_on_change and orig_on_change != _on_sort_change:
@@ -993,7 +985,7 @@ def main(page):
         value="Chapters",
         options=[ft.dropdown.Option("Chapters"), ft.dropdown.Option("Tracks")],
         width=150,
-        on_select=lambda e: save_ui_state(),
+        on_select=lambda e: set_state("gui", "upload_mode", upload_mode_dropdown.value),
     )
 
     # Normalization controls
@@ -1001,20 +993,20 @@ def main(page):
         label="Normalize audio (local)",
         value=False,
         tooltip="Normalize audio loudness before upload using ffmpeg-normalize",
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "local_norm_enabled", local_norm_checkbox.value),
     )
     local_norm_target = ft.TextField(
         label="Target LUFS",
         value="-23.0",
         width=100,
         tooltip="Target integrated loudness in LUFS (default -23.0)",
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "local_norm_target", local_norm_target.value),
     )
     local_norm_batch = ft.Checkbox(
         label="Batch mode",
         value=False,
         tooltip="Normalize all files as a batch (Album mode) instead of individually",
-        on_change=lambda e: save_ui_state(),
+        on_change=lambda e: set_state("gui", "local_norm_batch", local_norm_batch.value),
     )
 
     # Now load state after controls are created
