@@ -120,6 +120,7 @@ def show_about_dialog(page, api_ref, show_snack, clear_all_user_data_gui):
         ft.Text("Yoto Up", size=20, weight=ft.FontWeight.BOLD),
         ft.Text(f"Version: {version}"),
         ft.Text(f"Python: {platform.python_version()} ({platform.machine()})"),
+        ft.Text(f"Flet: {getattr(ft, '__version__', '(unknown)')}") ,
         ft.Text(f"Platform: {platform.platform()}"),
         ft.Divider(),
         ft.Text("Config:" , weight=ft.FontWeight.BOLD),
