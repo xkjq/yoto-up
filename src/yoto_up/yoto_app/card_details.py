@@ -1,3 +1,5 @@
+from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
+from yoto_up.models import Card
 import threading
 import asyncio
 import json
@@ -14,7 +16,6 @@ from datetime import datetime, timezone
 
 def make_show_card_details(
     page,
-    Card,
     IconReplaceDialog,
 ):
     """Factory that returns a callable with signature (ev, card).
@@ -24,8 +25,100 @@ def make_show_card_details(
     captures the dependencies that were previously closed-over in the
     nested function.
     """
+    def save_order_click(_ev=None):
+        page.show_snack("Saving order...")
+        page.update()
 
-    def show_card_details(e, card, preview_path: Path | None = None):
+        def bg_save():
+            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+            if not card_id:
+                logger.error("save_order: no card id found")
+                return
+
+            dlg_content = getattr(dialog, "content", None)
+            ui_items = None
+            reconstructed_titles = []
+            try:
+                if dlg_content is not None and hasattr(dlg_content, "controls"):
+                    for ctl in dlg_content.controls:
+                        try:
+                            children = getattr(ctl, "controls", None)
+                            if not children or not isinstance(children, (list, tuple)):
+                                continue
+                            matches = 0
+                            for child in children:
+                                ch = getattr(child, "_chapter", None)
+                                if ch is None and hasattr(child, "content"):
+                                    ch = getattr(child.content, "_chapter", None)
+                                if isinstance(ch, dict):
+                                    matches += 1
+                            if matches >= max(1, len(children) // 2):
+                                ui_items = children
+                                break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            if ui_items is None:
+                ui_items = list(chapter_items)
+
+            ordered = []
+            for i, it in enumerate(chapter_items):
+                try:
+                    ch = getattr(it, "_chapter", None)
+                    if ch is None and hasattr(it, "content"):
+                        ch = getattr(it.content, "_chapter", None)
+                    if isinstance(ch, dict):
+                        ordered.append(deepcopy(ch))
+                except Exception:
+                    continue
+
+            if ordered:
+                if "content" not in c or not isinstance(c.get("content"), dict):
+                    c["content"] = {}
+                c["content"]["chapters"] = ordered
+
+            card_model = Card.model_validate(c)
+            try:
+                card_model = Card(**c)
+            except Exception as ex:
+                logger.error(f"save_order: failed to build Card model: {ex}")
+                page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
+            try:
+                payload = card_model.model_dump(exclude_none=True)
+            except Exception:
+                payload = c
+
+            if not getattr(card_model, "cardId", None):
+                if getattr(card_model, "id", None):
+                    card_model.cardId = getattr(card_model, "id")
+                else:
+                    card_model.cardId = card_id
+
+            try:
+                payload = card_model.model_dump(exclude_none=True)
+            except Exception:
+                payload = {}
+            try:
+                if (c.get("content") or {}).get("chapters"):
+                    payload.setdefault("content", {})
+                    payload["content"]["chapters"] = deepcopy((c.get("content") or {}).get("chapters") or [])
+            except Exception:
+                pass
+
+            try:
+                updated = api.create_or_update_content(Card.model_validate(payload), return_card=True)
+                show_card_details(None, updated)
+                page.update()
+            except Exception as ex:
+                logger.error(f"save_order: background save failed: {ex}")
+
+        threading.Thread(target=bg_save, daemon=True).start()
+        logger.info("save_order: background save started")
+
+    def show_card_details(e, card: Card, preview_path: Path | None = None):
+        assert isinstance(card, Card), f"Expected card to be a Card model instance, got {type(card)}"
         api = page.api_ref.get("api")
         def refresh_icon_cache(ev=None):
             try:
@@ -62,17 +155,12 @@ def make_show_card_details(
                 except Exception:
                     return obj
 
-            c = _normalize(card)
-            if not isinstance(c, dict):
-                try:
-                    c = {"title": str(card)}
-                except Exception:
-                    c = {}
+            # We need to update c to work with the Card model directly
+            c = card
 
             def replace_individual_icon(ev, kind="chapter", ch_i=None, tr_i=None):
                 try:
-                    api = page.api_ref.get("api")
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
                         page.show_snack("Unable to determine card id", error=True)
                         return
@@ -90,7 +178,7 @@ def make_show_card_details(
 
             def clear_chapter_icon(ev, ch_i=None):
                 try:
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
                         page.show_snack("Unable to determine card id", error=True)
                         return
@@ -122,7 +210,7 @@ def make_show_card_details(
 
             def clear_track_icon(ev, ch_i=None, tr_i=None):
                 try:
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
                         page.show_snack("Unable to determine card id", error=True)
                         return
@@ -189,7 +277,6 @@ def make_show_card_details(
                             import os
                             from pathlib import Path
                             try:
-                                api = api_ref.get("api")
                                 resolved_url = None
                                 if url and url.startswith("http"):
                                     resolved_url = url
@@ -215,7 +302,6 @@ def make_show_card_details(
                                 page.show_snack(f"Download failed: {ex}", error=True)
                         tr_img = None
                         try:
-                            api = api_ref.get("api")
                             if api and tr_icon_field:
                                 #tp = api.get_icon_cache_path(tr_icon_field)
                                 based_image = api.get_icon_b64_data(tr_icon_field)
@@ -334,10 +420,10 @@ def make_show_card_details(
                         items.append(ft.Text(f"- {str(tr)}", selectable=True))
                 return items
 
-            chapters = (c.get("content") or {}).get("chapters")
+            chapters = c.get_chapters()
             if not chapters:
                 try:
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if api and card_id:
                         full_card = api.get_card(card_id)
                         if hasattr(full_card, "model_dump"):
@@ -350,71 +436,42 @@ def make_show_card_details(
             controls = []
             # capture cover source found in metadata and defer building the Image
             cover_src = None
-            controls.append(ft.Text(f"Title: {c.get('title', '')}", selectable=True))
-            controls.append(ft.Text(f"Card ID: {c.get('cardId', '')}", selectable=True))
+            controls.append(ft.Text(f"Title: {c.title}", selectable=True))
+            controls.append(ft.Text(f"Card ID: {c.cardId}", selectable=True))
             controls.append(
                 ft.Text(
-                    f"Created by Client ID: {c.get('createdByClientId', '')}",
+                    f"Created by Client ID: {c.createdByClientId}",
                     selectable=True,
                 )
             )
             controls.append(
-                ft.Text(f"Created At: {c.get('createdAt', '')}", selectable=True)
+                ft.Text(f"Created At: {c.createdAt}", selectable=True)
             )
             controls.append(
                 ft.Text(
-                    f"Hidden: {c.get('hidden', False)}    Deleted: {c.get('deleted', False)}",
+                    f"Deleted: {c.deleted}",
                     selectable=True,
                 )
             )
 
-            meta = c.get("metadata") or {}
+            meta = c.metadata
             if meta:
-                try:
-                    cover = meta.get("cover") or {}
-                    if cover:
-                        for key in ("imageL", "imageM", "imageS", "image"):
-                            url_or_field = cover.get(key)
-                            if not url_or_field:
-                                continue
-                            try:
-                                if isinstance(url_or_field, str) and (
-                                    url_or_field.startswith("http")
-                                    or url_or_field.startswith("//")
-                                ):
-                                    try:
-                                        cache_fn = getattr(page, 'get_cached_cover', None)
-                                        if callable(cache_fn):
-                                            p = cache_fn(url_or_field)
-                                            if p:
-                                                # defer creating the Image widget until dialog size is known
-                                                cover_src = str(p)
-                                            else:
-                                                cover_src = url_or_field
-                                        else:
-                                            cover_src = url_or_field
-                                    except Exception:
-                                        cover_src = url_or_field
-                                    break
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
+                cover_src = c.get_cover_url()
                 controls.append(ft.Divider())
                 controls.append(ft.Text("Metadata:", weight=ft.FontWeight.BOLD))
                 controls.append(
-                    ft.Text(f"  Author: {meta.get('author', '')}", selectable=True)
+                    ft.Text(f"  Author: {meta.author}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Category: {meta.get('category', '')}", selectable=True)
+                    ft.Text(f"  Category: {meta.category}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Description: {meta.get('description', '')}", selectable=True)
+                    ft.Text(f"  Description: {meta.description}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Note: {meta.get('note', '')}", selectable=True)
+                    ft.Text(f"  Note: {meta.note}", selectable=True)
                 )
-                tags = meta.get("tags")
+                tags = meta.tags
                 if tags:
                     if isinstance(tags, (list, tuple)):
                         controls.append(
@@ -422,7 +479,7 @@ def make_show_card_details(
                         )
                     else:
                         controls.append(ft.Text(f"  Tags: {tags}", selectable=True))
-                genres = meta.get("genre") or meta.get("genres")
+                genres = meta.genre
                 if genres:
                     if isinstance(genres, (list, tuple)):
                         controls.append(
@@ -430,24 +487,24 @@ def make_show_card_details(
                         )
                     else:
                         controls.append(ft.Text(f"  Genres: {genres}", selectable=True))
-                media = meta.get("media") or {}
+                media = meta.media
                 if media:
                     controls.append(
                         ft.Text(
-                            f"  Duration: {fmt_sec(media.get('duration'))}    FileSize: {media.get('fileSize', '')}",
+                            f"  Duration: {fmt_sec(media.duration)}    FileSize: {media.fileSize}",
                             selectable=True,
                         )
                     )
-                if meta.get("previewAudio"):
+                if meta.previewAudio:
                     controls.append(
                         ft.Text(
-                            f"  Preview Audio: {meta.get('previewAudio')}",
+                            f"  Preview Audio: {meta.previewAudio}",
                             selectable=True,
                         )
                     )
 
-            content = c.get("content") or {}
-            chapters = content.get("chapters") or []
+            content = c.content or {}
+            chapters = content.chapters or []
             # capture header controls (everything up to the chapters section)
             header_controls = list(controls)
             chapters_view = None
@@ -455,97 +512,6 @@ def make_show_card_details(
                 controls.append(ft.Divider())
                 controls.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
 
-                def save_order_click(_ev=None):
-                    page.show_snack("Saving order...")
-                    page.update()
-
-                    def bg_save():
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
-                        if not card_id:
-                            logger.error("save_order: no card id found")
-                            return
-
-                        dlg_content = getattr(dialog, "content", None)
-                        ui_items = None
-                        reconstructed_titles = []
-                        try:
-                            if dlg_content is not None and hasattr(dlg_content, "controls"):
-                                for ctl in dlg_content.controls:
-                                    try:
-                                        children = getattr(ctl, "controls", None)
-                                        if not children or not isinstance(children, (list, tuple)):
-                                            continue
-                                        matches = 0
-                                        for child in children:
-                                            ch = getattr(child, "_chapter", None)
-                                            if ch is None and hasattr(child, "content"):
-                                                ch = getattr(child.content, "_chapter", None)
-                                            if isinstance(ch, dict):
-                                                matches += 1
-                                        if matches >= max(1, len(children) // 2):
-                                            ui_items = children
-                                            break
-                                    except Exception:
-                                        continue
-                        except Exception:
-                            pass
-
-                        if ui_items is None:
-                            ui_items = list(chapter_items)
-
-                        ordered = []
-                        for i, it in enumerate(chapter_items):
-                            try:
-                                ch = getattr(it, "_chapter", None)
-                                if ch is None and hasattr(it, "content"):
-                                    ch = getattr(it.content, "_chapter", None)
-                                if isinstance(ch, dict):
-                                    ordered.append(deepcopy(ch))
-                            except Exception:
-                                continue
-
-                        if ordered:
-                            if "content" not in c or not isinstance(c.get("content"), dict):
-                                c["content"] = {}
-                            c["content"]["chapters"] = ordered
-
-                        card_model = Card.model_validate(c)
-                        try:
-                            card_model = Card(**c)
-                        except Exception as ex:
-                            logger.error(f"save_order: failed to build Card model: {ex}")
-                            page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
-                        try:
-                            payload = card_model.model_dump(exclude_none=True)
-                        except Exception:
-                            payload = c
-
-                        if not getattr(card_model, "cardId", None):
-                            if getattr(card_model, "id", None):
-                                card_model.cardId = getattr(card_model, "id")
-                            else:
-                                card_model.cardId = card_id
-
-                        try:
-                            payload = card_model.model_dump(exclude_none=True)
-                        except Exception:
-                            payload = {}
-                        try:
-                            if (c.get("content") or {}).get("chapters"):
-                                payload.setdefault("content", {})
-                                payload["content"]["chapters"] = deepcopy((c.get("content") or {}).get("chapters") or [])
-                        except Exception:
-                            pass
-
-                        try:
-                            updated = api.create_or_update_content(Card.model_validate(payload), return_card=True)
-                            show_card_details(None, updated)
-                            page.update()
-                        except Exception as ex:
-                            logger.error(f"save_order: background save failed: {ex}")
-
-                    threading.Thread(target=bg_save, daemon=True).start()
-                    logger.info("save_order: background save started")
 
                 chapter_items = []
                 for ch_idx, ch in enumerate(chapters):
@@ -672,30 +638,15 @@ def make_show_card_details(
                             new = getattr(ev, "index", None)
                         if old is None or new is None:
                             return
-                        try:
-                            ch_list = c.get("content", {}).get("chapters", [])
-                            before = [ (ch.get("title") if isinstance(ch, dict) else str(ch)) for ch in list(ch_list) ]
-                        except Exception:
-                            before = []
-                        try:
-                            item = ch_list.pop(old)
-                            ch_list.insert(new, item)
-                        except Exception as err:
-                            print("[playlists] on_reorder: mutation error", err)
-                        try:
-                            after = [ (ch.get("title") if isinstance(ch, dict) else str(ch)) for ch in (c.get("content") or {}).get("chapters") or [] ]
-                        except Exception:
-                            after = []
-                        try:
-                            ui_item = chapter_items.pop(old)
-                            chapter_items.insert(new, ui_item)
-                        except Exception:
-                            pass
-                        try:
-                            page.show_dialog(dialog)
-                            page.update()
-                        except Exception:
-                            page.update()
+                        ch_list = c.get_chapters()
+                        before = [ ch.title for ch in list(ch_list) ]
+                        item = ch_list.pop(old)
+                        ch_list.insert(new, item)
+                        after = [ ch.title for ch in list(ch_list) ]
+                        ui_item = chapter_items.pop(old)
+                        chapter_items.insert(new, ui_item)
+                        page.show_dialog(dialog)
+                        page.update()
                     except Exception as ex:
                         print("chapter reorder failed:", ex)
 
@@ -718,7 +669,7 @@ def make_show_card_details(
 
                 def use_chapter_icon(ev, ch_i, tr_i):
                     try:
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                        card_id = c.cardId
                         if not card_id:
                             page.show_snack("Unable to determine card id", error=True)
                             return
@@ -755,10 +706,10 @@ def make_show_card_details(
                 try:
                     controls = [ft.Text(json.dumps(c, indent=2), selectable=True)]
                 except Exception:
-                    controls = [ft.Text(str(card), selectable=True)]
+                    controls = [ft.Text(str(c), selectable=True)]
         except Exception:
             print("Failed to render card details:", traceback.format_exc())
-            controls = [ft.Text(str(card), selectable=True)]
+            controls = [ft.Text(str(c), selectable=True)]
 
         def close_dialog(ev):
             try:
@@ -824,12 +775,12 @@ def make_show_card_details(
                         space_width = 8
                         spacer = ft.Container(width=leading * space_width)
                         if stripped in ('{', '}', '[', ']', '},', '],'):
-                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
+                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
                             row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                             json_lines.append(row)
                         else:
                             # keep the original line but apply monospace
-                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
+                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'), selectable=True)
                             row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                             json_lines.append(row)
 
@@ -871,7 +822,7 @@ def make_show_card_details(
 
         def show_versions(ev=None):
             try:
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
                     page.show_snack("Unable to determine card id", error=True)
                     return
@@ -1126,7 +1077,7 @@ def make_show_card_details(
 
         def relabel_keys(ev=None):
             try:
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
                     page.show_snack("Unable to determine card id", error=True)
                     return
@@ -1151,7 +1102,7 @@ def make_show_card_details(
 
         def relabel_overlays(ev=None):
             try:
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
                     page.show_snack("Unable to determine card id", error=True)
                     return
@@ -1183,7 +1134,7 @@ def make_show_card_details(
                     except Exception:
                         pass
                     try:
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                        card_id = c.cardId
                         if not card_id:
                             page.show_snack("Unable to determine card id", error=True)
                             return
@@ -1233,7 +1184,7 @@ Merging will result in:
 
                     def worker():
                         try:
-                            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                            card_id = c.cardId
                             if not card_id:
                                 page.show_snack("Unable to determine card id", error=True)
                                 return
@@ -1276,8 +1227,6 @@ Merging will result in:
             start_replace_icons_background(
                 page,
                 c,
-                playlists_list,
-                make_playlist_row,
             )
 
         # popup dialog for track-related actions (shows title + cover image)
@@ -1287,45 +1236,10 @@ Merging will result in:
             nonlocal tracks_dialog
             try:
                 title_text = c.get("title", "") if isinstance(c, dict) else str(c)
-                cover_img = None
-                try:
-                    cover = (c.get("metadata") or {}).get("cover") or {}
-                    for key in ("imageL", "imageM", "imageS", "image"):
-                        url_or_field = cover.get(key)
-                        if not url_or_field:
-                            continue
-                        # remote URL
-                            try:
-                                if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
-                                    try:
-                                        cache_fn = getattr(page, 'get_cached_cover', None)
-                                        if callable(cache_fn):
-                                            p = cache_fn(url_or_field)
-                                            if p:
-                                                cover_img = ft.Image(src=str(p), width=160, height=160)
-                                            else:
-                                                cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                        else:
-                                            cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                    except Exception:
-                                        cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                    break
-                            except Exception:
-                                pass
-                        ## try cached icon path
-                        #try:
-                        #    api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                        #    tp = api_local.get_icon_cache_path(url_or_field)
-                        #    if tp and Path(tp).exists():
-                        #        cover_img = ft.Image(src=str(tp), width=160, height=160)
-                        #        break
-                        #except Exception:
-                        #    pass
-                except Exception:
-                    pass
+                cover_img =  card.get_cover_url()
 
                 body = []
-                if cover_img:
+                if cover_img is not None:
                     body.append(ft.Row([cover_img, ft.Column([ft.Text(title_text, weight=ft.FontWeight.BOLD)])], alignment=ft.MainAxisAlignment.START, spacing=12))
                 else:
                     body.append(ft.Text(title_text, weight=ft.FontWeight.BOLD))
@@ -1566,10 +1480,9 @@ Renumbering keys will assign sequential keys to all tracks.
                     on_click=lambda ev: (
                         setattr(dialog, 'open', False),
                         page.update(),
-                        page.show_edit_card_dialog(
+                        show_edit_card_dialog(
                             c,
                             page,
-                            show_card_details=show_card_details,
                         ),
                     ),
                 ),

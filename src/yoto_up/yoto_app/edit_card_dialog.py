@@ -1,3 +1,4 @@
+from yoto_up.yoto_app.api_manager import ensure_api
 import flet as ft
 import threading
 from types import SimpleNamespace
@@ -12,10 +13,8 @@ from .icon_import_helpers import get_base64_from_path
 # This function is designed to be imported and called from playlists.py
 # It expects the same arguments as the original show_edit closure.
 def show_edit_card_dialog(
-    c,
+    c: Card,
     page,
-    status_ctrl,
-    show_card_details,
 ):
     """
     Show the edit card dialog for a playlist card.
@@ -29,11 +28,8 @@ def show_edit_card_dialog(
         previous_dialog_ref: Optional dict to store the previous dialog instance for external closing
     """
 
-    api = page.ensure_api(page.api_ref)
-    try:
-        title_field = ft.TextField(label="Card Title", value=c.get("title", ""))
-    except Exception:
-        title_field = ft.TextField(label="Card Title", value="")
+    api = ensure_api(page.api_ref)
+    title_field = ft.TextField(label="Card Title", value=c.title)
 
     card_pre_edit = deepcopy(c)
 
@@ -45,9 +41,9 @@ def show_edit_card_dialog(
 
     chapter_fields = []
     track_fields = []
-    chapters_local = c.get("content", {}).get("chapters") or []
-    meta = c.get("metadata") or {}
-    category_value = meta.get("category") or ""
+    chapters_local = c.get_chapters()
+    meta = c.get_metadata()
+    category_value = meta.category
     category_dropdown = ft.Dropdown(
         label="Category",
         width=300,
@@ -66,13 +62,13 @@ def show_edit_card_dialog(
     )
     description_field = ft.TextField(
         label="Description",
-        value=meta.get("description") or "",
+        value=meta.description,
         multiline=True,
         width=760,
     )
     note_field = ft.TextField(
         label="Note (metadata)",
-        value=meta.get("note") or "",
+        value=meta.note,
         multiline=True,
         min_lines=2,
         max_lines=6,
@@ -81,31 +77,31 @@ def show_edit_card_dialog(
     genre_field = ft.TextField(
         label="Genres (comma separated)",
         value=(
-            ", ".join(meta.get("genre"))
-            if isinstance(meta.get("genre"), (list, tuple))
-            else (meta.get("genre") or "")
+            ", ".join(meta.genre)
+            if isinstance(meta.genre, (list, tuple))
+            else (meta.genre or "")
         ),
     )
     languages_field = ft.TextField(
         label="Languages (comma separated)",
         value=(
-            ", ".join(meta.get("languages"))
-            if isinstance(meta.get("languages"), (list, tuple))
-            else (meta.get("languages") or "")
+            ", ".join(meta.languages)
+            if isinstance(meta.languages, (list, tuple))
+            else (meta.languages or "")
         ),
     )
     tags_field = ft.TextField(
         label="Tags (comma separated)",
         value=(
-            ", ".join(meta.get("tags"))
-            if isinstance(meta.get("tags"), (list, tuple))
-            else (meta.get("tags") or "")
+            ", ".join(meta.tags)
+            if isinstance(meta.tags, (list, tuple))
+            else (meta.tags or "")
         ),
     )
     # Add authors field for editing
     author_field = ft.TextField(
         label="Author",
-        value=meta.get("author") or "",
+        value=meta.author or "",
     )
 
     edit_controls = [
@@ -152,14 +148,10 @@ def show_edit_card_dialog(
                             ft.TextButton("Yes", on_click=lambda e: (setattr(confirm_dialog, 'open', False), chapters_local.pop(idx), show_edit_card_dialog(
                                 c,
                                 page,
-                                status_ctrl,
-                                show_card_details=show_card_details,
                             ))),
                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), show_edit_card_dialog(
                                 c,
                                 page,
-                                status_ctrl,
-                                show_card_details=show_card_details,
                             ))),
                         ],
                     )
@@ -207,8 +199,6 @@ def show_edit_card_dialog(
                                         show_edit_card_dialog(
                                             c,
                                             page,
-                                            status_ctrl,
-                                            show_card_details=show_card_details,
                                         )
                             except Exception as ex:
                                 logger.error(f"Failed to delete track: {ex}")
@@ -269,9 +259,7 @@ def show_edit_card_dialog(
         #    page,
         #    ensure_api,
         #    CLIENT_ID,
-        #    status_ctrl,
         #    fetch_playlists_sync,
-        #    show_card_details=show_card_details,
         #)
 
     dnd_controls = []
@@ -295,8 +283,6 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        status_ctrl,
-                        show_card_details=show_card_details,
                     )
                 return _delete
             dnd_controls.append(
@@ -324,8 +310,6 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        status_ctrl,
-                        show_card_details=show_card_details,
                     )
                 return _delete
             dnd_controls.append(
@@ -412,27 +396,27 @@ def show_edit_card_dialog(
 
             def save_thread():
                 try:
-                    api.update_card(card_model, return_card_model=False)
-                    status_ctrl.value = "Card updated"
-                    page.fetch_playlists_sync(page)
+                    updated_card = api.update_card(card_model, return_card_model=True)
+                    page.status_ctrl.value = "Card updated"
+                    page.update_local_card_cache(updated_card)
                 except Exception as ex:
                     logger.debug(f"Update card failed: {ex}")
                     msg = f"Update failed: {ex}"
-                    status_ctrl.value = msg
+                    page.status_ctrl.value = msg
                 finally:
-                    show_card_details(None, card_model)
+                    page.show_card_details(None, card_model)
                     page.update()
 
             threading.Thread(target=save_thread, daemon=True).start()
         except Exception as ex:
             logger.debug(f"Failed to prepare update: {ex}")
             msg = f"Failed to prepare update: {ex}"
-            status_ctrl.value = msg
+            page.status_ctrl.value = msg
             page.update()
         page.update()
 
     def close_edit(_ev):
-        show_card_details(None, card_pre_edit)
+        page.show_card_details(None, card_pre_edit)
         page.update()
 
     edit_list = ft.ListView(

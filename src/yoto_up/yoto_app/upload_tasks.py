@@ -387,19 +387,9 @@ class UploadManager:
 
         start_btn = ft.Button("Start Upload")
         stop_btn = ft.Button("Stop Upload", disabled=True)
-        fetch_btn = ft.Button("Fetch Playlists")
-        multi_select_btn = ft.Button("Select Multiple")
-        delete_selected_btn = ft.Button("Delete Selected", disabled=True)
-        export_selected_btn = ft.Button("Export Selected", disabled=True)
         remove_uploaded_btn = ft.Button(
             "Remove Uploaded", on_click=remove_uploaded_files
         )
-
-        ## Add Remove Uploaded button to the UI after the action buttons
-        # action_buttons_row = ft.Row([
-        #    start_btn, stop_btn, fetch_btn, multi_select_btn, delete_selected_btn, export_selected_btn, remove_uploaded_btn
-        # ])
-        # page.add(action_buttons_row)
 
         def update_overall():
             # update overall progress bar when a file completes
@@ -1512,9 +1502,6 @@ class UploadManager:
 
         start_btn.on_click = _start_click
         stop_btn.on_click = lambda e: run_coro_in_thread(stop_uploads, e, page)
-        fetch_btn.on_click = lambda e: threading.Thread(
-            target=lambda: fetch_playlists_sync(e), daemon=True
-        ).start()
 
         # Upload page (appears after Playlists)
         # Add a dropdown to select upload mode: Chapters or Tracks

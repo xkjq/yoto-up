@@ -35,7 +35,7 @@ from yoto_up.yoto_app import ui_helpers as ui_helpers
 from yoto_up.yoto_app import auth as auth_mod
 from yoto_up.yoto_app import config as yoto_config
 from yoto_up.yoto_app.api_manager import ensure_api
-from yoto_up.yoto_app.playlists import build_playlists_panel
+from yoto_up.yoto_app.playlists import build_playlists_panel, build_playlists_ui
 from loguru import logger
 from yoto_up.yoto_app.upload_tasks import (
  UploadManager,
@@ -74,10 +74,24 @@ def main(page):
 
     page.cards: list[Card] = []
 
+    def update_local_card_cache(card):
+        # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
+        try:
+            existing = next((c for c in page.cards if c.id == card.id), None)
+            if existing:
+                page.cards.remove(existing)
+            page.cards.append(card)
+            build_playlists_ui(page)
+        except Exception:
+            logger.error(f"Failed to update local card cache: {traceback.format_exc()}")
+
+    page.update_local_card_cache = update_local_card_cache  # expose on page for easy access from helpers
+
     api_ref = {"api": None}
 
     page.api_ref = api_ref  # expose on page for easy access from helpers   
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
+    page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
 
     page.selected_playlist_ids = set()  # exposed on page for easy access from playlist row callbacks
 
@@ -228,7 +242,6 @@ def main(page):
 
     page.show_card_details = make_show_card_details(
             page=page,
-            Card=Card,
             IconReplaceDialog=IconReplaceDialog,
         )
 
@@ -488,39 +501,6 @@ def main(page):
         expand=True,
     )
 
-
-    ## Ensure the original header buttons are present in the playlists header
-    #try:
-    #    header = (
-    #        playlists_column.controls[0]
-    #        if playlists_column and len(playlists_column.controls) > 0
-    #        else None
-    #    )
-    #    logger.debug(f"Playlists header: {header}")
-
-    #    if header and hasattr(header, "controls"):
-    #        try:
-    #            hdr = list(header.controls)
-    #            existing_texts = [getattr(c, "text", None) for c in hdr]
-    #            if "Fetch Playlists" not in existing_texts:
-    #                insert_at = 1
-    #                # prefer buttons returned from playlists module
-    #                hdr[insert_at:insert_at] = [
-    #                    playlist_fetch_btn or fetch_btn,
-    #                    playlist_multi_select_btn or multi_select_btn,
-    #                    playlist_delete_selected_btn or delete_selected_btn,
-    #                    playlist_export_selected_btn or export_selected_btn,
-    #                ]
-    #                header.controls = hdr
-    #                logger.debug("[_on_playlists_header_merge] Merged playlist buttons into header")
-    #            else:
-    #                logger.debug("[_on_playlists_header_merge] Header already contains playlist buttons; skipping merge")
-    #        except Exception as e:
-    #            logger.error(f"[_on_playlists_header_merge] failed: {e}")
-    #    else:
-    #        logger.error("[_on_playlists_header_merge] playlists header not found or has no controls")
-    #except Exception:
-    #    logger.error("Failed to merge header buttons into playlists panel: %s", traceback.format_exc())
 
 
 

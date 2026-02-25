@@ -567,8 +567,9 @@ class IconReplaceDialog:
                         if not getattr(target_tr, 'display', False):
                             target_tr.display = TrackDisplay()
                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                    self.api.update_card(full, return_card_model=False)
-                    self.show_card_details(None, full)
+                    new_card  = self.api.update_card(full, return_card_model=True)
+                    self.page.update_local_card_cache(new_card)
+                    self.page.show_card_details(None, new_card)
                     self.show_snack("Applied marked icon")
                 except Exception as ex:
                     logger.exception("use_selected_icon failed")

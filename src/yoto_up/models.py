@@ -127,6 +127,32 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
+    def get_metadata(self) -> CardMetadata:
+        """Return the card's metadata, or an empty CardMetadata if not available."""
+        try:
+            return self.metadata or CardMetadata()
+        except Exception:
+            logger.warning(f"Failed to get metadata for card {self.cardId}")
+            return CardMetadata()
+
+    def get_chapters(self) -> List[Chapter]:
+        """Return the list of chapters in the card, or an empty list if not available."""
+        try:
+            if self.content and self.content.chapters:
+                return self.content.chapters
+        except Exception:
+            logger.warning(f"Failed to get chapters for card {self.cardId}")
+        return []
+
+    def get_cover_url(self) -> Optional[str]:
+        """Return the URL of the card's cover image, if available."""
+        try:
+            if self.metadata and self.metadata.cover and self.metadata.cover.imageL:
+                return self.metadata.cover.imageL
+        except Exception:
+            logger.warning(f"Failed to get cover URL for card {self.cardId}")
+        return None
+
     def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None, render_method: str = "braille", braille_dims: tuple[int, int] = (8, 4), braille_x_scale: int | None = None, include_chapters: bool = True ):
         def trunc(val):
             if truncate_fields_limit is None or truncate_fields_limit <= 0:

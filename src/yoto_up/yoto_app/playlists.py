@@ -1,3 +1,5 @@
+from yoto_up.yoto import app
+from yoto_up.yoto_app.api_manager import ensure_api
 from matplotlib.pylab import sort
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import sys
@@ -19,8 +21,9 @@ from types import SimpleNamespace
 
 try:
     from pynput import keyboard
+
     _PYNPUT_AVAILABLE = True
-except Exception: # Broad because pyodide etc may raise weird errors
+except Exception:  # Broad because pyodide etc may raise weird errors
     _PYNPUT_AVAILABLE = False
 
 import httpx
@@ -38,6 +41,7 @@ from yoto_up.paths import save_playlists, VERSIONS_DIR
 _playlists_fetch_lock = threading.Lock()
 _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
+
 
 def card_matches_filters(card_obj, filters: Dict[str, Any]):
     try:
@@ -93,29 +97,20 @@ def card_matches_filters(card_obj, filters: Dict[str, Any]):
 
     return True
 
+
 def _extract_cover_source(card_item: Card, api_instance):
+    logger.debug(f"Extracting cover source for card: {get_card_id_local(card_item)}")
     meta = card_item.metadata
     if meta is None:
         return None
     cover = meta.cover
     if cover is None:
         return None
-    for k in ("imageS", "imageM", "imageL", "image"):
-        v = cover.get(k)
-        if not v:
-            continue
-        if isinstance(v, str) and v.startswith("yoto:#") and api_instance:
-            try:
-                p = api_instance.get_icon_cache_path(v)
-                if p and Path(p).exists():
-                    return str(p)
-            except Exception:
-                pass
-        if isinstance(v, str) and (
-            v.startswith("http") or v.startswith("//")
-        ):
-            return v
-    return None
+    v = cover.imageL
+    if not v:
+        return None
+    return v
+
 
 def get_card_id_local(card):
     if hasattr(card, "cardId") and getattr(card, "cardId"):
@@ -134,11 +129,12 @@ def get_card_id_local(card):
         pass
     return None
 
+
 def delete_playlist(ev, page, card: Card, row_container=None):
     def do_delete(_ev=None):
         try:
             client = CLIENT_ID
-            api = page.ensure_api(page.api_ref, client)
+            api = ensure_api(page.api_ref, client)
             content_id = get_card_id_local(card)
             if not content_id:
                 page.status_ctrl.value = "Unable to determine card id to delete"
@@ -147,7 +143,11 @@ def delete_playlist(ev, page, card: Card, row_container=None):
             # save a local version snapshot before deleting so it can be restored
             try:
                 try:
-                    payload = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else None
+                    payload = (
+                        card.model_dump(exclude_none=True)
+                        if hasattr(card, "model_dump")
+                        else None
+                    )
                 except Exception:
                     payload = None
                 if isinstance(payload, dict):
@@ -160,12 +160,20 @@ def delete_playlist(ev, page, card: Card, row_container=None):
             api.delete_content(content_id)
             try:
                 # Only remove if row_container looks like a real control and is present
-                if row_container is not None and isinstance(row_container, ft.Control) and row_container in page.playlists_list.controls:
+                if (
+                    row_container is not None
+                    and isinstance(row_container, ft.Control)
+                    and row_container in page.playlists_list.controls
+                ):
                     page.playlists_list.controls.remove(row_container)
                 else:
                     # defensive fallback: remove any None entries, otherwise clear to avoid invalid payloads
                     try:
-                        cleaned = [c for c in page.playlists_list.controls if c is not None and isinstance(c, ft.Control)]
+                        cleaned = [
+                            c
+                            for c in page.playlists_list.controls
+                            if c is not None and isinstance(c, ft.Control)
+                        ]
                         page.playlists_list.controls[:] = cleaned
                     except Exception:
                         try:
@@ -243,24 +251,21 @@ def make_playlist_row(page, card_obj, idx=None):
 
     delete_btn = ft.TextButton(
         "Delete",
-        on_click=lambda ev, page=page, card=card_obj, row_container=None: delete_playlist(
-            ev, page, card, row_container
+        on_click=lambda ev, page=page, card=card_obj, row_container=None: (
+            delete_playlist(ev, page, card, row_container)
         ),
     )
-
 
     img_ctrl = ft.Container(width=64, height=64)
     api: YotoAPI = page.api_ref.get("api")
     try:
-        cover_src = (
-            _extract_cover_source(card_obj, api_instance=api) if api else None
-        )
+        cover_src = _extract_cover_source(card_obj, api_instance=api)
         logger.debug(f"Extracted cover source for card {cid}: {cover_src}")
         if cover_src is not None:
             logger.debug(f"Creating image control for cover {cover_src} of card {cid}")
             try:
                 # Prefer cached local path from page helper if available
-                cache_fn = getattr(page, 'get_cached_cover', None)
+                cache_fn = getattr(page, "get_cached_cover", None)
                 if callable(cache_fn) and str(cover_src).startswith("http"):
                     p = cache_fn(cover_src)
                     if p:
@@ -270,34 +275,44 @@ def make_playlist_row(page, card_obj, idx=None):
                 else:
                     img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
             except Exception:
-                logger.error(f"Error creating image control for cover {cover_src} of card {cid}")
+                logger.error(
+                    f"Error creating image control for cover {cover_src} of card {cid}"
+                )
                 img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
         else:
             logger.debug(f"No cover source found for card {cid}")
             if api:
+
                 def _resolve_in_bg(card=card_obj, ctl=img_ctrl):
-                        src = _extract_cover_source(card, api_instance=api)
-                        if src:
+                    src = card.get_cover_url()
+                    if src:
+                        try:
+                            _ = ft.Image(src=src, width=64, height=64)
+                            page.playlists_list.controls.clear()
                             try:
-                                _ = ft.Image(src=src, width=64, height=64)
-                                page.playlists_list.controls.clear()
-                                try:
-                                    threading.Thread(
-                                        target=lambda: fetch_playlists_sync(page),
-                                        daemon=True,
-                                    ).start()
-                                except Exception:
-                                    logger.error("Error starting background thread for fetching playlists")
+                                threading.Thread(
+                                    target=lambda: fetch_playlists_sync(page),
+                                    daemon=True,
+                                ).start()
                             except Exception:
-                                logger.error("Error creating image control in background thread")
+                                logger.error(
+                                    "Error starting background thread for fetching playlists"
+                                )
+                        except Exception:
+                            logger.error(
+                                "Error creating image control in background thread"
+                            )
 
                 page.run_task(_resolve_in_bg, card_obj, img_ctrl)
-                #threading.Thread(target=_resolve_in_bg, daemon=True).start()
+                # threading.Thread(target=_resolve_in_bg, daemon=True).start()
 
-    except Exception:
+    except Exception as e:
         logger.error(f"Error extracting cover for card {cid}")
+        logger.debug(f"Exception details: {e}")
 
-    logger.debug(f"Creating checkbox for card {cid} with multi-select mode {multi_select_mode}")
+    logger.debug(
+        f"Creating checkbox for card {cid} with multi-select mode {page.playlist_multi_select_mode}"
+    )
     cb = ft.Checkbox(value=False)
     try:
         cb.visible = page.playlist_multi_select_mode
@@ -321,19 +336,17 @@ def make_playlist_row(page, card_obj, idx=None):
         except Exception:
             logger.error("Error handling checkbox change event")
 
-    
-
     cb.on_change = _on_checkbox_change
 
     def _on_tile_click(ev, card=card_obj, this_idx=idx):
-        page.last_selected_index
+        page.playlist_last_selected_index
         shift = page.shift_key_down
 
         if page.playlist_multi_select_mode:
-            if shift and page.last_selected_index is not None and this_idx is not None:
+            if shift and page.playlist_last_selected_index is not None and this_idx is not None:
                 # Shift-select: select all between last_selected_index and this_idx
-                start = min(page.last_selected_index, this_idx)
-                end = max(page.last_selected_index, this_idx)
+                start = min(page.playlist_last_selected_index, this_idx)
+                end = max(page.playlist_last_selected_index, this_idx)
                 for i in range(start, end + 1):
                     try:
                         row_ctrl = page.playlists_list.controls[i]
@@ -344,12 +357,14 @@ def make_playlist_row(page, card_obj, idx=None):
                                 break
                         if cb_found:
                             cb_found.value = True
-                            page.selected_playlist_ids.add(getattr(cb_found, "_cid", ""))
+                            page.selected_playlist_ids.add(
+                                getattr(cb_found, "_cid", "")
+                            )
                     except Exception:
                         pass
                 page.update_multiselect_buttons()
                 page.update()
-                page.last_selected_index = this_idx
+                page.playlist_last_selected_index = this_idx
                 return
             # Normal multi-select toggle
             cb_found = None
@@ -368,9 +383,9 @@ def make_playlist_row(page, card_obj, idx=None):
                 page.update()
             return
         # If not in multi-select, open details as before
-        if shift and page.last_selected_index is not None and this_idx is not None:
-            start = min(page.last_selected_index, this_idx)
-            end = max(page.last_selected_index, this_idx)
+        if shift and page.playlist_last_selected_index is not None and this_idx is not None:
+            start = min(page.playlist_last_selected_index, this_idx)
+            end = max(page.playlist_last_selected_index, this_idx)
             for i in range(start, end + 1):
                 try:
                     row_ctrl = page.playlists_list.controls[i]
@@ -394,14 +409,16 @@ def make_playlist_row(page, card_obj, idx=None):
                     if cb_found:
                         try:
                             cb_found.value = True
-                            page.selected_playlist_ids.add(getattr(cb_found, "_cid", ""))
+                            page.selected_playlist_ids.add(
+                                getattr(cb_found, "_cid", "")
+                            )
                         except Exception:
                             pass
                 except Exception:
                     pass
             page.update_multiselect_buttons()
             page.update()
-            page.last_selected_index = this_idx
+            page.playlist_last_selected_index = this_idx
             return
         page.show_card_details(ev, card)
 
@@ -482,17 +499,17 @@ def make_playlist_row(page, card_obj, idx=None):
     def _trunc(s, n=80):
         try:
             if not s:
-                return ''
+                return ""
             s = str(s)
-            return s if len(s) <= n else s[: n - 1] + '…'
+            return s if len(s) <= n else s[: n - 1] + "…"
         except Exception:
-            return ''
+            return ""
 
-    short_desc = ''
+    short_desc = ""
     try:
-        short_desc = _trunc(meta.get('description') or '')
+        short_desc = _trunc(meta.get("description") or "")
     except Exception:
-        short_desc = ''
+        short_desc = ""
 
     # Subtitle contains preview, description and metadata; card id is shown on the row's right
     subtitle_items = []
@@ -501,9 +518,9 @@ def make_playlist_row(page, card_obj, idx=None):
 
     # Add truncated description as a subtitle line (if present)
     try:
-        short_desc = _trunc(meta.get('description') or '')
+        short_desc = _trunc(meta.get("description") or "")
     except Exception:
-        short_desc = ''
+        short_desc = ""
     if short_desc:
         subtitle_items.append(ft.Text(short_desc, size=12, color=ft.Colors.BLACK45))
     if meta_text:
@@ -519,10 +536,8 @@ def make_playlist_row(page, card_obj, idx=None):
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
-    delete_btn.on_click = (
-        lambda ev, page=page, card=card_obj, row_container=row: delete_playlist(
-            ev, page, card, row_container
-        )
+    delete_btn.on_click = lambda ev, page=page, card=card_obj, row_container=row: (
+        delete_playlist(ev, page, card, row_container)
     )
     try:
         row._idx = idx
@@ -530,146 +545,93 @@ def make_playlist_row(page, card_obj, idx=None):
         pass
     return row
 
+
 def build_playlists_ui(page, cards=None):
-        if cards is None:
-            cards = page.cards
-        page.playlists_list.controls.clear()
-        if not cards:
-            page.playlists_list.controls.append(ft.Text("No playlists found"))
-        else:
-            # Sort cards based on dropdown
-            sort_key = page.current_playlist_sort
+    logger.debug("Building playlists UI")
+    if cards is None:
+        cards = page.cards
+    logger.debug(page.cards)
+    page.playlists_list.controls.clear()
 
-            def get_meta(card):
-                if hasattr(card, "model_dump"):
-                    d = card.model_dump(exclude_none=True)
-                elif isinstance(card, dict):
-                    d = card
-                else:
-                    try:
-                        d = json.loads(str(card))
-                    except Exception:
-                        d = {}
-                meta = d.get("metadata") or {}
-                return d, meta
+    filters = page.get_playlist_filters()
+    logger.debug(f"Applying filters: {filters} to {len(cards) if cards else 0} cards")
+    if not cards or cards is None:
+        page.playlists_list.controls.append(ft.Text("No playlists found"))
+    else:
+        # Sort cards based on dropdown
+        sort_key = page.current_playlist_sort
 
-            def sort_func(card):
-                d, meta = get_meta(card)
-                if sort_key == "title_asc":
-                    return (d.get("title") or "").lower()
-                if sort_key == "title_desc":
-                    return (d.get("title") or "").lower()
-                if sort_key == "category":
-                    return (meta.get("category") or "").lower()
-                if sort_key in ("created_desc", "created_asc", "updated_desc", "updated_asc"):
-                    key_name = "createdAt" if "created" in sort_key else "updatedAt"
-                    value = d.get(key_name)
-                    ts = 0
-                    if value:
-                        from datetime import datetime
-                        try:
-                            v = value.rstrip('Z')
-                            try:
-                                dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S.%f")
-                            except ValueError:
-                                dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
-                            ts = int(dt.timestamp())
-                        except Exception as e:
-                            print(f"[sort_func] Failed to parse {key_name} '{value}' for card {d.get('title','?')}: {e}")
-                    print(f"[sort_func] card: {d.get('title','?')}, {key_name}: {value}, ts: {ts}")
-                    return ts
-                return (d.get("title") or "").lower()
-
-            if sort_key.endswith("_desc"):
-                reverse = True
-            elif sort_key.endswith("_asc"):
-                reverse = False
+        def get_meta(card):
+            if hasattr(card, "model_dump"):
+                d = card.model_dump(exclude_none=True)
+            elif isinstance(card, dict):
+                d = card
             else:
-                reverse = sort_key == "title_desc"
-            try:
-                sorted_cards = sorted(cards, key=sort_func, reverse=reverse)
-            except Exception:
-                sorted_cards = cards
-
-            # Build rows for each card; only append valid ft.Control objects.
-            for idx, c in enumerate(sorted_cards):
                 try:
-                    if not card_matches_filters(c, page.get_playlist_filters()):
-                        continue
-                    try:
-                        row = make_playlist_row(page, c, idx=idx)
-                    except Exception:
-                        row = None
-                    if row is not None and isinstance(row, ft.Control):
-                        page.playlists_list.controls.append(row)
-                    else:
-                        try:
-                            title = getattr(c, "title", None) or (
-                                c.model_dump(exclude_none=True).get("title")
-                                if hasattr(c, "model_dump")
-                                else str(c)
-                            )
-                        except Exception:
-                            title = str(c)
-                        cid = (
-                            getattr(c, "id", None)
-                            or getattr(c, "contentId", None)
-                            or getattr(c, "cardId", None)
-                            or ""
-                        )
-                        page.playlists_list.controls.append(
-                            ft.ListTile(
-                                title=ft.Text(title),
-                                subtitle=ft.Text(str(cid)),
-                                on_click=lambda ev, card=c: page.show_card_details(ev, card),
-                            )
-                        )
+                    d = json.loads(str(card))
                 except Exception:
+                    d = {}
+            meta = d.get("metadata") or {}
+            return d, meta
+
+        def sort_func(card):
+            d, meta = get_meta(card)
+            if sort_key == "title_asc":
+                return (d.get("title") or "").lower()
+            if sort_key == "title_desc":
+                return (d.get("title") or "").lower()
+            if sort_key == "category":
+                return (meta.get("category") or "").lower()
+            if sort_key in (
+                "created_desc",
+                "created_asc",
+                "updated_desc",
+                "updated_asc",
+            ):
+                key_name = "createdAt" if "created" in sort_key else "updatedAt"
+                value = d.get(key_name)
+                ts = 0
+                if value:
+                    from datetime import datetime
+
                     try:
-                        title = getattr(c, "title", None) or (
-                            c.model_dump(exclude_none=True).get("title")
-                            if hasattr(c, "model_dump")
-                            else str(c)
+                        v = value.rstrip("Z")
+                        try:
+                            dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S.%f")
+                        except ValueError:
+                            dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
+                        ts = int(dt.timestamp())
+                    except Exception as e:
+                        print(
+                            f"[sort_func] Failed to parse {key_name} '{value}' for card {d.get('title', '?')}: {e}"
                         )
-                    except Exception:
-                        title = str(c)
-                    cid = (
-                        getattr(c, "id", None)
-                        or getattr(c, "contentId", None)
-                        or getattr(c, "cardId", None)
-                        or ""
-                    )
-                    page.playlists_list.controls.append(
-                        ft.ListTile(
-                            title=ft.Text(title),
-                            subtitle=ft.Text(str(cid)),
-                            on_click=lambda ev, card=c: page.show_card_details(ev, card),
-                        )
-                    )
-            try:
-                existing_card_map.clear()
-                opts = []
-                for c in cards:
-                    try:
-                        title = getattr(c, "title", None) or (
-                            c.model_dump(exclude_none=True).get("title")
-                            if hasattr(c, "model_dump")
-                            else str(c)
-                        )
-                    except Exception:
-                        title = str(c)
-                    cid = (
-                        getattr(c, "id", None)
-                        or getattr(c, "contentId", None)
-                        or getattr(c, "cardId", None)
-                        or ""
-                    )
-                    display = f"{title} ({cid})"
-                    existing_card_map[display] = cid
-                    opts.append(ft.dropdown.Option(display))
-                existing_card_dropdown.options = opts
-            except Exception:
-                pass
+                print(
+                    f"[sort_func] card: {d.get('title', '?')}, {key_name}: {value}, ts: {ts}"
+                )
+                return ts
+            return (d.get("title") or "").lower()
+
+        if sort_key.endswith("_desc"):
+            reverse = True
+        elif sort_key.endswith("_asc"):
+            reverse = False
+        else:
+            reverse = sort_key == "title_desc"
+        try:
+            sorted_cards = sorted(cards, key=sort_func, reverse=reverse)
+        except Exception:
+            sorted_cards = cards
+
+        # Build rows for each card; only append valid ft.Control objects.
+        for idx, c in enumerate(sorted_cards):
+            if not card_matches_filters(c, filters):
+                continue
+            row = make_playlist_row(page, c, idx=idx)
+            if row is not None and isinstance(row, ft.Control):
+                page.playlists_list.controls.append(row)
+            else:
+                logger.error(f"make_playlist_row did not return a valid control for card {get_card_id_local(c)}")
+    page.update()
 
 def fetch_playlists_sync(page):
     # Avoid overlapping / repeated fetches
@@ -692,7 +654,8 @@ def fetch_playlists_sync(page):
         page.update()
         api = page.api_ref.get("api")
         cards = api.get_myo_content()
-        page.cards = cards # Cache cards on page for access by details view and other helpers
+        page.cards = cards  # Cache cards on page for access by details view and other helpers
+        
         build_playlists_ui(page, cards=cards)
         page.show_snack(f"Fetched {len(cards)} playlists")
         page.update()
@@ -705,9 +668,9 @@ def fetch_playlists_sync(page):
         if "401" in str(http_ex) or "403" in str(http_ex):
             page.show_snack("Authentication error. Please log in again.", error=True)
             delete_tokens_file()
-            if hasattr(page, 'invalidate_authentication'):
+            if hasattr(page, "invalidate_authentication"):
                 page.invalidate_authentication()
-            if hasattr(page, 'switch_to_auth_tab'):
+            if hasattr(page, "switch_to_auth_tab"):
                 page.switch_to_auth_tab()
             page.update()
 
@@ -720,10 +683,6 @@ def fetch_playlists_sync(page):
             _playlists_fetch_lock.release()
         except Exception:
             pass
-
-
-
-
 
 
 def build_playlists_panel(
@@ -779,7 +738,9 @@ def build_playlists_panel(
     export_selected_btn = ft.Button("Export Selected", disabled=True)
     export_selected_btn.visible = False
     # Import card controls
-    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(
+        page, "web", False
+    )
     try:
         _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
     except Exception:
@@ -796,6 +757,8 @@ def build_playlists_panel(
             pass
     import_card_btn = ft.Button("Import Card(s)")
     restore_versions_btn = ft.Button("Restore Versions")
+
+    api = ensure_api(page.api_ref)
 
     def _open_versions_dialog(_e=None):
         try:
@@ -850,17 +813,29 @@ def build_playlists_panel(
                     try:
                         if child.is_dir():
                             card_dir = child
-                            json_files = sorted([p for p in card_dir.iterdir() if p.suffix == ".json"], reverse=True)
+                            json_files = sorted(
+                                [p for p in card_dir.iterdir() if p.suffix == ".json"],
+                                reverse=True,
+                            )
                             if not json_files:
                                 continue
                             latest = json_files[0]
                             title = None
                             card_id = card_dir.name
                             try:
-                                with latest.open('r', encoding='utf-8') as fh:
+                                with latest.open("r", encoding="utf-8") as fh:
                                     payload = json.load(fh)
-                                    title = payload.get('title') if isinstance(payload, dict) else None
-                                    card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or card_dir.name
+                                    title = (
+                                        payload.get("title")
+                                        if isinstance(payload, dict)
+                                        else None
+                                    )
+                                    card_id = (
+                                        payload.get("cardId")
+                                        or payload.get("id")
+                                        or payload.get("contentId")
+                                        or card_dir.name
+                                    )
                             except Exception:
                                 title = None
                             # Check whether the card currently exists on the server; if it does not,
@@ -874,17 +849,26 @@ def build_playlists_panel(
                             except Exception:
                                 exists = False
                             if not exists:
-                                deleted_entries.append((card_id, title or '', latest))
+                                deleted_entries.append((card_id, title or "", latest))
                         elif child.is_file() and child.suffix == ".json":
                             # Flat file directly under versions root
                             latest = child
                             title = None
                             card_id = latest.stem
                             try:
-                                with latest.open('r', encoding='utf-8') as fh:
+                                with latest.open("r", encoding="utf-8") as fh:
                                     payload = json.load(fh)
-                                    title = payload.get('title') if isinstance(payload, dict) else None
-                                    card_id = payload.get('cardId') or payload.get('id') or payload.get('contentId') or latest.stem
+                                    title = (
+                                        payload.get("title")
+                                        if isinstance(payload, dict)
+                                        else None
+                                    )
+                                    card_id = (
+                                        payload.get("cardId")
+                                        or payload.get("id")
+                                        or payload.get("contentId")
+                                        or latest.stem
+                                    )
                             except Exception:
                                 title = None
                             try:
@@ -896,7 +880,7 @@ def build_playlists_panel(
                             except Exception:
                                 exists = False
                             if not exists:
-                                deleted_entries.append((card_id, title or '', latest))
+                                deleted_entries.append((card_id, title or "", latest))
                     except Exception:
                         # Ignore child-specific errors; continue scanning other entries
                         pass
@@ -940,8 +924,8 @@ def build_playlists_panel(
             restored = 0
             for cb in lv.controls:
                 try:
-                    if getattr(cb, 'value', False):
-                        path = getattr(cb, 'data', None)
+                    if getattr(cb, "value", False):
+                        path = getattr(cb, "data", None)
                         if path:
                             try:
                                 api.restore_version(Path(path), return_card=True)
@@ -956,11 +940,21 @@ def build_playlists_panel(
                 pass
             dlg.open = False
             page.update()
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+            threading.Thread(
+                target=lambda: fetch_playlists_sync(page), daemon=True
+            ).start()
 
-        dlg = ft.AlertDialog(title=ft.Text("Restore deleted cards"), content=lv, actions=[ft.TextButton("Restore Selected", on_click=do_restore), ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
+        dlg = ft.AlertDialog(
+            title=ft.Text("Restore deleted cards"),
+            content=lv,
+            actions=[
+                ft.TextButton("Restore Selected", on_click=do_restore),
+                ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, "open", False)),
+            ],
+        )
         page.show_dialog(dlg)
         page.update()
+
     restore_versions_btn.on_click = _open_versions_dialog
     multi_select_btn = ft.Button("Select Multiple")
     add_tags_btn = ft.Button("Add Tags to Selected", disabled=True)
@@ -978,15 +972,17 @@ def build_playlists_panel(
         ft.dropdown.Option("title_desc", "Title (Z-A)"),
         ft.dropdown.Option("category", "Category"),
         ft.dropdown.Option("created_desc", "Created (Newest)"),
-    ft.dropdown.Option("created_asc", "Created (Oldest)"),
-    ft.dropdown.Option("updated_desc", "Updated (Newest)"),
-    ft.dropdown.Option("updated_asc", "Updated (Oldest)"),
+        ft.dropdown.Option("created_asc", "Created (Oldest)"),
+        ft.dropdown.Option("updated_desc", "Updated (Newest)"),
+        ft.dropdown.Option("updated_asc", "Updated (Oldest)"),
     ]
     sort_dropdown = ft.Dropdown(
-        label="Sort by", width=160, value=get_state("playlists_ui", "sort_order", "title_asc"), options=sort_options
+        label="Sort by",
+        width=160,
+        value=get_state("playlists_ui", "sort_order", "title_asc"),
+        options=sort_options,
     )
     page.current_playlist_sort = sort_dropdown.value
-
 
     def on_sort_change(ev):
         page.current_playlist_sort = sort_dropdown.value
@@ -996,8 +992,6 @@ def build_playlists_panel(
         set_state("playlists_ui", "sort_order", sort_dropdown.value)
 
     sort_dropdown.on_select = on_sort_change
-
-
 
     def _on_edit_category_selected(ev):
         if not page.selected_playlist_ids:
@@ -1051,7 +1045,9 @@ def build_playlists_panel(
             except Exception:
                 logger.error("Error showing snack message")
             dlg.open = False
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+            threading.Thread(
+                target=lambda: fetch_playlists_sync(page), daemon=True
+            ).start()
             page.update()
 
         def do_remove_category(_e=None):
@@ -1076,7 +1072,9 @@ def build_playlists_panel(
             except Exception:
                 pass
             dlg.open = False
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+            threading.Thread(
+                target=lambda: fetch_playlists_sync(page), daemon=True
+            ).start()
             page.update()
 
         def close_edit(_e=None):
@@ -1131,9 +1129,7 @@ def build_playlists_panel(
                 if card_tags is None:
                     card_tags = []
                 elif isinstance(card_tags, str):
-                    card_tags = [
-                        t.strip() for t in card_tags.split(",") if t.strip()
-                    ]
+                    card_tags = [t.strip() for t in card_tags.split(",") if t.strip()]
                 new_tags = list(set(card_tags) | set(tags))
                 print(f"Updating tags for {cid}: {new_tags}")
                 meta.tags = new_tags
@@ -1204,7 +1200,9 @@ def build_playlists_panel(
             except Exception:
                 pass
             dlg.open = False
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+            threading.Thread(
+                target=lambda: fetch_playlists_sync(page), daemon=True
+            ).start()
             page.update()
 
         def do_remove_author(_e=None):
@@ -1230,7 +1228,9 @@ def build_playlists_panel(
             except Exception:
                 pass
             dlg.open = False
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+            threading.Thread(
+                target=lambda: fetch_playlists_sync(page), daemon=True
+            ).start()
             page.update()
 
         def close_author(_e=None):
@@ -1311,7 +1311,9 @@ def build_playlists_panel(
         try:
             # Keep only real ft.Control instances in playlists_list
             try:
-                cleaned = [c for c in playlists_list.controls if isinstance(c, ft.Control)]
+                cleaned = [
+                    c for c in playlists_list.controls if isinstance(c, ft.Control)
+                ]
                 if len(cleaned) != len(playlists_list.controls):
                     playlists_list.controls[:] = cleaned
             except Exception:
@@ -1328,8 +1330,8 @@ def build_playlists_panel(
     # Expose a page-level cleanup helper so other modules (notably gui.show_snack)
     # can attempt automatic recovery when page.update() raises AssertionError.
     try:
-        if not hasattr(page, 'clean_ui'):
-            setattr(page, 'clean_ui', _clean_controls)
+        if not hasattr(page, "clean_ui"):
+            setattr(page, "clean_ui", _clean_controls)
     except Exception:
         pass
 
@@ -1355,7 +1357,6 @@ def build_playlists_panel(
         fetch_playlists_sync(page)
         page.update()
 
-
     def _do_export_selected():
         to_export = list(selected_playlist_ids)
         if not to_export:
@@ -1369,23 +1370,29 @@ def build_playlists_panel(
             try:
                 card = api.get_card(cid)
                 try:
-                    data = card.model_dump(exclude_none=True) if hasattr(card, 'model_dump') else dict(card)
+                    data = (
+                        card.model_dump(exclude_none=True)
+                        if hasattr(card, "model_dump")
+                        else dict(card)
+                    )
                 except Exception:
                     try:
                         data = dict(card)
                     except Exception:
                         data = str(card)
-                title = (data.get('title') or '') if isinstance(data, dict) else ''
+                title = (data.get("title") or "") if isinstance(data, dict) else ""
                 import re
+
                 def _safe_filename(s: str) -> str:
                     if not s:
                         return cid
                     s = s.strip()
                     s = re.sub(r"[^0-9A-Za-z._-]+", "_", s)
                     return s[:100]
+
                 name = _safe_filename(title)
                 fname = out_dir / f"{name or cid}_{cid}.json"
-                with open(fname, 'w', encoding='utf-8') as f:
+                with open(fname, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
                 exported += 1
             except Exception as e:
@@ -1542,8 +1549,10 @@ def build_playlists_panel(
                 pass
         except Exception:
             pass
-    
-    page.update_multiselect_buttons = _update_multiselect_buttons  # Expose for callbacks in playlist rows
+
+    page.update_multiselect_buttons = (
+        _update_multiselect_buttons  # Expose for callbacks in playlist rows
+    )
 
     def _set_all_checkboxes(value: bool):
         """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
@@ -1559,12 +1568,17 @@ def build_playlists_panel(
                             if value:
                                 selected_playlist_ids.add(getattr(child, "_cid", None))
                             else:
-                                selected_playlist_ids.discard(getattr(child, "_cid", None))
+                                selected_playlist_ids.discard(
+                                    getattr(child, "_cid", None)
+                                )
                         except Exception:
                             pass
         except Exception:
             pass
-    page.set_all_playlist_checkboxes = _set_all_checkboxes  # Expose for callbacks in playlist rows
+
+    page.set_all_playlist_checkboxes = (
+        _set_all_checkboxes  # Expose for callbacks in playlist rows
+    )
 
     def _select_all_toggle(ev=None):
         nonlocal select_all_selected
@@ -1588,7 +1602,7 @@ def build_playlists_panel(
 
     select_all_btn.on_click = _select_all_toggle
 
-    def apply_filters(ev=None):
+    async def apply_filters(ev=None):
         build_playlists_ui(page)
 
     def clear_filters(ev=None):
@@ -1606,14 +1620,10 @@ def build_playlists_panel(
     clear_filter_btn.on_click = clear_filters
 
     # Header fetch button wired to the synchronous fetch helper
-    fetch_btn = ft.Button(
-        "Fetch Playlists", bgcolor="#2196F3", color="white"
-    )
-
-
-    fetch_btn.on_click = page.run_task(fetch_playlists_sync(page))
+    fetch_btn = ft.Button("Fetch Playlists", bgcolor="#2196F3", color="white")
 
     async def fetch_playlists(e=None):
+        logger.debug("fetch_playlists: invoked")
         # Avoid overlapping / repeated fetches
         global _playlists_last_fetch
         now = time.time()
@@ -1632,15 +1642,12 @@ def build_playlists_panel(
         # print("Fetching playlists...")  # Commented out for performance
         # Clean any stale/invalid controls before touching the page
         _clean_controls()
-        try:
-            _safe_page_update()
-        except Exception:
-            pass
-        api = api_ref.get("api")
+        page.update()
         try:
             cards = await asyncio.to_thread(api.get_myo_content)
+            page.cards = cards  # Cache cards on page for access by details view and other helpers
         except Exception as ex:
-            print("fetch_playlists error:", ex)
+            logger.debug("fetch_playlists error:", ex)
             return
         finally:
             try:
@@ -1648,86 +1655,27 @@ def build_playlists_panel(
             except Exception:
                 pass
 
-        playlists_list.controls.clear()
-        if not cards:
-            playlists_list.controls.append(ft.Text("No playlists found"))
-        else:
-            for idx, c in enumerate(cards):
-                try:
-                    if not card_matches_filters(c, page.get_playlist_filters()):
-                        continue
-                    playlists_list.controls.append(make_playlist_row(page, c, idx=idx))
-                except Exception:
-                    try:
-                        title = getattr(c, "title", None) or (
-                            c.model_dump(exclude_none=True).get("title")
-                            if hasattr(c, "model_dump")
-                            else str(c)
-                        )
-                    except Exception:
-                        title = str(c)
-                    cid = getattr(c, "id", None) or getattr(c, "contentId", None) or ""
-                    playlists_list.controls.append(
-                        ft.ListTile(
-                            title=ft.Text(title),
-                            subtitle=ft.Text(str(cid)),
-                            on_click=lambda ev, card=c: page.show_card_details(ev, card),
-                        )
-                    )
-
-        try:
-            existing_card_map.clear()
-            opts = []
-            for c in cards:
-                try:
-                    title = getattr(c, "title", None) or (
-                        c.model_dump(exclude_none=True).get("title")
-                        if hasattr(c, "model_dump")
-                        else str(c)
-                    )
-                except Exception:
-                    title = str(c)
-                cid = (
-                    getattr(c, "id", None)
-                    or getattr(c, "contentId", None)
-                    or getattr(c, "cardId", None)
-                    or ""
-                )
-                display = f"{title} ({cid})"
-                existing_card_map[display] = cid
-                opts.append(ft.dropdown.Option(display))
-            existing_card_dropdown.options = opts
-        except Exception:
-            pass
-        try:
-            show_snack(f"Fetched {len(cards)} playlists")
-        except Exception:
-            pass
+        build_playlists_ui(page, cards)
         # Persist playlists for faster startup and offline view
         save_playlists(cards)
         page.update()
 
+    page.fetch_playlists = fetch_playlists  # Expose async fetch for external callers
 
-    filter_btn.on_click = lambda e: threading.Thread(
-        target=lambda: fetch_playlists_sync(page), daemon=True
-    ).start()
+    logger.debug("Setting up playlists UI controls and callbacks")
+    fetch_btn.on_click = lambda: page.run_task(fetch_playlists)
+    filter_btn.on_click = lambda: page.run_task(apply_filters)
     clear_filter_btn.on_click = lambda e: (
         setattr(title_filter, "value", ""),
         setattr(genre_filter, "value", ""),
         setattr(category_filter, "value", ""),
-        threading.Thread(target=lambda: fetch_playlists_sync(e), daemon=True).start(),
+        page.run_task(apply_filters),
     )
 
     # Allow pressing Enter in any filter TextField to apply filters (same as Apply Filter)
-    title_filter.on_submit = lambda e: threading.Thread(
-        target=lambda: build_playlists_ui(page), daemon=True
-    ).start()
-    genre_filter.on_submit = lambda e: threading.Thread(
-        target=lambda: build_playlists_ui(page), daemon=True
-    ).start()
-    tags_filter.on_submit = lambda e: threading.Thread(
-        target=lambda: build_playlists_ui(page), daemon=True
-    ).start()
+    title_filter.on_submit = lambda: page.run_task(apply_filters)
+    genre_filter.on_submit = lambda: page.run_task(apply_filters)
+    tags_filter.on_submit = lambda: page.run_task(apply_filters)
 
     # Make filters row expandable using Accordion
     filters_panel = ft.ExpansionTile(
@@ -1802,7 +1750,9 @@ def build_playlists_panel(
             for f in files:
                 path = getattr(f, "path", None)
                 if not path:
-                    show_snack("Selected file has no path (web picker unsupported)", error=True)
+                    show_snack(
+                        "Selected file has no path (web picker unsupported)", error=True
+                    )
                     return
                 # Read file and parse JSON
                 try:
@@ -1837,10 +1787,14 @@ def build_playlists_panel(
                 try:
                     api = ensure_api(api_ref, CLIENT_ID)
                     new_card = api.create_or_update_content(card_obj, return_card=True)
-                    show_snack(f"Card imported: {getattr(new_card, 'cardId', getattr(new_card, 'id', 'unknown'))}")
+                    show_snack(
+                        f"Card imported: {getattr(new_card, 'cardId', getattr(new_card, 'id', 'unknown'))}"
+                    )
                     # refresh playlists list
                     try:
-                        threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+                        threading.Thread(
+                            target=lambda: fetch_playlists_sync(page), daemon=True
+                        ).start()
                     except Exception:
                         pass
                 except Exception as ex:
@@ -1859,14 +1813,15 @@ def build_playlists_panel(
                     error=True,
                 )
                 return
-            files = await import_picker.pick_files(dialog_title="Select Card JSON file(s) to import", allow_multiple=True)
+            files = await import_picker.pick_files(
+                dialog_title="Select Card JSON file(s) to import", allow_multiple=True
+            )
             _on_import_pick_result(files)
         except Exception as ex:
             logger.error(f"import_card click failed: {ex}")
             show_snack("Failed to open file picker", error=True)
 
     import_card_btn.on_click = _on_import_card_click
-
 
     return {
         "playlists_column": playlists_column,
@@ -1881,6 +1836,4 @@ def build_playlists_panel(
         "edit_category_btn": edit_category_btn,
         "export_selected_btn": export_selected_btn,
         "import_card_btn": import_card_btn,
-        "fetch_btn": fetch_btn,
-        "sort_dropdown": sort_dropdown,
     }

@@ -1,3 +1,4 @@
+from yoto_up.yoto_app.api_manager import ensure_api
 import threading
 import asyncio
 import time
@@ -281,8 +282,6 @@ Continue?"""
 def start_replace_icons_background(
     page,
     c,
-    playlists_list,
-    make_playlist_row,
 ):
     """Start replace default icons in background and show a persistent badge on the page.
 
@@ -354,7 +353,7 @@ def start_replace_icons_background(
         def work():
             new_card = None
             try:
-                api = page.ensure_api(page.api_ref)
+                api = ensure_api(page.api_ref)
                 card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
@@ -386,7 +385,7 @@ def start_replace_icons_background(
                         updated_id = getattr(new_card, "id", None) or getattr(new_card, "cardId", None) or getattr(new_card, "contentId", None)
 
                     if updated_id:
-                        for i, ctrl in enumerate(list(playlists_list.controls)):
+                        for i, ctrl in enumerate(list(page.playlists_list.controls)):
                             cb = None
                             children = (
                                 getattr(ctrl, "controls", None)
@@ -401,7 +400,7 @@ def start_replace_icons_background(
                                 continue
                             if getattr(cb, "_cid", None) == updated_id:
                                 try:
-                                    playlists_list.controls[i] = make_playlist_row(page, new_card, idx=i)
+                                    page.playlists_list.controls[i] = page.make_playlist_row(page, new_card, idx=i)
                                     page.update()
                                     try:
                                         page.show_snack("Playlist icons updated")
@@ -412,7 +411,7 @@ def start_replace_icons_background(
                                 break
                         else:
                             # not found, refresh list
-                            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+                            threading.Thread(target=lambda: page.fetch_playlists, daemon=True).start()
                 except Exception:
                     pass
 

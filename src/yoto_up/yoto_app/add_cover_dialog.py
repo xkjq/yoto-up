@@ -5,9 +5,10 @@ import shutil
 import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_api import YotoAPI
 
 def add_cover_dialog(page, c, Card, on_close=None):
-    api = ensure_api(page.api_ref)
+    api: YotoAPI = ensure_api(page.api_ref)
 
     def do_remove_cover(_e=None):
         try:
@@ -36,11 +37,9 @@ def add_cover_dialog(page, c, Card, on_close=None):
                 except Exception:
                     logger.error("Card(**cd) failed in remove cover")
                     return
-            api.update_card(card_model, return_card_model=False)
-            try:
-                page.fetch_playlists_sync(page)
-            except Exception:
-                logger.error("fetch_playlists_sync failed in remove cover")
+            updated_card = api.update_card(card_model, return_card_model=True)
+            page.update_local_card_cache(updated_card)
+            page.build_playlist_ui()
             page.update()
         except Exception as e:
             logger.error(f"Remove cover error: {e}")
@@ -81,6 +80,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
     try:
         meta = (c.get("metadata") or {})
         cover = meta.get("cover") or {}
+        cover_src = Card.get_cover_url()
         if isinstance(cover, dict):
             for key in ("imageL", "imageM", "imageS", "image"):
                 url_or_field = cover.get(key)

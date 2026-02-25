@@ -171,9 +171,9 @@ class YotoAPI:
     def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True, app_path:Path|None=None):
         self.client_id = client_id
         self.debug = debug
-        logger.remove()
-        if debug:
-            logger.add(lambda msg: print(msg, end=""), level="DEBUG")
+        #logger.remove()
+        #if debug:
+        #    logger.add(lambda msg: print(msg, end=""), level="DEBUG")
         # When debug=False, don't add any handler to suppress all loguru output
         # Intercept standard library logging with loguru
         import logging
@@ -189,10 +189,10 @@ class YotoAPI:
                     import traceback
                     msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
                 logger.log(level, msg)
-        logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO)
-        httpx_logger = logging.getLogger("httpx")
-        httpx_logger.propagate = True
-        httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
+        #logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO)
+        #httpx_logger = logging.getLogger("httpx")
+        #httpx_logger.propagate = True
+        #httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
         if debug:
             logger.debug("Debug mode enabled for YotoAPI")
             logger.debug(f"YotoAPI initialized with client_id: {client_id}")
@@ -605,7 +605,7 @@ class YotoAPI:
             find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
-    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True):
+    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True) -> dict |Card:
         """
         Accepts a Card model instance and sends it to the API.
 
@@ -1405,7 +1405,7 @@ class YotoAPI:
         response.raise_for_status()
         return response.json() if response.text else {"status": response.status_code}
 
-    def update_card(self, card: Card, return_card_model=True):
+    def update_card(self, card: Card, return_card_model=True) -> dict | Card:
         """
         Update a card by creating a new card and deleting the old one.
 
