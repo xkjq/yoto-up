@@ -2341,6 +2341,7 @@ def split_audio(
     min_track_len_sec: int = 30,
     min_silence_len_ms: int = 1000,
     silence_thresh_db: int = -40,
+    output_name_template: Optional[str] = None,
 ):
     """
     Split an audio file into multiple segments based on silence detection.
@@ -2348,6 +2349,7 @@ def split_audio(
     Args:
         path: Path to the input audio file.
         output_dir: Directory to save the output segments. If None, segments are saved in the same directory as the input file.
+        output_name_template: Optional filename template for output files. See docs for supported fields (index, idx0, total, stem, ext, suffix, width).
         min_silence_len_ms: Minimum length of silence to consider as a split point (in milliseconds).
         silence_thresh_db: Silence threshold in decibels. Audio quieter than this level is considered silence.
     """
@@ -2359,11 +2361,8 @@ def split_audio(
         min_track_length_sec=min_track_len_sec,
         min_silence_len_ms=min_silence_len_ms,
         silence_thresh_db=silence_thresh_db,
+        output_name_template=output_name_template,
     )
-
-
-
-
 
 @app.command()
 def gui():

@@ -373,7 +373,8 @@ class YotoAPI:
 
     def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
                     silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
-                    show_progress: bool = True, console: Optional[Console] = None) -> list:
+                    show_progress: bool = True, console: Optional[Console] = None,
+                    output_name_template: Optional[str] = None) -> list:
         """Thin wrapper that splits an audio file into multiple tracks.
 
         Returns a list of output file Paths. Requires `ffmpeg` to be installed.
@@ -385,7 +386,8 @@ class YotoAPI:
                      min_silence_len_ms=min_silence_len_ms,
                      output_dir=output_dir,
                      show_progress=show_progress,
-                     console=console)
+                     console=console,
+                     output_name_template=output_name_template)
 
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {

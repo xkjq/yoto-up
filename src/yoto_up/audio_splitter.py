@@ -108,11 +108,56 @@ def _get_duration(path: Path) -> float:
 
 
 def _format_output_name(
-    input_path: Path, index: int, total: int, out_dir: Path
+    input_path: Path,
+    index: int,
+    total: int,
+    out_dir: Path,
+    template: Optional[str] = None,
 ) -> Path:
+    """Render an output filename for `index` (0-based) among `total` segments.
+
+    Supported template fields:
+    - index: 1-based track number
+    - idx0: 0-based index
+    - total: total number of tracks
+    - stem: input file stem (no extension)
+    - ext: extension without leading dot (e.g. 'mp3')
+    - suffix: extension with leading dot (e.g. '.mp3')
+    - start: segment start time in seconds (float)
+    - end: segment end time in seconds (float)
+
+    If template is None, falls back to the previous naming scheme.
+    """
     stem = input_path.stem
     suffix = input_path.suffix or ".mp3"
-    return out_dir / f"{stem}_part{index + 1:0{len(str(total))}d}{suffix}"
+    ext = suffix[1:] if suffix.startswith(".") else suffix
+    if not template:
+        width = len(str(total))
+        return out_dir / f"{stem}_part{index + 1:0{width}d}{suffix}"
+
+    # Prepare format mapping
+    mapping = {
+        "index": index + 1,
+        "idx0": index,
+        "total": total,
+        "stem": stem,
+        "ext": ext,
+        "suffix": suffix,
+    }
+    # Allow format specs using an additional `width` value for convenience
+    mapping["width"] = len(str(total))
+    # Render using str.format — allow users to include format specifiers
+    try:
+        name = template.format(**mapping)
+    except Exception:
+        # Fallback to default on any formatting error
+        width = len(str(total))
+        name = f"{stem}_part{index + 1:0{width}d}{suffix}"
+
+    # If template didn't include extension, append original suffix
+    if not name.endswith(suffix) and not name.endswith(ext):
+        name = name + suffix
+    return out_dir / name
 
 
 def split_audio(
@@ -124,6 +169,7 @@ def split_audio(
     output_dir: Optional[str | Path] = None,
     show_progress: bool = True,
     console: Optional[Console] = None,
+    output_name_template: Optional[str] = None,
 ) -> List[Path]:
     """Split `input_path` into up to `target_tracks` pieces.
 
@@ -229,7 +275,7 @@ def split_audio(
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), TimeElapsedColumn(), console=console) as progress:
             task = progress.add_task("Extracting segments", total=total)
             for idx, (start, end) in enumerate(segments):
-                out_path = _format_output_name(p, idx, total, out_dir)
+                out_path = _format_output_name(p, idx, total, out_dir, template=output_name_template)
                 progress.update(task, description=f"Segment {idx+1}/{total} — {end-start:.1f}s")
                 # use ffmpeg to extract
                 cmd = [
