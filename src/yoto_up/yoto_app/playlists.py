@@ -312,7 +312,7 @@ def make_playlist_row(page, card_obj, idx=None):
     logger.debug(f"Creating checkbox for card {cid} with multi-select mode {multi_select_mode}")
     cb = ft.Checkbox(value=False)
     try:
-        cb.visible = page.multi_select_mode
+        cb.visible = page.playlist_multi_select_mode
     except Exception:
         logger.error("Error setting checkbox visibility for multi-select mode")
     cb._is_playlist_checkbox = True
@@ -341,7 +341,7 @@ def make_playlist_row(page, card_obj, idx=None):
         page.last_selected_index
         shift = page.shift_key_down
 
-        if page.multi_select_mode:
+        if page.playlist_multi_select_mode:
             if shift and page.last_selected_index is not None and this_idx is not None:
                 # Shift-select: select all between last_selected_index and this_idx
                 start = min(page.last_selected_index, this_idx)
@@ -542,7 +542,9 @@ def make_playlist_row(page, card_obj, idx=None):
         pass
     return row
 
-def build_playlists_ui(page, cards):
+def build_playlists_ui(page, cards=None):
+        if cards is None:
+            cards = page.cards
         page.playlists_list.controls.clear()
         if not cards:
             page.playlists_list.controls.append(ft.Text("No playlists found"))
@@ -738,10 +740,6 @@ def fetch_playlists_sync(page):
 
 def build_playlists_panel(
     page,
-    api_ref: Dict[str, Any],
-    show_snack,
-    ensure_api,
-    status_ctrl=None,
 ) -> Dict[str, Any]:
     """Build full playlists UI including rows, selection, dialogs and fetch helpers.
 
@@ -1349,10 +1347,6 @@ def build_playlists_panel(
 
     # Provide safe defaults for optional injected controls so callers that
     # don't pass them (older code paths) still work.
-    if status_ctrl is None:
-        status_ctrl = SimpleNamespace(value="")
-
-
 
     def _do_delete_selected():
         to_delete = list(page.selected_playlist_ids)
@@ -1479,7 +1473,7 @@ def build_playlists_panel(
     export_selected_btn.on_click = _on_export_selected
 
     def toggle_multi_select(ev=None):
-        multi_select_mode = page.multi_select_mode
+        multi_select_mode = page.playlist_multi_select_mode
 
         multi_select_mode = not multi_select_mode
         multi_select_btn.content = "Done" if multi_select_mode else "Select"
@@ -1510,6 +1504,7 @@ def build_playlists_panel(
                                 pass
             except Exception:
                 pass
+        page.playlist_multi_select_mode = multi_select_mode
         page.update()
 
     multi_select_btn.on_click = toggle_multi_select
@@ -1606,15 +1601,7 @@ def build_playlists_panel(
     select_all_btn.on_click = _select_all_toggle
 
     def apply_filters(ev=None):
-        try:
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
-        except Exception:
-            try:
-                asyncio.run(fetch_playlists(None))
-            except Exception:
-                pass
+        build_playlists_ui(page)
 
     def clear_filters(ev=None):
         try:
@@ -1744,24 +1731,15 @@ def build_playlists_panel(
     )
 
     # Allow pressing Enter in any filter TextField to apply filters (same as Apply Filter)
-    try:
-        title_filter.on_submit = lambda e: threading.Thread(
-            target=lambda: fetch_playlists_sync(e), daemon=True
-        ).start()
-    except Exception:
-        pass
-    try:
-        genre_filter.on_submit = lambda e: threading.Thread(
-            target=lambda: fetch_playlists_sync(e), daemon=True
-        ).start()
-    except Exception:
-        pass
-    try:
-        tags_filter.on_submit = lambda e: threading.Thread(
-            target=lambda: fetch_playlists_sync(e), daemon=True
-        ).start()
-    except Exception:
-        pass
+    title_filter.on_submit = lambda e: threading.Thread(
+        target=lambda: build_playlists_ui(page), daemon=True
+    ).start()
+    genre_filter.on_submit = lambda e: threading.Thread(
+        target=lambda: build_playlists_ui(page), daemon=True
+    ).start()
+    tags_filter.on_submit = lambda e: threading.Thread(
+        target=lambda: build_playlists_ui(page), daemon=True
+    ).start()
 
     # Make filters row expandable using Accordion
     filters_panel = ft.ExpansionTile(

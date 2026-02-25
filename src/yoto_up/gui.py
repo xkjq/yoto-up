@@ -113,6 +113,8 @@ def main(page):
             except Exception:
                 logger.error("Failed to update page after showing snack: %s", traceback.format_exc())
 
+    page.show_snack = show_snack  # expose on page for easy access from helpers
+
 
     def start_device_auth(e, instr=None):
         logger.debug("[start_device_auth] Starting device auth flow")
@@ -235,10 +237,6 @@ def main(page):
     logger.debug("Building playlists panel")
     playlists_ui = build_playlists_panel(
         page,
-        api_ref,
-        show_snack,
-        ensure_api,
-        status,
     )
     # extract controls and helpers
     playlists_column = playlists_ui["playlists_column"]
@@ -899,7 +897,7 @@ def main(page):
     # expose on page for other modules
     page.get_cached_cover = get_cached_cover
 
-    logger.debug("Building covers panel")
+    logger.debug("Building icon browser panel")
     # Create tabs and keep a reference so we can enable/disable them
     # Build icon browser panel and add as a tab
     icon_browser_ui = build_icon_browser_panel(
@@ -911,14 +909,11 @@ def main(page):
     logger.debug("Icon browser panel built")
 
     # Build covers panel
-    logger.debug("Building covers panel")   
-    covers_ui = build_covers_panel(page=page, show_snack=show_snack)
-    covers_panel = covers_ui.get("panel") if isinstance(covers_ui, dict) else None
-    logger.debug("Covers panel built")
+    #logger.debug("Building covers panel")   
+    #covers_ui = build_covers_panel(page=page, show_snack=show_snack)
+    #covers_panel = covers_ui.get("panel") if isinstance(covers_ui, dict) else None
+    #logger.debug("Covers panel built")
 
-    # Note: removed _ensure_control wrapper per user request. If a panel
-    # is incorrectly defined it should be fixed at source rather than
-    # automatically replaced at runtime.
 
     logger.debug("Building pixel editor panel")
     editor = PixelArtEditor(page=page)
@@ -934,15 +929,15 @@ def main(page):
     page.upload_manager.column.visible = True
     if hasattr(icon_panel, "visible"):
         icon_panel.visible = True
-    if hasattr(covers_panel, "visible"):
-        covers_panel.visible = True
+    #if hasattr(covers_panel, "visible"):
+    #    covers_panel.visible = True
 
     # Create tab labels for TabBar
     auth_tab = ft.Tab(label="Auth")
     playlists_tab = ft.Tab(label="Playlists", disabled=True)
     upload_tab = ft.Tab(label="Upload", disabled=True)
     icons_tab = ft.Tab(label="Icons", disabled=True)
-    covers_tab = ft.Tab(label="Covers", disabled=True)
+    #covers_tab = ft.Tab(label="Covers", disabled=True)
     editor_tab = ft.Tab(label="Editor", disabled=True)
 
     all_tab_labels = [
@@ -950,7 +945,7 @@ def main(page):
         playlists_tab,
         upload_tab,
         icons_tab,
-        covers_tab,
+        #covers_tab,
         editor_tab,
     ]
     all_tab_content = [
@@ -958,7 +953,7 @@ def main(page):
         playlists_column,
         page.upload_manager.column,
         icon_panel,
-        covers_panel,
+        #covers_panel,
         editor_content,
     ]
 
