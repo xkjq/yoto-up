@@ -15,12 +15,7 @@ from datetime import datetime, timezone
 def make_show_card_details(
     page,
     Card,
-    playlists_list,
-    make_playlist_row,
-    status_ctrl,
-    show_edit_card_dialog,
     IconReplaceDialog,
-    show_replace_icons_dialog,
 ):
     """Factory that returns a callable with signature (ev, card).
 
@@ -1571,10 +1566,9 @@ Renumbering keys will assign sequential keys to all tracks.
                     on_click=lambda ev: (
                         setattr(dialog, 'open', False),
                         page.update(),
-                        show_edit_card_dialog(
+                        page.show_edit_card_dialog(
                             c,
                             page,
-                            status_ctrl,
                             show_card_details=show_card_details,
                         ),
                     ),

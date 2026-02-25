@@ -19,6 +19,7 @@ from yoto_up.paths import (
 
 from yoto_up.yoto_app.ui_state import set_state, get_state,remove_state_file, get_state_path
 from yoto_up.yoto_app.card_details import make_show_card_details
+from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
 
 import importlib.util
 from typing import cast, Any
@@ -78,6 +79,8 @@ def main(page):
 
     page.api_ref = api_ref  # expose on page for easy access from helpers   
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
+
+    page.selected_playlist_ids = set()  # exposed on page for easy access from playlist row callbacks
 
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
@@ -225,13 +228,7 @@ def main(page):
     page.show_card_details = make_show_card_details(
             page=page,
             Card=Card,
-            fetch_playlists_sync=fetch_playlists_sync,
-            playlists_list=playlists_list,
-            make_playlist_row=make_playlist_row,
-            status_ctrl=status_ctrl,
-            show_edit_card_dialog=show_edit_card_dialog,
             IconReplaceDialog=IconReplaceDialog,
-            show_replace_icons_dialog=show_replace_icons_dialog,
         )
 
 

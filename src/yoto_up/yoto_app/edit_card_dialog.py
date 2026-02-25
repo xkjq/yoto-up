@@ -414,7 +414,7 @@ def show_edit_card_dialog(
                 try:
                     api.update_card(card_model, return_card_model=False)
                     status_ctrl.value = "Card updated"
-                    page.fetch_playlists_sync(None)
+                    page.fetch_playlists_sync(page)
                 except Exception as ex:
                     logger.debug(f"Update card failed: {ex}")
                     msg = f"Update failed: {ex}"

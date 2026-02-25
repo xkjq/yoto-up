@@ -178,7 +178,7 @@ Continue?"""
                                                 except Exception:
                                                     pass
                                                 return
-                                        threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                                        threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
                                     except Exception:
                                         pass
 
@@ -412,7 +412,7 @@ def start_replace_icons_background(
                                 break
                         else:
                             # not found, refresh list
-                            threading.Thread(target=lambda: fetch_playlists_sync(None), daemon=True).start()
+                            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
                 except Exception:
                     pass
 

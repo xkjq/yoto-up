@@ -38,7 +38,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                     return
             api.update_card(card_model, return_card_model=False)
             try:
-                page.fetch_playlists_sync(None)
+                page.fetch_playlists_sync(page)
             except Exception:
                 logger.error("fetch_playlists_sync failed in remove cover")
             page.update()
@@ -240,7 +240,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                 #except Exception:
                 #    logger.error("Failed to refresh card after cover upload")
                 try:
-                    page.fetch_playlists_sync(None)
+                    page.fetch_playlists_sync(page)
                 except Exception:
                     logger.error("fetch_playlists_sync failed")
             except Exception as ex:
@@ -403,7 +403,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
 
                                 api.update_card(card_model, return_card_model=False)
                                 try:
-                                    page.fetch_playlists_sync(None)
+                                    page.fetch_playlists_sync(page)
                                 except Exception:
                                     logger.error("fetch_playlists_sync failed (confirm upload)")
                             except Exception as ex:

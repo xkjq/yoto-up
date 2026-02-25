@@ -358,7 +358,7 @@ class UploadManager:
                             try:
                                 # fetch_playlists_sync may be blocking; run in a thread to avoid blocking the UI
                                 threading.Thread(
-                                    target=lambda: fetch_playlists_sync(None),
+                                    target=lambda: fetch_playlists_sync(page),
                                     daemon=True,
                                 ).start()
                             except Exception as fe:
@@ -2180,7 +2180,7 @@ async def start_uploads(
             status.value = f"Created card: {cid}" if cid else "Card created"
             show_snack(status.value)
             show_card_info(page, created)
-            fetch_playlists_sync(None)
+            fetch_playlists_sync(page)
         except Exception as e:
             logger.error(f"start_uploads: create card error: {e}")
             traceback.print_exc()
