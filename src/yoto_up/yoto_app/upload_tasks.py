@@ -233,6 +233,8 @@ class UploadManager:
     """
 
     def __init__(self, page, api_ref: dict, show_snack):
+        # store page reference for helper methods
+        self.page = page
         overall_bar = ft.ProgressBar(width=400, visible=False)
         overall_text = ft.Text("")
         file_rows_column = ft.Column()
@@ -345,18 +347,8 @@ class UploadManager:
                     self.existing_card_dropdown.visible = True
 
 
-                    # Build the existing card dropdown options from the current page.cards cache
-                    options = []
-                    self.existing_card_map.clear()
-                    for c in getattr(page, "cards", []):
-                        try:
-                            title = c.metadata.title or f"Card {c.id}"
-                            options.append(ft.dropdown.Option(title, c.id))
-                            self.existing_card_map[c.id] = c
-                        except Exception:
-                            continue
-                    self.existing_card_dropdown.options = options
-                    self.existing_card_dropdown.value = None
+                    # Refresh options via UploadManager helper
+                    self.refresh_existing_card_options()
 
                 page.update()
             except Exception as exc:
@@ -403,6 +395,7 @@ class UploadManager:
             overall_bar.value = (completed_count / total) if total else 0
             overall_text.value = f"{completed_count}/{total} completed"
             page.update()
+
 
         def clear_queue(ev=None):
             """Clear the UI upload queue and reset counters."""
@@ -1510,10 +1503,10 @@ class UploadManager:
 
         if upload_target_dropdown.value == "Create new card":
             new_card_title.visible = True
-            existing_card_dropdown.visible = False
+            self.existing_card_dropdown.visible = False
         else:
             new_card_title.visible = False
-            existing_card_dropdown.visible = True
+            self.existing_card_dropdown.visible = True
 
         # Normalization controls
         local_norm_checkbox = ft.Checkbox(
@@ -1591,7 +1584,7 @@ class UploadManager:
         self.column = ft.Column(
             [
                 ft.Row(
-                    [upload_target_dropdown, new_card_title, existing_card_dropdown]
+                    [upload_target_dropdown, new_card_title, self.existing_card_dropdown]
                 ),
                 ft.Row(
                     [
@@ -1640,6 +1633,34 @@ class UploadManager:
         # Register service controls after page has content
         page.services.extend([p for p in (browse, browse_files) if p is not None])
         page.update()
+
+    def refresh_existing_card_options(self):
+        """Populate `self.existing_card_dropdown.options` from the current `page.cards` cache.
+
+        This method also updates `self.existing_card_map`.
+        """
+        try:
+            options = []
+            self.existing_card_map.clear()
+            cards = getattr(self.page, "cards", []) or []
+            if not cards:
+                self.page.run_task(self.page.fetch_playlists)
+                return
+            for c in cards:
+                try:
+                    # prefer Card model fields
+                    title = getattr(c, "title", None) or (getattr(c, "metadata", None) and getattr(c.metadata, "title", None)) or f"Card {getattr(c, 'cardId', '')}"
+                    cid = getattr(c, "cardId", None)
+                    if not cid:
+                        continue
+                    options.append(ft.dropdown.Option(title, cid))
+                    self.existing_card_map[cid] = c
+                except Exception:
+                    continue
+            self.existing_card_dropdown.options = options
+            self.existing_card_dropdown.value = None
+        except Exception:
+            logger.exception("refresh_existing_card_options failed")
 
 def show_card_popup(page, card):
     # Show a dialog with full card details

@@ -712,7 +712,7 @@ def fetch_playlists_sync(page):
         api = page.api_ref.get("api")
         cards = api.get_myo_content()
         page.cards = cards  # Cache cards on page for access by details view and other helpers
-        
+        page.upload_manager.refresh_existing_card_options()
         build_playlists_ui(page, cards=cards)
         page.show_snack(f"Fetched {len(cards)} playlists")
         page.update()
@@ -1649,6 +1649,7 @@ def build_playlists_panel(
             except Exception:
                 pass
 
+        page.upload_manager.refresh_existing_card_options()
         build_playlists_ui(page, cards)
         # Persist playlists for faster startup and offline view
         save_playlists(cards)
