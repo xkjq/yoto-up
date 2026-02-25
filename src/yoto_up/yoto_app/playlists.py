@@ -43,56 +43,84 @@ _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
 
 
-def card_matches_filters(card_obj, filters: Dict[str, Any]):
-    try:
-        if hasattr(card_obj, "model_dump"):
-            d = card_obj.model_dump(exclude_none=True)
-        elif isinstance(card_obj, dict):
-            d = card_obj
-        else:
-            try:
-                d = json.loads(str(card_obj))
-            except Exception:
-                d = {}
-    except Exception:
-        d = {}
-
+def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
     tf = (filters.get("title") or "").strip().lower()
     if tf:
-        title = (d.get("title") or "").lower()
-        if tf not in title:
+        title = card_obj.title
+        if tf not in str(title).lower():
             return False
 
     cat = (filters.get("category") or "").strip().lower()
     if cat:
-        meta = d.get("metadata") or {}
-        cval = (meta.get("category") or "").strip().lower()
-        if cval != cat:
+        try:
+            if hasattr(card_obj, "get_category") and callable(card_obj.get_category):
+                cval = (card_obj.get_category() or "").strip().lower()
+            else:
+                meta = (
+                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
+                )
+                if meta is None:
+                    # try attribute access
+                    meta = getattr(card_obj, "metadata", None)
+                cval = (getattr(meta, "category", None) if meta else None) or ""
+                cval = str(cval).strip().lower()
+            if cval != cat:
+                return False
+        except Exception:
             return False
 
     gf = (filters.get("genre") or "").strip().lower()
     if gf:
         want = {g.strip().lower() for g in gf.split(",") if g.strip()}
-        meta = d.get("metadata") or {}
-        card_genres = meta.get("genre") or meta.get("genres") or []
-        if isinstance(card_genres, str):
-            card_genres = [g.strip() for g in card_genres.split(",") if g.strip()]
-        card_genres_set = {g.strip().lower() for g in card_genres if g}
-        if not (want & card_genres_set):
+        try:
+            if hasattr(card_obj, "get_genres") and callable(card_obj.get_genres):
+                card_genres = card_obj.get_genres()
+            else:
+                meta = (
+                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
+                )
+                if meta is None:
+                    meta = getattr(card_obj, "metadata", None)
+                card_genres = []
+                if meta:
+                    val = getattr(meta, "genre", None) if not isinstance(meta, dict) else meta.get("genre")
+                    if not val:
+                        val = meta.get("genres") if isinstance(meta, dict) else getattr(meta, "genres", None)
+                    if isinstance(val, str):
+                        card_genres = [g.strip() for g in val.split(",") if g.strip()]
+                    else:
+                        card_genres = val or []
+            card_genres_set = {g.strip().lower() for g in (card_genres or []) if g}
+            if not (want & card_genres_set):
+                return False
+        except Exception:
             return False
 
     tg = (filters.get("tags") or "").strip().lower()
     if tg:
         want_tags = {t.strip().lower() for t in tg.split(",") if t.strip()}
-        meta = d.get("metadata") or {}
-        card_tags = meta.get("tags") or []
-        # sometimes tags may be stored in genres or as a comma string
-        if not card_tags:
-            card_tags = meta.get("genre") or meta.get("genres") or []
-        if isinstance(card_tags, str):
-            card_tags = [t.strip() for t in card_tags.split(",") if t.strip()]
-        card_tags_set = {t.strip().lower() for t in card_tags if t}
-        if not (want_tags & card_tags_set):
+        try:
+            if hasattr(card_obj, "get_tags") and callable(card_obj.get_tags):
+                card_tags = card_obj.get_tags()
+            else:
+                meta = (
+                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
+                )
+                if meta is None:
+                    meta = getattr(card_obj, "metadata", None)
+                card_tags = []
+                if meta:
+                    val = getattr(meta, "tags", None) if not isinstance(meta, dict) else meta.get("tags")
+                    if not val:
+                        val = getattr(meta, "genre", None) if not isinstance(meta, dict) else meta.get("genre")
+                    if isinstance(val, str):
+                        card_tags = [t.strip() for t in val.split(",") if t.strip()]
+                    else:
+                        card_tags = val or []
+            card_tags_set = {t.strip().lower() for t in (card_tags or []) if t}
+            if not (want_tags & card_tags_set):
+                return False
+        except Exception:
             return False
 
     return True
@@ -113,18 +141,22 @@ def _extract_cover_source(card_item: Card, api_instance):
 
 
 def get_card_id_local(card):
+    # Prefer model helper if available
+    try:
+        if hasattr(card, "get_id") and callable(getattr(card, "get_id")):
+            cid = card.get_id()
+            if cid:
+                return cid
+    except Exception:
+        pass
     if hasattr(card, "cardId") and getattr(card, "cardId"):
         return getattr(card, "cardId")
-    if hasattr(card, "id") and getattr(card, "id"):
-        return getattr(card, "id")
-    if hasattr(card, "contentId") and getattr(card, "contentId"):
-        return getattr(card, "contentId")
     if isinstance(card, dict):
-        return card.get("cardId") or card.get("id") or card.get("contentId")
+        return card.get("cardId")
     try:
         if hasattr(card, "model_dump"):
             d = card.model_dump(exclude_none=True)
-            return d.get("cardId") or d.get("id") or d.get("contentId")
+            return d.get("cardId")
     except Exception:
         pass
     return None
@@ -240,10 +272,10 @@ def make_playlist_row(page, card_obj, idx=None):
     logger.debug(f"Building row for card: {get_card_id_local(card_obj)}")
     try:
         title = getattr(card_obj, "title", None) or (
-            card_obj.model_dump(exclude_none=True).get("title")
-            if hasattr(card_obj, "model_dump")
-            else str(card_obj)
+            card_obj.get("title") if isinstance(card_obj, dict) else None
         )
+        if not title:
+            title = str(card_obj)
     except Exception:
         title = str(card_obj)
     cid = get_card_id_local(card_obj) or ""
@@ -422,58 +454,69 @@ def make_playlist_row(page, card_obj, idx=None):
             return
         page.show_card_details(ev, card)
 
-    # Build a compact preview of the first few chapters to make the
-    # playlist row more informative than a single text line.
+    # Compact preview of first few chapter titles (use model helper when present)
     preview = ""
     try:
-        if hasattr(card_obj, "model_dump"):
-            d_preview = card_obj.model_dump(exclude_none=True)
-        elif isinstance(card_obj, dict):
-            d_preview = card_obj
+        if hasattr(card_obj, "get_preview_titles") and callable(card_obj.get_preview_titles):
+            titles = card_obj.get_preview_titles(3)
         else:
+            # fallback to legacy parsing
             try:
-                d_preview = json.loads(str(card_obj))
+                d_preview = card_obj.model_dump(exclude_none=True) if hasattr(card_obj, "model_dump") else (card_obj if isinstance(card_obj, dict) else {})
             except Exception:
-                d_preview = {}
-        content_preview = (
-            d_preview.get("content", {}) if isinstance(d_preview, dict) else {}
-        )
-        chapters_preview = content_preview.get("chapters") or []
-        titles = []
-        for ch in chapters_preview[:3]:
-            if isinstance(ch, dict):
-                titles.append(ch.get("title", "") or "")
-            else:
-                titles.append(str(ch))
-        preview = "  •  ".join([t for t in titles if t])
+                d_preview = card_obj if isinstance(card_obj, dict) else {}
+            content_preview = d_preview.get("content") or {}
+            chapters_preview = content_preview.get("chapters") or []
+            titles = []
+            for ch in chapters_preview[:3]:
+                if isinstance(ch, dict):
+                    titles.append(ch.get("title", "") or "")
+                else:
+                    titles.append(str(ch))
+        preview = "  •  ".join([t for t in (titles or []) if t])
     except Exception:
         preview = ""
 
-    # Extract metadata fields for display
+    # Extract metadata fields for display using model helpers when available
     try:
-        if hasattr(card_obj, "model_dump"):
-            d_meta = card_obj.model_dump(exclude_none=True)
-        elif isinstance(card_obj, dict):
-            d_meta = card_obj
+        if hasattr(card_obj, "get_tags") and callable(card_obj.get_tags):
+            tags = card_obj.get_tags() or []
         else:
-            try:
-                d_meta = json.loads(str(card_obj))
-            except Exception:
-                d_meta = {}
-        meta = d_meta.get("metadata") or {}
-        tags = meta.get("tags")
-        if isinstance(tags, str):
-            tags = [t.strip() for t in tags.split(",") if t.strip()]
-        if not tags:
+            # fallback
+            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
             tags = []
-        genres = meta.get("genre") or meta.get("genres")
-        if isinstance(genres, str):
-            genres = [g.strip() for g in genres.split(",") if g.strip()]
-        if not genres:
-            genres = []
-        category = meta.get("category") or ""
-        # Show author in playlist row if present
-        author = meta.get("author") or meta.get("creator") or ""
+            if meta_fallback:
+                tval = meta_fallback.get("tags") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "tags", None)
+                if isinstance(tval, str):
+                    tags = [t.strip() for t in tval.split(",") if t.strip()]
+                else:
+                    tags = tval or []
+
+        if hasattr(card_obj, "get_genres") and callable(card_obj.get_genres):
+            genres = card_obj.get_genres() or []
+        else:
+            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
+            gval = None
+            if meta_fallback:
+                gval = meta_fallback.get("genre") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "genre", None)
+                if not gval:
+                    gval = meta_fallback.get("genres") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "genres", None)
+            if isinstance(gval, str):
+                genres = [g.strip() for g in gval.split(",") if g.strip()]
+            else:
+                genres = gval or []
+
+        if hasattr(card_obj, "get_category") and callable(card_obj.get_category):
+            category = card_obj.get_category() or ""
+        else:
+            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
+            category = (meta_fallback.get("category") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "category", None)) or ""
+
+        if hasattr(card_obj, "get_author") and callable(card_obj.get_author):
+            author = card_obj.get_author() or ""
+        else:
+            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
+            author = (meta_fallback.get("author") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "author", None)) or (meta_fallback.get("creator") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "creator", None)) or ""
     except Exception:
         tags = []
         genres = []
@@ -562,26 +605,41 @@ def build_playlists_ui(page, cards=None):
         sort_key = page.current_playlist_sort
 
         def get_meta(card):
-            if hasattr(card, "model_dump"):
-                d = card.model_dump(exclude_none=True)
-            elif isinstance(card, dict):
+            # Return tuple (raw_dict_or_model, metadata_obj_or_dict)
+            if isinstance(card, dict):
                 d = card
-            else:
+                meta = d.get("metadata") or {}
+                return d, meta
+            # Model instance: prefer helpers/attributes
+            try:
+                meta = card.get_metadata() if hasattr(card, "get_metadata") else getattr(card, "metadata", {})
+            except Exception:
                 try:
-                    d = json.loads(str(card))
+                    d = card.model_dump(exclude_none=True)
+                    meta = d.get("metadata") or {}
                 except Exception:
-                    d = {}
-            meta = d.get("metadata") or {}
-            return d, meta
+                    meta = {}
+            return card, meta
 
-        def sort_func(card):
+        def sort_func(card: Card):
             d, meta = get_meta(card)
+            # Title
+            def title_val(obj):
+                if isinstance(obj, dict):
+                    return (obj.get("title") or "").lower()
+                return (getattr(obj, "title", None) or "").lower()
+
             if sort_key == "title_asc":
-                return (d.get("title") or "").lower()
+                return title_val(d)
             if sort_key == "title_desc":
-                return (d.get("title") or "").lower()
+                return title_val(d)
             if sort_key == "category":
-                return (meta.get("category") or "").lower()
+                try:
+                    if isinstance(meta, dict):
+                        return (meta.get("category") or "").lower()
+                    return (getattr(meta, "category", None) or "").lower()
+                except Exception:
+                    return ""
             if sort_key in (
                 "created_desc",
                 "created_asc",
@@ -589,7 +647,12 @@ def build_playlists_ui(page, cards=None):
                 "updated_asc",
             ):
                 key_name = "createdAt" if "created" in sort_key else "updatedAt"
-                value = d.get(key_name)
+                # prefer attribute access on model, fallback to dict
+                value = None
+                if isinstance(d, dict):
+                    value = d.get(key_name)
+                else:
+                    value = getattr(d, key_name, None)
                 ts = 0
                 if value:
                     from datetime import datetime
@@ -832,8 +895,6 @@ def build_playlists_panel(
                                     )
                                     card_id = (
                                         payload.get("cardId")
-                                        or payload.get("id")
-                                        or payload.get("contentId")
                                         or card_dir.name
                                     )
                             except Exception:
@@ -865,8 +926,6 @@ def build_playlists_panel(
                                     )
                                     card_id = (
                                         payload.get("cardId")
-                                        or payload.get("id")
-                                        or payload.get("contentId")
                                         or latest.stem
                                     )
                             except Exception:

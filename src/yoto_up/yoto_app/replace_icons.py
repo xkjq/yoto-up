@@ -79,9 +79,7 @@ Continue?"""
                                 prog.value = 0.0
                                 page.update()
                                 api = ensure_api(api_ref, CLIENT_ID)
-                                card_id = (
-                                    c.get("cardId") or c.get("id") or c.get("contentId")
-                                )
+                                card_id = c.cardId
                                 if not card_id:
                                     raise RuntimeError("Unable to determine card id")
                                 full = api.get_card(card_id)
@@ -121,25 +119,10 @@ Continue?"""
                                         except Exception:
                                             pass
 
-                                def get_card_id(card_obj):
-                                    try:
-                                        if isinstance(card_obj, dict):
-                                            return (
-                                                card_obj.get("id")
-                                                or card_obj.get("contentId")
-                                                or card_obj.get("cardId")
-                                            )
-                                        return (
-                                            getattr(card_obj, "id", None)
-                                            or getattr(card_obj, "contentId", None)
-                                            or getattr(card_obj, "cardId", None)
-                                        )
-                                    except Exception:
-                                        return None
 
                                 def refresh_ui(card_model):
                                     try:
-                                        updated_id = get_card_id(card_model)
+                                        updated_id = card_model.cardId
                                     except Exception:
                                         updated_id = None
                                     if not updated_id:
@@ -354,7 +337,7 @@ def start_replace_icons_background(
             new_card = None
             try:
                 api = ensure_api(page.api_ref)
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.get("cardId")
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
                 full = api.get_card(card_id)
@@ -380,9 +363,9 @@ def start_replace_icons_background(
                 try:
                     updated_id = None
                     if isinstance(new_card, dict):
-                        updated_id = new_card.get("id") or new_card.get("cardId") or new_card.get("contentId")
+                        updated_id = new_card.get("cardId")
                     else:
-                        updated_id = getattr(new_card, "id", None) or getattr(new_card, "cardId", None) or getattr(new_card, "contentId", None)
+                        updated_id = getattr(new_card, "cardId", None)
 
                     if updated_id:
                         for i, ctrl in enumerate(list(page.playlists_list.controls)):

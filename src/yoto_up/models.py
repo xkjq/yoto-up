@@ -135,6 +135,94 @@ class Card(BaseModel):
             logger.warning(f"Failed to get metadata for card {self.cardId}")
             return CardMetadata()
 
+    def get_id(self) -> Optional[str]:
+        """Return the cardId for the card (cardId only)."""
+        try:
+            return self.cardId
+        except Exception:
+            return None
+
+    def get_author(self) -> Optional[str]:
+        try:
+            meta = self.get_metadata()
+            return getattr(meta, "author", None)
+        except Exception:
+            return None
+
+    def get_category(self) -> Optional[str]:
+        try:
+            meta = self.get_metadata()
+            return getattr(meta, "category", None) or ""
+        except Exception:
+            return ""
+
+    def get_genres(self) -> list[str]:
+        """Return a list of genres for the card (robust to string or list forms)."""
+        try:
+            meta = self.get_metadata()
+            # Prefer structured metadata.genre
+            genres = getattr(meta, "genre", None) or []
+            if isinstance(genres, str):
+                return [g.strip() for g in genres.split(",") if g.strip()]
+            if genres:
+                return [g for g in genres if g]
+            # Fallback: inspect raw payload for alternate keys
+            try:
+                d = self.model_dump(exclude_none=True)
+                meta_raw = d.get("metadata") or {}
+                alt = meta_raw.get("genres") or meta_raw.get("genre") or []
+                if isinstance(alt, str):
+                    return [g.strip() for g in alt.split(",") if g.strip()]
+                return [g for g in alt if g]
+            except Exception:
+                return []
+        except Exception:
+            return []
+
+    def get_tags(self) -> list[str]:
+        """Return combined tags from card-level and metadata-level tags."""
+        try:
+            tags = []
+            if self.tags:
+                tags.extend([t for t in self.tags if t])
+            meta = self.get_metadata()
+            mtags = getattr(meta, "tags", None) or []
+            if isinstance(mtags, str):
+                tags.extend([t.strip() for t in mtags.split(",") if t.strip()])
+            else:
+                tags.extend([t for t in (mtags or []) if t])
+            return tags
+        except Exception:
+            return []
+
+    def get_preview_titles(self, count: int = 3) -> list[str]:
+        """Return up to `count` chapter titles for compact preview."""
+        try:
+            ch = self.get_chapters()
+            titles = []
+            for c in ch[:count]:
+                if hasattr(c, "title") and c.title:
+                    titles.append(c.title)
+                else:
+                    try:
+                        titles.append(str(c))
+                    except Exception:
+                        titles.append("")
+            return [t for t in titles if t]
+        except Exception:
+            return []
+
+    def get_short_description(self, limit: int = 80) -> str:
+        try:
+            meta = self.get_metadata()
+            desc = getattr(meta, "description", None) or ""
+            if not desc:
+                return ""
+            s = str(desc)
+            return s if len(s) <= limit else s[: limit - 1] + "…"
+        except Exception:
+            return ""
+
     def get_chapters(self) -> List[Chapter]:
         """Return the list of chapters in the card, or an empty list if not available."""
         try:

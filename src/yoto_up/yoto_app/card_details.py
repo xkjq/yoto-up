@@ -30,7 +30,7 @@ def make_show_card_details(
         page.update()
 
         def bg_save():
-            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+            card_id = c.cardId
             if not card_id:
                 logger.error("save_order: no card id found")
                 return
@@ -857,7 +857,7 @@ def make_show_card_details(
                                 payload = api.load_version(p)
                                 if isinstance(payload, dict):
                                     title = payload.get("title") or (payload.get("metadata") or {}).get("title")
-                                    cardid = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+                                    cardid = payload.get("cardId")
                             except Exception:
                                 title = None
                                 cardid = None
@@ -1391,7 +1391,7 @@ Renumbering keys will assign sequential keys to all tracks.
                             except Exception:
                                 data = c
                         title_part = (c.get('title') or '') if isinstance(c, dict) else ''
-                        id_part = (c.get('cardId') or c.get('id') or c.get('contentId') or 'card') if isinstance(c, dict) else 'card'
+                        id_part = c.cardId
                         safe_title = re.sub(r"[^0-9A-Za-z._-]", "-", str(title_part))[:80]
                         fname = Path('cards') / f"{safe_title}_{id_part}.json"
                         with fname.open('w', encoding='utf-8') as f:

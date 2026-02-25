@@ -186,7 +186,7 @@ class IconReplaceDialog:
                             def use_icon(ev2, icon=icon):
                                 def use_worker():
                                     # Perform upload (if required) using robust helper
-                                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                                    full = self.api.get_card(self.card.cardId)
                                     media_id = icon.get('mediaId')
                                     if not media_id and 'id' in icon:
                                         uploaded = self._upload_icon_payload(icon)
@@ -343,7 +343,7 @@ class IconReplaceDialog:
                                         return
                                     media_id = uploaded.get('mediaId')
                                     # apply to card (same logic as remote icons)
-                                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                                    full = self.api.get_card(self.card.cardId)
                                     if self.kind == 'chapter':
                                         target_ch = full.content.chapters[self.ch_i]
                                         if not getattr(target_ch, 'display', False):
@@ -545,7 +545,7 @@ class IconReplaceDialog:
                         self.show_snack("Upload failed or returned no mediaId", True)
                         return
                     media_id = uploaded.get('mediaId')
-                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                    full = self.api.get_card(self.card.cardId)
                     if self.kind == 'chapter':
                         target_ch = full.content.chapters[self.ch_i]
                         if not getattr(target_ch, 'display', False):

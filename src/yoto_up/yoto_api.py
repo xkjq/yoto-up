@@ -287,7 +287,7 @@ class YotoAPI:
 
     def _version_path_for(self, payload: dict) -> Path:
         # Determine an id for the card to store versions under
-        card_id = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+        card_id = payload.get("cardId")
         if not card_id:
             # fallback to slugified title + timestamp
             title = (payload.get("title") or "untitled").strip()[:100]
@@ -1392,7 +1392,7 @@ class YotoAPI:
 
     def delete_content(self, content_id: str):
         """
-        Delete a piece of content (MYO card) by contentId.
+        Delete a piece of content (MYO card) by cardId.
         Returns the API response (status or error).
         """
         url = f"https://api.yotoplay.com/content/{content_id}"

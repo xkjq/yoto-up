@@ -12,8 +12,8 @@ def add_cover_dialog(page, c, Card, on_close=None):
 
     def do_remove_cover(_e=None):
         try:
-            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
-            if api and card_id:
+            card_id = c.get("cardId")
+            if api and card_id is not None:
                 full = api.get_card(card_id)
                 if hasattr(full, "model_dump"):
                     cd = full.model_dump(exclude_none=True)
@@ -181,10 +181,8 @@ def add_cover_dialog(page, c, Card, on_close=None):
             if isinstance(cover, dict):
                 mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
             try:
-                card_id = (
-                    c.get("cardId") or c.get("id") or c.get("contentId")
-                )
-                if api and card_id:
+                card_id = c.cardId
+                if api and card_id is not None:
                     full = api.get_card(card_id)
                     if hasattr(full, "model_dump"):
                         cd = full.model_dump(exclude_none=True)
@@ -354,10 +352,8 @@ def add_cover_dialog(page, c, Card, on_close=None):
                             if isinstance(cover, dict):
                                 mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
                             try:
-                                card_id = (
-                                    c.get("cardId") or c.get("id") or c.get("contentId")
-                                )
-                                if api and card_id:
+                                card_id = c.cardId
+                                if api and card_id is not None:
                                     full = api.get_card(card_id)
                                     if hasattr(full, "model_dump"):
                                         cd = full.model_dump(exclude_none=True)
