@@ -1,3 +1,4 @@
+from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
 from yoto_up.models import Card
 import threading
@@ -25,90 +26,90 @@ def make_show_card_details(
     captures the dependencies that were previously closed-over in the
     nested function.
     """
-    def save_order_click(_ev=None):
-        page.show_snack("Saving order...")
-        page.update()
-
-        def bg_save():
-            # Build a payload from the current Card model and the reordered chapters
-            card_id = c.cardId
-            if not card_id:
-                logger.error("save_order: no card id found")
-                return
-
-            dlg_content = getattr(dialog, "content", None)
-            ui_items = None
-            try:
-                if dlg_content is not None and hasattr(dlg_content, "controls"):
-                    for ctl in dlg_content.controls:
-                        try:
-                            children = getattr(ctl, "controls", None)
-                            if not children or not isinstance(children, (list, tuple)):
-                                continue
-                            matches = 0
-                            for child in children:
-                                ch = getattr(child, "_chapter", None)
-                                if ch is None and hasattr(child, "content"):
-                                    ch = getattr(child.content, "_chapter", None)
-                                if ch is not None:
-                                    matches += 1
-                            if matches >= max(1, len(children) // 2):
-                                ui_items = children
-                                break
-                        except Exception:
-                            continue
-            except Exception:
-                pass
-
-            if ui_items is None:
-                ui_items = list(chapter_items)
-
-            ordered = []
-            for it in chapter_items:
-                try:
-                    ch = getattr(it, "_chapter", None)
-                    if ch is None and hasattr(it, "content"):
-                        ch = getattr(it.content, "_chapter", None)
-                    if ch is not None:
-                        ordered.append(deepcopy(ch))
-                except Exception:
-                    continue
-
-            if ordered:
-                # Start from current card model payload
-                try:
-                    payload = c.model_dump(exclude_none=True)
-                except Exception:
-                    payload = {}
-                payload.setdefault("content", {})
-                payload["content"]["chapters"] = ordered
-
-                try:
-                    card_model = Card.model_validate(payload)
-                except Exception:
-                    try:
-                        card_model = Card(**payload)
-                    except Exception as ex:
-                        logger.error(f"save_order: failed to build Card model: {ex}")
-                        page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
-                        return
-
-                if not getattr(card_model, "cardId", None):
-                    card_model.cardId = card_id
-
-                try:
-                    updated = api.create_or_update_content(card_model, return_card=True)
-                    show_card_details(None, updated)
-                    page.update()
-                except Exception as ex:
-                    logger.error(f"save_order: background save failed: {ex}")
-
-        threading.Thread(target=bg_save, daemon=True).start()
-        logger.info("save_order: background save started")
 
     def show_card_details(e, card: Card, preview_path: Path | None = None):
+
         assert isinstance(card, Card), f"Expected card to be a Card model instance, got {type(card)}"
-        api = page.api_ref.get("api")
+
+        api: YotoAPI = page.api_ref.get("api")
+
+        def save_order_click(_ev=None):
+            page.show_snack("Saving order...")
+            page.update()
+
+            async def bg_save():
+                # Build a payload from the current Card model and the reordered chapters
+                card_id = c.cardId
+                if not card_id:
+                    logger.error("save_order: no card id found")
+                    return
+
+                dlg_content = getattr(dialog, "content", None)
+                ui_items = None
+                try:
+                    if dlg_content is not None and hasattr(dlg_content, "controls"):
+                        for ctl in dlg_content.controls:
+                            try:
+                                children = getattr(ctl, "controls", None)
+                                if not children or not isinstance(children, (list, tuple)):
+                                    continue
+                                matches = 0
+                                for child in children:
+                                    ch = getattr(child, "_chapter", None)
+                                    if ch is None and hasattr(child, "content"):
+                                        ch = getattr(child.content, "_chapter", None)
+                                    if ch is not None:
+                                        matches += 1
+                                if matches >= max(1, len(children) // 2):
+                                    ui_items = children
+                                    break
+                            except Exception:
+                                logger.debug("Failed to process child controls for save order")
+                except Exception:
+                    logger.debug("Failed to extract chapter UI items for save order")
+
+                if ui_items is None:
+                    ui_items = list(chapter_items)
+
+                ordered = []
+                for it in chapter_items:
+                    try:
+                        ch = getattr(it, "_chapter", None)
+                        if ch is None and hasattr(it, "content"):
+                            ch = getattr(it.content, "_chapter", None)
+                        if ch is not None:
+                            ordered.append(deepcopy(ch))
+                    except Exception:
+                        continue
+
+                if ordered:
+                    # Start from current card model payload
+                    try:
+                        payload = c.model_dump(exclude_none=True)
+                    except Exception:
+                        payload = {}
+                    payload.setdefault("content", {})
+                    payload["content"]["chapters"] = ordered
+
+                    card_model = Card.model_validate(payload)
+
+                    if not getattr(card_model, "cardId", None):
+                        card_model.cardId = card_id
+
+                    try:
+                        updated = api.create_or_update_content(card_model, return_card=True)
+                        page.update_local_card_cache(updated)
+                        page.pop_dialog()
+                        page.pop_dialog()
+                        show_card_details(None, updated)
+                        page.update()
+                    except Exception as ex:
+                        logger.error(f"save_order: background save failed: {ex}")
+
+            page.run_task(bg_save)
+            logger.info("save_order: background save started")
+
+
         def refresh_icon_cache(ev=None):
             try:
                 api.refresh_public_and_user_icons()
@@ -187,7 +188,8 @@ def make_show_card_details(
                             else:
                                 page.show_snack('Chapter has no icon to clear', error=True)
                                 return
-                            api.update_card(full, return_card_model=False)
+
+                            page.update_card(full)
                             page.show_snack('Chapter icon cleared')
                             show_card_details(None, full)
                         except Exception as ee:
@@ -219,8 +221,7 @@ def make_show_card_details(
                             else:
                                 page.show_snack('Track has no icon to clear', error=True)
                                 return
-                            api.update_card(full, return_card_model=False)
-                            page.show_snack('Track icon cleared')
+                            page.update_card(full)
                             show_card_details(None, full)
                         except Exception as ee:
                             page.show_snack(f'Failed to clear track icon: {ee}', error=True)
@@ -661,7 +662,7 @@ def make_show_card_details(
                                 if not getattr(tr, "display", None):
                                     tr.display = (type(tr.display)() if hasattr(tr, "display") else None)
                                 tr.display.icon16x16 = chapter_icon
-                                api.update_card(full, return_card_model=False)
+                                page.update_card(full)
                                 page.show_dialog(dialog)
                                 page.update()
                                 page.show_snack("Track icon updated to chapter icon")
@@ -687,17 +688,13 @@ def make_show_card_details(
             controls = [ft.Text(str(c), selectable=True)]
 
         def close_dialog(ev):
+            logger.debug("Closing card details dialog")
             page.pop_dialog()
             page.update()
 
         def show_json(ev):
-            try:
-                raw = json.dumps(c, indent=2)
-            except Exception:
-                try:
-                    raw = str(c)
-                except Exception:
-                    raw = "<unable to render JSON>"
+            logger.debug("Preparing raw JSON view")
+            raw = json.dumps(c.model_dump(), indent=2)
 
             def close_json(ev2):
                 page.pop_dialog()
@@ -836,19 +833,21 @@ def make_show_card_details(
                                     return f"{n:.1f}TB"
                                 readable_parts.append(_hr(size))
                             except Exception:
-                                pass
+                                logger.error(f"Failed to get file size for version file {p}")
 
                             if readable_parts:
                                 label = " — ".join(readable_parts)
                         except Exception:
+                            logger.error(f"Failed to build label for version file {p}")
                             label = p.name
                         def make_preview(pp=p):
                             def _preview(ev2=None):
                                 try:
-                                    payload = api.load_version(pp)
+                                    card = api.load_version(pp, as_model=True)
                                     # show the full card details for the saved version
-                                    show_card_details(None, payload, preview_path=pp)
+                                    show_card_details(None, card, preview_path=pp)
                                 except Exception as ex:
+                                    logger.error(f"Failed to load version for preview: {ex}")
                                     page.show_snack(f"Failed to load version: {ex}", error=True)
                             return _preview
 
@@ -1021,7 +1020,7 @@ def make_show_card_details(
                         full = api.get_card(card_id)
                         # rewrite 'key' sequentially across tracks
                         updated = api.rewrite_track_fields(full, field="key", sequential=True)
-                        api.update_card(updated, return_card_model=False)
+                        page.update_card(updated)
                         page.show_snack("Track keys relabelled")
                         try:
                             show_card_details(None, updated)
@@ -1047,7 +1046,7 @@ def make_show_card_details(
                         # rewrite 'overlayLabel' sequentially
                         updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True)
                         updated = api.rewrite_chapter_fields(updated, field="overlayLabel", sequential=True)
-                        api.update_card(updated, return_card_model=False)
+                        page.update_card(updated)
                         page.show_snack("Overlay labels relabelled")
                         try:
                             show_card_details(None, updated)
@@ -1071,7 +1070,7 @@ def make_show_card_details(
                             return
                         full = api.get_card(card_id)
                         updated = api.merge_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
-                        api.update_card(updated, return_card_model=False)
+                        page.update_card(updated)
                         page.show_snack("Chapters merged")
                         try:
                             show_card_details(None, updated)
@@ -1118,7 +1117,7 @@ Merging will result in:
                                 return
                             full = api.get_card(card_id)
                             updated = api.expand_all_tracks_into_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
-                            api.update_card(updated, return_card_model=False)
+                            page.update_card(updated)
                             try:
                                 page.show_snack("Expanded all tracks into individual chapters")
                             except Exception:

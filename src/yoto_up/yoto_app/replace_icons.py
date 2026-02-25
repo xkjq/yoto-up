@@ -95,8 +95,7 @@ Continue?"""
                                     max_searches=max_searches,
                                 )
                                 prog_text.value = "Saving updated card..."
-                                page.update()
-                                api.update_card(new_card, return_card_model=False)
+                                page.update_card(new_card)
                                 prog_text.value = "Done"
                                 prog.value = 1.0
 
@@ -182,7 +181,7 @@ Continue?"""
                             except Exception:
                                 pass
 
-                        threading.Thread(target=work, daemon=True).start()
+                        page.run_task(work)
                     except Exception as ee:
                         try:
                             show_snack(f"Failed to start replace: {ee}", error=True)
@@ -357,11 +356,11 @@ def start_replace_icons_background(
             except Exception:
                 pass
 
-        def work():
+        async def work():
             new_card = None
             try:
                 api = ensure_api(page.api_ref)
-                card_id = c.get("cardId")
+                card_id = c.cardId
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
                 full = api.get_card(card_id)
@@ -378,61 +377,10 @@ def start_replace_icons_background(
                     cancel_event=cancel_event,
                 )
 
-                try:
-                    api.update_card(new_card, return_card_model=False)
-                except Exception:
-                    pass
-
-                # Refresh playlists UI on completion
-                try:
-                    updated_id = None
-                    if isinstance(new_card, dict):
-                        updated_id = new_card.get("cardId")
-                    else:
-                        updated_id = getattr(new_card, "cardId", None)
-
-                    if updated_id:
-                        for i, ctrl in enumerate(list(page.playlists_list.controls)):
-                            cb = None
-                            children = (
-                                getattr(ctrl, "controls", None)
-                                or getattr(
-                                    getattr(ctrl, "content", None), "controls", None
-                                )
-                                or []
-                            )
-                            for ch in children or []:
-                                if getattr(ch, "_is_playlist_checkbox", False):
-                                    cb = ch
-                                    break
-                            if not cb:
-                                continue
-                            if getattr(cb, "_cid", None) == updated_id:
-                                try:
-                                    page.playlists_list.controls[i] = (
-                                        page.make_playlist_row(page, new_card, idx=i)
-                                    )
-                                    page.update()
-                                    try:
-                                        page.show_snack("Playlist icons updated")
-                                    except Exception:
-                                        pass
-                                except Exception:
-                                    pass
-                                break
-                        else:
-                            # not found, refresh list
-                            threading.Thread(
-                                target=lambda: page.fetch_playlists, daemon=True
-                            ).start()
-                except Exception:
-                    pass
+                page.update_card(new_card)
 
             except Exception as ex:
-                try:
-                    page.show_snack(f"Replace icons failed: {ex}", error=True)
-                except Exception:
-                    pass
+                page.show_snack(f"Replace icons failed: {ex}", error=True)
                 logger.exception("replace_icons error")
             finally:
                 # remove badge after short delay
@@ -446,10 +394,7 @@ def start_replace_icons_background(
                 except Exception:
                     pass
 
-        threading.Thread(target=work, daemon=True).start()
+        page.run_task(work)
     except Exception as e:
-        try:
-            page.show_snack(f"Failed to start background replace: {e}", error=True)
-        except Exception:
-            pass
+        page.show_snack(f"Failed to start background replace: {e}", error=True)
         logger.exception("start_replace_icons_background error")

@@ -12,7 +12,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
 
     def do_remove_cover(_e=None):
         try:
-            card_id = c.get("cardId")
+            card_id = c.cardId
             if api and card_id is not None:
                 full = api.get_card(card_id)
                 if hasattr(full, "model_dump"):
@@ -37,10 +37,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                 except Exception:
                     logger.error("Card(**cd) failed in remove cover")
                     return
-            updated_card = api.update_card(card_model, return_card_model=True)
-            page.update_local_card_cache(updated_card)
-            page.build_playlist_ui()
-            page.update()
+            page.update_card(card_model)
         except Exception as e:
             logger.error(f"Remove cover error: {e}")
             page.update()
@@ -223,24 +220,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                         return
 
                 print(card_model)
-                api.update_card(card_model, return_card_model=False)
-                ## Refresh the card/playlist object from the server to update local metadata
-                #try:
-                #    card_id = cd.get("cardId") or cd.get("id") or cd.get("contentId")
-                #    if card_id:
-                #        refreshed = api.get_card(card_id)
-                #        if hasattr(refreshed, "model_dump"):
-                #            c.clear()
-                #            c.update(refreshed.model_dump(exclude_none=True))
-                #        elif isinstance(refreshed, dict):
-                #            c.clear()
-                #            c.update(refreshed)
-                #except Exception:
-                #    logger.error("Failed to refresh card after cover upload")
-                try:
-                    page.fetch_playlists_sync(page)
-                except Exception:
-                    logger.error("fetch_playlists_sync failed")
+                page.update_card(card_model)
             except Exception as ex:
                 logger.error("Upload succeeded but attach failed")
             finally:
@@ -391,11 +371,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                                         return
 
 
-                                api.update_card(card_model, return_card_model=False)
-                                try:
-                                    page.fetch_playlists_sync(page)
-                                except Exception:
-                                    logger.error("fetch_playlists_sync failed (confirm upload)")
+                                page.update_card(card_model)
                             except Exception as ex:
                                 logger.error("Upload succeeded but attach failed (confirm upload)")
                             finally:

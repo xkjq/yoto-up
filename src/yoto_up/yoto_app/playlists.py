@@ -1,3 +1,5 @@
+from fontTools.mtiLib import build
+from weakref import ref
 from yoto_up.yoto import app
 from yoto_up.yoto_app.api_manager import ensure_api
 from matplotlib.pylab import sort
@@ -152,11 +154,11 @@ def get_card_id_local(card):
     if hasattr(card, "cardId") and getattr(card, "cardId"):
         return getattr(card, "cardId")
     if isinstance(card, dict):
-        return card.get("cardId")
+        return card.cardId
     try:
         if hasattr(card, "model_dump"):
             d = card.model_dump(exclude_none=True)
-            return d.get("cardId")
+            return d.cardId
     except Exception:
         pass
     return None
@@ -169,8 +171,7 @@ def delete_playlist(ev, page, card: Card, row_container=None):
             api = ensure_api(page.api_ref, client)
             content_id = get_card_id_local(card)
             if not content_id:
-                page.status_ctrl.value = "Unable to determine card id to delete"
-                page.update()
+                logger.error("Unable to determine card id for deletion")
                 return
             # save a local version snapshot before deleting so it can be restored
             try:
@@ -213,24 +214,12 @@ def delete_playlist(ev, page, card: Card, row_container=None):
                         except Exception:
                             pass
             except Exception:
-                try:
-                    page.playlists_list.controls.clear()
-                except Exception:
-                    pass
-            msg = f"Deleted {content_id}"
-            page.status_ctrl.value = msg
-            try:
-                page.show_snack(msg)
-            except Exception:
-                pass
+                page.playlists_list.controls.clear()
+            page.show_snack("Playlist deleted")
             page.update()
         except Exception as ex:
-            msg = f"Delete failed: {ex}"
-            page.status_ctrl.value = msg
-            try:
-                page.show_snack(msg, error=True)
-            except Exception:
-                pass
+            logger.error(f"Error deleting playlist: {ex}")
+            page.show_snack(f"Delete failed: {ex}", error=True)
             page.update()
 
     def confirm_yes(_e):
@@ -1088,20 +1077,14 @@ def build_playlists_panel(
                         except Exception:
                             pass
                     card.metadata = meta
-                    api.update_card(card, return_card_model=False)
+                    page.update_card(card, refresh_ui=False)
                     updated += 1
                 except Exception as ex:
                     logger.error(f"Failed to update category for {cid}: {ex}")
             status_text.value = f"Updated category for {updated} playlists"
-            try:
-                page.show_snack(status_text.value)
-            except Exception:
-                logger.error("Error showing snack message")
-            dlg.open = False
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
-            page.update()
+            page.show_snack(status_text.value)
+            page.pop_dialog()
+            build_playlists_ui(page)  # Refresh UI to reflect changes
 
         def do_remove_category(_e=None):
             # Explicitly remove/clear category for selected playlists
@@ -1115,20 +1098,14 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    api.update_card(card, return_card_model=False)
+                    page.update_card(card, refresh_ui=False)
                     removed += 1
                 except Exception as ex:
                     logger.error(f"Failed to remove category for {cid}: {ex}")
             status_text.value = f"Removed category from {removed} playlists"
-            try:
-                page.show_snack(status_text.value)
-            except Exception:
-                pass
-            dlg.open = False
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
-            page.update()
+            page.show_snack(status_text.value)
+            page.pop_dialog()
+            build_playlists_ui(page)  # Refresh UI to reflect changes
 
         def close_edit(_e=None):
             try:
@@ -1187,14 +1164,12 @@ def build_playlists_panel(
                 print(f"Updating tags for {cid}: {new_tags}")
                 meta.tags = new_tags
                 card.metadata = meta
-                api.update_card(card, return_card_model=False)
+                page.update_card(card, refresh_ui=False)
                 updated += 1
             status_text.value = f"Tags added to {updated} playlists. {'Failed: ' + str(failed) if failed else ''}"
             page.show_snack(status_text.value)
             page.pop_dialog()
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
+            build_playlists_ui(page)  # Refresh UI to reflect changes
             page.update()
 
         def close_add_tags(_e=None):
@@ -1231,16 +1206,14 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    api.update_card(card, return_card_model=False)
+                    page.update_card(card, refresh_ui=False)
                     updated += 1
                 except Exception as ex:
                     logger.error(f"Failed to update author for {cid}: {ex}")
             status_text.value = f"Updated author for {updated} playlists"
             page.show_snack(status_text.value)
             page.pop_dialog()
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
+            build_playlists_ui(page)  # Refresh UI to reflect changes
             page.update()
 
         def do_remove_author(_e=None):
@@ -1254,16 +1227,14 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    api.update_card(card, return_card_model=False)
+                    page.update_card(card, refresh_ui=False)
                     removed += 1
                 except Exception as ex:
                     logger.error(f"Failed to remove author for {cid}: {ex}")
             status_text.value = f"Removed author from {removed} playlists"
             page.show_snack(status_text.value)
             page.pop_dialog()
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
+            build_playlists_ui(page)  # Refresh UI to reflect changes
             page.update()
 
         def close_author(_e=None):

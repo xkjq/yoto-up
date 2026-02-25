@@ -74,14 +74,15 @@ def main(page: ft.Page):
 
     page.cards: list[Card] = []
 
-    def update_local_card_cache(card: Card):
+    def update_local_card_cache(card: Card, refresh_ui: bool = True):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
         try:
             existing = next((c for c in page.cards if c.id == card.id), None)
             if existing:
                 page.cards.remove(existing)
             page.cards.append(card)
-            build_playlists_ui(page)
+            if refresh_ui:
+                build_playlists_ui(page)
         except Exception:
             logger.error(f"Failed to update local card cache: {traceback.format_exc()}")
 
@@ -96,6 +97,21 @@ def main(page: ft.Page):
         return ensure_api(api_ref)
 
     page.get_api = get_api
+
+
+    def update_card(card: Card) -> None:
+        """
+        Generic helper to perform an API update of a card and refresh the local cache and UI. This is used by various helpers after making changes to a card to persist those changes and update the UI.
+        """
+        try:
+            api = get_api()
+            updated = api.update_card(card, return_card=True)
+            update_local_card_cache(updated)
+            build_playlists_ui(page)
+        except Exception as ex:
+            logger.error(f"Failed to update card: {ex}")
+            page.show_snack(f"Failed to update card: {ex}", error=True)
+            return None
 
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login

@@ -653,11 +653,10 @@ def open_import_dialog(editor, ev):
     except Exception:
         pass
 
-    def import_from_clipboard(ev_cb, target=sheet_path_field, status_ctrl=status_import):
+    def import_from_clipboard(ev_cb, target=sheet_path_field):
         logger.debug("Importing from clipboard")
         if not page_local:
-            status_ctrl.value = "No page available for clipboard"
-            status_ctrl.update()
+            logger.warning("No page context for clipboard import; cannot access clipboard")
             return
         try:
             # prefer any page-supplied clipboard first (web flows)
@@ -789,8 +788,7 @@ def open_import_dialog(editor, ev):
                     img_bytes = None
 
             if not img_bytes:
-                status_ctrl.value = "Clipboard does not contain image bytes"
-                status_ctrl.update()
+                logger.warning("Clipboard does not contain image bytes")
                 return
 
             img = Image.open(_io.BytesIO(img_bytes)).convert('RGBA')

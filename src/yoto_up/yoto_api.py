@@ -312,7 +312,7 @@ class YotoAPI:
         except Exception:
             return None
 
-    def list_versions(self, card_id: str):
+    def list_versions(self, card_id: str) -> List[Path]:
         """Return list of version files for a card id (or title-derived id)."""
         try:
             dir_path = self.VERSIONS_DIR / str(card_id)
@@ -323,7 +323,7 @@ class YotoAPI:
         except Exception:
             return []
 
-    def load_version(self, path: Path, as_model=False) -> dict:
+    def load_version(self, path: Path, as_model=False) -> dict | Card | None:
         try:
             with Path(path).open("r", encoding="utf-8") as f:
                 data = json.load(f)

@@ -215,7 +215,7 @@ class IconReplaceDialog:
                                         if not getattr(target_tr, 'display', False):
                                             target_tr.display = TrackDisplay()
                                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                                    self.api.update_card(full, return_card_model=False)
+                                    self.page.update_card(full)
                                     self.show_card_details(None, full)
                                 threading.Thread(target=use_worker, daemon=True).start()
 
@@ -365,7 +365,7 @@ class IconReplaceDialog:
                                         if not getattr(target_tr, 'display', False):
                                             target_tr.display = TrackDisplay()
                                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                                    self.api.update_card(full, return_card_model=False)
+                                    self.page.update_card(full)
                                     self.show_card_details(None, full)
                                 except Exception as ex:
                                     self.show_snack(f"Failed to use saved icon: {ex}", True)
@@ -567,9 +567,8 @@ class IconReplaceDialog:
                         if not getattr(target_tr, 'display', False):
                             target_tr.display = TrackDisplay()
                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                    new_card  = self.api.update_card(full, return_card_model=True)
-                    self.page.update_local_card_cache(new_card)
-                    self.page.show_card_details(None, new_card)
+                    self.page.update_card(full)
+                    self.page.show_card_details(None, full)
                     self.show_snack("Applied marked icon")
                 except Exception as ex:
                     logger.exception("use_selected_icon failed")
