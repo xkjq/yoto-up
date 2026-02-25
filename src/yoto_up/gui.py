@@ -13,8 +13,6 @@ from yoto_up.paths import (
     TOKENS_FILE,
     atomic_write,
     ensure_parents,
-    load_playlists,
-    save_playlists,
     _BASE_DATA_DIR,
     _BASE_CONFIG_DIR,
 )
@@ -627,16 +625,6 @@ def main(page):
     #logger.debug("Persisted playlists loaded")
 
     
-
-    # Expose saver on page so other modules can persist playlists after edits
-    def _page_save_playlists(items):
-        try:
-            save_playlists(items)
-        except Exception:
-            pass
-
-    page.save_playlists = _page_save_playlists
-
     # Add About button to the top right
     about_btn = ft.IconButton(
         icon=ft.Icons.INFO_OUTLINE,

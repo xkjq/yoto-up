@@ -2,6 +2,8 @@ from pathlib import Path
 import os
 import json
 from typing import Any
+
+from yoto_up.models import Card
 try:
     from platformdirs import user_config_dir, user_data_dir, user_cache_dir
 except Exception:
@@ -12,6 +14,8 @@ except Exception:
         return str(Path.home() / f".{appname}" / "data")
     def user_cache_dir(appname: str = "yoto-up") -> str:
         return str(Path.home() / f".{appname}" / "cache")
+
+from loguru import logger
 
 APP_NAME = "yoto-up"
 
@@ -110,27 +114,42 @@ except Exception:
 
 
 
-def load_playlists(default: Any | None = None) -> Any:
+def load_playlists() -> list[Card]:
     """Load persisted playlists from PLAYLISTS_FILE. Returns default if file missing/invalid."""
-    if default is None:
-        default = []
+    default: list[Card] = []
     try:
         if not PLAYLISTS_FILE.exists():
             return default
         text = PLAYLISTS_FILE.read_text(encoding="utf-8")
-        return json.loads(text)
+        data = json.loads(text)
+
+        if not isinstance(data, list):
+            logger.warning(f"Expected list in {PLAYLISTS_FILE}, got {type(data)}")
+            return default
+        playlists = []
+        for item in data:
+            if not isinstance(item, dict):
+                logger.warning(f"Expected dict items in {PLAYLISTS_FILE}, got {type(item)}")
+                continue
+            try:
+                card = Card.model_validate(item)
+                playlists.append(card)
+            except Exception:
+                logger.exception(f"Failed to parse playlist item: {item}")
+        return playlists
     except Exception:
+        logger.exception("Failed to load playlists")
         return default
 
 
-def save_playlists(playlists: Any) -> None:
+def save_playlists(cands: list[Card]) -> None:
     """Persist playlists (list/dict) to PLAYLISTS_FILE atomically."""
     try:
+        playlists = [c.model_dump(exclude_none=True) for c in cands]
         data = json.dumps(playlists, ensure_ascii=False, indent=2)
         atomic_write(PLAYLISTS_FILE, data, text_mode=True)
     except Exception:
-        # best-effort; don't raise to avoid disrupting the UI
-        pass
+        logger.exception("Failed to save playlists")
 
 
 __all__ = [

@@ -38,6 +38,60 @@ _playlists_fetch_lock = threading.Lock()
 _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
 
+def card_matches_filters(card_obj, filters: Dict[str, Any]):
+    try:
+        if hasattr(card_obj, "model_dump"):
+            d = card_obj.model_dump(exclude_none=True)
+        elif isinstance(card_obj, dict):
+            d = card_obj
+        else:
+            try:
+                d = json.loads(str(card_obj))
+            except Exception:
+                d = {}
+    except Exception:
+        d = {}
+
+    tf = (filters.get("title") or "").strip().lower()
+    if tf:
+        title = (d.get("title") or "").lower()
+        if tf not in title:
+            return False
+
+    cat = (filters.get("category") or "").strip().lower()
+    if cat:
+        meta = d.get("metadata") or {}
+        cval = (meta.get("category") or "").strip().lower()
+        if cval != cat:
+            return False
+
+    gf = (filters.get("genre") or "").strip().lower()
+    if gf:
+        want = {g.strip().lower() for g in gf.split(",") if g.strip()}
+        meta = d.get("metadata") or {}
+        card_genres = meta.get("genre") or meta.get("genres") or []
+        if isinstance(card_genres, str):
+            card_genres = [g.strip() for g in card_genres.split(",") if g.strip()]
+        card_genres_set = {g.strip().lower() for g in card_genres if g}
+        if not (want & card_genres_set):
+            return False
+
+    tg = (filters.get("tags") or "").strip().lower()
+    if tg:
+        want_tags = {t.strip().lower() for t in tg.split(",") if t.strip()}
+        meta = d.get("metadata") or {}
+        card_tags = meta.get("tags") or []
+        # sometimes tags may be stored in genres or as a comma string
+        if not card_tags:
+            card_tags = meta.get("genre") or meta.get("genres") or []
+        if isinstance(card_tags, str):
+            card_tags = [t.strip() for t in card_tags.split(",") if t.strip()]
+        card_tags_set = {t.strip().lower() for t in card_tags if t}
+        if not (want_tags & card_tags_set):
+            return False
+
+    return True
+
 def _extract_cover_source(card_item, api_instance):
     try:
         if hasattr(card_item, "model_dump"):
@@ -87,7 +141,7 @@ def get_card_id_local(card):
         pass
     return None
 
-def delete_playlist(ev, page, card, row_container=None):
+def delete_playlist(ev, page, card: Card, row_container=None):
     def do_delete(_ev=None):
         try:
             client = CLIENT_ID
@@ -164,7 +218,7 @@ def delete_playlist(ev, page, card, row_container=None):
     confirm_dialog = ft.AlertDialog(
         title=ft.Text("Delete playlist?"),
         content=ft.Text(
-            f"Delete playlist '{title}' (id={cid})? This cannot be undone."
+            f"Delete playlist '{card.title}' (id={card.cid})? This cannot be undone."
         ),
         actions=[
             ft.TextButton("Yes", on_click=confirm_yes),
@@ -204,7 +258,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
 
     img_ctrl = ft.Container(width=64, height=64)
     try:
-        api = page.api_ref.get("api")
+        api: YotoAPI = page.api_ref.get("api")
         cover_src = (
             _extract_cover_source(card_obj, api_instance=api) if api else None
         )
@@ -277,7 +331,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
                 selected_playlist_ids.discard(cid)
             nonlocal last_selected_index
             last_selected_index = idx
-            _update_multiselect_buttons()
+            page.update_multiselect_buttons()
             page.update()
         except Exception:
             logger.error("Error handling checkbox change event")
@@ -340,8 +394,6 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
 
         def do_remove_category(_e=None):
             # Explicitly remove/clear category for selected playlists
-            client = CLIENT_ID
-            api: YotoAPI = ensure_api(api_ref, client)
             removed = 0
             for cid in list(selected_playlist_ids):
                 try:
@@ -571,7 +623,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
                 end = max(last_selected_index, this_idx)
                 for i in range(start, end + 1):
                     try:
-                        row_ctrl = playlists_list.controls[i]
+                        row_ctrl = page.playlists_list.controls[i]
                         cb_found = None
                         for child in getattr(row_ctrl, "controls", []):
                             if getattr(child, "_is_playlist_checkbox", False):
@@ -582,7 +634,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
                             selected_playlist_ids.add(getattr(cb_found, "_cid", ""))
                     except Exception:
                         pass
-                _update_multiselect_buttons()
+                page.update_multiselect_buttons()
                 page.update()
                 last_selected_index = this_idx
                 return
@@ -599,7 +651,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
                 else:
                     selected_playlist_ids.discard(cid)
                 last_selected_index = this_idx
-                _update_multiselect_buttons()
+                page.update_multiselect_buttons()
                 page.update()
             return
         # If not in multi-select, open details as before
@@ -608,7 +660,7 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
             end = max(last_selected_index, this_idx)
             for i in range(start, end + 1):
                 try:
-                    row_ctrl = playlists_list.controls[i]
+                    row_ctrl = page.playlists_list.controls[i]
                     cb_found = None
                     for child in getattr(row_ctrl, "controls", []):
                         if getattr(child, "_is_playlist_checkbox", False):
@@ -634,11 +686,11 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
                             pass
                 except Exception:
                     pass
-            _update_multiselect_buttons()
+            page.update_multiselect_buttons()
             page.update()
             last_selected_index = this_idx
             return
-        show_card_details(ev, card)
+        page.show_card_details(ev, card)
 
     # Build a compact preview of the first few chapters to make the
     # playlist row more informative than a single text line.
@@ -765,33 +817,10 @@ def make_playlist_row(page, card_obj, idx=None, multi_select_mode=False, selecte
         pass
     return row
 
-
-
-def fetch_playlists_sync(e=None):
-    # Avoid overlapping / repeated fetches
-    global _playlists_last_fetch
-    now = time.time()
-    if _playlists_fetch_lock.locked():
-        logger.debug("fetch_playlists_sync: fetch already in progress; skipping")
-        return
-    if now - _playlists_last_fetch < _playlists_fetch_cooldown:
-        logger.debug("fetch_playlists_sync: recent fetch within cooldown; skipping")
-        return
-    acquired = _playlists_fetch_lock.acquire(blocking=False)
-    if not acquired:
-        logger.debug("fetch_playlists_sync: failed to acquire lock; skipping")
-        return
-    _playlists_last_fetch = now
-    # print("Fetching playlists...")  # Commented out for performance
-    try:
-        show_snack("Fetching playlists...")
-        page.update()
-        api = api_ref.get("api")
-        cards = api.get_myo_content()
-        page.cards = cards # Cache cards on page for access by details view and other helpers
-        playlists_list.controls.clear()
+def build_playlists_ui(page: ft.Page, cards):
+        page.playlists_list.controls.clear()
         if not cards:
-            playlists_list.controls.append(ft.Text("No playlists found"))
+            page.playlists_list.controls.append(ft.Text("No playlists found"))
         else:
             # Sort cards based on dropdown
             sort_key = current_sort["key"]
@@ -850,14 +879,14 @@ def fetch_playlists_sync(e=None):
             # Build rows for each card; only append valid ft.Control objects.
             for idx, c in enumerate(sorted_cards):
                 try:
-                    if not card_matches_filters(c):
+                    if not card_matches_filters(c, page.get_playlist_filters()):
                         continue
                     try:
                         row = make_playlist_row(page, c, idx=idx)
                     except Exception:
                         row = None
                     if row is not None and isinstance(row, ft.Control):
-                        playlists_list.controls.append(row)
+                        page.playlists_list.controls.append(row)
                     else:
                         try:
                             title = getattr(c, "title", None) or (
@@ -873,11 +902,11 @@ def fetch_playlists_sync(e=None):
                             or getattr(c, "cardId", None)
                             or ""
                         )
-                        playlists_list.controls.append(
+                        page.playlists_list.controls.append(
                             ft.ListTile(
                                 title=ft.Text(title),
                                 subtitle=ft.Text(str(cid)),
-                                on_click=lambda ev, card=c: show_card_details(ev, card),
+                                on_click=lambda ev, card=c: page.show_card_details(ev, card),
                             )
                         )
                 except Exception:
@@ -895,11 +924,11 @@ def fetch_playlists_sync(e=None):
                         or getattr(c, "cardId", None)
                         or ""
                     )
-                    playlists_list.controls.append(
+                    page.playlists_list.controls.append(
                         ft.ListTile(
                             title=ft.Text(title),
                             subtitle=ft.Text(str(cid)),
-                            on_click=lambda ev, card=c: show_card_details(ev, card),
+                            on_click=lambda ev, card=c: page.show_card_details(ev, card),
                         )
                     )
             try:
@@ -926,36 +955,34 @@ def fetch_playlists_sync(e=None):
                 existing_card_dropdown.options = opts
             except Exception:
                 pass
-        try:
-            show_snack(f"Fetched {len(cards)} playlists")
-        except Exception:
-            pass
-        try:
-            _safe_page_update()
-        except Exception:
-            pass
+
+def fetch_playlists_sync(page):
+    # Avoid overlapping / repeated fetches
+    global _playlists_last_fetch
+    now = time.time()
+    if _playlists_fetch_lock.locked():
+        logger.debug("fetch_playlists_sync: fetch already in progress; skipping")
+        return
+    if now - _playlists_last_fetch < _playlists_fetch_cooldown:
+        logger.debug("fetch_playlists_sync: recent fetch within cooldown; skipping")
+        return
+    acquired = _playlists_fetch_lock.acquire(blocking=False)
+    if not acquired:
+        logger.debug("fetch_playlists_sync: failed to acquire lock; skipping")
+        return
+    _playlists_last_fetch = now
+    # print("Fetching playlists...")  # Commented out for performance
+    try:
+        page.show_snack("Fetching playlists...")
+        page.update()
+        api = page.api_ref.get("api")
+        cards = api.get_myo_content()
+        page.cards = cards # Cache cards on page for access by details view and other helpers
+        build_playlists_ui(page, cards=cards)
+        page.show_snack(f"Fetched {len(cards)} playlists")
+        page.update()
         # Persist playlists after sync fetch
-        try:
-            serializable = []
-            for c in cards:
-                try:
-                    if hasattr(c, 'model_dump'):
-                        serializable.append(c.model_dump(exclude_none=True))
-                    elif isinstance(c, dict):
-                        serializable.append(c)
-                    else:
-                        serializable.append(str(c))
-                except Exception:
-                    try:
-                        serializable.append(str(c))
-                    except Exception:
-                        pass
-            try:
-                save_playlists(serializable)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        save_playlists(cards)
     except httpx.HTTPError as http_ex:
         logger.error(f"HTTP error during fetch_playlists_sync: {http_ex}")
         logger.error(f"fetch_playlists_sync error: {http_ex}")
@@ -1022,6 +1049,16 @@ def build_playlists_panel(
     tags_filter = ft.TextField(label="Tags (comma separated)", width=200)
     filter_btn = ft.Button("Apply Filter")
     clear_filter_btn = ft.TextButton("Clear")
+
+    def _get_playlist_filters():
+        return {
+            "title": title_filter.value or "",
+            "genre": genre_filter.value or "",
+            "category": category_filter.value or "",
+            "tags": tags_filter.value or "",
+        }
+
+    page.get_playlist_filters = _get_playlist_filters
 
     # Multi-select state for playlists
     selected_playlist_ids = set()
@@ -1334,59 +1371,6 @@ def build_playlists_panel(
     if status_ctrl is None:
         status_ctrl = SimpleNamespace(value="")
 
-    def card_matches_filters(card_obj):
-        try:
-            if hasattr(card_obj, "model_dump"):
-                d = card_obj.model_dump(exclude_none=True)
-            elif isinstance(card_obj, dict):
-                d = card_obj
-            else:
-                try:
-                    d = json.loads(str(card_obj))
-                except Exception:
-                    d = {}
-        except Exception:
-            d = {}
-
-        tf = (title_filter.value or "").strip().lower()
-        if tf:
-            title = (d.get("title") or "").lower()
-            if tf not in title:
-                return False
-
-        cat = (category_filter.value or "").strip().lower()
-        if cat:
-            meta = d.get("metadata") or {}
-            cval = (meta.get("category") or "").strip().lower()
-            if cval != cat:
-                return False
-
-        gf = (genre_filter.value or "").strip().lower()
-        if gf:
-            want = {g.strip().lower() for g in gf.split(",") if g.strip()}
-            meta = d.get("metadata") or {}
-            card_genres = meta.get("genre") or meta.get("genres") or []
-            if isinstance(card_genres, str):
-                card_genres = [g.strip() for g in card_genres.split(",") if g.strip()]
-            card_genres_set = {g.strip().lower() for g in card_genres if g}
-            if not (want & card_genres_set):
-                return False
-
-        tg = (tags_filter.value or "").strip().lower()
-        if tg:
-            want_tags = {t.strip().lower() for t in tg.split(",") if t.strip()}
-            meta = d.get("metadata") or {}
-            card_tags = meta.get("tags") or []
-            # sometimes tags may be stored in genres or as a comma string
-            if not card_tags:
-                card_tags = meta.get("genre") or meta.get("genres") or []
-            if isinstance(card_tags, str):
-                card_tags = [t.strip() for t in card_tags.split(",") if t.strip()]
-            card_tags_set = {t.strip().lower() for t in card_tags if t}
-            if not (want_tags & card_tags_set):
-                return False
-
-        return True
 
 
     def _do_delete_selected():
@@ -1599,6 +1583,8 @@ def build_playlists_panel(
                 pass
         except Exception:
             pass
+    
+    page.update_multiselect_buttons = _update_multiselect_buttons  # Expose for callbacks in playlist rows
 
     def _set_all_checkboxes(value: bool):
         """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
@@ -1675,13 +1661,6 @@ def build_playlists_panel(
         target=lambda: fetch_playlists_sync(e), daemon=True
     ).start()
 
-
-    # `show_card_details` implementation was moved to `yoto_app.card_details`.
-    # We create a placeholder here and instantiate the real callable later
-    # (after `fetch_playlists_sync` is defined) so ordering of helpers doesn't
-    # affect callback wiring.
-    show_card_details = None
-
     async def fetch_playlists(e=None):
         # Avoid overlapping / repeated fetches
         global _playlists_last_fetch
@@ -1723,7 +1702,7 @@ def build_playlists_panel(
         else:
             for idx, c in enumerate(cards):
                 try:
-                    if not card_matches_filters(c):
+                    if not card_matches_filters(c, page.get_playlist_filters()):
                         continue
                     playlists_list.controls.append(make_playlist_row(page, c, idx=idx))
                 except Exception:
@@ -1740,7 +1719,7 @@ def build_playlists_panel(
                         ft.ListTile(
                             title=ft.Text(title),
                             subtitle=ft.Text(str(cid)),
-                            on_click=lambda ev, card=c: show_card_details(ev, card),
+                            on_click=lambda ev, card=c: page.show_card_details(ev, card),
                         )
                     )
 
@@ -1773,21 +1752,8 @@ def build_playlists_panel(
         except Exception:
             pass
         # Persist playlists for faster startup and offline view
-        try:
-            serializable = []
-            for c in cards:
-
-                    serializable.append(c.model_dump(exclude_none=True))
-            try:
-                save_playlists(serializable)
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            _safe_page_update()
-        except Exception:
-            pass
+        save_playlists(cards)
+        page.update()
 
 
     filter_btn.on_click = lambda e: threading.Thread(
