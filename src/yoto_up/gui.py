@@ -55,7 +55,7 @@ import shutil
 from yoto_up.yoto_app.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
-ENABLE_ICON_BROWSER = False
+ENABLE_ICON_BROWSER = True
 
 # ft.context.disable_auto_update()
 
@@ -106,13 +106,15 @@ def main(page: ft.Page):
         """
         try:
             api = get_api()
-            updated = api.update_card(card, return_card=True)
+            updated = api.update_card(card, return_card_model=True)
             update_local_card_cache(updated)
             build_playlists_ui(page)
         except Exception as ex:
             logger.error(f"Failed to update card: {ex}")
             page.show_snack(f"Failed to update card: {ex}", error=True)
             return None
+
+    page.update_card = update_card  # expose on page for easy access from helpers
 
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
