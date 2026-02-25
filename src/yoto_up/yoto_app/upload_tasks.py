@@ -319,52 +319,45 @@ class UploadManager:
         new_card_title = ft.TextField(label="New card title", width=400)
 
         # Placeholders that will be populated/overwritten by playlists module
-        existing_card_dropdown = ft.Dropdown(label="Existing card", options=[])
-        existing_card_map = {}
+        self.existing_card_dropdown = ft.Dropdown(label="Existing card", options=[])
+        self.existing_card_map = {}
 
         # Ensure only the relevant upload target control is visible
         try:
             if upload_target_dropdown.value == "Create new card":
                 new_card_title.visible = True
-                existing_card_dropdown.visible = False
+                self.existing_card_dropdown.visible = False
             else:
                 new_card_title.visible = False
-                existing_card_dropdown.visible = True
+                self.existing_card_dropdown.visible = True
         except Exception:
             # conservative defaults
             new_card_title.visible = True
-            existing_card_dropdown.visible = False
+            self.existing_card_dropdown.visible = False
 
         def _on_upload_target_change(ev=None):
             try:
                 if upload_target_dropdown.value == "Create new card":
                     new_card_title.visible = True
-                    existing_card_dropdown.visible = False
+                    self.existing_card_dropdown.visible = False
                 else:
                     new_card_title.visible = False
-                    existing_card_dropdown.visible = True
+                    self.existing_card_dropdown.visible = True
 
-                    if existing_card_dropdown and hasattr(
-                        existing_card_dropdown, "options"
-                    ):
-                        # If switching to existing card, and no options are present, try to fetch playlists
-                        if (
-                            not existing_card_dropdown.options
-                            or len(existing_card_dropdown.options) == 0
-                        ) and callable(fetch_playlists_sync):
-                            print(
-                                "[_on_upload_target_change] existing_card_dropdown empty, calling fetch_playlists_sync to populate"
-                            )
-                            try:
-                                # fetch_playlists_sync may be blocking; run in a thread to avoid blocking the UI
-                                threading.Thread(
-                                    target=lambda: fetch_playlists_sync(page),
-                                    daemon=True,
-                                ).start()
-                            except Exception as fe:
-                                print(
-                                    f"[_on_upload_target_change] fetch_playlists_sync failed: {fe}"
-                                )
+
+                    # Build the existing card dropdown options from the current page.cards cache
+                    options = []
+                    self.existing_card_map.clear()
+                    for c in getattr(page, "cards", []):
+                        try:
+                            title = c.metadata.title or f"Card {c.id}"
+                            options.append(ft.dropdown.Option(title, c.id))
+                            self.existing_card_map[c.id] = c
+                        except Exception:
+                            continue
+                    self.existing_card_dropdown.options = options
+                    self.existing_card_dropdown.value = None
+
                 page.update()
             except Exception as exc:
                 logger.error(f"[_on_upload_target_change] failed: {exc}")

@@ -249,17 +249,11 @@ def add_cover_dialog(page, c, Card, on_close=None):
             logger.error(f"Top-level upload error: {e}")
             page.update()
 
-        try:
-            dialog.open = False
-        except Exception:
-            logger.error("Failed to close dialog after upload")
+        page.pop_dialog()
         page.update()
 
     def close_add(_e):
-        try:
-            dialog.open = False
-        except Exception:
-            logger.error("Failed to close dialog in close_add")
+        page.pop_dialog()
         page.update()
         # call optional on_close callback (e.g., to reopen parent dialog)
         try:
@@ -410,20 +404,14 @@ def add_cover_dialog(page, c, Card, on_close=None):
                             try:
                                 os.remove(tmp_path)
                             except Exception:
-                                pass
-                            try:
-                                confirm_dialog.open = False
-                            except Exception:
-                                pass
+                                logger.error(f"Failed to remove temp file {tmp_path}")
+                            page.pop_dialog()
                             page.update()
                         except Exception as e:
                             logger.error(f"Top-level upload error (confirm upload): {e}")
                             page.update()
                     def do_cancel(_e=None):
-                        try:
-                            confirm_dialog.open = False
-                        except Exception:
-                            pass
+                        page.pop_dialog()
                         page.update()
                     confirm_dialog = ft.AlertDialog(
                         title=ft.Text("Use this cover image?"),

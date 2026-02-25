@@ -687,10 +687,7 @@ def make_show_card_details(
             controls = [ft.Text(str(c), selectable=True)]
 
         def close_dialog(ev):
-            try:
-                dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         def show_json(ev):
@@ -703,65 +700,60 @@ def make_show_card_details(
                     raw = "<unable to render JSON>"
 
             def close_json(ev2):
-                try:
-                    json_dialog.open = False
-                except Exception:
-                    pass
+                page.pop_dialog()
                 page.update()
 
             # Render JSON line-by-line into monospace ft.Text controls with
             # simple per-token colouring (keys, strings, numbers, booleans/null).
-            try:
-                lines = raw.splitlines()
-                json_lines = []
-                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
-                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
-                for line in lines:
-                    m = key_value_re.match(line)
-                    if m:
-                        indent = m.group(1)
-                        key = m.group('key')
-                        val = m.group('val')
-                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
-                        # Determine value type for colouring
-                        v = val.strip()
-                        if v.startswith('"') and v.endswith('"'):
-                            val_color = ft.Colors.GREEN
-                        elif v in ('true', 'false', 'null'):
-                            val_color = ft.Colors.ORANGE
-                        elif number_re.match(v):
-                            val_color = ft.Colors.PURPLE
-                        else:
-                            val_color = ft.Colors.BLACK
+            lines = raw.splitlines()
+            json_lines = []
+            key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
+            number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
+            for line in lines:
+                m = key_value_re.match(line)
+                if m:
+                    indent = m.group(1)
+                    key = m.group('key')
+                    val = m.group('val')
+                    trailing_comma = ',' if line.rstrip().endswith(',') else ''
+                    # Determine value type for colouring
+                    v = val.strip()
+                    if v.startswith('"') and v.endswith('"'):
+                        val_color = ft.Colors.GREEN
+                    elif v in ('true', 'false', 'null'):
+                        val_color = ft.Colors.ORANGE
+                    elif number_re.match(v):
+                        val_color = ft.Colors.PURPLE
+                    else:
+                        val_color = ft.Colors.BLACK
 
-                        # spacer for indentation (approx char width)
-                        space_width = 8
-                        spacer = ft.Container(width=len(indent) * space_width)
-                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
-                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
-                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                    # spacer for indentation (approx char width)
+                    space_width = 8
+                    spacer = ft.Container(width=len(indent) * space_width)
+                    key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
+                    colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
+                    val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
+                    row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                    json_lines.append(row)
+                else:
+                    # Braces, brackets, or other lines — preserve leading indentation
+                    stripped = line.strip()
+                    # compute leading space count
+                    leading = len(line) - len(line.lstrip(' '))
+                    space_width = 8
+                    spacer = ft.Container(width=leading * space_width)
+                    if stripped in ('{', '}', '[', ']', '},', '],'):
+                        text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                         json_lines.append(row)
                     else:
-                        # Braces, brackets, or other lines — preserve leading indentation
-                        stripped = line.strip()
-                        # compute leading space count
-                        leading = len(line) - len(line.lstrip(' '))
-                        space_width = 8
-                        spacer = ft.Container(width=leading * space_width)
-                        if stripped in ('{', '}', '[', ']', '},', '],'):
-                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-                        else:
-                            # keep the original line but apply monospace
-                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'), selectable=True)
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
+                        # keep the original line but apply monospace
+                        text = ft.Text(line, style=ft.TextStyle(font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        json_lines.append(row)
 
-                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
-            except Exception:
-                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
+            json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
+
             def do_copy(_e=None):
                 try:
                     # copy raw JSON to clipboard
@@ -786,14 +778,7 @@ def make_show_card_details(
                     ft.TextButton("Close", on_click=close_json),
                 ],
             )
-            try:
-                page.show_dialog(json_dialog)
-            except Exception:
-                try:
-                    page.dialog = json_dialog
-                    page.update()
-                except Exception:
-                    print("Unable to display JSON dialog in this Flet environment")
+            page.show_dialog(json_dialog)
 
         def show_versions(ev=None):
             try:
@@ -872,26 +857,17 @@ def make_show_card_details(
                                 try:
                                     # ask for confirmation
                                     def do_confirm_yes(_e=None):
-                                        try:
-                                            confirm_dialog.open = False
-                                        except Exception:
-                                            pass
+                                        page.pop_dialog()
                                         page.update()
-                                        def worker():
+                                        async def worker():
                                             try:
                                                 updated = api.restore_version(pp, return_card=True)
-                                                try:
-                                                    page.show_snack("Version restored")
-                                                except Exception:
-                                                    pass
-                                                try:
-                                                    show_card_details(None, updated)
-                                                except Exception:
-                                                    pass
+                                                page.show_snack("Version restored")
+                                                show_card_details(None, updated)
                                                 page.update()
                                             except Exception as ex:
                                                 page.show_snack(f"Failed to restore version: {ex}", error=True)
-                                        threading.Thread(target=worker, daemon=True).start()
+                                        page.run_task(worker)
 
                                     confirm_dialog = ft.AlertDialog(
                                         title=ft.Text("Restore version"),
@@ -917,17 +893,17 @@ def make_show_card_details(
                                         except Exception:
                                             pass
                                         page.update()
-                                        def worker_del():
+                                        async def worker_del():
                                             try:
                                                 pp.unlink()
                                                 page.show_snack(f"Deleted version {pp.name}")
-                                                versions_dialog.open = False
+                                                page.pop_dialog()
                                                 page.update()
                                                 show_versions(None)
                                             except Exception as ex:
                                                 page.show_snack(f"Failed to delete version: {ex}", error=True)
                                                 logger.debug(f"delete version error: {ex}")
-                                        threading.Thread(target=worker_del, daemon=True).start()
+                                        page.run_task(worker_del)
 
                                     confirm_del = ft.AlertDialog(
                                         title=ft.Text("Delete version"),
@@ -976,31 +952,15 @@ def make_show_card_details(
                                             try:
                                                 if fpath.is_file():
                                                     fpath.unlink()
-                                            except Exception:
-                                                pass
-                                        try:
-                                            # attempt to remove dir if empty
-                                            dir_path.rmdir()
-                                        except Exception:
-                                            pass
-                                        try:
-                                            page.show_snack("All versions deleted")
-                                        except Exception:
-                                            pass
-                                        try:
-                                            versions_dialog.open = False
-                                        except Exception:
-                                            pass
+                                            except Exception as ex:
+                                                logger.debug(f"Failed to delete version file {fpath}: {ex}")
+                                        dir_path.rmdir()
+                                        page.show_snack("All versions deleted")
+                                        page.pop_dialog()
                                         page.update()
-                                        try:
-                                            show_versions(None)
-                                        except Exception:
-                                            pass
+                                        show_versions(None)
                                     except Exception as ex:
-                                        try:
-                                            page.show_snack(f"Failed to delete all versions: {ex}", error=True)
-                                        except Exception:
-                                            pass
+                                        page.show_snack(f"Failed to delete all versions: {ex}", error=True)
 
                                 threading.Thread(target=worker_all, daemon=True).start()
 
@@ -1103,10 +1063,7 @@ def make_show_card_details(
         def merge_chapters(ev=None):
             try:
                 def do_merge(_e=None):
-                    try:
-                        confirm_dialog.open = False
-                    except Exception:
-                        pass
+                    page.pop_dialog()
                     try:
                         card_id = c.cardId
                         if not card_id:
@@ -1150,10 +1107,7 @@ Merging will result in:
         def expand_all_tracks(ev=None):
             try:
                 def do_expand(_e=None):
-                    try:
-                        confirm_expand.open = False
-                    except Exception:
-                        pass
+                    page.pop_dialog()
                     page.update()
 
                     def worker():
@@ -1395,28 +1349,19 @@ Renumbering keys will assign sequential keys to all tracks.
                 def _restore(ev2=None):
                     try:
                         # close this dialog
-                        try:
-                            dialog.open = False
-                        except Exception:
-                            pass
+                        page.pop_dialog()
                         page.update()
 
-                        def worker():
+                        async def worker():
                             try:
                                 updated = api.restore_version(ppath, return_card=True)
-                                try:
-                                    page.show_snack("Version restored")
-                                except Exception:
-                                    pass
-                                try:
-                                    show_card_details(None, updated)
-                                except Exception:
-                                    pass
+                                page.show_snack("Version restored")
+                                show_card_details(None, updated)
                                 page.update()
                             except Exception as ex:
                                 page.show_snack(f"Failed to restore version: {ex}", error=True)
 
-                        threading.Thread(target=worker, daemon=True).start()
+                        page.run_task(worker)
                     except Exception:
                         page.show_snack("Failed to start restore", error=True)
 
@@ -1431,7 +1376,7 @@ Renumbering keys will assign sequential keys to all tracks.
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
-                        setattr(dialog, 'open', False),
+                        page.pop_dialog(),
                         page.update(),
                         show_edit_card_dialog(
                             c,
@@ -1445,13 +1390,6 @@ Renumbering keys will assign sequential keys to all tracks.
                 ft.TextButton("Close", on_click=close_dialog),
             ],
         )
-        try:
-            page.show_dialog(dialog)
-        except Exception:
-            try:
-                page.dialog = dialog
-                page.update()
-            except Exception:
-                print("Unable to display dialog in this Flet environment")
+        page.show_dialog(dialog)
 
     return show_card_details

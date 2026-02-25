@@ -46,11 +46,8 @@ Continue?"""
 
                 def _start_worker():
                     try:
-                        try:
-                            confirm_dialog.open = False
-                            page.update()
-                        except Exception:
-                            pass
+                        page.pop_dialog()
+                        page.update()
 
                         prog = ft.ProgressBar(width=400)
                         prog_text = ft.Text("Preparing...")
@@ -58,12 +55,9 @@ Continue?"""
                         cancel_event = threading.Event()
 
                         def do_cancel(_e=None):
-                            try:
-                                cancel_event.set()
-                                prog_text.value = "Cancelling..."
-                                page.update()
-                            except Exception:
-                                pass
+                            cancel_event.set()
+                            prog_text.value = "Cancelling..."
+                            page.update()
 
                         replace_dialog = ft.AlertDialog(
                             title=ft.Text("Replace Default Icons"),
@@ -87,14 +81,11 @@ Continue?"""
                                 page.update()
 
                                 def icon_progress(msg, frac):
-                                    try:
-                                        if msg:
-                                            prog_text.value = msg
-                                        if frac is not None:
-                                            prog.value = frac
-                                        page.update()
-                                    except Exception:
-                                        pass
+                                    if msg:
+                                        prog_text.value = msg
+                                    if frac is not None:
+                                        prog.value = frac
+                                    page.update()
 
                                 new_card = api.replace_card_default_icons(
                                     full,
@@ -119,7 +110,6 @@ Continue?"""
                                         except Exception:
                                             pass
 
-
                                 def refresh_ui(card_model):
                                     try:
                                         updated_id = card_model.cardId
@@ -132,7 +122,9 @@ Continue?"""
                                             pass
                                         return
                                     try:
-                                        for i, ctrl in enumerate(list(playlists_list.controls)):
+                                        for i, ctrl in enumerate(
+                                            list(playlists_list.controls)
+                                        ):
                                             cb = None
                                             children = (
                                                 getattr(ctrl, "controls", None)
@@ -144,7 +136,9 @@ Continue?"""
                                                 or []
                                             )
                                             for ch in children or []:
-                                                if getattr(ch, "_is_playlist_checkbox", False):
+                                                if getattr(
+                                                    ch, "_is_playlist_checkbox", False
+                                                ):
                                                     cb = ch
                                                     break
                                             if not cb:
@@ -152,24 +146,33 @@ Continue?"""
                                             if getattr(cb, "_cid", None) == updated_id:
                                                 try:
                                                     playlists_list.controls[i] = (
-                                                        make_playlist_row(page, card_model, idx=i)
+                                                        make_playlist_row(
+                                                            page, card_model, idx=i
+                                                        )
                                                     )
                                                     page.update()
                                                     try:
-                                                        show_snack("Playlist icons updated")
+                                                        show_snack(
+                                                            "Playlist icons updated"
+                                                        )
                                                     except Exception:
                                                         pass
                                                 except Exception:
                                                     pass
                                                 return
-                                        threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
+                                        threading.Thread(
+                                            target=lambda: fetch_playlists_sync(page),
+                                            daemon=True,
+                                        ).start()
                                     except Exception:
                                         pass
 
                                 run_on_ui(refresh_ui, new_card)
                             except Exception as ex:
                                 try:
-                                    show_snack(f"Replace icons failed: {ex}", error=True)
+                                    show_snack(
+                                        f"Replace icons failed: {ex}", error=True
+                                    )
                                 except Exception:
                                     pass
                                 logger.exception("replace_icons error")
@@ -199,12 +202,24 @@ Continue?"""
                                 ft.TextButton(
                                     "Start",
                                     on_click=lambda e: (
-                                        (setattr(secondary, "open", False) if hasattr(secondary, "open") else None),
+                                        (
+                                            setattr(secondary, "open", False)
+                                            if hasattr(secondary, "open")
+                                            else None
+                                        ),
                                         page.update(),
-                                        threading.Thread(target=_start_worker, daemon=True).start(),
+                                        threading.Thread(
+                                            target=_start_worker, daemon=True
+                                        ).start(),
                                     ),
                                 ),
-                                ft.TextButton("Cancel", on_click=lambda e: (setattr(secondary, "open", False), page.update())),
+                                ft.TextButton(
+                                    "Cancel",
+                                    on_click=lambda e: (
+                                        page.pop_dialog(),
+                                        page.update(),
+                                    ),
+                                ),
                             ],
                         )
                         page.show_dialog(secondary)
@@ -219,10 +234,7 @@ Continue?"""
                     pass
 
         def cancel_confirm(_e=None):
-            try:
-                confirm_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         confirm_dialog = ft.AlertDialog(
@@ -278,19 +290,23 @@ def start_replace_icons_background(
         cancel_event = threading.Event()
         # Expose cancel_event on page so UI helpers (badge click) can access it
         try:
-            setattr(page, 'autoselect_cancel_event', cancel_event)
+            setattr(page, "autoselect_cancel_event", cancel_event)
         except Exception:
             pass
 
         # Prefer using page helpers if available (added in gui.py)
         def _set_badge(msg, frac, visible=True):
             try:
-                if hasattr(page, 'set_autoselect_progress'):
+                if hasattr(page, "set_autoselect_progress"):
                     page.set_autoselect_progress(msg, frac, visible=visible)
                 else:
                     # fallback: update simple text
                     try:
-                        badge_text.value = f"{int((frac or 0.0)*100)}% - {msg}" if msg else f"{int((frac or 0.0)*100)}%"
+                        badge_text.value = (
+                            f"{int((frac or 0.0) * 100)}% - {msg}"
+                            if msg
+                            else f"{int((frac or 0.0) * 100)}%"
+                        )
                         page.update()
                     except Exception:
                         pass
@@ -299,7 +315,7 @@ def start_replace_icons_background(
 
         def _open_status_dialog():
             try:
-                if hasattr(page, 'open_autoselect_status_dialog'):
+                if hasattr(page, "open_autoselect_status_dialog"):
                     page.open_autoselect_status_dialog(cancel_event)
                 else:
                     # fallback simple dialog
@@ -308,8 +324,16 @@ def start_replace_icons_background(
                             title=ft.Text("Autoselect status"),
                             content=ft.Text(badge_text.value),
                             actions=[
-                                ft.TextButton("Cancel", on_click=lambda e: (cancel_event.set(), page.pop_dialog())),
-                                ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
+                                ft.TextButton(
+                                    "Cancel",
+                                    on_click=lambda e: (
+                                        cancel_event.set(),
+                                        page.pop_dialog(),
+                                    ),
+                                ),
+                                ft.TextButton(
+                                    "Close", on_click=lambda e: page.pop_dialog()
+                                ),
                             ],
                         )
                         page.show_dialog(dlg)
@@ -324,7 +348,7 @@ def start_replace_icons_background(
 
         # Open the status dialog by default unless the page requests it be hidden
         try:
-            hide_default = getattr(page, 'autoselect_hide_dialog_default', False)
+            hide_default = getattr(page, "autoselect_hide_dialog_default", False)
         except Exception:
             hide_default = False
         if not hide_default:
@@ -372,7 +396,9 @@ def start_replace_icons_background(
                             cb = None
                             children = (
                                 getattr(ctrl, "controls", None)
-                                or getattr(getattr(ctrl, "content", None), "controls", None)
+                                or getattr(
+                                    getattr(ctrl, "content", None), "controls", None
+                                )
                                 or []
                             )
                             for ch in children or []:
@@ -383,7 +409,9 @@ def start_replace_icons_background(
                                 continue
                             if getattr(cb, "_cid", None) == updated_id:
                                 try:
-                                    page.playlists_list.controls[i] = page.make_playlist_row(page, new_card, idx=i)
+                                    page.playlists_list.controls[i] = (
+                                        page.make_playlist_row(page, new_card, idx=i)
+                                    )
                                     page.update()
                                     try:
                                         page.show_snack("Playlist icons updated")
@@ -394,7 +422,9 @@ def start_replace_icons_background(
                                 break
                         else:
                             # not found, refresh list
-                            threading.Thread(target=lambda: page.fetch_playlists, daemon=True).start()
+                            threading.Thread(
+                                target=lambda: page.fetch_playlists, daemon=True
+                            ).start()
                 except Exception:
                     pass
 
@@ -411,8 +441,8 @@ def start_replace_icons_background(
                 except Exception:
                     pass
                 try:
-                    if hasattr(page, 'set_autoselect_progress'):
-                        page.set_autoselect_progress('', 0.0, visible=False)
+                    if hasattr(page, "set_autoselect_progress"):
+                        page.set_autoselect_progress("", 0.0, visible=False)
                 except Exception:
                     pass
 

@@ -333,5 +333,5 @@ class ColourPicker:
             page.show_dialog(page.dialog)
             self.caller_page_dialog = None
         else:
-            self.color_picker_dialog.open = False
+            page.pop_dialog()
         page.update()

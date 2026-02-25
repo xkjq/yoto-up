@@ -234,18 +234,12 @@ def delete_playlist(ev, page, card: Card, row_container=None):
             page.update()
 
     def confirm_yes(_e):
-        try:
-            confirm_dialog.open = False
-        except Exception:
-            pass
+        page.pop_dialog()
         page.update()
         threading.Thread(target=do_delete, daemon=True).start()
 
     def confirm_no(_e):
-        try:
-            confirm_dialog.open = False
-        except Exception:
-            pass
+        page.pop_dialog()
         page.update()
 
     confirm_dialog = ft.AlertDialog(
@@ -1197,17 +1191,14 @@ def build_playlists_panel(
                 updated += 1
             status_text.value = f"Tags added to {updated} playlists. {'Failed: ' + str(failed) if failed else ''}"
             page.show_snack(status_text.value)
-            add_tags_dialog.open = False
+            page.pop_dialog()
             threading.Thread(
                 target=lambda: fetch_playlists_sync(page), daemon=True
             ).start()
             page.update()
 
         def close_add_tags(_e=None):
-            try:
-                add_tags_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         add_tags_dialog = ft.AlertDialog(
@@ -1218,14 +1209,7 @@ def build_playlists_panel(
                 ft.TextButton("Cancel", on_click=close_add_tags),
             ],
         )
-        try:
-            page.show_dialog(add_tags_dialog)
-        except Exception:
-            try:
-                page.dialog = add_tags_dialog
-                page.update()
-            except Exception:
-                pass
+        page.show_dialog(add_tags_dialog)
 
     add_tags_btn.on_click = _on_add_tags_selected
 
@@ -1237,8 +1221,6 @@ def build_playlists_panel(
 
         def do_set_author(_e=None):
             new_author = (author_field.value or "").strip()
-            client = CLIENT_ID
-            api: YotoAPI = ensure_api(api_ref, client)
             updated = 0
             for cid in list(page.selected_playlist_ids):
                 try:
@@ -1254,19 +1236,14 @@ def build_playlists_panel(
                 except Exception as ex:
                     logger.error(f"Failed to update author for {cid}: {ex}")
             status_text.value = f"Updated author for {updated} playlists"
-            try:
-                page.show_snack(status_text.value)
-            except Exception:
-                pass
-            dlg.open = False
+            page.show_snack(status_text.value)
+            page.pop_dialog()
             threading.Thread(
                 target=lambda: fetch_playlists_sync(page), daemon=True
             ).start()
             page.update()
 
         def do_remove_author(_e=None):
-            client = CLIENT_ID
-            api: YotoAPI = ensure_api(api_ref, client)
             removed = 0
             for cid in list(page.selected_playlist_ids):
                 try:
@@ -1282,21 +1259,15 @@ def build_playlists_panel(
                 except Exception as ex:
                     logger.error(f"Failed to remove author for {cid}: {ex}")
             status_text.value = f"Removed author from {removed} playlists"
-            try:
-                page.show_snack(status_text.value)
-            except Exception:
-                pass
-            dlg.open = False
+            page.show_snack(status_text.value)
+            page.pop_dialog()
             threading.Thread(
                 target=lambda: fetch_playlists_sync(page), daemon=True
             ).start()
             page.update()
 
         def close_author(_e=None):
-            try:
-                dlg.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         dlg = ft.AlertDialog(
@@ -1308,14 +1279,7 @@ def build_playlists_panel(
                 ft.TextButton("Cancel", on_click=close_author),
             ],
         )
-        try:
-            page.show_dialog(dlg)
-        except Exception:
-            try:
-                page.dialog = dlg
-                page.update()
-            except Exception:
-                pass
+        page.show_dialog(dlg)
 
     edit_author_btn.on_click = _on_edit_author_selected
 
@@ -1357,8 +1321,6 @@ def build_playlists_panel(
 
     playlists_list = ft.ListView(expand=True, spacing=6)
     page.playlists_list = playlists_list  # Expose for cross-module updates
-    existing_card_map = {}
-    existing_card_dropdown = ft.Dropdown(label="Existing card", width=400, options=[])
 
     def _clean_controls():
         """Remove any invalid entries from UI control lists that may cause
@@ -1401,15 +1363,13 @@ def build_playlists_panel(
         to_delete = list(page.selected_playlist_ids)
         if not to_delete:
             return
-        client = CLIENT_ID
-        api = ensure_api(api_ref, client)
         for cid in to_delete:
             try:
                 api.delete_content(cid)
                 logger.info(f"[delete] Deleted {cid}")
             except Exception as e:
                 logger.error(f"[delete] Failed to delete {cid}: {e}")
-        selected_playlist_ids.clear()
+        page.selected_playlist_ids.clear()
         delete_selected_btn.disabled = True
         export_selected_btn.disabled = True
         playlists_list.controls.clear()
@@ -1417,11 +1377,9 @@ def build_playlists_panel(
         page.update()
 
     def _do_export_selected():
-        to_export = list(selected_playlist_ids)
+        to_export = list(page.selected_playlist_ids)
         if not to_export:
             return
-        client = CLIENT_ID
-        api = ensure_api(api_ref, client)
         out_dir = Path("cards")
         out_dir.mkdir(parents=True, exist_ok=True)
         exported = 0
@@ -1456,37 +1414,28 @@ def build_playlists_panel(
                 exported += 1
             except Exception as e:
                 print(f"[export] Failed to export {cid}: {e}")
-        selected_playlist_ids.clear()
+        page.selected_playlist_ids.clear()
         export_selected_btn.disabled = True
         delete_selected_btn.disabled = True
         playlists_list.controls.clear()
         fetch_playlists_sync(page)
-        try:
-            show_snack(f"Exported {exported} cards to ./cards/")
-        except Exception:
-            pass
+        page.show_snack(f"Exported {exported} cards to ./cards/")
         page.update()
 
     def _on_delete_selected(ev):
         def confirm_yes(_e=None):
-            try:
-                confirm_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
             threading.Thread(target=_do_delete_selected, daemon=True).start()
 
         def confirm_no(_e=None):
-            try:
-                confirm_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         confirm_dialog = ft.AlertDialog(
             title=ft.Text("Delete selected playlists?"),
             content=ft.Text(
-                f"Delete {len(selected_playlist_ids)} selected playlists? This cannot be undone."
+                f"Delete {len(page.selected_playlist_ids)} selected playlists? This cannot be undone."
             ),
             actions=[
                 ft.TextButton("Yes", on_click=confirm_yes),
@@ -1497,24 +1446,18 @@ def build_playlists_panel(
 
     def _on_export_selected(ev):
         def confirm_yes(_e=None):
-            try:
-                confirm_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
             threading.Thread(target=_do_export_selected, daemon=True).start()
 
         def confirm_no(_e=None):
-            try:
-                confirm_dialog.open = False
-            except Exception:
-                pass
+            page.pop_dialog()
             page.update()
 
         confirm_dialog = ft.AlertDialog(
             title=ft.Text("Export selected playlists?"),
             content=ft.Text(
-                f"Export {len(selected_playlist_ids)} selected playlists to ./cards/?"
+                f"Export {len(page.selected_playlist_ids)} selected playlists to ./cards/?"
             ),
             actions=[
                 ft.TextButton("Yes", on_click=confirm_yes),
@@ -1570,7 +1513,7 @@ def build_playlists_panel(
     def _update_multiselect_buttons():
         """Central helper to set disabled state for multiselect action buttons."""
         try:
-            disabled = len(selected_playlist_ids) == 0
+            disabled = len(page.selected_playlist_ids) == 0
             try:
                 delete_selected_btn.disabled = disabled
             except Exception:
@@ -1602,10 +1545,7 @@ def build_playlists_panel(
                     pass
             except Exception:
                 pass
-            try:
-                page.update()
-            except Exception:
-                pass
+            page.update()
         except Exception:
             pass
 
@@ -1615,25 +1555,19 @@ def build_playlists_panel(
 
     def _set_all_checkboxes(value: bool):
         """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
-        try:
-            for row in playlists_list.controls:
-                for child in getattr(row, "controls", []):
-                    if getattr(child, "_is_playlist_checkbox", False):
-                        try:
-                            child.value = value
-                            # ensure UI updated
-                            child.update()
-                            # update selection set
-                            if value:
-                                selected_playlist_ids.add(getattr(child, "_cid", None))
-                            else:
-                                selected_playlist_ids.discard(
-                                    getattr(child, "_cid", None)
-                                )
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+        for row in playlists_list.controls:
+            for child in getattr(row, "controls", []):
+                if getattr(child, "_is_playlist_checkbox", False):
+                        child.value = value
+                        # ensure UI updated
+                        child.update()
+                        # update selection set
+                        if value:
+                            page.selected_playlist_ids.add(getattr(child, "_cid", None))
+                        else:
+                            page.selected_playlist_ids.discard(
+                                getattr(child, "_cid", None)
+                            )
 
     page.set_all_playlist_checkboxes = (
         _set_all_checkboxes  # Expose for callbacks in playlist rows
@@ -1804,13 +1738,13 @@ def build_playlists_panel(
     def _on_import_pick_result(files: list[ft.FilePickerFile] | None):
         try:
             if not files:
-                show_snack("No file selected for import", error=True)
+                page.show_snack("No file selected for import", error=True)
                 return
             # use first selected file
             for f in files:
                 path = getattr(f, "path", None)
                 if not path:
-                    show_snack(
+                    page.show_snack(
                         "Selected file has no path (web picker unsupported)", error=True
                     )
                     return
@@ -1820,7 +1754,7 @@ def build_playlists_panel(
                         data = json.load(fh)
                 except Exception as ex:
                     logger.error(f"Failed to read card file {path}: {ex}")
-                    show_snack(f"Failed to read card file: {ex}", error=True)
+                    page.show_snack(f"Failed to read card file: {ex}", error=True)
                     continue
 
                 # Validate/construct Card
@@ -1832,7 +1766,7 @@ def build_playlists_panel(
                         card_obj = Card(**data)
                     except Exception as ex:
                         logger.error("import_card: failed to validate to Card", ex)
-                        show_snack(f"Invalid card format: {ex}", error=True)
+                        page.show_snack(f"Invalid card format: {ex}", error=True)
                         continue
 
                 # Ensure new card (unset id)
@@ -1845,9 +1779,8 @@ def build_playlists_panel(
 
                 # Call API to create
                 try:
-                    api = ensure_api(api_ref, CLIENT_ID)
                     new_card = api.create_or_update_content(card_obj, return_card=True)
-                    show_snack(
+                    page.show_snack(
                         f"Card imported: {getattr(new_card, 'cardId', getattr(new_card, 'id', 'unknown'))}"
                     )
                     # refresh playlists list
@@ -1859,16 +1792,16 @@ def build_playlists_panel(
                         pass
                 except Exception as ex:
                     logger.error(f"Failed to import card via API: {ex}")
-                    show_snack(f"Failed to import card: {ex}", error=True)
+                    page.show_snack(f"Failed to import card: {ex}", error=True)
 
         except Exception as exc:
             logger.error(f"_on_import_pick_result unexpected error: {exc}")
-            show_snack("Unexpected error during import", error=True)
+            page.show_snack("Unexpected error during import", error=True)
 
     async def _on_import_card_click(e=None):
         try:
             if import_picker is None:
-                show_snack(
+                page.show_snack(
                     "Import requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
                     error=True,
                 )
@@ -1879,7 +1812,7 @@ def build_playlists_panel(
             _on_import_pick_result(files)
         except Exception as ex:
             logger.error(f"import_card click failed: {ex}")
-            show_snack("Failed to open file picker", error=True)
+            page.show_snack("Failed to open file picker", error=True)
 
     import_card_btn.on_click = _on_import_card_click
 
@@ -1887,8 +1820,6 @@ def build_playlists_panel(
         "playlists_column": playlists_column,
         "fetch_playlists": fetch_playlists,
         "playlists_list": playlists_list,
-        "existing_card_dropdown": existing_card_dropdown,
-        "existing_card_map": existing_card_map,
         "make_playlist_row": make_playlist_row,
         "delete_selected_btn": delete_selected_btn,
         "multi_select_btn": multi_select_btn,

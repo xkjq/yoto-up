@@ -67,14 +67,14 @@ To authenticate with your Yoto account:
 3. Enter the code and complete the authentication process.
 """
 
-def main(page):
+def main(page: ft.Page):
     logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}", enqueue=True, catch=True)
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
 
     page.cards: list[Card] = []
 
-    def update_local_card_cache(card):
+    def update_local_card_cache(card: Card):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
         try:
             existing = next((c for c in page.cards if c.id == card.id), None)

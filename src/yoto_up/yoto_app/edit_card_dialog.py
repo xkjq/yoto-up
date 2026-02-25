@@ -412,6 +412,7 @@ def show_edit_card_dialog(
         page.update()
 
     def close_edit(_ev):
+        page.pop_dialog()
         page.show_card_details(None, card_pre_edit)
         page.update()
 
