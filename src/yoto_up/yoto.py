@@ -66,16 +66,18 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0):
             else:
                 rec_gain = 0.0
         plan[filepath] = {
-            'lufs': (float(lufs) if lufs is not None else None),
-            'max_amp': (float(max_amp) if max_amp is not None else None),
-            'avg_amp': (float(avg_amp) if avg_amp is not None else None),
-            'recommended_gain_db': float(rec_gain),
-            'ext': ext,
+            "lufs": (float(lufs) if lufs is not None else None),
+            "max_amp": (float(max_amp) if max_amp is not None else None),
+            "avg_amp": (float(avg_amp) if avg_amp is not None else None),
+            "recommended_gain_db": float(rec_gain),
+            "ext": ext,
         }
     return plan
 
 
-def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False, progress_callback=None):
+def apply_gain_plan(
+    plan: dict, out_dir: str, dry_run: bool = False, progress_callback=None
+):
     """Apply gain adjustments described by `plan` to files, writing to out_dir.
 
     Returns list of written paths (or planned paths in dry-run).
@@ -90,9 +92,9 @@ def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False, progress_ca
     total = len(plan)
     for idx, (filepath, info) in enumerate(plan.items()):
         try:
-            gain_db = float(info.get('recommended_gain_db', 0.0))
+            gain_db = float(info.get("recommended_gain_db", 0.0))
             base, ext = os.path.splitext(os.path.basename(filepath))
-            tag = f"_norm_{int(gain_db*100)}"
+            tag = f"_norm_{int(gain_db * 100)}"
             dest_name = f"{base}{tag}{ext}"
             dest_path = os.path.join(out_dir, dest_name)
             if dry_run:
@@ -105,7 +107,7 @@ def apply_gain_plan(plan: dict, out_dir: str, dry_run: bool = False, progress_ca
                 continue
             seg = AudioSegment.from_file(filepath)
             seg = seg.apply_gain(gain_db)
-            fmt = ext.lstrip('.') or 'mp3'
+            fmt = ext.lstrip(".") or "mp3"
             seg.export(dest_path, format=fmt)
             written.append(dest_path)
             if progress_callback:
@@ -160,7 +162,9 @@ def create_content(
     typer.echo(API.create_or_update_content(title, description, content_type, data))
 
 
-def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Optional[str] = None):
+def get_cards(
+    name, ignore_case, regex, tags: Optional[str] = None, category: Optional[str] = None
+):
     """Fetch cards and optionally filter by name, tags (comma-separated), and metadata.category.
 
     - name: substring or regex depending on flags
@@ -178,7 +182,7 @@ def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Op
             full_cards = []
             for c in cards:
                 try:
-                    full = API.get_card(getattr(c, 'cardId', None))
+                    full = API.get_card(getattr(c, "cardId", None))
                     full_cards.append(full or c)
                 except Exception:
                     full_cards.append(c)
@@ -190,9 +194,17 @@ def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Op
     # Filter by name (existing behavior)
     if name:
         if ignore_case:
-            cards = [card for card in cards if card.title and name.lower() in (card.title or '').lower()]
+            cards = [
+                card
+                for card in cards
+                if card.title and name.lower() in (card.title or "").lower()
+            ]
         elif regex:
-            cards = [card for card in cards if card.title and re.search(name, card.title, re.IGNORECASE)]
+            cards = [
+                card
+                for card in cards
+                if card.title and re.search(name, card.title, re.IGNORECASE)
+            ]
 
     # Filter by category. Supports exact match or regex when `regex` is True.
     if category is not None:
@@ -205,12 +217,16 @@ def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Op
             def cat_match(c):
                 try:
                     mc = None
-                    if getattr(c, 'metadata', None):
-                        mc = getattr(c.metadata, 'category', None)
+                    if getattr(c, "metadata", None):
+                        mc = getattr(c.metadata, "category", None)
                     if mc is None:
                         return False
                     if cre is None:
-                        return (str(mc).lower() == category.lower()) if ignore_case else (str(mc) == category)
+                        return (
+                            (str(mc).lower() == category.lower())
+                            if ignore_case
+                            else (str(mc) == category)
+                        )
                     return bool(cre.search(str(mc)))
                 except Exception:
                     return False
@@ -221,11 +237,13 @@ def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Op
             def cat_match(c):
                 try:
                     mc = None
-                    if getattr(c, 'metadata', None):
-                        mc = getattr(c.metadata, 'category', None)
+                    if getattr(c, "metadata", None):
+                        mc = getattr(c.metadata, "category", None)
                     if mc is None:
                         return False
-                    return str(mc).lower() == target if ignore_case else str(mc) == target
+                    return (
+                        str(mc).lower() == target if ignore_case else str(mc) == target
+                    )
                 except Exception:
                     return False
 
@@ -234,14 +252,14 @@ def get_cards(name, ignore_case, regex, tags: Optional[str] = None, category: Op
     # Filter by tags (comma-separated). By default match ANY of the tags. If regex flag is set,
     # treat each requested tag as a regex and match against found tags.
     if tags is not None:
-        wanted_raw = [t.strip() for t in tags.split(',') if t.strip()]
+        wanted_raw = [t.strip() for t in tags.split(",") if t.strip()]
 
         def has_any_tag(c):
             try:
                 found = []
-                if getattr(c, 'tags', None):
+                if getattr(c, "tags", None):
                     found.extend([t for t in c.tags if t])
-                if getattr(c, 'metadata', None) and getattr(c.metadata, 'tags', None):
+                if getattr(c, "metadata", None) and getattr(c.metadata, "tags", None):
                     found.extend([t for t in c.metadata.tags if t])
                 if not found:
                     return False
@@ -275,13 +293,17 @@ def list_cards(
     name: str = typer.Option(None, help="Name of the card to filter (optional)"),
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
-    tags: Optional[str] = typer.Option(None, help="Comma-separated list of tags to filter by (card must include all)"),
+    tags: Optional[str] = typer.Option(
+        None, help="Comma-separated list of tags to filter by (card must include all)"
+    ),
     category: Optional[str] = typer.Option(None, help="Filter by metadata.category"),
     truncate: Optional[int] = typer.Option(
         50, help="Truncate fields to this many characters"
     ),
     table: bool = typer.Option(False, help="Display cards in a table format"),
-    include_chapters: bool = typer.Option(False, help="Include chapters and tracks in display"),
+    include_chapters: bool = typer.Option(
+        False, help="Include chapters and tracks in display"
+    ),
 ):
     cards = get_cards(name, ignore_case, regex, tags=tags, category=category)
 
@@ -311,7 +333,8 @@ def list_cards(
         for card in cards:
             desc = (
                 (card.metadata.description[: truncate - 3] + "...")
-                if card.metadata.description and len(card.metadata.description) > truncate
+                if card.metadata.description
+                and len(card.metadata.description) > truncate
                 else (card.metadata.description or "")
             )
             rich_table.add_row(card.cardId, card.title or "", desc)
@@ -321,7 +344,10 @@ def list_cards(
         for card in cards:
             rprint(
                 Panel.fit(
-                    card.display_card(truncate_fields_limit=truncate, include_chapters=include_chapters),
+                    card.display_card(
+                        truncate_fields_limit=truncate,
+                        include_chapters=include_chapters,
+                    ),
                     title=f"[bold green]Card[/bold green]",
                     subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
                 )
@@ -346,8 +372,12 @@ def delete_cards(
     name: str,
     ignore_case: bool = typer.Option(True, help="Ignore case when filtering by name"),
     regex: bool = typer.Option(False, help="Use regex for name filtering"),
-    tags: Optional[str] = typer.Option(None, help="Comma-separated tags to filter deletion (optional)"),
-    category: Optional[str] = typer.Option(None, help="Category to filter deletion (optional)"),
+    tags: Optional[str] = typer.Option(
+        None, help="Comma-separated tags to filter deletion (optional)"
+    ),
+    category: Optional[str] = typer.Option(
+        None, help="Category to filter deletion (optional)"
+    ),
 ):
     cards = get_cards(name, ignore_case, regex, tags=tags, category=category)
     to_delete = cards
@@ -387,7 +417,11 @@ def get_card(
     braille_dims: str = typer.Option(
         "8x4", help="Braille character grid dims as WxH, e.g. 8x4"
     ),
-    show_schema: bool = typer.Option(False, "--schema", help="Show the Card schema (paths, types) and values for this card"),
+    show_schema: bool = typer.Option(
+        False,
+        "--schema",
+        help="Show the Card schema (paths, types) and values for this card",
+    ),
 ):
     """Get details of a Yoto card by its ID."""
     API = get_api()
@@ -395,8 +429,10 @@ def get_card(
     if card:
         if show_schema:
             # Prepare model introspection helpers (copied/adapted from edit_card --list-keys)
-            models_module = sys.modules.get('yoto_up.models')
-            globalns = models_module.__dict__ if models_module is not None else globals()
+            models_module = sys.modules.get("yoto_up.models")
+            globalns = (
+                models_module.__dict__ if models_module is not None else globals()
+            )
 
             primitive_types = (str, int, float, bool)
 
@@ -420,12 +456,12 @@ def get_card(
                             return tp.__name__
                         if tp in primitive_types:
                             return tp.__name__
-                        return getattr(tp, '__name__', str(tp))
+                        return getattr(tp, "__name__", str(tp))
                 except Exception:
                     pass
                 return str(tp)
 
-            def collect_paths(tp, prefix: str = '', depth: int = 0, max_depth: int = 8):
+            def collect_paths(tp, prefix: str = "", depth: int = 0, max_depth: int = 8):
                 if depth > max_depth:
                     return []
                 origin = get_origin(tp)
@@ -437,29 +473,48 @@ def get_card(
                     elem = args[0] if args else None
                     list_path = f"{prefix}[]" if prefix else "[]"
                     if elem is None:
-                        results.append((list_path, 'List[Unknown]'))
+                        results.append((list_path, "List[Unknown]"))
                         return results
 
                     try:
-                        if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
+                        if isinstance(elem, type) and issubclass(
+                            elem, pydantic.BaseModel
+                        ):
                             results.append((list_path, describe_type(tp)))
-                            mf = getattr(elem, 'model_fields', None)
+                            mf = getattr(elem, "model_fields", None)
                             if isinstance(mf, dict):
-                                items = [(n, f.annotation if hasattr(f, 'annotation') else None) for n, f in mf.items()]
+                                items = [
+                                    (
+                                        n,
+                                        f.annotation
+                                        if hasattr(f, "annotation")
+                                        else None,
+                                    )
+                                    for n, f in mf.items()
+                                ]
                             else:
-                                ff = getattr(elem, '__fields__', None)
+                                ff = getattr(elem, "__fields__", None)
                                 if isinstance(ff, dict):
-                                    items = [(n, getattr(f, 'outer_type_', None)) for n, f in ff.items()]
+                                    items = [
+                                        (n, getattr(f, "outer_type_", None))
+                                        for n, f in ff.items()
+                                    ]
                                 else:
                                     try:
                                         hints = get_type_hints(elem, globalns=globalns)
                                     except Exception:
-                                        hints = getattr(elem, '__annotations__', {})
+                                        hints = getattr(elem, "__annotations__", {})
                                     items = list(hints.items())
 
                             for name, sub_tp in items:
-                                sub_prefix = f"{prefix}[].{name}" if prefix else f"[].{name}"
-                                results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
+                                sub_prefix = (
+                                    f"{prefix}[].{name}" if prefix else f"[].{name}"
+                                )
+                                results.extend(
+                                    collect_paths(
+                                        sub_tp, sub_prefix, depth + 1, max_depth
+                                    )
+                                )
                             return results
                         else:
                             results.append((list_path, describe_type(tp)))
@@ -474,16 +529,21 @@ def get_card(
                         try:
                             hints = get_type_hints(tp, globalns=globalns)
                         except Exception:
-                            hints = getattr(tp, '__annotations__', {})
+                            hints = getattr(tp, "__annotations__", {})
                         for name, sub_tp in hints.items():
                             sub_prefix = f"{prefix}.{name}" if prefix else name
                             try:
-                                if isinstance(sub_tp, type) and sub_tp in primitive_types:
+                                if (
+                                    isinstance(sub_tp, type)
+                                    and sub_tp in primitive_types
+                                ):
                                     results.append((sub_prefix, describe_type(sub_tp)))
                                     continue
                             except Exception:
                                 pass
-                            sub_results = collect_paths(sub_tp, sub_prefix, depth + 1, max_depth)
+                            sub_results = collect_paths(
+                                sub_tp, sub_prefix, depth + 1, max_depth
+                            )
                             if sub_results:
                                 results.extend(sub_results)
                             else:
@@ -508,7 +568,7 @@ def get_card(
             try:
                 card_data = card.model_dump(exclude_none=True)
             except Exception:
-                card_data = dict(getattr(card, '__dict__', {}) or {})
+                card_data = dict(getattr(card, "__dict__", {}) or {})
 
             def traverse_value(val, parts):
                 # returns scalar or list of scalars/dicts depending on path
@@ -519,7 +579,7 @@ def get_card(
                 part = parts[0]
                 rest = parts[1:]
                 # list indicator e.g. chapters[] or [].
-                if part.endswith('[]'):
+                if part.endswith("[]"):
                     key = part[:-2]
                     if isinstance(val, dict):
                         seq = val.get(key) or []
@@ -532,7 +592,7 @@ def get_card(
                         results.append(traverse_value(item, rest))
                     return results
                 # part may be '[]' meaning current value is a list
-                if part == '[]':
+                if part == "[]":
                     if not isinstance(val, list):
                         return None
                     results = []
@@ -552,14 +612,14 @@ def get_card(
             except Exception:
                 CardModel = Card
 
-            raw = collect_paths(CardModel, '', 0, 8)
+            raw = collect_paths(CardModel, "", 0, 8)
             # normalize and dedupe similar to edit_card
             keys = []
             seen = set()
             for path, t in raw:
                 if not path:
                     continue
-                norm = path.replace('.[].', '.').replace('[]..', '[]')
+                norm = path.replace(".[].", ".").replace("[]..", "[]")
                 if norm not in seen:
                     seen.add(norm)
                     keys.append((norm, t))
@@ -567,7 +627,7 @@ def get_card(
             typer.echo(f"Schema + values for card {card_id}:")
             for k, t in sorted(keys):
                 # prepare parts for traversal
-                parts = k.split('.') if k else []
+                parts = k.split(".") if k else []
                 value = traverse_value(card_data, parts)
                 # pretty print value
                 if isinstance(value, list):
@@ -595,7 +655,7 @@ def get_card(
                     render_method=icons_method,
                     braille_dims=(w, h),
                     braille_x_scale=braille_scale,
-                    include_chapters=chapters
+                    include_chapters=chapters,
                 ),
                 title="[bold green]Card Details[/bold green]",
                 subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
@@ -642,27 +702,47 @@ def export_card(
 
 @app.command()
 def edit_card(
-    card_id: Optional[str] = typer.Argument(None, help="Card ID (optional when --list-keys is used)"),
+    card_id: Optional[str] = typer.Argument(
+        None, help="Card ID (optional when --list-keys is used)"
+    ),
     title: Optional[str] = typer.Option(None, help="Set a new title for the card"),
-    slug: Optional[str] = typer.Option(None, help="Set/replace top-level slug for the card"),
-    description: Optional[str] = typer.Option(None, help="Set/replace metadata.description"),
+    slug: Optional[str] = typer.Option(
+        None, help="Set/replace top-level slug for the card"
+    ),
+    description: Optional[str] = typer.Option(
+        None, help="Set/replace metadata.description"
+    ),
     author: Optional[str] = typer.Option(None, help="Set/replace metadata.author"),
     category: Optional[str] = typer.Option(None, help="Set/replace metadata.category"),
-    tags: Optional[str] = typer.Option(None, help='Comma-separated list of tags to set on the card'),
-    genres: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.genre'),
-    languages: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.languages'),
-    min_age: Optional[int] = typer.Option(None, help='Set metadata.minAge'),
-    max_age: Optional[int] = typer.Option(None, help='Set metadata.maxAge'),
-    copyright: Optional[str] = typer.Option(None, help='Set metadata.copyright'),
-    note: Optional[str] = typer.Option(None, help='Set metadata.note'),
-    read_by: Optional[str] = typer.Option(None, help='Set metadata.readBy'),
-    share: Optional[bool] = typer.Option(None, help='Set metadata.share (true/false)'),
-    hidden: Optional[bool] = typer.Option(None, help='Set metadata.hidden (true/false)'),
-    preview_audio: Optional[str] = typer.Option(None, help='Set metadata.previewAudio'),
-    playback_direction: Optional[str] = typer.Option(None, help="Set metadata.playbackDirection ('ASC'|'DESC')"),
-    accent: Optional[str] = typer.Option(None, help='Set metadata.accent'),
-    add_to_family_library: Optional[bool] = typer.Option(None, help='Set metadata.addToFamilyLibrary'),
-    music_type: Optional[str] = typer.Option(None, help='Comma-separated list for metadata.musicType'),
+    tags: Optional[str] = typer.Option(
+        None, help="Comma-separated list of tags to set on the card"
+    ),
+    genres: Optional[str] = typer.Option(
+        None, help="Comma-separated list for metadata.genre"
+    ),
+    languages: Optional[str] = typer.Option(
+        None, help="Comma-separated list for metadata.languages"
+    ),
+    min_age: Optional[int] = typer.Option(None, help="Set metadata.minAge"),
+    max_age: Optional[int] = typer.Option(None, help="Set metadata.maxAge"),
+    copyright: Optional[str] = typer.Option(None, help="Set metadata.copyright"),
+    note: Optional[str] = typer.Option(None, help="Set metadata.note"),
+    read_by: Optional[str] = typer.Option(None, help="Set metadata.readBy"),
+    share: Optional[bool] = typer.Option(None, help="Set metadata.share (true/false)"),
+    hidden: Optional[bool] = typer.Option(
+        None, help="Set metadata.hidden (true/false)"
+    ),
+    preview_audio: Optional[str] = typer.Option(None, help="Set metadata.previewAudio"),
+    playback_direction: Optional[str] = typer.Option(
+        None, help="Set metadata.playbackDirection ('ASC'|'DESC')"
+    ),
+    accent: Optional[str] = typer.Option(None, help="Set metadata.accent"),
+    add_to_family_library: Optional[bool] = typer.Option(
+        None, help="Set metadata.addToFamilyLibrary"
+    ),
+    music_type: Optional[str] = typer.Option(
+        None, help="Comma-separated list for metadata.musicType"
+    ),
     # Flexible key=value setters for arbitrary nested fields, e.g. --set metadata.cover.imageL=/path/img.jpg
     set_fields: Optional[List[str]] = typer.Option(
         None,
@@ -685,7 +765,7 @@ def edit_card(
     # If user requested the available set keys, generate them dynamically from the Card model
     if show_set_keys:
         # attempt to get module globals for resolving forward refs
-        models_module = sys.modules.get('yoto_up.models')
+        models_module = sys.modules.get("yoto_up.models")
         globalns = models_module.__dict__ if models_module is not None else globals()
 
         primitive_types = (str, int, float, bool)
@@ -710,12 +790,12 @@ def edit_card(
                         return tp.__name__
                     if tp in primitive_types:
                         return tp.__name__
-                    return getattr(tp, '__name__', str(tp))
+                    return getattr(tp, "__name__", str(tp))
             except Exception:
                 pass
             return str(tp)
 
-        def collect_paths(tp, prefix: str = '', depth: int = 0, max_depth: int = 6):
+        def collect_paths(tp, prefix: str = "", depth: int = 0, max_depth: int = 6):
             if depth > max_depth:
                 return []
             origin = get_origin(tp)
@@ -727,7 +807,7 @@ def edit_card(
                 elem = args[0] if args else None
                 list_path = f"{prefix}[]" if prefix else "[]"
                 if elem is None:
-                    results.append((list_path, 'List[Unknown]'))
+                    results.append((list_path, "List[Unknown]"))
                     return results
 
                 # If element is a pydantic model, recurse using prefix[].field
@@ -735,24 +815,34 @@ def edit_card(
                     if isinstance(elem, type) and issubclass(elem, pydantic.BaseModel):
                         results.append((list_path, describe_type(tp)))
                         # Prefer pydantic v2 model_fields then v1 __fields__
-                        mf = getattr(elem, 'model_fields', None)
+                        mf = getattr(elem, "model_fields", None)
                         if isinstance(mf, dict):
-                            items = [(n, f.annotation if hasattr(f, 'annotation') else None) for n, f in mf.items()]
+                            items = [
+                                (n, f.annotation if hasattr(f, "annotation") else None)
+                                for n, f in mf.items()
+                            ]
                         else:
-                            ff = getattr(elem, '__fields__', None)
+                            ff = getattr(elem, "__fields__", None)
                             if isinstance(ff, dict):
-                                items = [(n, getattr(f, 'outer_type_', None)) for n, f in ff.items()]
+                                items = [
+                                    (n, getattr(f, "outer_type_", None))
+                                    for n, f in ff.items()
+                                ]
                             else:
                                 # fallback to annotations
                                 try:
                                     hints = get_type_hints(elem, globalns=globalns)
                                 except Exception:
-                                    hints = getattr(elem, '__annotations__', {})
+                                    hints = getattr(elem, "__annotations__", {})
                                 items = list(hints.items())
 
                         for name, sub_tp in items:
-                            sub_prefix = f"{prefix}[].{name}" if prefix else f"[].{name}"
-                            results.extend(collect_paths(sub_tp, sub_prefix, depth + 1, max_depth))
+                            sub_prefix = (
+                                f"{prefix}[].{name}" if prefix else f"[].{name}"
+                            )
+                            results.extend(
+                                collect_paths(sub_tp, sub_prefix, depth + 1, max_depth)
+                            )
                         return results
                     else:
                         results.append((list_path, describe_type(tp)))
@@ -767,7 +857,7 @@ def edit_card(
                     try:
                         hints = get_type_hints(tp, globalns=globalns)
                     except Exception:
-                        hints = getattr(tp, '__annotations__', {})
+                        hints = getattr(tp, "__annotations__", {})
                     for name, sub_tp in hints.items():
                         sub_prefix = f"{prefix}.{name}" if prefix else name
                         # if subfield is a primitive -> leaf
@@ -778,7 +868,9 @@ def edit_card(
                         except Exception:
                             pass
                         # recurse
-                        sub_results = collect_paths(sub_tp, sub_prefix, depth + 1, max_depth)
+                        sub_results = collect_paths(
+                            sub_tp, sub_prefix, depth + 1, max_depth
+                        )
                         if sub_results:
                             results.extend(sub_results)
                         else:
@@ -806,7 +898,7 @@ def edit_card(
         except Exception:
             CardModel = Card
 
-        raw = collect_paths(CardModel, '', 0, 6)
+        raw = collect_paths(CardModel, "", 0, 6)
         # normalize and dedupe
         keys = []
         seen = set()
@@ -814,7 +906,7 @@ def edit_card(
             if not path:
                 continue
             # normalize list markers (ensure consistent use of [])
-            norm = path.replace('.[].', '.').replace('[]..', '[]')
+            norm = path.replace(".[].", ".").replace("[]..", "[]")
             if norm not in seen:
                 seen.add(norm)
                 keys.append((norm, t))
@@ -831,7 +923,9 @@ def edit_card(
         raise typer.Exit(code=1)
 
     # Determine whether to apply direct updates or launch the TUI
-    direct_update = any(x is not None for x in (title, description, author, category, tags))
+    direct_update = any(
+        x is not None for x in (title, description, author, category, tags)
+    )
 
     if not direct_update:
         # Launch the existing TUI editor
@@ -857,7 +951,7 @@ def edit_card(
             card_data = dict(getattr(card, "__dict__", {}) or {})
 
         def set_in_dict(d: dict, path: str, value):
-            parts = path.split('.') if path else []
+            parts = path.split(".") if path else []
             cur = d
             for p in parts[:-1]:
                 if p not in cur or not isinstance(cur[p], dict):
@@ -870,78 +964,80 @@ def edit_card(
         def parse_list(s: Optional[str]):
             if s is None:
                 return None
-            return [t.strip() for t in s.split(',') if t.strip()]
+            return [t.strip() for t in s.split(",") if t.strip()]
 
         # Apply explicit flags to card_data
         if title is not None:
-            card_data['title'] = title
+            card_data["title"] = title
         if slug is not None:
-            card_data['slug'] = slug
+            card_data["slug"] = slug
 
         # Ensure metadata dict exists
-        if 'metadata' not in card_data or card_data.get('metadata') is None:
-            card_data['metadata'] = {}
+        if "metadata" not in card_data or card_data.get("metadata") is None:
+            card_data["metadata"] = {}
 
         if description is not None:
-            card_data['metadata']['description'] = description
+            card_data["metadata"]["description"] = description
         if author is not None:
-            card_data['metadata']['author'] = author
+            card_data["metadata"]["author"] = author
         if category is not None:
-            card_data['metadata']['category'] = category
+            card_data["metadata"]["category"] = category
         if genres is not None:
-            card_data['metadata']['genre'] = parse_list(genres)
+            card_data["metadata"]["genre"] = parse_list(genres)
         if languages is not None:
-            card_data['metadata']['languages'] = parse_list(languages)
+            card_data["metadata"]["languages"] = parse_list(languages)
         if min_age is not None:
-            card_data['metadata']['minAge'] = int(min_age)
+            card_data["metadata"]["minAge"] = int(min_age)
         if max_age is not None:
-            card_data['metadata']['maxAge'] = int(max_age)
+            card_data["metadata"]["maxAge"] = int(max_age)
         if copyright is not None:
-            card_data['metadata']['copyright'] = copyright
+            card_data["metadata"]["copyright"] = copyright
         if note is not None:
-            card_data['metadata']['note'] = note
+            card_data["metadata"]["note"] = note
         if read_by is not None:
-            card_data['metadata']['readBy'] = read_by
+            card_data["metadata"]["readBy"] = read_by
         if share is not None:
-            card_data['metadata']['share'] = bool(share)
+            card_data["metadata"]["share"] = bool(share)
         if hidden is not None:
-            card_data['metadata']['hidden'] = bool(hidden)
+            card_data["metadata"]["hidden"] = bool(hidden)
         if preview_audio is not None:
-            card_data['metadata']['previewAudio'] = preview_audio
+            card_data["metadata"]["previewAudio"] = preview_audio
         if playback_direction is not None:
-            card_data['metadata']['playbackDirection'] = playback_direction
+            card_data["metadata"]["playbackDirection"] = playback_direction
         if accent is not None:
-            card_data['metadata']['accent'] = accent
+            card_data["metadata"]["accent"] = accent
         if add_to_family_library is not None:
-            card_data['metadata']['addToFamilyLibrary'] = bool(add_to_family_library)
+            card_data["metadata"]["addToFamilyLibrary"] = bool(add_to_family_library)
         if music_type is not None:
-            card_data['metadata']['musicType'] = parse_list(music_type)
+            card_data["metadata"]["musicType"] = parse_list(music_type)
 
         # tags: set both top-level and metadata.tags
         if tags is not None:
             parsed = parse_list(tags) or []
-            card_data['tags'] = parsed
-            card_data['metadata']['tags'] = parsed
+            card_data["tags"] = parsed
+            card_data["metadata"]["tags"] = parsed
 
         # Apply any explicit --set key=value pairs
         if set_fields:
             for kv in set_fields:
-                if '=' not in kv:
+                if "=" not in kv:
                     typer.echo(f"Ignoring malformed --set value (no '='): {kv}")
                     continue
-                key, val = kv.split('=', 1)
+                key, val = kv.split("=", 1)
                 key = key.strip()
                 val = val.strip()
                 # Convert some simple types
-                if val.lower() in ('true', 'false'):
-                    parsed_val = val.lower() == 'true'
+                if val.lower() in ("true", "false"):
+                    parsed_val = val.lower() == "true"
                 else:
                     try:
                         parsed_val = int(val)
                     except Exception:
                         # comma-separated lists -> list
-                        if ',' in val:
-                            parsed_val = [p.strip() for p in val.split(',') if p.strip()]
+                        if "," in val:
+                            parsed_val = [
+                                p.strip() for p in val.split(",") if p.strip()
+                            ]
                         else:
                             parsed_val = val
                 set_in_dict(card_data, key, parsed_val)
@@ -962,7 +1058,7 @@ def edit_card(
         # Send update
         updated = API.update_card(updated_card)
         try:
-            updated_id = getattr(updated, 'cardId', getattr(card, 'cardId', None))
+            updated_id = getattr(updated, "cardId", getattr(card, "cardId", None))
             typer.echo(f"Card updated: {updated_id}")
         except Exception:
             typer.echo("Card updated.")
@@ -1273,7 +1369,9 @@ def versions(
         raise typer.Exit(code=1)
 
 
-@app.command(help="Create a Yoto card from a folder of media files; uploads and optionally normalizes/transcodes them")
+@app.command(
+    help="Create a Yoto card from a folder of media files; uploads and optionally normalizes/transcodes them"
+)
 def create_card_from_folder(
     folder: str = typer.Argument(..., help="Path to folder containing media files"),
     title: str = typer.Option(
@@ -1328,12 +1426,16 @@ def create_card_from_folder(
 
         temp_norm_dir = None
         if local_norm:
-            typer.echo(f"Running local normalization (Target: {local_norm_target} LUFS, Batch: {local_norm_batch})...")
+            typer.echo(
+                f"Running local normalization (Target: {local_norm_target} LUFS, Batch: {local_norm_batch})..."
+            )
             try:
                 temp_norm_dir = tempfile.mkdtemp(prefix="yoto_norm_")
-                normalizer = AudioNormalizer(target_level=local_norm_target, batch_mode=local_norm_batch)
+                normalizer = AudioNormalizer(
+                    target_level=local_norm_target, batch_mode=local_norm_batch
+                )
                 media_files_str = [str(f) for f in media_files]
-                
+
                 normalized_files = await asyncio.to_thread(
                     normalizer.normalize, media_files_str, temp_norm_dir
                 )
@@ -1421,15 +1523,20 @@ def create_card_from_folder(
             result = API.create_or_update_content(new_card, return_card=True)
         typer.echo(f"[bold green]Card created: {result.cardId}[/bold green]")
         print(result.model_dump_json(exclude_none=True))
-        
+
         if temp_norm_dir and os.path.exists(temp_norm_dir):
             shutil.rmtree(temp_norm_dir)
 
     asyncio.run(async_main())
 
+
 # Register a short alias for convenience: `ccf` -> `create-card-from-folder`
 # Provide a help string so `ccf --help` explains the command
-app.command(name="ccf", help="Shortcut: create a Yoto card from a folder of media files (alias for create-card-from-folder)")(create_card_from_folder)
+app.command(
+    name="ccf",
+    help="Shortcut: create a Yoto card from a folder of media files (alias for create-card-from-folder)",
+)(create_card_from_folder)
+
 
 @app.command()
 def get_public_icons(show_in_console: bool = True):
@@ -1443,17 +1550,47 @@ def get_public_icons(show_in_console: bool = True):
 @app.command(name="intro-outro")
 def intro_outro(
     files: List[str] = typer.Argument(..., help="Audio files to analyze"),
-    side: str = typer.Option("intro", "--side", "-s", help="Which side to analyze: intro or outro"),
-    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
-    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
-    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
-    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
-    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
-    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
-    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
-    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
-    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
+    side: str = typer.Option(
+        "intro", "--side", "-s", help="Which side to analyze: intro or outro"
+    ),
+    seconds: float = typer.Option(
+        10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"
+    ),
+    window_seconds: float = typer.Option(
+        0.1, "--window", help="Window size (seconds) used by per-window analyzer"
+    ),
+    sr: int = typer.Option(
+        22050, "--sr", help="Sample rate used for feature extraction"
+    ),
+    n_mfcc: int = typer.Option(
+        13, "--n-mfcc", help="Number of MFCC coefficients to compute"
+    ),
+    threshold: float = typer.Option(
+        0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"
+    ),
+    min_files_fraction: float = typer.Option(
+        0.9,
+        "--min-fraction",
+        help="Minimum fraction of files required to declare a common prefix",
+    ),
+    trim: bool = typer.Option(
+        False,
+        "--trim",
+        help="Copy trimmed files to a temporary (non-destructive) location",
+    ),
+    dest_dir: Optional[str] = typer.Option(
+        None,
+        "--dest",
+        help="Destination directory for trimmed files (defaults to a temp dir)",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show planned trimmed file paths but don't write files"
+    ),
+    keep_silence_ms: int = typer.Option(
+        0,
+        "--keep-silence-ms",
+        help="Milliseconds of silence to keep at each trimmed edge",
+    ),
 ):
     """Analyze a set of audio files to find common intro/outro segments using the per-window analyzer (same as GUI).
 
@@ -1492,19 +1629,34 @@ def intro_outro(
     from rich.panel import Panel
     from rich.table import Table
     from rich.align import Align
-    summary_lines = [f"Seconds matched: {seconds_matched}", f"Windows matched: {windows_matched}"]
+
+    summary_lines = [
+        f"Seconds matched: {seconds_matched}",
+        f"Windows matched: {windows_matched}",
+    ]
     if tpl:
         summary_lines.insert(0, f"Template: {tpl}")
-    console.print(Panel('\n'.join(summary_lines), title="Intro/Outro Analysis", subtitle=f"side={side} seconds={seconds} window={window_seconds}"))
+    console.print(
+        Panel(
+            "\n".join(summary_lines),
+            title="Intro/Outro Analysis",
+            subtitle=f"side={side} seconds={seconds} window={window_seconds}",
+        )
+    )
 
     # Per-window fractions (show up to first 20 windows)
     if per_window_frac:
         try:
             display_vals = per_window_frac[:20]
-            frac_text = ', '.join(f"{float(v):.3f}" for v in display_vals)
+            frac_text = ", ".join(f"{float(v):.3f}" for v in display_vals)
             if len(per_window_frac) > 20:
-                frac_text += f", ... (+{len(per_window_frac)-20} more)"
-            console.print(Panel(frac_text, title=f"Per-window fraction (first {min(20, len(per_window_frac))})"))
+                frac_text += f", ... (+{len(per_window_frac) - 20} more)"
+            console.print(
+                Panel(
+                    frac_text,
+                    title=f"Per-window fraction (first {min(20, len(per_window_frac))})",
+                )
+            )
         except Exception:
             pass
 
@@ -1518,9 +1670,9 @@ def intro_outro(
     def score_bar(mean: float, width: int = 20) -> str:
         try:
             n = max(0, min(width, int(round(mean * width))))
-            return '█' * n + ' ' * (width - n)
+            return "█" * n + " " * (width - n)
         except Exception:
-            return ''
+            return ""
 
     # Compute mean for each file and add to table sorted by mean desc
     rows = []
@@ -1528,7 +1680,9 @@ def intro_outro(
         try:
             if windows_matched > 0:
                 vals = list(arr)[:windows_matched]
-                mean = sum(float(v or 0.0) for v in vals) / float(len(vals) if vals else 1)
+                mean = sum(float(v or 0.0) for v in vals) / float(
+                    len(vals) if vals else 1
+                )
             else:
                 mean = 0.0
         except Exception:
@@ -1569,7 +1723,9 @@ def intro_outro(
                     dest_path = os.path.join(out_dir, fn)
 
                     if dry_run:
-                        console.print(f"[cyan]Dry-run:[/] would write trimmed file: {dest_path}")
+                        console.print(
+                            f"[cyan]Dry-run:[/] would write trimmed file: {dest_path}"
+                        )
                         trimmed_paths.append(dest_path)
                         continue
 
@@ -1590,30 +1746,64 @@ def intro_outro(
                     console.print(f"[red]Failed to trim {src}: {e}[/red]")
 
             if trimmed_paths:
-                console.print(Panel('\n'.join(trimmed_paths), title="Trimmed files"))
+                console.print(Panel("\n".join(trimmed_paths), title="Trimmed files"))
                 if created_temp:
-                    console.print(f"Temporary trimmed files are in: [bold]{out_dir}[/bold]")
+                    console.print(
+                        f"Temporary trimmed files are in: [bold]{out_dir}[/bold]"
+                    )
 
     # (Gain adjustment is handled by the separate `normalize` command.)
 
-    console.print(f"[blue]Analysis suggests remove the first {seconds_matched} seconds from the {side}.[/blue]")
+    console.print(
+        f"[blue]Analysis suggests remove the first {seconds_matched} seconds from the {side}.[/blue]"
+    )
     console.print("Rerun <command> with --trim option to apply.")
 
 
 @app.command(name="intro")
 def intro(
     files: List[str] = typer.Argument(..., help="Audio files to analyze"),
-    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
-    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
-    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
-    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
-    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
-    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
-    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
-    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
-    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
-    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="(unused) kept for compatibility"),
+    seconds: float = typer.Option(
+        10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"
+    ),
+    window_seconds: float = typer.Option(
+        0.1, "--window", help="Window size (seconds) used by per-window analyzer"
+    ),
+    sr: int = typer.Option(
+        22050, "--sr", help="Sample rate used for feature extraction"
+    ),
+    n_mfcc: int = typer.Option(
+        13, "--n-mfcc", help="Number of MFCC coefficients to compute"
+    ),
+    threshold: float = typer.Option(
+        0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"
+    ),
+    min_files_fraction: float = typer.Option(
+        0.9,
+        "--min-fraction",
+        help="Minimum fraction of files required to declare a common prefix",
+    ),
+    trim: bool = typer.Option(
+        False,
+        "--trim",
+        help="Copy trimmed files to a temporary (non-destructive) location",
+    ),
+    dest_dir: Optional[str] = typer.Option(
+        None,
+        "--dest",
+        help="Destination directory for trimmed files (defaults to a temp dir)",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show planned trimmed file paths but don't write files"
+    ),
+    keep_silence_ms: int = typer.Option(
+        0,
+        "--keep-silence-ms",
+        help="Milliseconds of silence to keep at each trimmed edge",
+    ),
+    gain_db: Optional[float] = typer.Option(
+        None, "--gain-db", help="(unused) kept for compatibility"
+    ),
 ):
     """Analyze the intro side (shortcut for `intro-outro --side intro`)."""
     return intro_outro(
@@ -1636,17 +1826,47 @@ def intro(
 @app.command(name="outro")
 def outro(
     files: List[str] = typer.Argument(..., help="Audio files to analyze"),
-    seconds: float = typer.Option(10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"),
-    window_seconds: float = typer.Option(0.1, "--window", help="Window size (seconds) used by per-window analyzer"),
-    sr: int = typer.Option(22050, "--sr", help="Sample rate used for feature extraction"),
-    n_mfcc: int = typer.Option(13, "--n-mfcc", help="Number of MFCC coefficients to compute"),
-    threshold: float = typer.Option(0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"),
-    min_files_fraction: float = typer.Option(0.9, "--min-fraction", help="Minimum fraction of files required to declare a common prefix"),
-    trim: bool = typer.Option(False, "--trim", help="Copy trimmed files to a temporary (non-destructive) location"),
-    dest_dir: Optional[str] = typer.Option(None, "--dest", help="Destination directory for trimmed files (defaults to a temp dir)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned trimmed file paths but don't write files"),
-    keep_silence_ms: int = typer.Option(0, "--keep-silence-ms", help="Milliseconds of silence to keep at each trimmed edge"),
-    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="(unused) kept for compatibility"),
+    seconds: float = typer.Option(
+        10.0, "--seconds", "-S", help="Max seconds to inspect at the chosen side"
+    ),
+    window_seconds: float = typer.Option(
+        0.1, "--window", help="Window size (seconds) used by per-window analyzer"
+    ),
+    sr: int = typer.Option(
+        22050, "--sr", help="Sample rate used for feature extraction"
+    ),
+    n_mfcc: int = typer.Option(
+        13, "--n-mfcc", help="Number of MFCC coefficients to compute"
+    ),
+    threshold: float = typer.Option(
+        0.99, "--threshold", "-t", help="Per-window similarity threshold (0..1)"
+    ),
+    min_files_fraction: float = typer.Option(
+        0.9,
+        "--min-fraction",
+        help="Minimum fraction of files required to declare a common prefix",
+    ),
+    trim: bool = typer.Option(
+        False,
+        "--trim",
+        help="Copy trimmed files to a temporary (non-destructive) location",
+    ),
+    dest_dir: Optional[str] = typer.Option(
+        None,
+        "--dest",
+        help="Destination directory for trimmed files (defaults to a temp dir)",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show planned trimmed file paths but don't write files"
+    ),
+    keep_silence_ms: int = typer.Option(
+        0,
+        "--keep-silence-ms",
+        help="Milliseconds of silence to keep at each trimmed edge",
+    ),
+    gain_db: Optional[float] = typer.Option(
+        None, "--gain-db", help="(unused) kept for compatibility"
+    ),
 ):
     """Analyze the outro side (shortcut for `intro-outro --side outro`)."""
     return intro_outro(
@@ -1669,13 +1889,35 @@ def outro(
 @app.command(name="normalize")
 def normalize(
     files: List[str] = typer.Argument(..., help="Audio files to analyze or adjust"),
-    auto: bool = typer.Option(False, "--auto", help="Analyze files and show recommended per-file gain to reach target LUFS"),
-    apply: bool = typer.Option(False, "--apply", help="Apply recommended gains (non-destructive)"),
-    gain_db: Optional[float] = typer.Option(None, "--gain-db", help="Apply a fixed gain (dB) to output copies; non-destructive"),
-    dest: Optional[str] = typer.Option(None, "--dest", help="Destination directory for adjusted files (defaults to a temp dir)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned adjusted files but don't write them"),
-    target_lufs: float = typer.Option(-16.0, "--target-lufs", help="Target LUFS for auto normalization"),
-    per_file: bool = typer.Option(False, "--per-file", help="Apply per-file normalization instead of a single global gain (default: preserve per-track differences)"),
+    auto: bool = typer.Option(
+        False,
+        "--auto",
+        help="Analyze files and show recommended per-file gain to reach target LUFS",
+    ),
+    apply: bool = typer.Option(
+        False, "--apply", help="Apply recommended gains (non-destructive)"
+    ),
+    gain_db: Optional[float] = typer.Option(
+        None,
+        "--gain-db",
+        help="Apply a fixed gain (dB) to output copies; non-destructive",
+    ),
+    dest: Optional[str] = typer.Option(
+        None,
+        "--dest",
+        help="Destination directory for adjusted files (defaults to a temp dir)",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show planned adjusted files but don't write them"
+    ),
+    target_lufs: float = typer.Option(
+        -16.0, "--target-lufs", help="Target LUFS for auto normalization"
+    ),
+    per_file: bool = typer.Option(
+        False,
+        "--per-file",
+        help="Apply per-file normalization instead of a single global gain (default: preserve per-track differences)",
+    ),
 ):
     """Normalize or apply gain adjustments to audio files (non-destructive).
 
@@ -1704,15 +1946,26 @@ def normalize(
             out_dir = tempfile.mkdtemp(prefix="yoto_gain_")
             created_temp = True
 
-        console.print(f"Applying fixed gain {gain_db:+.2f} dB to {len(files)} file(s) -> {out_dir}")
+        console.print(
+            f"Applying fixed gain {gain_db:+.2f} dB to {len(files)} file(s) -> {out_dir}"
+        )
         try:
             from pydub import AudioSegment
         except Exception:
-            console.print("[red]pydub is required for gain adjustment but is not available.[/red]")
+            console.print(
+                "[red]pydub is required for gain adjustment but is not available.[/red]"
+            )
             raise typer.Exit(code=1)
 
         # Use a progress bar while writing files
-        from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            BarColumn,
+            TextColumn,
+            TimeElapsedColumn,
+        )
+
         written = []
         total = len(files)
         if dry_run:
@@ -1720,13 +1973,18 @@ def normalize(
             for src in files:
                 src_path = os.path.abspath(src)
                 base, ext = os.path.splitext(os.path.basename(src_path))
-                tag = f"_adj_{int(gain_db*100)}"
+                tag = f"_adj_{int(gain_db * 100)}"
                 dest_name = f"{base}{tag}{ext}"
                 dest_path = os.path.join(out_dir, dest_name)
                 console.print(f"[cyan]Dry-run:[/] would write: {dest_path}")
                 written.append(dest_path)
         else:
-            with Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), TimeElapsedColumn()) as prog:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TimeElapsedColumn(),
+            ) as prog:
                 task = prog.add_task("Applying fixed gain...", total=total)
 
                 def _cb(completed, tot):
@@ -1738,12 +1996,16 @@ def normalize(
                 # Build a tiny plan for fixed-gain application to reuse apply_gain_plan
                 fixed_plan = {}
                 for src in files:
-                    fixed_plan[os.path.abspath(src)] = {'recommended_gain_db': float(gain_db)}
+                    fixed_plan[os.path.abspath(src)] = {
+                        "recommended_gain_db": float(gain_db)
+                    }
 
-                written = apply_gain_plan(fixed_plan, out_dir, dry_run=False, progress_callback=_cb)
+                written = apply_gain_plan(
+                    fixed_plan, out_dir, dry_run=False, progress_callback=_cb
+                )
 
         if written:
-            console.print(Panel('\n'.join(written), title="Gain-adjusted files"))
+            console.print(Panel("\n".join(written), title="Gain-adjusted files"))
             if created_temp:
                 console.print(f"Temporary files are in: [bold]{out_dir}[/bold]")
         return
@@ -1759,7 +2021,7 @@ def normalize(
         # Compute applied gain policy: by default preserve per-track differences by
         # applying a single global gain (mean of recommendations). If --per-file is
         # passed, apply each file's recommended gain individually.
-        recs = [float(info.get('recommended_gain_db', 0.0)) for info in plan.values()]
+        recs = [float(info.get("recommended_gain_db", 0.0)) for info in plan.values()]
         global_gain = float(sum(recs) / len(recs)) if recs else 0.0
 
         # Show recommendations with an "Applied" column so user sees the difference
@@ -1770,9 +2032,9 @@ def normalize(
         t.add_column("Recommended dB", style="green", justify="right")
         t.add_column("Applied dB", style="bright_green", justify="right")
         for p, info in plan.items():
-            lu = info.get('lufs')
-            pk = info.get('max_amp')
-            rg = float(info.get('recommended_gain_db', 0.0))
+            lu = info.get("lufs")
+            pk = info.get("max_amp")
+            rg = float(info.get("recommended_gain_db", 0.0))
             applied = rg if per_file else global_gain
             t.add_row(
                 p,
@@ -1793,9 +2055,21 @@ def normalize(
                 created_temp2 = True
             # Use a progress bar for applying the plan
             try:
-                from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+                from rich.progress import (
+                    Progress,
+                    SpinnerColumn,
+                    BarColumn,
+                    TextColumn,
+                    TimeElapsedColumn,
+                )
+
                 total = len(plan)
-                with Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), TimeElapsedColumn()) as prog:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("{task.description}"),
+                    BarColumn(),
+                    TimeElapsedColumn(),
+                ) as prog:
                     task = prog.add_task("Applying auto-gain plan...", total=total)
 
                     def _cb(completed, tot):
@@ -1810,20 +2084,26 @@ def normalize(
                         plan_to_apply = {}
                         for p, info in plan.items():
                             plan_to_apply[p] = dict(info)
-                            plan_to_apply[p]['recommended_gain_db'] = global_gain
+                            plan_to_apply[p]["recommended_gain_db"] = global_gain
 
-                    written = apply_gain_plan(plan_to_apply, apply_out, dry_run=dry_run, progress_callback=_cb)
+                    written = apply_gain_plan(
+                        plan_to_apply, apply_out, dry_run=dry_run, progress_callback=_cb
+                    )
             except Exception as e:
                 console.print(f"[red]Failed to apply gain plan: {e}[/red]")
                 raise typer.Exit(code=1)
             if written:
-                console.print(Panel('\n'.join(written), title="Applied gain files"))
+                console.print(Panel("\n".join(written), title="Applied gain files"))
                 if created_temp2:
-                    console.print(f"Temporary auto-gain files are in: [bold]{apply_out}[/bold]")
+                    console.print(
+                        f"Temporary auto-gain files are in: [bold]{apply_out}[/bold]"
+                    )
         return
 
     # If we reach here, no operation requested
-    console.print("No operation specified. Use --gain-db for a fixed gain or --auto/--apply for normalization.")
+    console.print(
+        "No operation specified. Use --gain-db for a fixed gain or --auto/--apply for normalization."
+    )
 
 
 @app.command()
@@ -1986,6 +2266,7 @@ def fix_card(
         )
     )
 
+
 @app.command()
 def merge_chapters(
     card_id: str, reset_overlay_labels: bool = True, sequential_labels: bool = True
@@ -2026,6 +2307,38 @@ def expand_all_tracks(card_id: str):
 
 
 @app.command()
+def split_audio(
+    path: str,
+    output_dir: Optional[str] = None,
+    target_tracks: Optional[int] = 10,
+    min_track_len_sec: int = 30,
+    min_silence_len_ms: int = 1000,
+    silence_thresh_db: int = -40,
+):
+    """
+    Split an audio file into multiple segments based on silence detection.
+
+    Args:
+        path: Path to the input audio file.
+        output_dir: Directory to save the output segments. If None, segments are saved in the same directory as the input file.
+        min_silence_len_ms: Minimum length of silence to consider as a split point (in milliseconds).
+        silence_thresh_db: Silence threshold in decibels. Audio quieter than this level is considered silence.
+    """
+    API: YotoAPI = get_api()
+    files = API.split_audio(
+        path,
+        output_dir=output_dir,
+        target_tracks=target_tracks,
+        min_track_length_sec=min_track_len_sec,
+        min_silence_len_ms=min_silence_len_ms,
+        silence_thresh_db=silence_thresh_db,
+    )
+
+
+
+
+
+@app.command()
 def gui():
     """Launch the GUI application."""
     # Try to start the Flet GUI by importing the local `gui` module and
@@ -2040,9 +2353,7 @@ def gui():
             import flet as ft
 
             # Use the same assets/upload dirs as gui.py
-            ft.run(
-                gui_mod.main, assets_dir="assets", upload_dir="assets/uploads"
-            )
+            ft.run(gui_mod.main, assets_dir="assets", upload_dir="assets/uploads")
             return
         except Exception as e:
             # Flet import or app start failed; fall back to subprocess

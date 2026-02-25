@@ -70,6 +70,7 @@ except (ImportError, ModuleNotFoundError):
 
     nltk_stopwords = _FallbackStopwords
 from yoto_up.icons import render_icon
+from yoto_up.audio_splitter import split_audio as _split_audio_file
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console
@@ -349,6 +350,22 @@ class YotoAPI:
             if return_card:
                 return Card.model_validate(response.json().get("card") or response.json())
             return response.json()
+
+    def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
+                    silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
+                    show_progress: bool = True, console: Optional[Console] = None) -> list:
+        """Thin wrapper that splits an audio file into multiple tracks.
+
+        Returns a list of output file Paths. Requires `ffmpeg` to be installed.
+        """
+        return _split_audio_file(input_path,
+                     target_tracks=target_tracks,
+                     min_track_length_sec=min_track_length_sec,
+                     silence_thresh_db=silence_thresh_db,
+                     min_silence_len_ms=min_silence_len_ms,
+                     output_dir=output_dir,
+                     show_progress=show_progress,
+                     console=console)
 
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {
