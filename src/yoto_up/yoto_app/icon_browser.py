@@ -36,6 +36,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     - search box to filter cached icons
     - 'Search YotoIcons' button to trigger online search (uses ensure_api/api_ref)
     """
+    logger.debug("Building Icon Browser panel")
     # top-level panel: header + row with left (scrollable icons) and right (fixed details)
     panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD),
                            ft.Button("Refresh Index", on_click=lambda e: build_index())])
@@ -630,6 +631,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             logger.exception("open_icon_editor failed")
 
     def render_icons(icons):
+        logger.debug(f"render_icons: rendering {len(icons)} icons")
         icons_container.controls.clear()
         for path in icons:
             # Load b64 thumbnail image data for each icon
@@ -645,6 +647,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 icons_container.controls.append(btn)
             except Exception as ex:
                 logger.exception(f"Failed to load icon {path}: {ex}")
+        logger.debug("Finished rendering icons, updating page")
         page.update()
 
     def do_filter():
@@ -900,6 +903,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     # the active filter so the displayed icons reflect updated caches.
     try:
         def _on_cache_refreshed():
+            logger.debug("Icon cache refreshed callback triggered")
             nonlocal _meta_loaded, _index_built
             try:
                 _meta_loaded = False
@@ -917,6 +921,6 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             page.icon_cache_refreshed_callbacks = []
         page.icon_cache_refreshed_callbacks.append(_on_cache_refreshed)
     except Exception:
-        pass
+        logger.error("Failed to register cache refreshed callback on page")
 
     return {"panel": panel}

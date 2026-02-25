@@ -93,37 +93,29 @@ def card_matches_filters(card_obj, filters: Dict[str, Any]):
 
     return True
 
-def _extract_cover_source(card_item, api_instance):
-    try:
-        if hasattr(card_item, "model_dump"):
-            d = card_item.model_dump(exclude_none=True)
-        elif isinstance(card_item, dict):
-            d = card_item
-        else:
+def _extract_cover_source(card_item: Card, api_instance):
+    meta = card_item.metadata
+    if meta is None:
+        return None
+    cover = meta.cover
+    if cover is None:
+        return None
+    for k in ("imageS", "imageM", "imageL", "image"):
+        v = cover.get(k)
+        if not v:
+            continue
+        if isinstance(v, str) and v.startswith("yoto:#") and api_instance:
             try:
-                d = json.loads(str(card_item))
+                p = api_instance.get_icon_cache_path(v)
+                if p and Path(p).exists():
+                    return str(p)
             except Exception:
-                d = {}
-        meta = d.get("metadata") or {}
-        cover = meta.get("cover") or {}
-        for k in ("imageS", "imageM", "imageL", "image"):
-            v = cover.get(k)
-            if not v:
-                continue
-            if isinstance(v, str) and v.startswith("yoto:#") and api_instance:
-                try:
-                    p = api_instance.get_icon_cache_path(v)
-                    if p and Path(p).exists():
-                        return str(p)
-                except Exception:
-                    pass
-            if isinstance(v, str) and (
-                v.startswith("http") or v.startswith("//")
-            ):
-                return v
-        return None
-    except Exception:
-        return None
+                pass
+        if isinstance(v, str) and (
+            v.startswith("http") or v.startswith("//")
+        ):
+            return v
+    return None
 
 def get_card_id_local(card):
     if hasattr(card, "cardId") and getattr(card, "cardId"):
@@ -258,8 +250,8 @@ def make_playlist_row(page, card_obj, idx=None):
 
 
     img_ctrl = ft.Container(width=64, height=64)
+    api: YotoAPI = page.api_ref.get("api")
     try:
-        api: YotoAPI = page.api_ref.get("api")
         cover_src = (
             _extract_cover_source(card_obj, api_instance=api) if api else None
         )
@@ -284,9 +276,6 @@ def make_playlist_row(page, card_obj, idx=None):
             logger.debug(f"No cover source found for card {cid}")
             if api:
                 def _resolve_in_bg(card=card_obj, ctl=img_ctrl):
-                    try:
-                        client = CLIENT_ID
-                        api = page.ensure_api(page.api_ref, client)
                         src = _extract_cover_source(card, api_instance=api)
                         if src:
                             try:
@@ -301,10 +290,9 @@ def make_playlist_row(page, card_obj, idx=None):
                                     logger.error("Error starting background thread for fetching playlists")
                             except Exception:
                                 logger.error("Error creating image control in background thread")
-                    except Exception:
-                        logger.error("Error resolving cover source in background thread")
 
-                threading.Thread(target=_resolve_in_bg, daemon=True).start()
+                page.run_task(_resolve_in_bg, card_obj, img_ctrl)
+                #threading.Thread(target=_resolve_in_bg, daemon=True).start()
 
     except Exception:
         logger.error(f"Error extracting cover for card {cid}")
@@ -1621,9 +1609,9 @@ def build_playlists_panel(
     fetch_btn = ft.Button(
         "Fetch Playlists", bgcolor="#2196F3", color="white"
     )
-    fetch_btn.on_click = lambda e: threading.Thread(
-        target=lambda: fetch_playlists_sync(page), daemon=True
-    ).start()
+
+
+    fetch_btn.on_click = page.run_task(fetch_playlists_sync(page))
 
     async def fetch_playlists(e=None):
         # Avoid overlapping / repeated fetches

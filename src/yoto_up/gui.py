@@ -54,6 +54,7 @@ import shutil
 from yoto_up.yoto_app.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
+ENABLE_ICON_BROWSER = False
 
 # ft.context.disable_auto_update()
 
@@ -73,8 +74,6 @@ def main(page):
 
     page.cards: list[Card] = []
 
-    # Shared runtime state
-    # Shared API instance (so Fetch Playlists can reuse it)
     api_ref = {"api": None}
 
     page.api_ref = api_ref  # expose on page for easy access from helpers   
@@ -897,16 +896,17 @@ def main(page):
     # expose on page for other modules
     page.get_cached_cover = get_cached_cover
 
-    logger.debug("Building icon browser panel")
-    # Create tabs and keep a reference so we can enable/disable them
-    # Build icon browser panel and add as a tab
-    icon_browser_ui = build_icon_browser_panel(
-        page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack
-    )
-    icon_panel = (
-        icon_browser_ui.get("panel") if isinstance(icon_browser_ui, dict) else None
-    )
-    logger.debug("Icon browser panel built")
+    if ENABLE_ICON_BROWSER:
+        logger.debug("Building icon browser panel")
+        # Create tabs and keep a reference so we can enable/disable them
+        # Build icon browser panel and add as a tab
+        icon_browser_ui = build_icon_browser_panel(
+            page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack
+        )
+        icon_panel = (
+            icon_browser_ui.get("panel") if isinstance(icon_browser_ui, dict) else None
+        )
+        logger.debug("Icon browser panel built")
 
     # Build covers panel
     #logger.debug("Building covers panel")   
@@ -927,7 +927,7 @@ def main(page):
     auth_column.visible = True
     playlists_column.visible = True
     page.upload_manager.column.visible = True
-    if hasattr(icon_panel, "visible"):
+    if ENABLE_ICON_BROWSER and hasattr(icon_panel, "visible"):
         icon_panel.visible = True
     #if hasattr(covers_panel, "visible"):
     #    covers_panel.visible = True
@@ -936,7 +936,8 @@ def main(page):
     auth_tab = ft.Tab(label="Auth")
     playlists_tab = ft.Tab(label="Playlists", disabled=True)
     upload_tab = ft.Tab(label="Upload", disabled=True)
-    icons_tab = ft.Tab(label="Icons", disabled=True)
+    if ENABLE_ICON_BROWSER:
+        icons_tab = ft.Tab(label="Icons", disabled=True)
     #covers_tab = ft.Tab(label="Covers", disabled=True)
     editor_tab = ft.Tab(label="Editor", disabled=True)
 
@@ -944,7 +945,6 @@ def main(page):
         auth_tab,
         playlists_tab,
         upload_tab,
-        icons_tab,
         #covers_tab,
         editor_tab,
     ]
@@ -952,10 +952,12 @@ def main(page):
         auth_column,
         playlists_column,
         page.upload_manager.column,
-        icon_panel,
         #covers_panel,
         editor_content,
     ]
+    if ENABLE_ICON_BROWSER:
+        all_tab_labels.append(icons_tab)
+        all_tab_content.append(icon_panel)
 
     # Create Tabs control using Flet 0.80+ API:
     # ft.Tabs(content=ft.Column([ft.TabBar(tabs=[...]), ft.TabBarView(controls=[...])]))
