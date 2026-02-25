@@ -104,18 +104,6 @@ class CardMedia(BaseModel):
     fileSize: Optional[float] = None
     hasStreams: Optional[bool] = None
 
-    def get_title(self) -> str:
-        try:
-            return self.title or ""
-        except Exception:
-            return ""
-
-    def get_icon_field(self) -> Optional[str]:
-        try:
-            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
-        except Exception:
-            return None
-
 class CardConfig(BaseModel):
     autoadvance: Optional[str] = None
     resumeTimeout: Optional[int] = None
