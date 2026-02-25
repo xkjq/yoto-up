@@ -323,26 +323,22 @@ class YotoAPI:
         except Exception:
             return []
 
-    def load_version(self, path: Path) -> dict:
+    def load_version(self, path: Path, as_model=False) -> dict:
         try:
             with Path(path).open("r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if as_model:
+                    return Card.model_validate(data)
+                return data
         except Exception:
-            return {}
+            logger.exception(f"Failed to load version from {path}")
+            return None
 
     def restore_version(self, path: Path, return_card=True):
         """Restore a saved version by posting it to the API.
         Returns the created/updated card (model) if return_card True.
         """
-        payload = self.load_version(path)
-        if not payload:
-            raise Exception("Version payload empty or unreadable")
-        # If payload contains card id fields, they will be used by the API
-        # Validate using Card model if available
-        try:
-            card_model = Card.model_validate(payload) if 'Card' in globals() else None
-        except Exception:
-            card_model = None
+        card_model = self.load_version(path, as_model=True)
         if card_model is not None:
             return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
         else:
@@ -353,6 +349,7 @@ class YotoAPI:
             if return_card:
                 return Card.model_validate(response.json().get("card") or response.json())
             return response.json()
+
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {
             "method": method,

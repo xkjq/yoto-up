@@ -30,6 +30,7 @@ def make_show_card_details(
         page.update()
 
         def bg_save():
+            # Build a payload from the current Card model and the reordered chapters
             card_id = c.cardId
             if not card_id:
                 logger.error("save_order: no card id found")
@@ -37,7 +38,6 @@ def make_show_card_details(
 
             dlg_content = getattr(dialog, "content", None)
             ui_items = None
-            reconstructed_titles = []
             try:
                 if dlg_content is not None and hasattr(dlg_content, "controls"):
                     for ctl in dlg_content.controls:
@@ -50,7 +50,7 @@ def make_show_card_details(
                                 ch = getattr(child, "_chapter", None)
                                 if ch is None and hasattr(child, "content"):
                                     ch = getattr(child.content, "_chapter", None)
-                                if isinstance(ch, dict):
+                                if ch is not None:
                                     matches += 1
                             if matches >= max(1, len(children) // 2):
                                 ui_items = children
@@ -64,55 +64,44 @@ def make_show_card_details(
                 ui_items = list(chapter_items)
 
             ordered = []
-            for i, it in enumerate(chapter_items):
+            for it in chapter_items:
                 try:
                     ch = getattr(it, "_chapter", None)
                     if ch is None and hasattr(it, "content"):
                         ch = getattr(it.content, "_chapter", None)
-                    if isinstance(ch, dict):
+                    if ch is not None:
                         ordered.append(deepcopy(ch))
                 except Exception:
                     continue
 
             if ordered:
-                if "content" not in c or not isinstance(c.get("content"), dict):
-                    c["content"] = {}
-                c["content"]["chapters"] = ordered
+                # Start from current card model payload
+                try:
+                    payload = c.model_dump(exclude_none=True)
+                except Exception:
+                    payload = {}
+                payload.setdefault("content", {})
+                payload["content"]["chapters"] = ordered
 
-            card_model = Card.model_validate(c)
-            try:
-                card_model = Card(**c)
-            except Exception as ex:
-                logger.error(f"save_order: failed to build Card model: {ex}")
-                page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
-            try:
-                payload = card_model.model_dump(exclude_none=True)
-            except Exception:
-                payload = c
+                try:
+                    card_model = Card.model_validate(payload)
+                except Exception:
+                    try:
+                        card_model = Card(**payload)
+                    except Exception as ex:
+                        logger.error(f"save_order: failed to build Card model: {ex}")
+                        page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
+                        return
 
-            if not getattr(card_model, "cardId", None):
-                if getattr(card_model, "id", None):
-                    card_model.cardId = getattr(card_model, "id")
-                else:
+                if not getattr(card_model, "cardId", None):
                     card_model.cardId = card_id
 
-            try:
-                payload = card_model.model_dump(exclude_none=True)
-            except Exception:
-                payload = {}
-            try:
-                if (c.get("content") or {}).get("chapters"):
-                    payload.setdefault("content", {})
-                    payload["content"]["chapters"] = deepcopy((c.get("content") or {}).get("chapters") or [])
-            except Exception:
-                pass
-
-            try:
-                updated = api.create_or_update_content(Card.model_validate(payload), return_card=True)
-                show_card_details(None, updated)
-                page.update()
-            except Exception as ex:
-                logger.error(f"save_order: background save failed: {ex}")
+                try:
+                    updated = api.create_or_update_content(card_model, return_card=True)
+                    show_card_details(None, updated)
+                    page.update()
+                except Exception as ex:
+                    logger.error(f"save_order: background save failed: {ex}")
 
         threading.Thread(target=bg_save, daemon=True).start()
         logger.info("save_order: background save started")
@@ -242,182 +231,176 @@ def make_show_card_details(
 
             def make_track_items(ch, ch_index, for_reorder=False):
                 items = []
-                tracks = ch.get("tracks") if isinstance(ch, dict) else None
+                tracks = getattr(ch, "tracks", None)
                 if not tracks:
                     return items
                 for t_idx, tr in enumerate(tracks, start=1):
-                    if isinstance(tr, dict):
-                        tr_title = tr.get("title", "")
-                        tr_format = tr.get("format", "")
-                        tr_duration = fmt_sec(tr.get("duration"))
-                        tr_size = tr.get("fileSize", "")
-                        tr_url = tr.get("trackUrl", "")
-                        tr_key = tr.get("key", "")
-                        tr_overlay = tr.get("overlayLabel", "")
-                        display = tr.get("display") or {}
-                        tr_icon_field = (
-                            display.get("icon16x16")
-                            if isinstance(display, dict)
-                            else None
-                        )
-                        tr_img = None
+                    # Expect `tr` to be a Track model
+                    tr_title = getattr(tr, "title", "")
+                    tr_format = getattr(tr, "format", "")
+                    tr_duration = fmt_sec(getattr(tr, "duration", None))
+                    tr_size = getattr(tr, "fileSize", "")
+                    tr_url = getattr(tr, "trackUrl", "")
+                    tr_key = getattr(tr, "key", "")
+                    tr_overlay = getattr(tr, "overlayLabel", "")
+                    display = getattr(tr, "display", None)
+                    tr_icon_field = getattr(display, "icon16x16", None) if display else None
+                    tr_img = None
 
-                        def _on_tap_tr(
-                            ev, ch_index=ch_index, tr_index=t_idx - 1
-                        ):
-                            try:
-                                replace_individual_icon(
-                                    ev, "track", ch_index, tr_index
-                                )
-                            except Exception:
-                                logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
-
-                        def _on_download_click(ev=None, url=tr_url, title=tr_title):
-                            import httpx
-                            import os
-                            from pathlib import Path
-                            try:
-                                resolved_url = None
-                                if url and url.startswith("http"):
-                                    resolved_url = url
-                                if not resolved_url or not resolved_url.startswith("http"):
-                                    page.show_snack("No valid URL for this track", error=True)
-                                    return
-                                downloads_dir = Path("downloads")
-                                downloads_dir.mkdir(exist_ok=True)
-                                # Use title or fallback to last part of URL
-                                filename = title or resolved_url.split("/")[-1]
-                                # Ensure safe filename
-                                filename = "_".join(filename.split())
-                                if not filename.lower().endswith(f".{tr_format}"):
-                                    filename += f".{tr_format}"
-                                dest = downloads_dir / filename
-                                with httpx.stream("GET", resolved_url, timeout=60.0) as r:
-                                    r.raise_for_status()
-                                    with open(dest, "wb") as f:
-                                        for chunk in r.iter_bytes():
-                                            f.write(chunk)
-                                page.show_snack(f"Downloaded to {dest}")
-                            except Exception as ex:
-                                page.show_snack(f"Download failed: {ex}", error=True)
-                        tr_img = None
+                    def _on_tap_tr(
+                        ev, ch_index=ch_index, tr_index=t_idx - 1
+                    ):
                         try:
-                            if api and tr_icon_field:
-                                #tp = api.get_icon_cache_path(tr_icon_field)
-                                based_image = api.get_icon_b64_data(tr_icon_field)
-                                if based_image is not None:
-                                    img = ft.Image(src=based_image, width=20, height=20, tooltip=f"Click to replace icon")
-                                    tr_img = ft.GestureDetector(
-                                        content=img,
-                                        on_tap=lambda ev,
-                                        ch_index=ch_index,
-                                        tr_index=t_idx - 1: _on_tap_tr(
-                                            ev, ch_index, tr_index
-                                        ),
-                                        width=20, height=20
-                                    )
-                                else:
-                                    pass
+                            replace_individual_icon(
+                                ev, "track", ch_index, tr_index
+                            )
+                        except Exception:
+                            logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
+
+                    def _on_download_click(ev=None, url=tr_url, title=tr_title):
+                        import httpx
+                        import os
+                        from pathlib import Path
+                        try:
+                            resolved_url = None
+                            if url and url.startswith("http"):
+                                resolved_url = url
+                            if not resolved_url or not resolved_url.startswith("http"):
+                                page.show_snack("No valid URL for this track", error=True)
+                                return
+                            downloads_dir = Path("downloads")
+                            downloads_dir.mkdir(exist_ok=True)
+                            # Use title or fallback to last part of URL
+                            filename = title or resolved_url.split("/")[-1]
+                            # Ensure safe filename
+                            filename = "_".join(filename.split())
+                            if not filename.lower().endswith(f".{tr_format}"):
+                                filename += f".{tr_format}"
+                            dest = downloads_dir / filename
+                            with httpx.stream("GET", resolved_url, timeout=60.0) as r:
+                                r.raise_for_status()
+                                with open(dest, "wb") as f:
+                                    for chunk in r.iter_bytes():
+                                        f.write(chunk)
+                            page.show_snack(f"Downloaded to {dest}")
+                        except Exception as ex:
+                            page.show_snack(f"Download failed: {ex}", error=True)
+                    tr_img = None
+                    try:
+                        if api and tr_icon_field:
+                            #tp = api.get_icon_cache_path(tr_icon_field)
+                            based_image = api.get_icon_b64_data(tr_icon_field)
+                            if based_image is not None:
+                                img = ft.Image(src=based_image, width=20, height=20, tooltip=f"Click to replace icon")
+                                tr_img = ft.GestureDetector(
+                                    content=img,
+                                    on_tap=lambda ev,
+                                    ch_index=ch_index,
+                                    tr_index=t_idx - 1: _on_tap_tr(
+                                        ev, ch_index, tr_index
+                                    ),
+                                    width=20, height=20
+                                )
                             else:
                                 pass
-                        except Exception as ex:
-                            logger.exception(f"Error fetching track icon: {ex}")
-                        
-                        if tr_img is None:
-                            tr_img = ft.IconButton(
+                        else:
+                            pass
+                    except Exception as ex:
+                        logger.exception(f"Error fetching track icon: {ex}")
+                    
+                    if tr_img is None:
+                        tr_img = ft.IconButton(
+                            icon=ft.Icons.IMAGE,
+                            tooltip="Fetch icon",
+                            on_click=lambda ev,
+                            f=tr_icon_field,
+                            ci=ch_index,
+                            ti=t_idx - 1: threading.Thread(
+                                target=lambda: _on_tap_tr(ev, ci, ti),
+                                daemon=True,
+                            ).start(),
+                        )
+
+                    tr_col = ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
+                                    ft.Text(f"Track {t_idx}. {tr_title}", size=12),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                                spacing=8,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"{tr_format}  • {tr_duration}  • size={tr_size}",
+                                        size=11,
+                                        color=ft.Colors.BLACK45,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"key={tr_key}  overlay={tr_overlay}",
+                                        size=11,
+                                        color=ft.Colors.BLACK45,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            ),
+                        ],
+                        spacing=4,
+                    )
+
+                    row = ft.Row(
+                        [
+                            ft.Container(width=20),
+                            tr_col,
+                            ft.IconButton(
                                 icon=ft.Icons.IMAGE,
-                                tooltip="Fetch icon",
+                                tooltip="Use chapter icon for this track",
+                                opacity=0.1,
+                                icon_size=16,
                                 on_click=lambda ev,
-                                f=tr_icon_field,
-                                ci=ch_index,
-                                ti=t_idx - 1: threading.Thread(
-                                    target=lambda: _on_tap_tr(ev, ci, ti),
-                                    daemon=True,
-                                ).start(),
+                                ch_i=ch_index,
+                                tr_i=t_idx - 1: use_chapter_icon(ev, ch_i, tr_i),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                tooltip="Clear track icon",
+                                opacity=0.1,
+                                icon_size=16,
+                                on_click=lambda ev,
+                                ch_i=ch_index,
+                                tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DOWNLOAD,
+                                tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
+                                icon_size=18,
+                                on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
+                                disabled=not tr_url or not tr_url.startswith("http"),
+                            ),
+                        ]
+                    )
+                    if tr_url:
+                        row.controls.append(
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"URL: {tr_url}", selectable=True, size=11
+                                    ),
+                                ]
                             )
-
-                        tr_col = ft.Column(
-                            [
-                                ft.Row(
-                                    [
-                                        tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
-                                        ft.Text(f"Track {t_idx}. {tr_title}", size=12),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                    spacing=8,
-                                ),
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"{tr_format}  • {tr_duration}  • size={tr_size}",
-                                            size=11,
-                                            color=ft.Colors.BLACK45,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"key={tr_key}  overlay={tr_overlay}",
-                                            size=11,
-                                            color=ft.Colors.BLACK45,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                            ],
-                            spacing=4,
                         )
 
-                        row = ft.Row(
-                            [
-                                ft.Container(width=20),
-                                tr_col,
-                                ft.IconButton(
-                                    icon=ft.Icons.IMAGE,
-                                    tooltip="Use chapter icon for this track",
-                                    opacity=0.1,
-                                    icon_size=16,
-                                    on_click=lambda ev,
-                                    ch_i=ch_index,
-                                    tr_i=t_idx - 1: use_chapter_icon(ev, ch_i, tr_i),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CLOSE,
-                                    tooltip="Clear track icon",
-                                    opacity=0.1,
-                                    icon_size=16,
-                                    on_click=lambda ev,
-                                    ch_i=ch_index,
-                                    tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.DOWNLOAD,
-                                    tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
-                                    icon_size=18,
-                                    on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
-                                    disabled=not tr_url or not tr_url.startswith("http"),
-                                ),
-                            ]
-                        )
-                        if tr_url:
-                            row.controls.append(
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"URL: {tr_url}", selectable=True, size=11
-                                        ),
-                                    ]
-                                )
-                            )
-
-                        items.append(row)
-                    else:
-                        items.append(ft.Text(f"- {str(tr)}", selectable=True))
+                    items.append(row)
                 return items
 
             chapters = c.get_chapters()
@@ -426,9 +409,8 @@ def make_show_card_details(
                     card_id = c.cardId
                     if api and card_id:
                         full_card = api.get_card(card_id)
-                        if hasattr(full_card, "model_dump"):
-                            c = full_card.model_dump(exclude_none=True)
-                        elif isinstance(full_card, dict):
+                        # Expect api.get_card to return a Card model
+                        if isinstance(full_card, Card):
                             c = full_card
                 except Exception as ex:
                     print(f"Failed to fetch full card details: {ex}")
@@ -515,18 +497,12 @@ def make_show_card_details(
 
                 chapter_items = []
                 for ch_idx, ch in enumerate(chapters):
-                    ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
-                    overlay = ch.get("overlayLabel", "") if isinstance(ch, dict) else ""
-                    key = ch.get("key", "") if isinstance(ch, dict) else ""
+                    # Expect `ch` to be a Chapter model
+                    ch_title = ch.get_title()
+                    overlay = getattr(ch, "overlayLabel", "")
+                    key = getattr(ch, "key", "")
 
-                    icon_field = None
-                    if isinstance(ch, dict):
-                        display = ch.get("display") or {}
-                        icon_field = (
-                            display.get("icon16x16")
-                            if isinstance(display, dict)
-                            else None
-                        )
+                    icon_field = ch.get_icon_field()
 
                     img_control = None
 
@@ -550,11 +526,10 @@ def make_show_card_details(
                     meta_line = f"key={key}"
                     if overlay:
                         meta_line += f"  overlay={overlay}"
-                    if isinstance(ch, dict) and (ch.get("duration") or ch.get("fileSize")):
-                        meta_line += f"  • Duration: {fmt_sec(ch.get('duration'))}  FileSize: {ch.get('fileSize', '')}"
+                    if getattr(ch, "duration", None) or getattr(ch, "fileSize", None):
+                        meta_line += f"  • Duration: {fmt_sec(getattr(ch, 'duration', None))}  FileSize: {getattr(ch, 'fileSize', '')}"
 
-                    tracks = ch.get("tracks") if isinstance(ch, dict) else None
-                    track_controls = (make_track_items(ch, ch_idx, for_reorder=True) if tracks else [])
+                    track_controls = make_track_items(ch, ch_idx, for_reorder=True)
 
                     def make_track_on_reorder(ch_index):
                         def _on_reorder(ev):
@@ -572,7 +547,7 @@ def make_show_card_details(
                                     new = getattr(ev, "index", None)
                                 if old is None or new is None:
                                     return
-                                tr_list = c.get("content", {}).get("chapters", [])[ch_index].get("tracks") or []
+                                tr_list = c.get_track_list()
                                 item = tr_list.pop(old)
                                 tr_list.insert(new, item)
                                 try:
@@ -854,10 +829,9 @@ def make_show_card_details(
                             title = None
                             cardid = None
                             try:
-                                payload = api.load_version(p)
-                                if isinstance(payload, dict):
-                                    title = payload.get("title") or (payload.get("metadata") or {}).get("title")
-                                    cardid = payload.get("cardId")
+                                card_model = api.load_version(p, as_model=True)
+                                title = card_model.get_title()
+                                cardid = card_model.cardId
                             except Exception:
                                 title = None
                                 cardid = None
@@ -1235,8 +1209,8 @@ Merging will result in:
         def show_tracks_popup(_ev=None):
             nonlocal tracks_dialog
             try:
-                title_text = c.get("title", "") if isinstance(c, dict) else str(c)
-                cover_img =  card.get_cover_url()
+                title_text = c.get_title()
+                cover_img = c.get_cover_url()
 
                 body = []
                 if cover_img is not None:
@@ -1261,22 +1235,19 @@ Renumbering keys will assign sequential keys to all tracks.
 
                 # build chapters + tracks view (showing track title, key and overlayLabel)
                 try:
-                    chapters = (c.get("content") or {}).get("chapters") or []
+                    chapters = getattr(getattr(c, 'content', None), 'chapters', []) or []
                     chapter_rows = []
                     for ch_idx, ch in enumerate(chapters):
-                        ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
+                        ch_title = getattr(ch, 'title', '')
                         header = ft.Text(f"Chapter {ch_idx + 1}. {ch_title}", weight=ft.FontWeight.BOLD)
                         track_items = []
-                        tracks = ch.get("tracks") if isinstance(ch, dict) else None
+                        tracks = getattr(ch, 'tracks', None) or []
                         if tracks:
                             for t_idx, t in enumerate(tracks, 1):
-                                if isinstance(t, dict):
-                                    t_title = t.get("title", "")
-                                    t_key = t.get("key", "")
-                                    t_overlay = t.get("overlayLabel", "")
-                                    track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
-                                else:
-                                    track_items.append(ft.Text(f"• {str(t)}", size=12))
+                                t_title = getattr(t, 'title', '')
+                                t_key = getattr(t, 'key', '')
+                                t_overlay = getattr(t, 'overlayLabel', '')
+                                track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
                         else:
                             track_items.append(ft.Text("(no tracks)", size=12))
 
@@ -1383,15 +1354,12 @@ Renumbering keys will assign sequential keys to all tracks.
                 def worker():
                     try:
                         Path("cards").mkdir(exist_ok=True)
-                        if isinstance(c, dict):
-                            data = c
-                        else:
-                            try:
-                                data = c.model_dump(exclude_none=True)
-                            except Exception:
-                                data = c
-                        title_part = (c.get('title') or '') if isinstance(c, dict) else ''
-                        id_part = c.cardId
+                        try:
+                            data = c.model_dump(exclude_none=True)
+                        except Exception:
+                            data = {}
+                        title_part = getattr(c, 'title', '') or ''
+                        id_part = getattr(c, 'cardId', 'card') or 'card'
                         safe_title = re.sub(r"[^0-9A-Za-z._-]", "-", str(title_part))[:80]
                         fname = Path('cards') / f"{safe_title}_{id_part}.json"
                         with fname.open('w', encoding='utf-8') as f:

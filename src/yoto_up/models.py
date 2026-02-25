@@ -61,6 +61,18 @@ class Chapter(BaseModel):
     ambient: Optional[Ambient] = None
     availableFrom: Optional[str] = None
 
+    def get_title(self) -> str:
+        try:
+            return self.title or ""
+        except Exception:
+            return ""
+
+    def get_icon_field(self) -> Optional[str]:
+        try:
+            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
+        except Exception:
+            return None
+
 class CardStatus(BaseModel):
     name: Literal["new", "inprogress", "complete", "live", "archived"]
     updatedAt: Optional[str] = None
@@ -72,6 +84,18 @@ class CardMedia(BaseModel):
     duration: Optional[float] = None
     fileSize: Optional[float] = None
     hasStreams: Optional[bool] = None
+
+    def get_title(self) -> str:
+        try:
+            return self.title or ""
+        except Exception:
+            return ""
+
+    def get_icon_field(self) -> Optional[str]:
+        try:
+            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
+        except Exception:
+            return None
 
 class CardConfig(BaseModel):
     autoadvance: Optional[str] = None
@@ -231,6 +255,19 @@ class Card(BaseModel):
         except Exception:
             logger.warning(f"Failed to get chapters for card {self.cardId}")
         return []
+
+    def get_track_list(self) -> List[Track]:
+        """Return the list of tracks in the card, or an empty list if not available."""
+        try:
+            tracks = []
+            chapters = self.get_chapters()
+            for ch in chapters:
+                if ch.tracks:
+                    tracks.extend(ch.tracks)
+            return tracks
+        except Exception:
+            logger.warning(f"Failed to get track list for card {self.cardId}")
+            return []
 
     def get_cover_url(self) -> Optional[str]:
         """Return the URL of the card's cover image, if available."""
