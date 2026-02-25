@@ -2422,7 +2422,7 @@ def create_card_from_file(
             )
             tracks.append(track)
 
-        chapter = Chapter(title=title or Path(path).stem, tracks=tracks)
+        chapter = Chapter(title=title or Path(path).stem, key="01", tracks=tracks)
         card_content = CardContent(chapters=[chapter])
         total_dur = sum([t.duration or 0 for t in tracks]) if tracks else None
         try:

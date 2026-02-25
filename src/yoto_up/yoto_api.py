@@ -374,7 +374,7 @@ class YotoAPI:
     def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
                     silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
                     show_progress: bool = True, console: Optional[Console] = None,
-                    output_name_template: Optional[str] = None -> list:
+                    output_name_template: Optional[str] = None) -> list:
         """Thin wrapper that splits an audio file into multiple tracks.
 
         Returns a list of output file Paths. Requires `ffmpeg` to be installed.
