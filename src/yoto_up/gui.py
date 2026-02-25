@@ -90,6 +90,13 @@ def main(page):
     api_ref = {"api": None}
 
     page.api_ref = api_ref  # expose on page for easy access from helpers   
+
+
+    def get_api():
+        return ensure_api(api_ref)
+
+    page.get_api = get_api
+
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
 
@@ -134,7 +141,6 @@ def main(page):
         # Prefer using the YotoAPI device auth flow directly (so we reuse
         # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
         # existing auth module on any error.
-        api = ensure_api(api_ref)
         try:
             device_info = api.get_device_code()
         except Exception as e:
@@ -293,7 +299,7 @@ def main(page):
                     pass
                 # Initialize API with saved tokens
                 try:
-                    api = ensure_api(api_ref)
+                    api = page.get_api()
                     api.access_token = access
                     api.refresh_token = refresh
                     api_ref["api"] = api
@@ -346,7 +352,7 @@ def main(page):
                 page.pop_dialog()
             except Exception:
                 pass
-            api = ensure_api(api_ref)  # ensure api_ref has an API instance
+            api = page.get_api()  # ensure api_ref has an API instance
             api.reset_auth()
             invalidate_authentication()
             if reauth:
@@ -451,10 +457,6 @@ def main(page):
                     invalidate_authentication()
                 except Exception:
                     pass
-                try:
-                    clear_queue()
-                except Exception:
-                    pass
 
                 summary = []
                 for r in removed["files"]:
@@ -502,103 +504,6 @@ def main(page):
     )
 
 
-
-
-    ## Load persisted playlists (if any) and populate the playlists list view
-    #try:
-    #    logger.debug("Loading persisted playlists")
-    #    saved = load_playlists()
-    #    logger.debug(f"Loaded persisted playlists: {saved}")
-    #    if saved and isinstance(saved, list):
-    #        try:
-    #            pl_list = (
-    #                playlists_ui.get("playlists_list")
-    #                if isinstance(playlists_ui, dict)
-    #                else None
-    #            )
-    #            if pl_list and hasattr(pl_list, "controls"):
-    #                pl_list.controls.clear()
-    #                # Resolve make_playlist_row once to avoid repeated fallback logs
-    #                make_row = None
-    #                try:
-    #                    make_row = (
-    #                        playlists_ui.get("make_playlist_row")
-    #                        if isinstance(playlists_ui, dict)
-    #                        else None
-    #                    )
-    #                except Exception:
-    #                    make_row = None
-    #                # If playlists_ui did not provide a row builder, we'll fall back
-    #                # to a simple ListTile per-item. Do not try to import the nested
-    #                # `make_playlist_row` from the module (it's local to the builder).
-    #                if not callable(make_row):
-    #                    make_row = None
-    #                if not callable(make_row):
-    #                    logger.debug(
-    #                        "No make_playlist_row function available in playlists_ui; using fallback ListTile"
-    #                    )
-
-    #                for idx, item in enumerate(saved):
-    #                    try:
-    #                        if callable(make_row):
-    #                            try:
-    #                                row = make_row(item, idx=idx)
-    #                            except Exception:
-    #                                row = None
-    #                            # Only append a valid Control; otherwise fall back
-    #                            if row is not None and isinstance(row, ft.Control):
-    #                                pl_list.controls.append(row)
-    #                            else:
-    #                                title = (
-    #                                    item.get("title", "")
-    #                                    if isinstance(item, dict)
-    #                                    else str(item)
-    #                                )
-    #                                cid = (
-    #                                    item.get("cardId", "")
-    #                                    if isinstance(item, dict)
-    #                                    else ""
-    #                                )
-    #                                pl_list.controls.append(
-    #                                    ft.ListTile(
-    #                                        title=ft.Text(title),
-    #                                        subtitle=ft.Text(str(cid)),
-    #                                    )
-    #                                )
-    #                        else:
-    #                            # fallback: render a simple ListTile
-    #                            title = (
-    #                                item.get("title", "")
-    #                                if isinstance(item, dict)
-    #                                else str(item)
-    #                            )
-    #                            cid = (
-    #                                item.get("cardId", "")
-    #                                if isinstance(item, dict)
-    #                                else ""
-    #                            )
-    #                            pl_list.controls.append(
-    #                                ft.ListTile(
-    #                                    title=ft.Text(title), subtitle=ft.Text(str(cid))
-    #                                )
-    #                            )
-    #                    except Exception:
-    #                        try:
-    #                            pl_list.controls.append(
-    #                                ft.ListTile(title=ft.Text(str(item)))
-    #                            )
-    #                        except Exception:
-    #                            pass
-    #                page.update()
-    #                logger.debug("Persisted playlists loaded and UI updated")
-    #        except Exception:
-    #            logger.error(f"Failed to populate playlists list: {traceback.format_exc()}")
-    #except Exception:
-    #    logger.error(f"Failed to load persisted playlists: {traceback.format_exc()}")
-
-    #logger.debug("Persisted playlists loaded")
-
-    
     # Add About button to the top right
     about_btn = ft.IconButton(
         icon=ft.Icons.INFO_OUTLINE,
@@ -1032,25 +937,21 @@ def main(page):
     def auth_complete():
         logger.debug("Auth complete")
         # Enable all tabs - access TabBar from tabs_control.content.controls[0]
-        try:
-            tab_bar = tabs_control.content.controls[
-                0
-            ]  # First control in Column is TabBar
-            for i in range(1, len(tab_bar.tabs)):
-                tab_bar.tabs[i].disabled = False
-        except Exception:
-            pass
+        tab_bar = tabs_control.content.controls[
+            0
+        ]  # First control in Column is TabBar
+        for i in range(1, len(tab_bar.tabs)):
+            tab_bar.tabs[i].disabled = False
 
-        api = api_ref.get("api")
+        api = page.get_api()
+
         if api:
             # Run icon cache refresh in a background thread so the UI doesn't hang.
-            def _refresh_icons_bg():
+            async def _refresh_icons_bg():
+                logger.debug("Refreshing icon caches (in background thread)...")
                 try:
-                    try:
-                        if hasattr(page, "set_icon_refreshing"):
-                            page.set_icon_refreshing(True, "Refreshing icon caches...")
-                    except Exception:
-                        pass
+                    if hasattr(page, "set_icon_refreshing"):
+                        page.set_icon_refreshing(True, "Refreshing icon caches...")
                     try:
                         api.get_public_icons(show_in_console=False)
                     except Exception as e:
@@ -1063,52 +964,45 @@ def main(page):
                     try:
                         if hasattr(page, "set_icon_refreshing"):
                             page.set_icon_refreshing(False)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error("Failed to hide icon refreshing badge: %s", traceback.format_exc())
                 # Notify any icon browser listeners that the cache refresh finished
-                try:
-                    cbs = getattr(page, "icon_cache_refreshed_callbacks", None)
-                    if cbs:
-                        for cb in list(cbs):
-                            try:
-                                cb()
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+                cbs = getattr(page, "icon_cache_refreshed_callbacks", None)
+                if cbs:
+                    for cb in list(cbs):
+                        try:
+                            cb()
+                        except Exception as e:
+                            logger.error("Icon cache refreshed callback failed: %s", traceback.format_exc())
 
-            threading.Thread(target=_refresh_icons_bg, daemon=True).start()
-        # Always use the local page variable, not the argument
-        page.update()
+            page.run_task(_refresh_icons_bg)
 
     page.auth_complete = auth_complete
 
     # Now that the UI controls are added to the page, try to reuse tokens.json (if present)
-    try:
-        logger.debug("Checking for existing tokens...")
-        api = ensure_api(api_ref)
+    logger.debug("Checking for existing tokens...")
+    api = page.get_api()
 
-        logger.debug("Checking for existing tokens...")
-        logger.debug(f"api: {api}")
+    logger.debug("Checking for existing tokens...")
+    logger.debug(f"api: {api}")
 
-        if api and api.is_authenticated():
-            show_snack("Authenticated (from existing tokens)", error=False)
-            auth_instructions.controls.clear()
-            auth_instructions.controls.extend(
-                [
-                    ft.Text(
-                        "Authenticated (from existing tokens)",
-                        size=16,
-                        weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.GREEN,
-                    ),
-                    ft.Text(api.TOKEN_FILE, size=10),
-                ]
-            )
-            auth_complete()
-            page.update()
-    except Exception as e:
-        logger.error(f"Failed while attempting to initialize API from tokens.json: {e}")
+    if api and api.is_authenticated():
+        logger.debug("Authenticated (from existing tokens)")
+        show_snack("Authenticated (from existing tokens)", error=False)
+        auth_instructions.controls.clear()
+        auth_instructions.controls.extend(
+            [
+                ft.Text(
+                    "Authenticated (from existing tokens)",
+                    size=16,
+                    weight=ft.FontWeight.BOLD,
+                    color=ft.Colors.GREEN,
+                ),
+                ft.Text(str(api.TOKEN_FILE), size=10),
+            ]
+        )
+        auth_complete()
+        page.update()
 
 
 def start_gui():

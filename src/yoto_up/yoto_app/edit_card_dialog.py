@@ -124,21 +124,19 @@ def show_edit_card_dialog(
         chapter_fields.clear()
         track_fields.clear()
         for ci, ch in enumerate(chapters_local):
-            ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
+            ch_title = ch.get_title()
             ch_field = ft.TextField(label=f"Chapter {ci+1} Title", value=ch_title)
             chapter_fields.append(ch_field)
             ch_icon = None
-            if isinstance(ch, dict):
-                display = ch.get("display") or {}
-                icon_field = display.get("icon16x16") if isinstance(display, dict) else None
-                if icon_field:
-                    try:
-                        icon_path = api.get_icon_cache_path(icon_field)
-                        if icon_path is not None:
-                            if icon_path.exists():
-                                ch_icon = ft.Image(src=get_base64_from_path(icon_path), width=24, height=24)
-                    except Exception:
-                        pass
+            icon_field = ch.get_icon_field()
+            if icon_field:
+                try:
+                    icon_path = api.get_icon_cache_path(icon_field)
+                    if icon_path is not None:
+                        if icon_path.exists():
+                            ch_icon = ft.Image(src=get_base64_from_path(icon_path), width=24, height=24)
+                except Exception:
+                    logger.exception(f"Failed to load chapter icon for chapter {ci} with icon field {icon_field}")
             def make_delete_chapter(idx=ci, ch_title=ch_title):
                 def delete_chapter(_e):
                     confirm_dialog = ft.AlertDialog(
@@ -172,23 +170,21 @@ def show_edit_card_dialog(
                 "delete": make_delete_chapter(ci, ch_title)
             })
             t_fields_for_ch = []
-            tracks = ch.get("tracks") if isinstance(ch, dict) else None
+            tracks = ch.get_tracks()
             if tracks:
                 for ti, tr in enumerate(tracks):
-                    tr_title = tr.get("title", "") if isinstance(tr, dict) else str(tr)
+                    tr_title = tr.get_title()
                     tr_field = ft.TextField(label="", value=tr_title)
                     tr_icon = None
-                    if isinstance(tr, dict):
-                        display = tr.get("display") or {}
-                        icon_field = display.get("icon16x16") if isinstance(display, dict) else None
-                        if icon_field:
-                            try:
-                                icon_path = api.get_icon_cache_path(icon_field)
-                                if icon_path is not None:
-                                    if icon_path.exists():
-                                        tr_icon = ft.Image(src=get_base64_from_path(icon_path), width=20, height=20)
-                            except Exception:
-                                pass
+                    icon_field = tr.get_icon_field()
+                    if icon_field is not None:
+                        try:
+                            icon_path = api.get_icon_cache_path(icon_field)
+                            if icon_path is not None:
+                                if icon_path.exists():
+                                    tr_icon = ft.Image(src=get_base64_from_path(icon_path), width=20, height=20)
+                        except Exception:
+                            logger.exception(f"Failed to load track icon for track {ti} with icon field {icon_field}")
                     def make_delete_track(ci=ci, ti=ti):
                         def delete_track(_e):
                             try:
