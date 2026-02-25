@@ -168,7 +168,7 @@ Continue?"""
                                             if getattr(cb, "_cid", None) == updated_id:
                                                 try:
                                                     playlists_list.controls[i] = (
-                                                        make_playlist_row(card_model, idx=i)
+                                                        make_playlist_row(page, card_model, idx=i)
                                                     )
                                                     page.update()
                                                     try:
@@ -280,15 +280,9 @@ Continue?"""
 
 def start_replace_icons_background(
     page,
-    api_ref,
     c,
-    fetch_playlists_sync,
-    ensure_api,
-    CLIENT_ID,
-    show_snack,
     playlists_list,
     make_playlist_row,
-    show_card_details,
 ):
     """Start replace default icons in background and show a persistent badge on the page.
 
@@ -360,7 +354,7 @@ def start_replace_icons_background(
         def work():
             new_card = None
             try:
-                api = ensure_api(api_ref, CLIENT_ID)
+                api = page.ensure_api(page.api_ref)
                 card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
@@ -407,10 +401,10 @@ def start_replace_icons_background(
                                 continue
                             if getattr(cb, "_cid", None) == updated_id:
                                 try:
-                                    playlists_list.controls[i] = make_playlist_row(new_card, idx=i)
+                                    playlists_list.controls[i] = make_playlist_row(page, new_card, idx=i)
                                     page.update()
                                     try:
-                                        show_snack("Playlist icons updated")
+                                        page.show_snack("Playlist icons updated")
                                     except Exception:
                                         pass
                                 except Exception:
@@ -424,7 +418,7 @@ def start_replace_icons_background(
 
             except Exception as ex:
                 try:
-                    show_snack(f"Replace icons failed: {ex}", error=True)
+                    page.show_snack(f"Replace icons failed: {ex}", error=True)
                 except Exception:
                     pass
                 logger.exception("replace_icons error")
@@ -443,7 +437,7 @@ def start_replace_icons_background(
         threading.Thread(target=work, daemon=True).start()
     except Exception as e:
         try:
-            show_snack(f"Failed to start background replace: {e}", error=True)
+            page.show_snack(f"Failed to start background replace: {e}", error=True)
         except Exception:
             pass
         logger.exception("start_replace_icons_background error")

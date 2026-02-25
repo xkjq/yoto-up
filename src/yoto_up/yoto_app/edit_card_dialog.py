@@ -14,10 +14,7 @@ from .icon_import_helpers import get_base64_from_path
 def show_edit_card_dialog(
     c,
     page,
-    ensure_api,
-    CLIENT_ID,
     status_ctrl,
-    fetch_playlists_sync,
     show_card_details,
 ):
     """
@@ -32,6 +29,7 @@ def show_edit_card_dialog(
         previous_dialog_ref: Optional dict to store the previous dialog instance for external closing
     """
 
+    api = page.ensure_api(page.api_ref)
     try:
         title_field = ft.TextField(label="Card Title", value=c.get("title", ""))
     except Exception:
@@ -138,7 +136,6 @@ def show_edit_card_dialog(
                 display = ch.get("display") or {}
                 icon_field = display.get("icon16x16") if isinstance(display, dict) else None
                 if icon_field:
-                    api = ensure_api(api_ref=None, client=CLIENT_ID)
                     try:
                         icon_path = api.get_icon_cache_path(icon_field)
                         if icon_path is not None:
@@ -155,19 +152,13 @@ def show_edit_card_dialog(
                             ft.TextButton("Yes", on_click=lambda e: (setattr(confirm_dialog, 'open', False), chapters_local.pop(idx), show_edit_card_dialog(
                                 c,
                                 page,
-                                ensure_api,
-                                CLIENT_ID,
                                 status_ctrl,
-                                fetch_playlists_sync,
                                 show_card_details=show_card_details,
                             ))),
                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), show_edit_card_dialog(
                                 c,
                                 page,
-                                ensure_api,
-                                CLIENT_ID,
                                 status_ctrl,
-                                fetch_playlists_sync,
                                 show_card_details=show_card_details,
                             ))),
                         ],
@@ -199,7 +190,6 @@ def show_edit_card_dialog(
                         display = tr.get("display") or {}
                         icon_field = display.get("icon16x16") if isinstance(display, dict) else None
                         if icon_field:
-                            api: YotoAPI = ensure_api(api_ref=None, client=CLIENT_ID)
                             try:
                                 icon_path = api.get_icon_cache_path(icon_field)
                                 if icon_path is not None:
@@ -217,10 +207,7 @@ def show_edit_card_dialog(
                                         show_edit_card_dialog(
                                             c,
                                             page,
-                                            ensure_api,
-                                            CLIENT_ID,
                                             status_ctrl,
-                                            fetch_playlists_sync,
                                             show_card_details=show_card_details,
                                         )
                             except Exception as ex:
@@ -308,10 +295,7 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        ensure_api,
-                        CLIENT_ID,
                         status_ctrl,
-                        fetch_playlists_sync,
                         show_card_details=show_card_details,
                     )
                 return _delete
@@ -340,10 +324,7 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        ensure_api,
-                        CLIENT_ID,
                         status_ctrl,
-                        fetch_playlists_sync,
                         show_card_details=show_card_details,
                     )
                 return _delete
@@ -431,10 +412,9 @@ def show_edit_card_dialog(
 
             def save_thread():
                 try:
-                    api = ensure_api(api_ref=None, client=CLIENT_ID)
                     api.update_card(card_model, return_card_model=False)
                     status_ctrl.value = "Card updated"
-                    fetch_playlists_sync(None)
+                    page.fetch_playlists_sync(None)
                 except Exception as ex:
                     logger.debug(f"Update card failed: {ex}")
                     msg = f"Update failed: {ex}"

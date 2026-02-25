@@ -14,12 +14,7 @@ from datetime import datetime, timezone
 
 def make_show_card_details(
     page,
-    api_ref: Dict[str, Any],
-    show_snack,
-    ensure_api,
-    CLIENT_ID,
     Card,
-    fetch_playlists_sync,
     playlists_list,
     make_playlist_row,
     status_ctrl,
@@ -36,8 +31,8 @@ def make_show_card_details(
     """
 
     def show_card_details(e, card, preview_path: Path | None = None):
+        api = page.api_ref.get("api")
         def refresh_icon_cache(ev=None):
-            api = api_ref.get("api")
             try:
                 api.refresh_public_and_user_icons()
             except Exception as ex:
@@ -81,31 +76,28 @@ def make_show_card_details(
 
             def replace_individual_icon(ev, kind="chapter", ch_i=None, tr_i=None):
                 try:
-                    api = api_ref.get("api")
+                    api = page.api_ref.get("api")
                     card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
                     dialog = IconReplaceDialog(
                         api=api,
                         card=c,
                         page=page,
-                        show_snack=show_snack,
-                        show_card_details=show_card_details,
                         kind=kind,
                         ch_i=ch_i,
                         tr_i=tr_i,
                     )
                     dialog.open()
                 except Exception as ex:
-                    show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
+                    page.show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
 
             def clear_chapter_icon(ev, ch_i=None):
                 try:
-                    api = ensure_api(api_ref, CLIENT_ID)
                     card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
 
                     def worker():
@@ -121,24 +113,23 @@ def make_show_card_details(
                                     except Exception:
                                         pass
                             else:
-                                show_snack('Chapter has no icon to clear', error=True)
+                                page.show_snack('Chapter has no icon to clear', error=True)
                                 return
                             api.update_card(full, return_card_model=False)
-                            show_snack('Chapter icon cleared')
+                            page.show_snack('Chapter icon cleared')
                             show_card_details(None, full)
                         except Exception as ee:
-                            show_snack(f'Failed to clear chapter icon: {ee}', error=True)
+                            page.show_snack(f'Failed to clear chapter icon: {ee}', error=True)
 
                     threading.Thread(target=worker, daemon=True).start()
                 except Exception:
-                    show_snack('Failed to start clear chapter icon operation', error=True)
+                    page.show_snack('Failed to start clear chapter icon operation', error=True)
 
             def clear_track_icon(ev, ch_i=None, tr_i=None):
                 try:
-                    api = ensure_api(api_ref, CLIENT_ID)
                     card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
 
                     def worker():
@@ -154,17 +145,17 @@ def make_show_card_details(
                                     except Exception:
                                         pass
                             else:
-                                show_snack('Track has no icon to clear', error=True)
+                                page.show_snack('Track has no icon to clear', error=True)
                                 return
                             api.update_card(full, return_card_model=False)
-                            show_snack('Track icon cleared')
+                            page.show_snack('Track icon cleared')
                             show_card_details(None, full)
                         except Exception as ee:
-                            show_snack(f'Failed to clear track icon: {ee}', error=True)
+                            page.show_snack(f'Failed to clear track icon: {ee}', error=True)
 
                     threading.Thread(target=worker, daemon=True).start()
                 except Exception:
-                    show_snack('Failed to start clear track icon operation', error=True)
+                    page.show_snack('Failed to start clear track icon operation', error=True)
 
             def make_track_items(ch, ch_index, for_reorder=False):
                 items = []
@@ -208,7 +199,7 @@ def make_show_card_details(
                                 if url and url.startswith("http"):
                                     resolved_url = url
                                 if not resolved_url or not resolved_url.startswith("http"):
-                                    show_snack("No valid URL for this track", error=True)
+                                    page.show_snack("No valid URL for this track", error=True)
                                     return
                                 downloads_dir = Path("downloads")
                                 downloads_dir.mkdir(exist_ok=True)
@@ -224,9 +215,9 @@ def make_show_card_details(
                                     with open(dest, "wb") as f:
                                         for chunk in r.iter_bytes():
                                             f.write(chunk)
-                                show_snack(f"Downloaded to {dest}")
+                                page.show_snack(f"Downloaded to {dest}")
                             except Exception as ex:
-                                show_snack(f"Download failed: {ex}", error=True)
+                                page.show_snack(f"Download failed: {ex}", error=True)
                         tr_img = None
                         try:
                             api = api_ref.get("api")
@@ -351,7 +342,6 @@ def make_show_card_details(
             chapters = (c.get("content") or {}).get("chapters")
             if not chapters:
                 try:
-                    api = api_ref.get("api")
                     card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                     if api and card_id:
                         full_card = api.get_card(card_id)
@@ -471,11 +461,10 @@ def make_show_card_details(
                 controls.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
 
                 def save_order_click(_ev=None):
-                    show_snack("Saving order...")
+                    page.show_snack("Saving order...")
                     page.update()
 
                     def bg_save():
-                        api = api_ref.get("api")
                         card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                         if not card_id:
                             logger.error("save_order: no card id found")
@@ -530,7 +519,7 @@ def make_show_card_details(
                             card_model = Card(**c)
                         except Exception as ex:
                             logger.error(f"save_order: failed to build Card model: {ex}")
-                            show_snack(f"Failed to prepare card for save: {ex}", error=True)
+                            page.show_snack(f"Failed to prepare card for save: {ex}", error=True)
                         try:
                             payload = card_model.model_dump(exclude_none=True)
                         except Exception:
@@ -584,7 +573,6 @@ def make_show_card_details(
                         replace_individual_icon(ev, "chapter", ch_index)
 
                     try:
-                        api = api_ref.get("api")
                         if api and icon_field:
                             icon_base64 = api.get_icon_b64_data(icon_field)
                             if icon_base64 is not None:
@@ -735,10 +723,9 @@ def make_show_card_details(
 
                 def use_chapter_icon(ev, ch_i, tr_i):
                     try:
-                        api = ensure_api(api_ref, CLIENT_ID)
                         card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                         if not card_id:
-                            show_snack("Unable to determine card id", error=True)
+                            page.show_snack("Unable to determine card id", error=True)
                             return
 
                         def worker():
@@ -747,7 +734,7 @@ def make_show_card_details(
                                 ch = full.content.chapters[ch_i]
                                 chapter_icon = (getattr(ch.display, "icon16x16", None) if getattr(ch, "display", None) else None)
                                 if not chapter_icon:
-                                    show_snack("Chapter has no icon to copy", error=True)
+                                    page.show_snack("Chapter has no icon to copy", error=True)
                                     return
                                 tr = ch.tracks[tr_i]
                                 if not getattr(tr, "display", None):
@@ -756,15 +743,15 @@ def make_show_card_details(
                                 api.update_card(full, return_card_model=False)
                                 page.show_dialog(dialog)
                                 page.update()
-                                show_snack("Track icon updated to chapter icon")
+                                page.show_snack("Track icon updated to chapter icon")
                             except Exception as ee:
-                                show_snack(f"Failed to copy chapter icon: {ee}", error=True)
+                                page.show_snack(f"Failed to copy chapter icon: {ee}", error=True)
                                 page.update()
                             show_card_details(None, full)
 
                         threading.Thread(target=worker, daemon=True).start()
                     except Exception:
-                        show_snack("Failed to start copy operation", error=True)
+                        page.show_snack("Failed to start copy operation", error=True)
 
             else:
                 controls.append(ft.Text("Chapters: None", selectable=True))
@@ -859,16 +846,16 @@ def make_show_card_details(
                     # copy raw JSON to clipboard
                     try:
                         page.set_clipboard(raw)
-                        show_snack("JSON copied to clipboard")
+                        page.show_snack("JSON copied to clipboard")
                     except Exception:
                         # fallback: try assigning to page.clipboard
                         try:
                             page.clipboard = raw
-                            show_snack("JSON copied to clipboard")
+                            page.show_snack("JSON copied to clipboard")
                         except Exception as ex:
-                            show_snack(f"Failed to copy JSON: {ex}", error=True)
+                            page.show_snack(f"Failed to copy JSON: {ex}", error=True)
                 except Exception as ex:
-                    show_snack(f"Clipboard error: {ex}", error=True)
+                    page.show_snack(f"Clipboard error: {ex}", error=True)
 
             json_dialog = ft.AlertDialog(
                 title=ft.Text("Raw card JSON"),
@@ -887,155 +874,15 @@ def make_show_card_details(
                 except Exception:
                     print("Unable to display JSON dialog in this Flet environment")
 
-        def show_version_json(payload: dict, title: str = "Version JSON", path: Path | None = None):
-            try:
-                try:
-                    raw = json.dumps(payload, indent=2)
-                except Exception:
-                    raw = str(payload)
-            except Exception:
-                raw = "<unable to render JSON>"
-
-            def close_vjson(ev2=None):
-                try:
-                    vjson_dialog.open = False
-                except Exception:
-                    pass
-                page.update()
-
-            try:
-                lines = raw.splitlines()
-                json_lines = []
-                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
-                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
-                for line in lines:
-                    m = key_value_re.match(line)
-                    if m:
-                        indent = m.group(1)
-                        key = m.group('key')
-                        val = m.group('val')
-                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
-                        v = val.strip()
-                        if v.startswith('"') and v.endswith('"'):
-                            val_color = ft.Colors.GREEN
-                        elif v in ('true', 'false', 'null'):
-                            val_color = ft.Colors.ORANGE
-                        elif number_re.match(v):
-                            val_color = ft.Colors.PURPLE
-                        else:
-                            val_color = ft.Colors.BLACK
-                        space_width = 8
-                        spacer = ft.Container(width=len(indent) * space_width)
-                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
-                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
-                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                        json_lines.append(row)
-                    else:
-                        stripped = line.strip()
-                        leading = len(line) - len(line.lstrip(' '))
-                        space_width = 8
-                        spacer = ft.Container(width=leading * space_width)
-                        if stripped in ('{', '}', '[', ']', '},', '],'):
-                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-                        else:
-                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-
-                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
-            except Exception:
-                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
-
-            def do_copy(_e=None):
-                try:
-                    try:
-                        page.set_clipboard(raw)
-                        show_snack("JSON copied to clipboard")
-                    except Exception:
-                        try:
-                            page.clipboard = raw
-                            show_snack("JSON copied to clipboard")
-                        except Exception as ex:
-                            show_snack(f"Failed to copy JSON: {ex}", error=True)
-                except Exception as ex:
-                    show_snack(f"Clipboard error: {ex}", error=True)
-
-            # If a Path is provided, expose a Restore button which asks for confirmation
-            actions = [ft.TextButton("Copy JSON", on_click=do_copy)]
-            if path is not None:
-                def confirm_restore(_ev=None):
-                    try:
-                        # close preview dialog first
-                        try:
-                            vjson_dialog.open = False
-                        except Exception:
-                            pass
-                        page.update()
-
-                        confirm = ft.AlertDialog(
-                            title=ft.Text("Restore version"),
-                            content=ft.Text(f"Restore version {path.name}? This will post the saved card to the server and cannot be undone."),
-                            actions=[
-                                ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=lambda: do_restore_worker(path), daemon=True).start()),
-                                ft.TextButton("No", on_click=lambda e: (setattr(confirm, 'open', False), page.update())),
-                            ],
-                        )
-                        page.show_dialog(confirm)
-                        page.update()
-                    except Exception:
-                        show_snack("Failed to start restore confirmation", error=True)
-
-                def do_restore_worker(ppath: Path):
-                    try:
-                        api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                        updated = api_local.restore_version(ppath, return_card=True)
-                        try:
-                            show_snack("Version restored")
-                        except Exception:
-                            pass
-                        try:
-                            show_card_details(None, updated)
-                        except Exception:
-                            pass
-                        page.update()
-                    except Exception as ex:
-                        try:
-                            show_snack(f"Failed to restore version: {ex}", error=True)
-                        except Exception:
-                            pass
-
-                actions.append(ft.TextButton("Restore", on_click=confirm_restore))
-
-            actions.append(ft.TextButton("Close", on_click=close_vjson))
-
-            vjson_dialog = ft.AlertDialog(
-                title=ft.Text(title),
-                content=json_content,
-                actions=actions,
-            )
-            try:
-                page.show_dialog(vjson_dialog)
-            except Exception:
-                try:
-                    page.dialog = vjson_dialog
-                    page.update()
-                except Exception:
-                    print("Unable to display version JSON dialog in this Flet environment")
-
-
         def show_versions(ev=None):
             try:
-                api = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
                 card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
                 files = api.list_versions(card_id)
                 if not files:
-                    show_snack("No saved versions found for this card")
+                    page.show_snack("No saved versions found for this card")
                     return
 
                 rows = []
@@ -1097,7 +944,7 @@ def make_show_card_details(
                                     # show the full card details for the saved version
                                     show_card_details(None, payload, preview_path=pp)
                                 except Exception as ex:
-                                    show_snack(f"Failed to load version: {ex}", error=True)
+                                    page.show_snack(f"Failed to load version: {ex}", error=True)
                             return _preview
 
                         def make_restore(pp=p):
@@ -1114,7 +961,7 @@ def make_show_card_details(
                                             try:
                                                 updated = api.restore_version(pp, return_card=True)
                                                 try:
-                                                    show_snack("Version restored")
+                                                    page.show_snack("Version restored")
                                                 except Exception:
                                                     pass
                                                 try:
@@ -1123,7 +970,7 @@ def make_show_card_details(
                                                     pass
                                                 page.update()
                                             except Exception as ex:
-                                                show_snack(f"Failed to restore version: {ex}", error=True)
+                                                page.show_snack(f"Failed to restore version: {ex}", error=True)
                                         threading.Thread(target=worker, daemon=True).start()
 
                                     confirm_dialog = ft.AlertDialog(
@@ -1137,7 +984,7 @@ def make_show_card_details(
                                     page.show_dialog(confirm_dialog)
                                     page.update()
                                 except Exception:
-                                    show_snack("Failed to show restore confirmation", error=True)
+                                    page.show_snack("Failed to show restore confirmation", error=True)
                             return _restore
 
                         def make_delete(pp=p):
@@ -1153,12 +1000,12 @@ def make_show_card_details(
                                         def worker_del():
                                             try:
                                                 pp.unlink()
-                                                show_snack(f"Deleted version {pp.name}")
+                                                page.show_snack(f"Deleted version {pp.name}")
                                                 versions_dialog.open = False
                                                 page.update()
                                                 show_versions(None)
                                             except Exception as ex:
-                                                show_snack(f"Failed to delete version: {ex}", error=True)
+                                                page.show_snack(f"Failed to delete version: {ex}", error=True)
                                                 logger.debug(f"delete version error: {ex}")
                                         threading.Thread(target=worker_del, daemon=True).start()
 
@@ -1173,7 +1020,7 @@ def make_show_card_details(
                                     page.show_dialog(confirm_del)
                                     page.update()
                                 except Exception:
-                                    show_snack("Failed to show delete confirmation", error=True)
+                                    page.show_snack("Failed to show delete confirmation", error=True)
                             return _delete
 
                         rows.append(
@@ -1193,7 +1040,7 @@ def make_show_card_details(
                     def _delete_all(ev=None):
                         try:
                             if dir_path is None:
-                                show_snack("No versions directory found", error=True)
+                                page.show_snack("No versions directory found", error=True)
                                 return
 
                             def do_yes(_e=None):
@@ -1217,7 +1064,7 @@ def make_show_card_details(
                                         except Exception:
                                             pass
                                         try:
-                                            show_snack("All versions deleted")
+                                            page.show_snack("All versions deleted")
                                         except Exception:
                                             pass
                                         try:
@@ -1231,7 +1078,7 @@ def make_show_card_details(
                                             pass
                                     except Exception as ex:
                                         try:
-                                            show_snack(f"Failed to delete all versions: {ex}", error=True)
+                                            page.show_snack(f"Failed to delete all versions: {ex}", error=True)
                                         except Exception:
                                             pass
 
@@ -1248,7 +1095,7 @@ def make_show_card_details(
                             page.show_dialog(confirm_all)
                             page.update()
                         except Exception:
-                            show_snack("Failed to show delete-all confirmation", error=True)
+                            page.show_snack("Failed to show delete-all confirmation", error=True)
 
                     return _delete_all
 
@@ -1270,27 +1117,23 @@ def make_show_card_details(
                     except Exception:
                         pass
             except Exception as ex:
-                show_snack(f"Failed to list versions: {ex}", error=True)
+                page.show_snack(f"Failed to list versions: {ex}", error=True)
 
         def show_add_cover(ev):
             from yoto_app.add_cover_dialog import add_cover_dialog
 
             add_cover_dialog(
                 page,
-                api_ref,
                 c,
-                fetch_playlists_sync,
                 Card,
-                CLIENT_ID,
                 on_close=lambda e=None: show_card_details(None, c, preview_path=preview_path),
             )
 
         def relabel_keys(ev=None):
             try:
-                api = ensure_api(api_ref, CLIENT_ID)
                 card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
 
                 def worker():
@@ -1299,24 +1142,23 @@ def make_show_card_details(
                         # rewrite 'key' sequentially across tracks
                         updated = api.rewrite_track_fields(full, field="key", sequential=True)
                         api.update_card(updated, return_card_model=False)
-                        show_snack("Track keys relabelled")
+                        page.show_snack("Track keys relabelled")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             pass
                     except Exception as ex:
-                        show_snack(f"Failed to relabel keys: {ex}", error=True)
+                        page.show_snack(f"Failed to relabel keys: {ex}", error=True)
 
                 threading.Thread(target=worker, daemon=True).start()
             except Exception:
-                show_snack("Failed to start relabel keys operation", error=True)
+                page.show_snack("Failed to start relabel keys operation", error=True)
 
         def relabel_overlays(ev=None):
             try:
-                api = ensure_api(api_ref, CLIENT_ID)
                 card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
 
                 def worker():
@@ -1326,17 +1168,17 @@ def make_show_card_details(
                         updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True)
                         updated = api.rewrite_chapter_fields(updated, field="overlayLabel", sequential=True)
                         api.update_card(updated, return_card_model=False)
-                        show_snack("Overlay labels relabelled")
+                        page.show_snack("Overlay labels relabelled")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             pass
                     except Exception as ex:
-                        show_snack(f"Failed to relabel overlays: {ex}", error=True)
+                        page.show_snack(f"Failed to relabel overlays: {ex}", error=True)
 
                 threading.Thread(target=worker, daemon=True).start()
             except Exception:
-                show_snack("Failed to start relabel overlays operation", error=True)
+                page.show_snack("Failed to start relabel overlays operation", error=True)
 
         def merge_chapters(ev=None):
             try:
@@ -1346,21 +1188,20 @@ def make_show_card_details(
                     except Exception:
                         pass
                     try:
-                        api = ensure_api(api_ref, CLIENT_ID)
                         card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                         if not card_id:
-                            show_snack("Unable to determine card id", error=True)
+                            page.show_snack("Unable to determine card id", error=True)
                             return
                         full = api.get_card(card_id)
                         updated = api.merge_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
                         api.update_card(updated, return_card_model=False)
-                        show_snack("Chapters merged")
+                        page.show_snack("Chapters merged")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             logger.debug("merge_chapters: failed to refresh details view after merge")
                     except Exception as ex:
-                        show_snack(f"Failed to merge chapters: {ex}", error=True)
+                        page.show_snack(f"Failed to merge chapters: {ex}", error=True)
 
                 confirm_dialog = ft.AlertDialog(
                     title=ft.Text("Merge chapters"),
@@ -1384,7 +1225,7 @@ Merging will result in:
                 )
                 page.show_dialog(confirm_dialog)
             except Exception:
-                show_snack("Failed to start merge chapters operation", error=True)
+                page.show_snack("Failed to start merge chapters operation", error=True)
 
         def expand_all_tracks(ev=None):
             try:
@@ -1397,16 +1238,15 @@ Merging will result in:
 
                     def worker():
                         try:
-                            api = ensure_api(api_ref, CLIENT_ID)
                             card_id = c.get("cardId") or c.get("id") or c.get("contentId")
                             if not card_id:
-                                show_snack("Unable to determine card id", error=True)
+                                page.show_snack("Unable to determine card id", error=True)
                                 return
                             full = api.get_card(card_id)
                             updated = api.expand_all_tracks_into_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
                             api.update_card(updated, return_card_model=False)
                             try:
-                                show_snack("Expanded all tracks into individual chapters")
+                                page.show_snack("Expanded all tracks into individual chapters")
                             except Exception:
                                 pass
                             try:
@@ -1416,7 +1256,7 @@ Merging will result in:
                             page.update()
                         except Exception as ex:
                             try:
-                                show_snack(f"Failed to expand tracks: {ex}", error=True)
+                                page.show_snack(f"Failed to expand tracks: {ex}", error=True)
                             except Exception:
                                 pass
 
@@ -1433,41 +1273,17 @@ Merging will result in:
                 page.show_dialog(confirm_expand)
                 page.update()
             except Exception:
-                show_snack("Failed to start expand operation", error=True)
+                page.show_snack("Failed to start expand operation", error=True)
 
         def replace_icons(ev):
-            try:
-                # Start background replace with persistent badge
-                from yoto_up.yoto_app.replace_icons import start_replace_icons_background
-                start_replace_icons_background(
-                    page,
-                    api_ref,
-                    c,
-                    fetch_playlists_sync,
-                    ensure_api,
-                    CLIENT_ID,
-                    show_snack,
-                    playlists_list,
-                    make_playlist_row,
-                    show_card_details,
-                )
-            except Exception:
-                # Fallback to the old dialog if background starter isn't available
-                try:
-                    show_replace_icons_dialog(
-                        page,
-                        api_ref,
-                        c,
-                        fetch_playlists_sync,
-                        ensure_api,
-                        CLIENT_ID,
-                        show_snack,
-                        playlists_list,
-                        make_playlist_row,
-                        show_card_details,
-                    )
-                except Exception:
-                    pass
+            # Start background replace with persistent badge
+            from yoto_up.yoto_app.replace_icons import start_replace_icons_background
+            start_replace_icons_background(
+                page,
+                c,
+                playlists_list,
+                make_playlist_row,
+            )
 
         # popup dialog for track-related actions (shows title + cover image)
         tracks_dialog = None
@@ -1673,17 +1489,17 @@ Renumbering keys will assign sequential keys to all tracks.
                             f.write(json.dumps(data, indent=2, ensure_ascii=False))
                     except Exception as e:
                         try:
-                            show_snack(f"Export failed: {e}", error=True)
+                            page.show_snack(f"Export failed: {e}", error=True)
                         except Exception:
                             pass
                 threading.Thread(target=worker, daemon=True).start()
                 try:
-                    show_snack("Export started...")
+                    page.show_snack("Export started...")
                 except Exception:
                     pass
             except Exception:
                 try:
-                    show_snack("Failed to start export", error=True)
+                    page.show_snack("Failed to start export", error=True)
                 except Exception:
                     pass
 
@@ -1725,10 +1541,9 @@ Renumbering keys will assign sequential keys to all tracks.
 
                         def worker():
                             try:
-                                api_local = ensure_api(api_ref, CLIENT_ID)
-                                updated = api_local.restore_version(ppath, return_card=True)
+                                updated = api.restore_version(ppath, return_card=True)
                                 try:
-                                    show_snack("Version restored")
+                                    page.show_snack("Version restored")
                                 except Exception:
                                     pass
                                 try:
@@ -1737,11 +1552,11 @@ Renumbering keys will assign sequential keys to all tracks.
                                     pass
                                 page.update()
                             except Exception as ex:
-                                show_snack(f"Failed to restore version: {ex}", error=True)
+                                page.show_snack(f"Failed to restore version: {ex}", error=True)
 
                         threading.Thread(target=worker, daemon=True).start()
                     except Exception:
-                        show_snack("Failed to start restore", error=True)
+                        page.show_snack("Failed to start restore", error=True)
 
                 return _restore
 
@@ -1759,10 +1574,7 @@ Renumbering keys will assign sequential keys to all tracks.
                         show_edit_card_dialog(
                             c,
                             page,
-                            ensure_api,
-                            CLIENT_ID,
                             status_ctrl,
-                            fetch_playlists_sync,
                             show_card_details=show_card_details,
                         ),
                     ),

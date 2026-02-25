@@ -13,12 +13,12 @@ from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 
 class IconReplaceDialog:
-    def __init__(self, api, card, page, show_snack, show_card_details, kind='chapter', ch_i=None, tr_i=None):
+    def __init__(self, api, card, page, kind='chapter', ch_i=None, tr_i=None):
         self.api = api
         self.card = card
         self.page = page
-        self.show_snack = show_snack
-        self.show_card_details = show_card_details
+        self.show_snack = page.show_snack
+        self.show_card_details = page.show_card_details
         self.kind = kind
         self.ch_i = ch_i
         self.tr_i = tr_i

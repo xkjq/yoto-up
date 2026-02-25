@@ -20,6 +20,7 @@ from yoto_up.paths import (
 )
 
 from yoto_up.yoto_app.ui_state import set_state, get_state,remove_state_file, get_state_path
+from yoto_up.yoto_app.card_details import make_show_card_details
 
 import importlib.util
 from typing import cast, Any
@@ -222,6 +223,18 @@ def main(page):
 
         threading.Thread(target=_poll_thread, daemon=True).start()
 
+
+    page.show_card_details = make_show_card_details(
+            page=page,
+            Card=Card,
+            fetch_playlists_sync=fetch_playlists_sync,
+            playlists_list=playlists_list,
+            make_playlist_row=make_playlist_row,
+            status_ctrl=status_ctrl,
+            show_edit_card_dialog=show_edit_card_dialog,
+            IconReplaceDialog=IconReplaceDialog,
+            show_replace_icons_dialog=show_replace_icons_dialog,
+        )
 
 
     logger.debug("Building playlists panel")

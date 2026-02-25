@@ -6,11 +6,11 @@ import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
 
-def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on_close=None):
+def add_cover_dialog(page, c, Card, on_close=None):
+    api = ensure_api(page.api_ref)
 
     def do_remove_cover(_e=None):
         try:
-            api = ensure_api(api_ref)
             card_id = c.get("cardId") or c.get("id") or c.get("contentId")
             if api and card_id:
                 full = api.get_card(card_id)
@@ -38,7 +38,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                     return
             api.update_card(card_model, return_card_model=False)
             try:
-                fetch_playlists_sync(None)
+                page.fetch_playlists_sync(None)
             except Exception:
                 logger.error("fetch_playlists_sync failed in remove cover")
             page.update()
@@ -157,8 +157,6 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             return
 
         try:
-            api = ensure_api(api_ref)
-
             def progress_cb(msg, frac):
                 try:
                     page.update()
@@ -242,7 +240,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                 #except Exception:
                 #    logger.error("Failed to refresh card after cover upload")
                 try:
-                    fetch_playlists_sync(None)
+                    page.fetch_playlists_sync(None)
                 except Exception:
                     logger.error("fetch_playlists_sync failed")
             except Exception as ex:
@@ -325,7 +323,6 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                     def do_confirm_upload(_e=None):
                         try:
                             page.update()
-                            api = ensure_api(api_ref)
                             # Download the image to a temporary file
                             import tempfile, httpx, os
                             resp = httpx.get(img_url, timeout=15)
@@ -406,7 +403,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
 
                                 api.update_card(card_model, return_card_model=False)
                                 try:
-                                    fetch_playlists_sync(None)
+                                    page.fetch_playlists_sync(None)
                                 except Exception:
                                     logger.error("fetch_playlists_sync failed (confirm upload)")
                             except Exception as ex:
