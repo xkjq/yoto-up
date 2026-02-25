@@ -30,7 +30,7 @@ except Exception:  # Broad because pyodide etc may raise weird errors
 
 import httpx
 from yoto_up.models import Card, CardMetadata, ChapterDisplay, TrackDisplay
-from yoto_up.yoto_app.auth import delete_tokens_file
+from yoto_up.yoto_app.auth import delete_tokens_file, start_device_auth
 from yoto_up.yoto_app.config import CLIENT_ID
 from loguru import logger
 import time
@@ -1607,12 +1607,40 @@ def build_playlists_panel(
         # Clean any stale/invalid controls before touching the page
         _clean_controls()
         page.update()
+
         try:
             cards = await asyncio.to_thread(api.get_myo_content)
             page.cards = cards  # Cache cards on page for access by details view and other helpers
-        except Exception as ex:
-            logger.error("fetch_playlists error:")
-            logger.error(ex)
+        except httpx.HTTPError as http_ex:
+            logger.error(f"HTTP error during fetch_playlists: {http_ex}")
+            traceback.print_exc(file=sys.stderr)
+            if "401" in str(http_ex) or "403" in str(http_ex):
+                try:
+                    page.show_snack("Authentication error. Please log in again.", error=True)
+                except Exception:
+                    pass
+                delete_tokens_file()
+                if hasattr(page, "invalidate_authentication"):
+                    page.invalidate_authentication()
+                if hasattr(page, "switch_to_auth_tab"):
+                    page.switch_to_auth_tab()
+                # Kick off device auth flow to guide the user
+                try:
+                    start_device_auth(
+                        page,
+                        instr_container=getattr(page, "auth_instructions", None),
+                        api_ref=page.api_ref,
+                        show_snack_fn=getattr(page, "show_snack", None),
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to start device auth: {e}")
+            return
+        except Exception:
+            logger.exception("fetch_playlists error")
+            try:
+                page.show_snack("Unable to fetch playlists", error=True)
+            except Exception:
+                pass
             return
         finally:
             try:
