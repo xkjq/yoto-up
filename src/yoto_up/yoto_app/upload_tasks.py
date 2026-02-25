@@ -1646,15 +1646,27 @@ class UploadManager:
             if not cards:
                 self.page.run_task(self.page.fetch_playlists)
                 return
+            seen_titles = set()
             for c in cards:
                 try:
-                    # prefer Card model fields
-                    title = getattr(c, "title", None) or (getattr(c, "metadata", None) and getattr(c.metadata, "title", None)) or f"Card {getattr(c, 'cardId', '')}"
+                    # prefer Card model fields for a human-friendly title
+                    base_title = (
+                        getattr(c, "title", None)
+                        or (getattr(c, "metadata", None) and getattr(c.metadata, "title", None))
+                        or f"Card {getattr(c, 'cardId', '')}"
+                    )
                     cid = getattr(c, "cardId", None)
                     if not cid:
                         continue
-                    options.append(ft.dropdown.Option(title, cid))
-                    self.existing_card_map[cid] = c
+                    # If multiple cards share the same title, disambiguate by appending the id
+                    if base_title in seen_titles:
+                        display = f"{base_title} ({cid})"
+                    else:
+                        display = base_title
+                        seen_titles.add(base_title)
+                    options.append(ft.dropdown.Option(display, display))
+                    # Map the displayed label back to the cardId for lookups elsewhere
+                    self.existing_card_map[display] = cid
                 except Exception:
                     continue
             self.existing_card_dropdown.options = options
