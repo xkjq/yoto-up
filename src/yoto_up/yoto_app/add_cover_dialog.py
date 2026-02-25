@@ -1,16 +1,19 @@
 import flet as ft
 from loguru import logger
 import httpx
+import shutil
+import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_api import YotoAPI
 
-def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on_close=None):
+def add_cover_dialog(page, c, Card, on_close=None):
+    api: YotoAPI = ensure_api(page.api_ref)
 
     def do_remove_cover(_e=None):
         try:
-            api = ensure_api(api_ref)
-            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
-            if api and card_id:
+            card_id = c.cardId
+            if api and card_id is not None:
                 full = api.get_card(card_id)
                 if hasattr(full, "model_dump"):
                     cd = full.model_dump(exclude_none=True)
@@ -34,25 +37,47 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                 except Exception:
                     logger.error("Card(**cd) failed in remove cover")
                     return
-            api.update_card(card_model, return_card_model=False)
-            try:
-                fetch_playlists_sync(None)
-            except Exception:
-                logger.error("fetch_playlists_sync failed in remove cover")
-            page.update()
+            page.update_card(card_model)
         except Exception as e:
             logger.error(f"Remove cover error: {e}")
             page.update()
     url_field = ft.TextField(label="Image URL (leave empty to upload file)")
-    picker = ft.FilePicker()
-    page.overlay.append(picker)
+    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+    try:
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+    except Exception:
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+
+    picker = ft.FilePicker() if _file_picker_supported else None
+    if picker is not None:
+        try:
+            page.services.append(picker)
+        except Exception:
+            pass
     file_label = ft.Text("No file chosen")
+
+    def _warn_missing_file_picker():
+        try:
+            page.snack_bar = ft.SnackBar(
+                ft.Text(
+                    "File dialogs are unavailable because 'zenity' is not installed. "
+                    "On Ubuntu/Debian: sudo apt-get install zenity"
+                ),
+                bgcolor=ft.Colors.RED,
+                duration=12000,
+            )
+            page.show_dialog(page.snack_bar)
+            page.update()
+        except Exception:
+            pass
 
     # If the card already has a cover, try to locate a suitable image URL/path
     cover_src = None
     try:
         meta = (c.get("metadata") or {})
         cover = meta.get("cover") or {}
+        cover_src = Card.get_cover_url()
         if isinstance(cover, dict):
             for key in ("imageL", "imageM", "imageS", "image"):
                 url_or_field = cover.get(key)
@@ -87,7 +112,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
     except Exception:
         cover_src = None
 
-    def on_pick_result(e: ft.FilePickerResultEvent):
+    def on_pick_result(e):
         try:
             if e.files:
                 first = e.files[0]
@@ -101,7 +126,20 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
         except Exception:
             logger.error("Error in on_pick_result")
 
-    picker.on_result = on_pick_result
+    async def _pick_cover_file(_e=None):
+        if picker is None:
+            _warn_missing_file_picker()
+            return
+        files = await picker.pick_files(allow_multiple=False)
+        # mimic previous on_result flow
+        try:
+            class _E:
+                pass
+            ev = _E()
+            ev.files = files
+            on_pick_result(ev)
+        except Exception:
+            pass
 
 
     def do_upload(_e=None):
@@ -116,8 +154,6 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             return
 
         try:
-            api = ensure_api(api_ref)
-
             def progress_cb(msg, frac):
                 try:
                     page.update()
@@ -142,10 +178,8 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             if isinstance(cover, dict):
                 mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
             try:
-                card_id = (
-                    c.get("cardId") or c.get("id") or c.get("contentId")
-                )
-                if api and card_id:
+                card_id = c.cardId
+                if api and card_id is not None:
                     full = api.get_card(card_id)
                     if hasattr(full, "model_dump"):
                         cd = full.model_dump(exclude_none=True)
@@ -186,24 +220,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                         return
 
                 print(card_model)
-                api.update_card(card_model, return_card_model=False)
-                ## Refresh the card/playlist object from the server to update local metadata
-                #try:
-                #    card_id = cd.get("cardId") or cd.get("id") or cd.get("contentId")
-                #    if card_id:
-                #        refreshed = api.get_card(card_id)
-                #        if hasattr(refreshed, "model_dump"):
-                #            c.clear()
-                #            c.update(refreshed.model_dump(exclude_none=True))
-                #        elif isinstance(refreshed, dict):
-                #            c.clear()
-                #            c.update(refreshed)
-                #except Exception:
-                #    logger.error("Failed to refresh card after cover upload")
-                try:
-                    fetch_playlists_sync(None)
-                except Exception:
-                    logger.error("fetch_playlists_sync failed")
+                page.update_card(card_model)
             except Exception as ex:
                 logger.error("Upload succeeded but attach failed")
             finally:
@@ -212,17 +229,11 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             logger.error(f"Top-level upload error: {e}")
             page.update()
 
-        try:
-            dialog.open = False
-        except Exception:
-            logger.error("Failed to close dialog after upload")
+        page.pop_dialog()
         page.update()
 
     def close_add(_e):
-        try:
-            dialog.open = False
-        except Exception:
-            logger.error("Failed to close dialog in close_add")
+        page.pop_dialog()
         page.update()
         # call optional on_close callback (e.g., to reopen parent dialog)
         try:
@@ -264,7 +275,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                             img_url = album.get("artworkUrl100") or album.get("artworkUrl60")
                             if img_url:
                                 img_url = img_url.replace("100x100bb.jpg", "600x600bb.jpg")
-                                img = ft.Image(src=img_url, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+                                img = ft.Image(src=img_url, width=100, height=100, fit=ft.BoxFit.CONTAIN)
                                 btn = ft.GestureDetector(
                                     content=img,
                                     on_tap=lambda e, url=img_url: select_image(url),
@@ -284,7 +295,6 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                     def do_confirm_upload(_e=None):
                         try:
                             page.update()
-                            api = ensure_api(api_ref)
                             # Download the image to a temporary file
                             import tempfile, httpx, os
                             resp = httpx.get(img_url, timeout=15)
@@ -316,10 +326,8 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                             if isinstance(cover, dict):
                                 mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
                             try:
-                                card_id = (
-                                    c.get("cardId") or c.get("id") or c.get("contentId")
-                                )
-                                if api and card_id:
+                                card_id = c.cardId
+                                if api and card_id is not None:
                                     full = api.get_card(card_id)
                                     if hasattr(full, "model_dump"):
                                         cd = full.model_dump(exclude_none=True)
@@ -363,11 +371,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                                         return
 
 
-                                api.update_card(card_model, return_card_model=False)
-                                try:
-                                    fetch_playlists_sync(None)
-                                except Exception:
-                                    logger.error("fetch_playlists_sync failed (confirm upload)")
+                                page.update_card(card_model)
                             except Exception as ex:
                                 logger.error("Upload succeeded but attach failed (confirm upload)")
                             finally:
@@ -376,30 +380,24 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                             try:
                                 os.remove(tmp_path)
                             except Exception:
-                                pass
-                            try:
-                                confirm_dialog.open = False
-                            except Exception:
-                                pass
+                                logger.error(f"Failed to remove temp file {tmp_path}")
+                            page.pop_dialog()
                             page.update()
                         except Exception as e:
                             logger.error(f"Top-level upload error (confirm upload): {e}")
                             page.update()
                     def do_cancel(_e=None):
-                        try:
-                            confirm_dialog.open = False
-                        except Exception:
-                            pass
+                        page.pop_dialog()
                         page.update()
                     confirm_dialog = ft.AlertDialog(
                         title=ft.Text("Use this cover image?"),
-                        content=ft.Image(src=img_url, width=300, height=300, fit=ft.ImageFit.CONTAIN),
+                        content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
                         actions=[
                             ft.TextButton("Use this image", on_click=do_confirm_upload),
                             ft.TextButton("Cancel", on_click=do_cancel),
                         ],
                     )
-                    page.open(confirm_dialog)
+                    page.show_dialog(confirm_dialog)
 
 
 
@@ -415,7 +413,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
                     ft.TextButton("Close", on_click=lambda e: setattr(search_dialog, 'open', False) or page.update()),
                 ],
             )
-            page.open(search_dialog)
+            page.show_dialog(search_dialog)
             # Trigger initial search when dialog opens
             do_search_action()
         except Exception:
@@ -425,7 +423,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
     content_children = []
     if cover_src:
         try:
-            preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.ImageFit.CONTAIN)
+            preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.BoxFit.CONTAIN)
             content_children.append(ft.Column([ft.Text("Current cover"), preview], spacing=6))
         except Exception:
             pass
@@ -436,9 +434,7 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             [
                 ft.TextButton(
                     "Pick file...",
-                    on_click=lambda e: picker.pick_files(
-                        allow_multiple=False
-                    ),
+                    on_click=_pick_cover_file,
                 ),
                 file_label,
             ]
@@ -463,5 +459,5 @@ def add_cover_dialog(page, api_ref, c, fetch_playlists_sync, Card, CLIENT_ID, on
             ft.TextButton("Cancel", on_click=close_add),
         ],
     )
-    page.open(dialog)
+    page.show_dialog(dialog)
     return dialog

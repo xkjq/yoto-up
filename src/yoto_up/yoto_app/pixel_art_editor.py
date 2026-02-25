@@ -125,7 +125,7 @@ class PixelArtEditor:
             border=ft.border.all(1, "#888888"),
         )
         # Advanced color picker dialog
-        self.advanced_picker_btn = ft.ElevatedButton(
+        self.advanced_picker_btn = ft.Button(
             "Advanced Color Picker", on_click=self.open_color_picker
         )
         self.color_picker_dialog = None
@@ -187,10 +187,10 @@ class PixelArtEditor:
             )
         except Exception:
             pass
-        self.clear_btn = ft.ElevatedButton("Clear", on_click=self.on_clear)
-        # self.export_btn = ft.ElevatedButton("Export", on_click=self.on_export)
-        # self.import_btn = ft.ElevatedButton("Import", on_click=self.on_import)
-        self.import_icon_btn = ft.ElevatedButton(
+        self.clear_btn = ft.Button("Clear", on_click=self.on_clear)
+        # self.export_btn = ft.Button("Export", on_click=self.on_export)
+        # self.import_btn = ft.Button("Import", on_click=self.on_import)
+        self.import_icon_btn = ft.Button(
             "Import Icon from Cache", on_click=self.on_import_icon
         )
         self.sampler_mode = False
@@ -203,12 +203,12 @@ class PixelArtEditor:
             label="Fill mode (bucket)", value=False, on_change=self.on_fill_toggle
         )
         # Save / Load created icons
-        self.save_btn = ft.ElevatedButton("Save Icon", on_click=self.on_save_png)
-        self.load_btn = ft.ElevatedButton("Load Icon", on_click=self.on_load_png)
+        self.save_btn = ft.Button("Save Icon", on_click=self.on_save_png)
+        self.load_btn = ft.Button("Load Icon", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
-        self.text_btn = ft.ElevatedButton("Stamp text", on_click=self._open_text_dialog)
+        self.text_btn = ft.Button("Stamp text", on_click=self._open_text_dialog)
         # Stamp small images/pictures onto the grid
-        self.stamp_image_btn = ft.ElevatedButton(
+        self.stamp_image_btn = ft.Button(
             "Stamp image", on_click=lambda e: open_image_stamp_dialog(self, e)
         )
         # Persistent metadata fields (visible/editable while creating icon)
@@ -677,7 +677,7 @@ class PixelArtEditor:
             options=[ft.dropdown.Option(k) for k in self.color_sets.keys()],
             value="Default",
             width=160,
-            on_change=self.on_color_set_change,
+            on_select=self.on_color_set_change,
         )
 
         # Make the main container scrollable so controls remain accessible on small windows
@@ -729,8 +729,8 @@ class PixelArtEditor:
         )
 
         # Undo / Redo buttons
-        self.undo_btn = ft.ElevatedButton("Undo", on_click=self.on_undo)
-        self.redo_btn = ft.ElevatedButton("Redo", on_click=self.on_redo)
+        self.undo_btn = ft.Button("Undo", on_click=self.on_undo)
+        self.redo_btn = ft.Button("Redo", on_click=self.on_redo)
 
         # Inline "Fill Similar" expander (replaces dialog-based flow)
         self.target_field = ft.TextField(
@@ -778,10 +778,10 @@ class PixelArtEditor:
                 if r is None:
                     try:
                         self.repl_preview.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                         self.repl_preview.bgcolor = None
                     except Exception:
@@ -883,7 +883,7 @@ class PixelArtEditor:
                     [
                         ft.Text("Tolerance (use slider at right)"),
                         ft.TextButton("Sample target", on_click=_sample_target_inline),
-                        ft.ElevatedButton("Fill", on_click=_do_fill_inline),
+                        ft.Button("Fill", on_click=_do_fill_inline),
                     ]
                 ),
                 self._fill_similar_status,
@@ -987,24 +987,24 @@ class PixelArtEditor:
             expand=True,
         )
         # Add flip and rotate buttons
-        self.flip_horizontal_btn = ft.ElevatedButton(
+        self.flip_horizontal_btn = ft.Button(
             "Flip Horizontal", on_click=lambda e: self.on_flip_image(e, "horizontal")
         )
-        self.flip_vertical_btn = ft.ElevatedButton(
+        self.flip_vertical_btn = ft.Button(
             "Flip Vertical", on_click=lambda e: self.on_flip_image(e, "vertical")
         )
-        self.rotate_left_btn = ft.ElevatedButton(
+        self.rotate_left_btn = ft.Button(
             "Rotate Left", on_click=lambda e: self.on_rotate_image(e, -90)
         )
-        self.rotate_right_btn = ft.ElevatedButton(
+        self.rotate_right_btn = ft.Button(
             "Rotate Right", on_click=lambda e: self.on_rotate_image(e, 90)
         )
 
         # Add filter buttons
-        self.blur_filter_btn = ft.ElevatedButton(
+        self.blur_filter_btn = ft.Button(
             "Apply Blur", on_click=lambda e: self.on_apply_filter(e, "BLUR")
         )
-        self.sharpen_filter_btn = ft.ElevatedButton(
+        self.sharpen_filter_btn = ft.Button(
             "Apply Sharpen", on_click=lambda e: self.on_apply_filter(e, "SHARPEN")
         )
 
@@ -1025,36 +1025,36 @@ class PixelArtEditor:
         )
 
         # Add buttons for new color manipulation features
-        self.invert_colors_btn = ft.ElevatedButton(
+        self.invert_colors_btn = ft.Button(
             "Invert Colors", on_click=self.on_invert_colors
         )
-        self.grayscale_btn = ft.ElevatedButton(
+        self.grayscale_btn = ft.Button(
             "Convert to Grayscale", on_click=self.on_convert_to_grayscale
         )
-        self.hue_adjust_btn = ft.ElevatedButton(
+        self.hue_adjust_btn = ft.Button(
             "Adjust Hue", on_click=lambda e: self.on_adjust_hue(e, 30)
         )
-        self.color_replace_btn = ft.ElevatedButton(
+        self.color_replace_btn = ft.Button(
             "Replace Color",
             on_click=lambda e: self.on_replace_color(e, "#FF0000", "#00FF00"),
         )
-        self.gradient_overlay_btn = ft.ElevatedButton(
+        self.gradient_overlay_btn = ft.Button(
             "Apply Gradient Overlay",
             on_click=lambda e: self.on_apply_gradient_overlay(e, "#FF0000"),
         )
-        self.opacity_adjust_btn = ft.ElevatedButton(
+        self.opacity_adjust_btn = ft.Button(
             "Adjust Opacity", on_click=lambda e: self.on_adjust_opacity(e, 0.5)
         )
-        self.sepia_tone_btn = ft.ElevatedButton(
+        self.sepia_tone_btn = ft.Button(
             "Apply Sepia Tone", on_click=self.on_apply_sepia_tone
         )
-        self.pixelate_btn = ft.ElevatedButton(
+        self.pixelate_btn = ft.Button(
             "Pixelate", on_click=lambda e: self.on_pixelate(e, 5)
         )
-        self.quantize_colors_btn = ft.ElevatedButton(
+        self.quantize_colors_btn = ft.Button(
             "Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16)
         )
-        self.brightness_contrast_region_btn = ft.ElevatedButton(
+        self.brightness_contrast_region_btn = ft.Button(
             "Adjust Brightness/Contrast (Region)",
             on_click=lambda e: self.on_adjust_brightness_contrast_region(
                 e, (0, 0, 8, 8), 1.5, 1.2
@@ -1154,14 +1154,14 @@ class PixelArtEditor:
                     logger.exception("Error checking parent dialog content")
                     dlg._parent_dialog = None
             if page:
-                page.open(dlg)
+                page.show_dialog(dlg)
                 page.update()
         except Exception:
             logger.exception("Error opening dialog")
             # best-effort fallback
             try:
                 if page:
-                    page.open(dlg)
+                    page.show_dialog(dlg)
                     page.update()
             except Exception:
                 pass
@@ -1199,7 +1199,7 @@ class PixelArtEditor:
                 )
             if parent and page:
                 try:
-                    page.open(parent)
+                    page.show_dialog(parent)
                     page.update()
                 except Exception:
                     logger.exception("Error reopening parent dialog")
@@ -1411,10 +1411,10 @@ class PixelArtEditor:
                     if hex_color is None:
                         try:
                             self.color_preview.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=24,
                                 height=24,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             # fallback to text marker
@@ -1543,7 +1543,7 @@ class PixelArtEditor:
                 if page:
                     page.update()
 
-        dropdown.on_change = on_select
+        dropdown.on_select = on_select
 
         def do_import(ev):
             sel = dropdown.value
@@ -1806,10 +1806,10 @@ class PixelArtEditor:
                 # show checker image if available
                 try:
                     e.control.content = ft.Image(
-                        src_base64=self.CHECK_IMAGE_BASE64,
+                        src=self.CHECK_IMAGE_BASE64,
                         width=self.pixel_size - 4,
                         height=self.pixel_size - 4,
-                        fit=ft.ImageFit.COVER,
+                        fit=ft.BoxFit.COVER,
                     )
                 except Exception:
                     # fallback: no content
@@ -1836,10 +1836,10 @@ class PixelArtEditor:
         if val is None:
             try:
                 cell_content = ft.Image(
-                    src_base64=self.CHECK_IMAGE_BASE64,
+                    src=self.CHECK_IMAGE_BASE64,
                     width=self.pixel_size - 4,
                     height=self.pixel_size - 4,
-                    fit=ft.ImageFit.COVER,
+                    fit=ft.BoxFit.COVER,
                 )
             except Exception:
                 cell_content = None
@@ -1891,10 +1891,10 @@ class PixelArtEditor:
                         c.bgcolor = "#00000000"
                     try:
                         c.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=self.pixel_size - 4,
                             height=self.pixel_size - 4,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                     except Exception:
                         try:
@@ -2037,10 +2037,10 @@ class PixelArtEditor:
                     # show checker for transparent
                     try:
                         repl_preview.content = ft.Image(
-                            src_base64=self.CHECK_IMAGE_BASE64,
+                            src=self.CHECK_IMAGE_BASE64,
                             width=20,
                             height=20,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                         )
                         repl_preview.bgcolor = None
                     except Exception:
@@ -2216,10 +2216,10 @@ class PixelArtEditor:
                         # transparent: show checker image
                         try:
                             cell.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             cell.content = None
@@ -2566,7 +2566,7 @@ class PixelArtEditor:
             options=[ft.dropdown.Option("5x7"), ft.dropdown.Option("3x5")],
             value="5x7",
             width=100,
-            on_change=lambda ev: update_preview(),
+            on_select=lambda ev: update_preview(),
         )
         # allow smaller scales for stamping (fractions and integers)
         scale_options = ["0.25", "0.5", "0.75", "1", "2", "3", "4"]
@@ -2579,8 +2579,8 @@ class PixelArtEditor:
         pos_x = ft.TextField(label="X Offset", value="0", width=80)
         pos_y = ft.TextField(label="Y Offset", value="0", width=80)
         status = ft.Text("")
-        preview_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
-        preview_applied_img = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+        preview_img = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
+        preview_applied_img = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
 
         def on_color_selected(hex_color):
             color_field.value = hex_color
@@ -2672,7 +2672,7 @@ class PixelArtEditor:
         # Attach update_preview to all relevant fields
         text_field.on_change = update_preview
         color_field.on_change = update_preview
-        scale_dropdown.on_change = update_preview
+        scale_dropdown.on_select = update_preview
         pos_x.on_change = update_preview
         pos_y.on_change = update_preview
 
@@ -2950,7 +2950,7 @@ class PixelArtEditor:
                 ],
             )
             if page:
-                page.open(dlg)
+                page.show_dialog(dlg)
                 page.update()
             return
 
@@ -3013,7 +3013,7 @@ class PixelArtEditor:
                 preview.src = ""
             preview.update()
 
-        dropdown.on_change = on_select
+        dropdown.on_select = on_select
 
         def do_load(ev):
             v = dropdown.value
@@ -3379,42 +3379,52 @@ class PixelArtEditor:
         self.refresh_grid()
 
     def control(self):
+        if not getattr(self, "_built", False):
+                    self._build()
+                    self.ensure_grid()
         return self.container
 
-    # Tab helpers: allow embedding the editor as a normal tab in the app's Tabs view.
-    def as_tab(self, title: str = "Icon Editor"):
-        """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
-        try:
-            # Ensure UI is built before creating tab
-            if not getattr(self, "_built", False):
-                try:
-                    self._build()
-                except Exception:
-                    logger.exception("Error building editor UI in as_tab")
-            # ensure the heavy grid is present when creating the tab
-            try:
-                self.ensure_grid()
-            except Exception:
-                pass
+    ## Tab helpers: allow embedding the editor as a normal tab in the app's Tabs view.
+    #def as_tab(self, title: str = "Icon Editor"):
+    #    """Return an ft.Tab that hosts this editor's container. Call once and reuse the tab."""
+    #    try:
+    #        # Ensure UI is built before creating tab
+    #        if not getattr(self, "_built", False):
+    #            try:
+    #                self._build()
+    #            except Exception:
+    #                logger.exception("Error building editor UI in as_tab")
+    #        # ensure the heavy grid is present when creating the tab
+    #        try:
+    #            self.ensure_grid()
+    #        except Exception:
+    #            pass
 
-            if getattr(self, "_tab", None):
-                return self._tab
-            # Wrap editor.container in a Column to ensure it expands properly inside tab content
-            content = ft.Column(
-                [self.container], scroll=ft.ScrollMode.AUTO, expand=True
-            )
-            tab = ft.Tab(text=title, content=content)
-            self._tab = tab
-            return tab
-        except Exception:
-            logger.exception("Failed to create editor tab")
-            # fallback: return a plain container wrapped as a Tab-like object
-            try:
-                tab = ft.Tab(text=title, content=self.container)
-                self._tab = tab
-                return tab
-            except Exception:
-                return None
+    #        if getattr(self, "_tab", None):
+    #            return self._tab
+    #        # Wrap editor.container in a Column to ensure it expands properly inside tab content
+    #        content = ft.Column(
+    #            [self.container], scroll=ft.ScrollMode.AUTO, expand=True
+    #        )
+    #        content.visible = True
+    #        tab = ft.Tab(label=title)
+    #        # Store content separately - Tab objects are just labels in Flet 0.80
+    #        tab._editor_content = content
+    #        self._tab = tab
+    #        return tab
+    #    except Exception:
+    #        logger.exception("Failed to create editor tab")
+    #        # fallback: return a plain container wrapped as a Tab-like object
+    #        try:
+    #            tab = ft.Tab(label=title)
+    #            if hasattr(self.container, 'visible'):
+    #                self.container.visible = True
+    #            # Store content separately - Tab objects are just labels in Flet 0.80
+    #            tab._editor_content = self.container
+    #            self._tab = tab
+    #            return tab
+    #        except Exception:
+    #            return None
 
     def attach_to_tabview(
         self, tabview: ft.Tabs, select: bool = True, page: ft.Page = None
@@ -3452,6 +3462,35 @@ class PixelArtEditor:
             tabview.tabs.append(tab)
             if select:
                 tabview.selected_index = len(tabview.tabs) - 1
+            # Ensure the tab's content is appended to the Tabs.content list (Flet 0.80 requires content mapping)
+            try:
+                content = getattr(tab, "_editor_content", None)
+                if content is None:
+                    content = getattr(self, "container", None)
+                    if content is not None and not isinstance(content, ft.Control):
+                        content = ft.Column([content], scroll=ft.ScrollMode.AUTO, expand=True)
+                if content is not None:
+                    if hasattr(content, 'visible'):
+                        try:
+                            content.visible = True
+                        except Exception:
+                            pass
+                    if not hasattr(tabview, 'content') or tabview.content is None:
+                        try:
+                            tabview.content = []
+                        except Exception:
+                            pass
+                    try:
+                        tabview.content.append(content)
+                        # Keep length in sync
+                        try:
+                            tabview.length = len(tabview.content)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # remember the page if provided for later dialog helpers
             if page:
                 self.page = page
@@ -3649,10 +3688,10 @@ class PixelArtEditor:
                         cell.bgcolor = None
                         try:
                             cell.content = ft.Image(
-                                src_base64=self.CHECK_IMAGE_BASE64,
+                                src=self.CHECK_IMAGE_BASE64,
                                 width=self.pixel_size - 4,
                                 height=self.pixel_size - 4,
-                                fit=ft.ImageFit.COVER,
+                                fit=ft.BoxFit.COVER,
                             )
                         except Exception:
                             cell.content = None
@@ -3694,7 +3733,7 @@ class PixelArtEditor:
                 except Exception:
                     self._parent_dialog = None
                 try:
-                    self.page.open(self.dialog)
+                    self.page.show_dialog(self.dialog)
                     self.page.update()
                 except Exception:
                     pass
@@ -3714,7 +3753,7 @@ class PixelArtEditor:
                 # reopen parent if we hidden one
                 if getattr(self, "_parent_dialog", None) and self.page:
                     try:
-                        self.page.open(self._parent_dialog)
+                        self.page.show_dialog(self._parent_dialog)
                         self.page.update()
                     except Exception:
                         pass

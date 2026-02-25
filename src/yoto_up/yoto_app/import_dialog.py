@@ -12,6 +12,7 @@ import subprocess
 import sys
 import platform
 import io as _io
+import shutil
 from yoto_up.paths import STAMPS_DIR
 
 # Use centralized STAMPS_DIR from paths.py (absolute Path-like)
@@ -27,10 +28,34 @@ def open_import_dialog(editor, ev):
     """
     page_local = ev.page if hasattr(ev, 'page') else None
     sheet_path_field = ft.TextField(label="Sprite sheet path", width=300)
-    file_picker = ft.FilePicker()
-    if page_local and getattr(page_local, 'overlay', None) is not None:
+    _is_linux_desktop = sys.platform.startswith("linux") and page_local is not None and not getattr(page_local, "web", False)
+    try:
+        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+    except Exception:
+        _zenity_missing = False
+    _file_picker_supported = not _zenity_missing
+
+    file_picker = ft.FilePicker() if _file_picker_supported else None
+    if file_picker is not None and page_local and getattr(page_local, 'services', None) is not None:
         try:
-            page_local.overlay.append(file_picker)
+            page_local.services.append(file_picker)
+        except Exception:
+            pass
+
+    def _warn_missing_file_picker():
+        if not page_local:
+            return
+        try:
+            page_local.snack_bar = ft.SnackBar(
+                ft.Text(
+                    "File dialogs are unavailable because 'zenity' is not installed. "
+                    "On Ubuntu/Debian: sudo apt-get install zenity"
+                ),
+                bgcolor=ft.Colors.RED,
+                duration=12000,
+            )
+            page_local.show_dialog(page_local.snack_bar)
+            page_local.update()
         except Exception:
             pass
 
@@ -52,15 +77,23 @@ def open_import_dialog(editor, ev):
         except Exception:
             pass
 
-    try:
-        file_picker.on_result = on_file_pick
-    except Exception:
-        try:
-            file_picker.on_pick = on_file_pick
-        except Exception:
-            pass
+    async def _open_sheet_picker(ev2=None):
+        if file_picker is None:
+            _warn_missing_file_picker()
+            return
+        files = await file_picker.pick_files()
+        if files:
+            try:
+                class _E:
+                    pass
+                ev = _E()
+                ev.files = files
+                ev.page = page_local
+                on_file_pick(ev)
+            except Exception:
+                pass
 
-    choose_btn = ft.TextButton("Choose file", on_click=lambda ev2: file_picker.pick_files())
+    choose_btn = ft.TextButton("Choose file", on_click=_open_sheet_picker)
     auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
     sheet_crop_mode_field = ft.Dropdown(label="Sheet crop method", options=[ft.dropdown.Option("None"), ft.dropdown.Option("Snap to tiles"), ft.dropdown.Option("Detect by border color")], value="Snap to tiles", width=220)
     apply_sheet_crop_btn = ft.TextButton("Apply sheet crop", on_click=lambda ev: apply_sheet_crop_method())
@@ -515,7 +548,7 @@ def open_import_dialog(editor, ev):
                                 display_img.save(buf, format='PNG')
                                 b64 = base64.b64encode(buf.getvalue()).decode('ascii')
                                 # append directly to wrap container so items wrap automatically
-                                preview_container.controls.append(ft.Container(content=ft.Image(src_base64=b64, width=display_img.width, height=display_img.height)))
+                                preview_container.controls.append(ft.Container(content=ft.Image(src=b64, width=display_img.width, height=display_img.height)))
                             except Exception:
                                 pass
                         else:
@@ -620,11 +653,10 @@ def open_import_dialog(editor, ev):
     except Exception:
         pass
 
-    def import_from_clipboard(ev_cb, target=sheet_path_field, status_ctrl=status_import):
+    def import_from_clipboard(ev_cb, target=sheet_path_field):
         logger.debug("Importing from clipboard")
         if not page_local:
-            status_ctrl.value = "No page available for clipboard"
-            status_ctrl.update()
+            logger.warning("No page context for clipboard import; cannot access clipboard")
             return
         try:
             # prefer any page-supplied clipboard first (web flows)
@@ -756,8 +788,7 @@ def open_import_dialog(editor, ev):
                     img_bytes = None
 
             if not img_bytes:
-                status_ctrl.value = "Clipboard does not contain image bytes"
-                status_ctrl.update()
+                logger.warning("Clipboard does not contain image bytes")
                 return
 
             img = Image.open(_io.BytesIO(img_bytes)).convert('RGBA')
@@ -799,9 +830,13 @@ def open_import_dialog(editor, ev):
             "- Preview: shows the final tiles as they will be written (wraps and shows first 100).",
         ]
         help_text = "\n".join(help_lines)
-        help_dlg = ft.AlertDialog(title=ft.Text("Import dialog help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page_local.open(IMPORT_DIALOG))])
+        help_dlg = ft.AlertDialog(
+            title=ft.Text("Import dialog help"),
+            content=ft.Text(help_text),
+            actions=[ft.TextButton("Close", on_click=lambda e: page_local.pop_dialog())],
+        )
         if page_local:
-            page_local.open(help_dlg)
+            page_local.show_dialog(help_dlg)
 
     help_btn = ft.TextButton("Help", on_click=show_help)
 
@@ -1494,7 +1529,7 @@ def open_import_dialog(editor, ev):
             except Exception:
                 pass
             try:
-                page_local.close(import_dlg)
+                page_local.pop_dialog()
             except Exception:
                 pass
         except Exception as ex:
@@ -1526,17 +1561,17 @@ def open_import_dialog(editor, ev):
             if total > WARN_LIMIT:
                 def do_confirm(ev3):
                     try:
-                        page_local.close(confirm_dlg)
+                        page_local.pop_dialog()
                     except Exception:
                         pass
                     perform_import(path, tw, th, pref)
                 def do_cancel(ev3):
                     try:
-                        page_local.close(confirm_dlg)
+                        page_local.pop_dialog()
                     except Exception:
                         pass
                 confirm_dlg = ft.AlertDialog(title=ft.Text("Large import"), content=ft.Text(f"This will create {total} stamps ({cols}x{rows}). Continue?"), actions=[ft.TextButton("Yes, import", on_click=do_confirm), ft.TextButton("Cancel", on_click=do_cancel)])
-                page_local.open(confirm_dlg)
+                page_local.show_dialog(confirm_dlg)
                 return
             perform_import(path, tw, th, pref)
         except Exception as ex:
@@ -1666,7 +1701,7 @@ def open_import_dialog(editor, ev):
                 ft.Container(content=ft.Row([
                     ft.Column([ft.Row([left_field_main, top_field_main], spacing=8), ft.Row([right_field_main, bottom_field_main], spacing=8)]),
                     ft.Column([ft.Row([edge_mode_field], spacing=8)]),
-                    ft.Column([ft.ElevatedButton('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
+                    ft.Column([ft.Button('Apply', on_click=_update_sheet_override_from_main_fields), ft.TextButton('Reset', on_click=_main_reset)]),
                 ], spacing=12), padding=0),
                 ft.Container(content=ft.Row([sheet_crop_mode_field, apply_sheet_crop_btn], spacing=8), padding=0),
             ],
@@ -1682,8 +1717,16 @@ def open_import_dialog(editor, ev):
         status_import,
         ft.Container(content=ft.Column([preview_container], scroll=ft.ScrollMode.AUTO, height=360), width=680),
     ], spacing=8, width=700, height=600)
-    import_dlg = ft.AlertDialog(title=ft.Text("Import Sprite Sheet"), content=content, actions=[ft.TextButton("Import", on_click=do_import), ft.TextButton("Cancel", on_click=lambda ev: page_local.close(import_dlg))], open=False)
+    import_dlg = ft.AlertDialog(
+        title=ft.Text("Import Sprite Sheet"),
+        content=content,
+        actions=[
+            ft.TextButton("Import", on_click=do_import),
+            ft.TextButton("Cancel", on_click=lambda ev: page_local.pop_dialog()),
+        ],
+        open=False,
+    )
     global IMPORT_DIALOG
     IMPORT_DIALOG = import_dlg
     if page_local:
-        page_local.open(import_dlg)
+        page_local.show_dialog(import_dlg)

@@ -1,3 +1,4 @@
+from yoto_up.yoto_app.api_manager import ensure_api
 import flet as ft
 import threading
 from types import SimpleNamespace
@@ -5,20 +6,15 @@ from copy import deepcopy
 from loguru import logger
 
 from yoto_up.yoto_api import YotoAPI
-from yoto_up.models import Card
+from yoto_up.models import Card, CardContent
 
 from .icon_import_helpers import get_base64_from_path
 
 # This function is designed to be imported and called from playlists.py
 # It expects the same arguments as the original show_edit closure.
 def show_edit_card_dialog(
-    c,
+    c: Card,
     page,
-    ensure_api,
-    CLIENT_ID,
-    status_ctrl,
-    fetch_playlists_sync,
-    show_card_details,
 ):
     """
     Show the edit card dialog for a playlist card.
@@ -27,15 +23,12 @@ def show_edit_card_dialog(
         page: The Flet page
         ensure_api: Function to get API instance
         CLIENT_ID: Client ID string
-        status_ctrl: Status control (SimpleNamespace or Flet control)
         fetch_playlists_sync: Function to refresh playlists
         previous_dialog_ref: Optional dict to store the previous dialog instance for external closing
     """
 
-    try:
-        title_field = ft.TextField(label="Card Title", value=c.get("title", ""))
-    except Exception:
-        title_field = ft.TextField(label="Card Title", value="")
+    api = ensure_api(page.api_ref)
+    title_field = ft.TextField(label="Card Title", value=c.title)
 
     card_pre_edit = deepcopy(c)
 
@@ -47,9 +40,9 @@ def show_edit_card_dialog(
 
     chapter_fields = []
     track_fields = []
-    chapters_local = c.get("content", {}).get("chapters") or []
-    meta = c.get("metadata") or {}
-    category_value = meta.get("category") or ""
+    chapters_local = c.get_chapters()
+    meta = c.get_metadata()
+    category_value = meta.category
     category_dropdown = ft.Dropdown(
         label="Category",
         width=300,
@@ -68,13 +61,13 @@ def show_edit_card_dialog(
     )
     description_field = ft.TextField(
         label="Description",
-        value=meta.get("description") or "",
+        value=meta.description,
         multiline=True,
         width=760,
     )
     note_field = ft.TextField(
         label="Note (metadata)",
-        value=meta.get("note") or "",
+        value=meta.note,
         multiline=True,
         min_lines=2,
         max_lines=6,
@@ -83,31 +76,31 @@ def show_edit_card_dialog(
     genre_field = ft.TextField(
         label="Genres (comma separated)",
         value=(
-            ", ".join(meta.get("genre"))
-            if isinstance(meta.get("genre"), (list, tuple))
-            else (meta.get("genre") or "")
+            ", ".join(meta.genre)
+            if isinstance(meta.genre, (list, tuple))
+            else (meta.genre or "")
         ),
     )
     languages_field = ft.TextField(
         label="Languages (comma separated)",
         value=(
-            ", ".join(meta.get("languages"))
-            if isinstance(meta.get("languages"), (list, tuple))
-            else (meta.get("languages") or "")
+            ", ".join(meta.languages)
+            if isinstance(meta.languages, (list, tuple))
+            else (meta.languages or "")
         ),
     )
     tags_field = ft.TextField(
         label="Tags (comma separated)",
         value=(
-            ", ".join(meta.get("tags"))
-            if isinstance(meta.get("tags"), (list, tuple))
-            else (meta.get("tags") or "")
+            ", ".join(meta.tags)
+            if isinstance(meta.tags, (list, tuple))
+            else (meta.tags or "")
         ),
     )
     # Add authors field for editing
     author_field = ft.TextField(
         label="Author",
-        value=meta.get("author") or "",
+        value=meta.author or "",
     )
 
     edit_controls = [
@@ -130,22 +123,19 @@ def show_edit_card_dialog(
         chapter_fields.clear()
         track_fields.clear()
         for ci, ch in enumerate(chapters_local):
-            ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
+            ch_title = ch.get_title()
             ch_field = ft.TextField(label=f"Chapter {ci+1} Title", value=ch_title)
             chapter_fields.append(ch_field)
             ch_icon = None
-            if isinstance(ch, dict):
-                display = ch.get("display") or {}
-                icon_field = display.get("icon16x16") if isinstance(display, dict) else None
-                if icon_field:
-                    api = ensure_api(api_ref=None, client=CLIENT_ID)
-                    try:
-                        icon_path = api.get_icon_cache_path(icon_field)
-                        if icon_path is not None:
-                            if icon_path.exists():
-                                ch_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=24, height=24)
-                    except Exception:
-                        pass
+            icon_field = ch.get_icon_field()
+            if icon_field:
+                try:
+                    icon_path = api.get_icon_cache_path(icon_field)
+                    if icon_path is not None:
+                        if icon_path.exists():
+                            ch_icon = ft.Image(src=get_base64_from_path(icon_path), width=24, height=24)
+                except Exception:
+                    logger.exception(f"Failed to load chapter icon for chapter {ci} with icon field {icon_field}")
             def make_delete_chapter(idx=ci, ch_title=ch_title):
                 def delete_chapter(_e):
                     confirm_dialog = ft.AlertDialog(
@@ -155,25 +145,15 @@ def show_edit_card_dialog(
                             ft.TextButton("Yes", on_click=lambda e: (setattr(confirm_dialog, 'open', False), chapters_local.pop(idx), show_edit_card_dialog(
                                 c,
                                 page,
-                                ensure_api,
-                                CLIENT_ID,
-                                status_ctrl,
-                                fetch_playlists_sync,
-                                show_card_details=show_card_details,
                             ))),
                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), show_edit_card_dialog(
                                 c,
                                 page,
-                                ensure_api,
-                                CLIENT_ID,
-                                status_ctrl,
-                                fetch_playlists_sync,
-                                show_card_details=show_card_details,
                             ))),
                         ],
                     )
                     try:
-                        page.open(confirm_dialog)
+                        page.show_dialog(confirm_dialog)
                     except Exception:
                         try:
                             page.dialog = confirm_dialog
@@ -189,24 +169,21 @@ def show_edit_card_dialog(
                 "delete": make_delete_chapter(ci, ch_title)
             })
             t_fields_for_ch = []
-            tracks = ch.get("tracks") if isinstance(ch, dict) else None
+            tracks = ch.get_tracks()
             if tracks:
                 for ti, tr in enumerate(tracks):
-                    tr_title = tr.get("title", "") if isinstance(tr, dict) else str(tr)
+                    tr_title = tr.get_title()
                     tr_field = ft.TextField(label="", value=tr_title)
                     tr_icon = None
-                    if isinstance(tr, dict):
-                        display = tr.get("display") or {}
-                        icon_field = display.get("icon16x16") if isinstance(display, dict) else None
-                        if icon_field:
-                            api: YotoAPI = ensure_api(api_ref=None, client=CLIENT_ID)
-                            try:
-                                icon_path = api.get_icon_cache_path(icon_field)
-                                if icon_path is not None:
-                                    if icon_path.exists():
-                                        tr_icon = ft.Image(src_base64=get_base64_from_path(icon_path), width=20, height=20)
-                            except Exception:
-                                pass
+                    icon_field = tr.get_icon_field()
+                    if icon_field is not None:
+                        try:
+                            icon_path = api.get_icon_cache_path(icon_field)
+                            if icon_path is not None:
+                                if icon_path.exists():
+                                    tr_icon = ft.Image(src=get_base64_from_path(icon_path), width=20, height=20)
+                        except Exception:
+                            logger.exception(f"Failed to load track icon for track {ti} with icon field {icon_field}")
                     def make_delete_track(ci=ci, ti=ti):
                         def delete_track(_e):
                             try:
@@ -217,11 +194,6 @@ def show_edit_card_dialog(
                                         show_edit_card_dialog(
                                             c,
                                             page,
-                                            ensure_api,
-                                            CLIENT_ID,
-                                            status_ctrl,
-                                            fetch_playlists_sync,
-                                            show_card_details=show_card_details,
                                         )
                             except Exception as ex:
                                 logger.error(f"Failed to delete track: {ex}")
@@ -282,9 +254,7 @@ def show_edit_card_dialog(
         #    page,
         #    ensure_api,
         #    CLIENT_ID,
-        #    status_ctrl,
         #    fetch_playlists_sync,
-        #    show_card_details=show_card_details,
         #)
 
     dnd_controls = []
@@ -308,11 +278,6 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        ensure_api,
-                        CLIENT_ID,
-                        status_ctrl,
-                        fetch_playlists_sync,
-                        show_card_details=show_card_details,
                     )
                 return _delete
             dnd_controls.append(
@@ -340,11 +305,6 @@ def show_edit_card_dialog(
                     show_edit_card_dialog(
                         c,
                         page,
-                        ensure_api,
-                        CLIENT_ID,
-                        status_ctrl,
-                        fetch_playlists_sync,
-                        show_card_details=show_card_details,
                     )
                 return _delete
             dnd_controls.append(
@@ -365,94 +325,123 @@ def show_edit_card_dialog(
     )
 
     def do_save(_ev=None):
-        new_title = title_field.value
-        if "metadata" not in c or not isinstance(
-            c.get("metadata"), dict
-        ):
-            c["metadata"] = {}
-        c["metadata"]["category"] = category_dropdown.value or None
-        desc = description_field.value or ""
-        c["metadata"]["description"] = desc if desc else None
-        c["metadata"]["note"] = note_field.value or None
+        # Expect a Card model instance; do not accept legacy dicts anymore.
+        if not isinstance(c, Card):
+            raise TypeError("show_edit_card_dialog requires a `Card` model instance")
+        card_model = c
 
+        # Update title
+        new_title = title_field.value
+        if new_title is not None:
+            card_model.title = new_title
+
+        # Helper to parse comma-separated lists into optional list[str]
         def split_list(s):
             if not s:
                 return None
             parts = [p.strip() for p in s.split(",") if p.strip()]
             return parts if parts else None
 
-        c["metadata"]["genre"] = split_list(genre_field.value)
-        c["metadata"]["languages"] = split_list(languages_field.value)
-        c["metadata"]["tags"] = split_list(tags_field.value)
-        c["metadata"]["author"] = author_field.value or None
+        # Ensure metadata object exists and update fields
+        meta = card_model.get_metadata()
+        meta.category = category_dropdown.value or None
+        desc = description_field.value or ""
+        meta.description = desc if desc else None
+        meta.note = note_field.value or None
+        meta.genre = split_list(genre_field.value)
+        meta.languages = split_list(languages_field.value)
+        meta.tags = split_list(tags_field.value)
+        meta.author = author_field.value or None
+        card_model.metadata = meta
 
-        # Rebuild chapters_local from flat_items before saving
+        # Rebuild chapters from flat_items (preserve non-title fields where possible)
         state = show_edit_card_dialog._state
-        flat_items = state.flat_items
+        flat_items = state.flat_items or []
         new_chapters = []
-        current_ch = None
         chapter_fields_save = []
         track_fields_save = []
-        t_fields_for_ch = []
+        current_ch = None
+
         for entry in flat_items:
             if entry["type"] == "chapter":
-                if current_ch is not None:
-                    track_fields_save.append(t_fields_for_ch)
-                current_ch = deepcopy(entry["ch"])
-                current_ch["tracks"] = []
-                new_chapters.append(current_ch)
-                chapter_fields_save.append(entry["ch_field"])
-                t_fields_for_ch = []
+                # Start a new chapter copy
+                src_ch = entry.get("ch")
+                if hasattr(src_ch, "model_dump"):
+                    ch_copy = deepcopy(src_ch)
+                    try:
+                        ch_copy.tracks = []
+                    except Exception:
+                        # For dict-like, set key
+                        ch_copy["tracks"] = []
+                else:
+                    ch_copy = deepcopy(src_ch) or {}
+                    ch_copy["tracks"] = []
+                new_chapters.append(ch_copy)
+                chapter_fields_save.append(entry.get("ch_field"))
+                current_ch = ch_copy
+                track_fields_save.append([])
             elif entry["type"] == "track":
-                if current_ch is not None:
-                    current_ch["tracks"].append(entry["tr"])
-                    t_fields_for_ch.append(entry["tr_field"])
-        if current_ch is not None:
-            track_fields_save.append(t_fields_for_ch)
-        chapters_local.clear()
-        chapters_local.extend(new_chapters)
+                if current_ch is None:
+                    continue
+                src_tr = entry.get("tr")
+                # Append a deepcopy of the original track object/dict to preserve metadata
+                tr_copy = deepcopy(src_tr)
+                try:
+                    # If current_ch is model-like, append to .tracks
+                    if hasattr(current_ch, "tracks"):
+                        current_ch.tracks.append(tr_copy)
+                    else:
+                        current_ch.setdefault("tracks", []).append(tr_copy)
+                except Exception:
+                    # fallback for dict-like
+                    if isinstance(current_ch, dict):
+                        current_ch["tracks"].append(tr_copy)
+                # Track field mapping for title edits
+                if track_fields_save:
+                    track_fields_save[-1].append(entry.get("tr_field"))
 
-        card_model = Card.model_validate(c)
-        if new_title is not None:
-            card_model.title = new_title
+        # Assign chapters into card_model.content
+        if card_model.content is None:
+            card_model.content = CardContent(chapters=new_chapters)
+        else:
+            card_model.content.chapters = new_chapters
+
+        # Apply edited titles from input fields back into the model chapters/tracks
         try:
-            if card_model.content and getattr(
-                card_model.content, "chapters", None
-            ):
+            if card_model.content and getattr(card_model.content, "chapters", None):
                 for idx, ch_model in enumerate(card_model.content.chapters):
-                    if idx < len(chapter_fields_save):
-                        ch_model.title = chapter_fields_save[idx].value
+                    if idx < len(chapter_fields_save) and chapter_fields_save[idx] is not None:
+                        try:
+                            ch_model.title = chapter_fields_save[idx].value
+                        except Exception:
+                            pass
                     if hasattr(ch_model, "tracks") and ch_model.tracks:
                         for t_idx, tr_model in enumerate(ch_model.tracks):
-                            if t_idx < len(track_fields_save[idx]):
-                                tr_model.title = track_fields_save[idx][
-                                    t_idx
-                                ].value
+                            if t_idx < len(track_fields_save[idx]) and track_fields_save[idx][t_idx] is not None:
+                                try:
+                                    tr_model.title = track_fields_save[idx][t_idx].value
+                                except Exception:
+                                    pass
 
-            def save_thread():
+            async def save_thread():
                 try:
-                    api = ensure_api(api_ref=None, client=CLIENT_ID)
-                    api.update_card(card_model, return_card_model=False)
-                    status_ctrl.value = "Card updated"
-                    fetch_playlists_sync(None)
+                    page.update_card(card_model)
                 except Exception as ex:
                     logger.debug(f"Update card failed: {ex}")
-                    msg = f"Update failed: {ex}"
-                    status_ctrl.value = msg
                 finally:
-                    show_card_details(None, card_model)
+                    page.pop_dialog()
+                    page.show_card_details(None, card_model)
                     page.update()
 
-            threading.Thread(target=save_thread, daemon=True).start()
+            page.run_task(save_thread)
         except Exception as ex:
             logger.debug(f"Failed to prepare update: {ex}")
-            msg = f"Failed to prepare update: {ex}"
-            status_ctrl.value = msg
             page.update()
         page.update()
 
     def close_edit(_ev):
-        show_card_details(None, card_pre_edit)
+        page.pop_dialog()
+        page.show_card_details(None, card_pre_edit)
         page.update()
 
     edit_list = ft.ListView(
@@ -467,5 +456,5 @@ def show_edit_card_dialog(
         ],
     )
 
-    page.open(edit_dialog)
+    page.show_dialog(edit_dialog)
     page.update()

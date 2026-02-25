@@ -1,3 +1,6 @@
+from yoto_up.yoto_api import YotoAPI
+from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
+from yoto_up.models import Card
 import threading
 import asyncio
 import json
@@ -14,18 +17,7 @@ from datetime import datetime, timezone
 
 def make_show_card_details(
     page,
-    api_ref: Dict[str, Any],
-    show_snack,
-    ensure_api,
-    CLIENT_ID,
-    Card,
-    fetch_playlists_sync,
-    playlists_list,
-    make_playlist_row,
-    status_ctrl,
-    show_edit_card_dialog,
     IconReplaceDialog,
-    show_replace_icons_dialog,
 ):
     """Factory that returns a callable with signature (ev, card).
 
@@ -35,9 +27,90 @@ def make_show_card_details(
     nested function.
     """
 
-    def show_card_details(e, card, preview_path: Path | None = None):
+    def show_card_details(e, card: Card, preview_path: Path | None = None):
+
+        assert isinstance(card, Card), f"Expected card to be a Card model instance, got {type(card)}"
+
+        api: YotoAPI = page.api_ref.get("api")
+
+        def save_order_click(_ev=None):
+            page.show_snack("Saving order...")
+            page.update()
+
+            async def bg_save():
+                # Build a payload from the current Card model and the reordered chapters
+                card_id = c.cardId
+                if not card_id:
+                    logger.error("save_order: no card id found")
+                    return
+
+                dlg_content = getattr(dialog, "content", None)
+                ui_items = None
+                try:
+                    if dlg_content is not None and hasattr(dlg_content, "controls"):
+                        for ctl in dlg_content.controls:
+                            try:
+                                children = getattr(ctl, "controls", None)
+                                if not children or not isinstance(children, (list, tuple)):
+                                    continue
+                                matches = 0
+                                for child in children:
+                                    ch = getattr(child, "_chapter", None)
+                                    if ch is None and hasattr(child, "content"):
+                                        ch = getattr(child.content, "_chapter", None)
+                                    if ch is not None:
+                                        matches += 1
+                                if matches >= max(1, len(children) // 2):
+                                    ui_items = children
+                                    break
+                            except Exception:
+                                logger.debug("Failed to process child controls for save order")
+                except Exception:
+                    logger.debug("Failed to extract chapter UI items for save order")
+
+                if ui_items is None:
+                    ui_items = list(chapter_items)
+
+                ordered = []
+                for it in chapter_items:
+                    try:
+                        ch = getattr(it, "_chapter", None)
+                        if ch is None and hasattr(it, "content"):
+                            ch = getattr(it.content, "_chapter", None)
+                        if ch is not None:
+                            ordered.append(deepcopy(ch))
+                    except Exception:
+                        continue
+
+                if ordered:
+                    # Start from current card model payload
+                    try:
+                        payload = c.model_dump(exclude_none=True)
+                    except Exception:
+                        payload = {}
+                    payload.setdefault("content", {})
+                    payload["content"]["chapters"] = ordered
+
+                    card_model = Card.model_validate(payload)
+
+                    if not getattr(card_model, "cardId", None):
+                        card_model.cardId = card_id
+
+                    try:
+                        updated = api.create_or_update_content(card_model, return_card=True)
+                        page.update_local_card_cache(updated)
+                        page.pop_dialog()
+                        page.pop_dialog()
+                        show_card_details(None, updated)
+                        page.update()
+                    except Exception as ex:
+                        logger.error(f"save_order: background save failed: {ex}")
+
+            page.run_task(bg_save)
+            logger.info("save_order: background save started")
+
+
         def refresh_icon_cache(ev=None):
-            api = api_ref.get("api")
             try:
                 api.refresh_public_and_user_icons()
             except Exception as ex:
@@ -72,40 +145,32 @@ def make_show_card_details(
                 except Exception:
                     return obj
 
-            c = _normalize(card)
-            if not isinstance(c, dict):
-                try:
-                    c = {"title": str(card)}
-                except Exception:
-                    c = {}
+            # We need to update c to work with the Card model directly
+            c = card
 
             def replace_individual_icon(ev, kind="chapter", ch_i=None, tr_i=None):
                 try:
-                    api = api_ref.get("api")
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
                     dialog = IconReplaceDialog(
                         api=api,
                         card=c,
                         page=page,
-                        show_snack=show_snack,
-                        show_card_details=show_card_details,
                         kind=kind,
                         ch_i=ch_i,
                         tr_i=tr_i,
                     )
                     dialog.open()
                 except Exception as ex:
-                    show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
+                    page.show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
 
             def clear_chapter_icon(ev, ch_i=None):
                 try:
-                    api = ensure_api(api_ref, CLIENT_ID)
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
 
                     def worker():
@@ -121,24 +186,24 @@ def make_show_card_details(
                                     except Exception:
                                         pass
                             else:
-                                show_snack('Chapter has no icon to clear', error=True)
+                                page.show_snack('Chapter has no icon to clear', error=True)
                                 return
-                            api.update_card(full, return_card_model=False)
-                            show_snack('Chapter icon cleared')
+
+                            page.update_card(full)
+                            page.show_snack('Chapter icon cleared')
                             show_card_details(None, full)
                         except Exception as ee:
-                            show_snack(f'Failed to clear chapter icon: {ee}', error=True)
+                            page.show_snack(f'Failed to clear chapter icon: {ee}', error=True)
 
                     threading.Thread(target=worker, daemon=True).start()
                 except Exception:
-                    show_snack('Failed to start clear chapter icon operation', error=True)
+                    page.show_snack('Failed to start clear chapter icon operation', error=True)
 
             def clear_track_icon(ev, ch_i=None, tr_i=None):
                 try:
-                    api = ensure_api(api_ref, CLIENT_ID)
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if not card_id:
-                        show_snack("Unable to determine card id", error=True)
+                        page.show_snack("Unable to determine card id", error=True)
                         return
 
                     def worker():
@@ -154,210 +219,199 @@ def make_show_card_details(
                                     except Exception:
                                         pass
                             else:
-                                show_snack('Track has no icon to clear', error=True)
+                                page.show_snack('Track has no icon to clear', error=True)
                                 return
-                            api.update_card(full, return_card_model=False)
-                            show_snack('Track icon cleared')
+                            page.update_card(full)
                             show_card_details(None, full)
                         except Exception as ee:
-                            show_snack(f'Failed to clear track icon: {ee}', error=True)
+                            page.show_snack(f'Failed to clear track icon: {ee}', error=True)
 
                     threading.Thread(target=worker, daemon=True).start()
                 except Exception:
-                    show_snack('Failed to start clear track icon operation', error=True)
+                    page.show_snack('Failed to start clear track icon operation', error=True)
 
             def make_track_items(ch, ch_index, for_reorder=False):
                 items = []
-                tracks = ch.get("tracks") if isinstance(ch, dict) else None
+                tracks = getattr(ch, "tracks", None)
                 if not tracks:
                     return items
                 for t_idx, tr in enumerate(tracks, start=1):
-                    if isinstance(tr, dict):
-                        tr_title = tr.get("title", "")
-                        tr_format = tr.get("format", "")
-                        tr_duration = fmt_sec(tr.get("duration"))
-                        tr_size = tr.get("fileSize", "")
-                        tr_url = tr.get("trackUrl", "")
-                        tr_key = tr.get("key", "")
-                        tr_overlay = tr.get("overlayLabel", "")
-                        display = tr.get("display") or {}
-                        tr_icon_field = (
-                            display.get("icon16x16")
-                            if isinstance(display, dict)
-                            else None
-                        )
-                        tr_img = None
+                    # Expect `tr` to be a Track model
+                    tr_title = getattr(tr, "title", "")
+                    tr_format = getattr(tr, "format", "")
+                    tr_duration = fmt_sec(getattr(tr, "duration", None))
+                    tr_size = getattr(tr, "fileSize", "")
+                    tr_url = getattr(tr, "trackUrl", "")
+                    tr_key = getattr(tr, "key", "")
+                    tr_overlay = getattr(tr, "overlayLabel", "")
+                    display = getattr(tr, "display", None)
+                    tr_icon_field = getattr(display, "icon16x16", None) if display else None
+                    tr_img = None
 
-                        def _on_tap_tr(
-                            ev, ch_index=ch_index, tr_index=t_idx - 1
-                        ):
-                            try:
-                                replace_individual_icon(
-                                    ev, "track", ch_index, tr_index
-                                )
-                            except Exception:
-                                logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
-
-                        def _on_download_click(ev=None, url=tr_url, title=tr_title):
-                            import httpx
-                            import os
-                            from pathlib import Path
-                            try:
-                                api = api_ref.get("api")
-                                resolved_url = None
-                                if url and url.startswith("http"):
-                                    resolved_url = url
-                                if not resolved_url or not resolved_url.startswith("http"):
-                                    show_snack("No valid URL for this track", error=True)
-                                    return
-                                downloads_dir = Path("downloads")
-                                downloads_dir.mkdir(exist_ok=True)
-                                # Use title or fallback to last part of URL
-                                filename = title or resolved_url.split("/")[-1]
-                                # Ensure safe filename
-                                filename = "_".join(filename.split())
-                                if not filename.lower().endswith(f".{tr_format}"):
-                                    filename += f".{tr_format}"
-                                dest = downloads_dir / filename
-                                with httpx.stream("GET", resolved_url, timeout=60.0) as r:
-                                    r.raise_for_status()
-                                    with open(dest, "wb") as f:
-                                        for chunk in r.iter_bytes():
-                                            f.write(chunk)
-                                show_snack(f"Downloaded to {dest}")
-                            except Exception as ex:
-                                show_snack(f"Download failed: {ex}", error=True)
-                        tr_img = None
+                    def _on_tap_tr(
+                        ev, ch_index=ch_index, tr_index=t_idx - 1
+                    ):
                         try:
-                            api = api_ref.get("api")
-                            if api and tr_icon_field:
-                                #tp = api.get_icon_cache_path(tr_icon_field)
-                                based_image = api.get_icon_b64_data(tr_icon_field)
-                                if based_image is not None:
-                                    img = ft.Image(src_base64=based_image, width=20, height=20, tooltip=f"Click to replace icon")
-                                    tr_img = ft.GestureDetector(
-                                        content=img,
-                                        on_tap=lambda ev,
-                                        ch_index=ch_index,
-                                        tr_index=t_idx - 1: _on_tap_tr(
-                                            ev, ch_index, tr_index
-                                        ),
-                                        width=20, height=20
-                                    )
-                                else:
-                                    pass
+                            replace_individual_icon(
+                                ev, "track", ch_index, tr_index
+                            )
+                        except Exception:
+                            logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
+
+                    def _on_download_click(ev=None, url=tr_url, title=tr_title):
+                        import httpx
+                        import os
+                        from pathlib import Path
+                        try:
+                            resolved_url = None
+                            if url and url.startswith("http"):
+                                resolved_url = url
+                            if not resolved_url or not resolved_url.startswith("http"):
+                                page.show_snack("No valid URL for this track", error=True)
+                                return
+                            downloads_dir = Path("downloads")
+                            downloads_dir.mkdir(exist_ok=True)
+                            # Use title or fallback to last part of URL
+                            filename = title or resolved_url.split("/")[-1]
+                            # Ensure safe filename
+                            filename = "_".join(filename.split())
+                            if not filename.lower().endswith(f".{tr_format}"):
+                                filename += f".{tr_format}"
+                            dest = downloads_dir / filename
+                            with httpx.stream("GET", resolved_url, timeout=60.0) as r:
+                                r.raise_for_status()
+                                with open(dest, "wb") as f:
+                                    for chunk in r.iter_bytes():
+                                        f.write(chunk)
+                            page.show_snack(f"Downloaded to {dest}")
+                        except Exception as ex:
+                            page.show_snack(f"Download failed: {ex}", error=True)
+                    tr_img = None
+                    try:
+                        if api and tr_icon_field:
+                            #tp = api.get_icon_cache_path(tr_icon_field)
+                            based_image = api.get_icon_b64_data(tr_icon_field)
+                            if based_image is not None:
+                                img = ft.Image(src=based_image, width=20, height=20, tooltip=f"Click to replace icon")
+                                tr_img = ft.GestureDetector(
+                                    content=img,
+                                    on_tap=lambda ev,
+                                    ch_index=ch_index,
+                                    tr_index=t_idx - 1: _on_tap_tr(
+                                        ev, ch_index, tr_index
+                                    ),
+                                    width=20, height=20
+                                )
                             else:
                                 pass
-                        except Exception as ex:
-                            logger.exception(f"Error fetching track icon: {ex}")
-                        
-                        if tr_img is None:
-                            tr_img = ft.IconButton(
+                        else:
+                            pass
+                    except Exception as ex:
+                        logger.exception(f"Error fetching track icon: {ex}")
+                    
+                    if tr_img is None:
+                        tr_img = ft.IconButton(
+                            icon=ft.Icons.IMAGE,
+                            tooltip="Fetch icon",
+                            on_click=lambda ev,
+                            f=tr_icon_field,
+                            ci=ch_index,
+                            ti=t_idx - 1: threading.Thread(
+                                target=lambda: _on_tap_tr(ev, ci, ti),
+                                daemon=True,
+                            ).start(),
+                        )
+
+                    tr_col = ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
+                                    ft.Text(f"Track {t_idx}. {tr_title}", size=12),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                                spacing=8,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"{tr_format}  • {tr_duration}  • size={tr_size}",
+                                        size=11,
+                                        color=ft.Colors.BLACK45,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"key={tr_key}  overlay={tr_overlay}",
+                                        size=11,
+                                        color=ft.Colors.BLACK45,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            ),
+                        ],
+                        spacing=4,
+                    )
+
+                    row = ft.Row(
+                        [
+                            ft.Container(width=20),
+                            tr_col,
+                            ft.IconButton(
                                 icon=ft.Icons.IMAGE,
-                                tooltip="Fetch icon",
+                                tooltip="Use chapter icon for this track",
+                                opacity=0.1,
+                                icon_size=16,
                                 on_click=lambda ev,
-                                f=tr_icon_field,
-                                ci=ch_index,
-                                ti=t_idx - 1: threading.Thread(
-                                    target=lambda: _on_tap_tr(ev, ci, ti),
-                                    daemon=True,
-                                ).start(),
+                                ch_i=ch_index,
+                                tr_i=t_idx - 1: use_chapter_icon(ev, ch_i, tr_i),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                tooltip="Clear track icon",
+                                opacity=0.1,
+                                icon_size=16,
+                                on_click=lambda ev,
+                                ch_i=ch_index,
+                                tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DOWNLOAD,
+                                tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
+                                icon_size=18,
+                                on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
+                                disabled=not tr_url or not tr_url.startswith("http"),
+                            ),
+                        ]
+                    )
+                    if tr_url:
+                        row.controls.append(
+                            ft.Row(
+                                [
+                                    ft.Container(width=20),
+                                    ft.Text(
+                                        f"URL: {tr_url}", selectable=True, size=11
+                                    ),
+                                ]
                             )
-
-                        tr_col = ft.Column(
-                            [
-                                ft.Row(
-                                    [
-                                        tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
-                                        ft.Text(f"Track {t_idx}. {tr_title}", size=12),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                    spacing=8,
-                                ),
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"{tr_format}  • {tr_duration}  • size={tr_size}",
-                                            size=11,
-                                            color=ft.Colors.BLACK45,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"key={tr_key}  overlay={tr_overlay}",
-                                            size=11,
-                                            color=ft.Colors.BLACK45,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                            ],
-                            spacing=4,
                         )
 
-                        row = ft.Row(
-                            [
-                                ft.Container(width=20),
-                                tr_col,
-                                ft.IconButton(
-                                    icon=ft.Icons.IMAGE,
-                                    tooltip="Use chapter icon for this track",
-                                    opacity=0.1,
-                                    icon_size=16,
-                                    on_click=lambda ev,
-                                    ch_i=ch_index,
-                                    tr_i=t_idx - 1: use_chapter_icon(ev, ch_i, tr_i),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CLOSE,
-                                    tooltip="Clear track icon",
-                                    opacity=0.1,
-                                    icon_size=16,
-                                    on_click=lambda ev,
-                                    ch_i=ch_index,
-                                    tr_i=t_idx - 1: clear_track_icon(ev, ch_i, tr_i),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.DOWNLOAD,
-                                    tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
-                                    icon_size=18,
-                                    on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
-                                    disabled=not tr_url or not tr_url.startswith("http"),
-                                ),
-                            ]
-                        )
-                        if tr_url:
-                            row.controls.append(
-                                ft.Row(
-                                    [
-                                        ft.Container(width=20),
-                                        ft.Text(
-                                            f"URL: {tr_url}", selectable=True, size=11
-                                        ),
-                                    ]
-                                )
-                            )
-
-                        items.append(row)
-                    else:
-                        items.append(ft.Text(f"- {str(tr)}", selectable=True))
+                    items.append(row)
                 return items
 
-            chapters = (c.get("content") or {}).get("chapters")
+            chapters = c.get_chapters()
             if not chapters:
                 try:
-                    api = api_ref.get("api")
-                    card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                    card_id = c.cardId
                     if api and card_id:
                         full_card = api.get_card(card_id)
-                        if hasattr(full_card, "model_dump"):
-                            c = full_card.model_dump(exclude_none=True)
-                        elif isinstance(full_card, dict):
+                        # Expect api.get_card to return a Card model
+                        if isinstance(full_card, Card):
                             c = full_card
                 except Exception as ex:
                     print(f"Failed to fetch full card details: {ex}")
@@ -365,71 +419,42 @@ def make_show_card_details(
             controls = []
             # capture cover source found in metadata and defer building the Image
             cover_src = None
-            controls.append(ft.Text(f"Title: {c.get('title', '')}", selectable=True))
-            controls.append(ft.Text(f"Card ID: {c.get('cardId', '')}", selectable=True))
+            controls.append(ft.Text(f"Title: {c.title}", selectable=True))
+            controls.append(ft.Text(f"Card ID: {c.cardId}", selectable=True))
             controls.append(
                 ft.Text(
-                    f"Created by Client ID: {c.get('createdByClientId', '')}",
+                    f"Created by Client ID: {c.createdByClientId}",
                     selectable=True,
                 )
             )
             controls.append(
-                ft.Text(f"Created At: {c.get('createdAt', '')}", selectable=True)
+                ft.Text(f"Created At: {c.createdAt}", selectable=True)
             )
             controls.append(
                 ft.Text(
-                    f"Hidden: {c.get('hidden', False)}    Deleted: {c.get('deleted', False)}",
+                    f"Deleted: {c.deleted}",
                     selectable=True,
                 )
             )
 
-            meta = c.get("metadata") or {}
+            meta = c.metadata
             if meta:
-                try:
-                    cover = meta.get("cover") or {}
-                    if cover:
-                        for key in ("imageL", "imageM", "imageS", "image"):
-                            url_or_field = cover.get(key)
-                            if not url_or_field:
-                                continue
-                            try:
-                                if isinstance(url_or_field, str) and (
-                                    url_or_field.startswith("http")
-                                    or url_or_field.startswith("//")
-                                ):
-                                    try:
-                                        cache_fn = getattr(page, 'get_cached_cover', None)
-                                        if callable(cache_fn):
-                                            p = cache_fn(url_or_field)
-                                            if p:
-                                                # defer creating the Image widget until dialog size is known
-                                                cover_src = str(p)
-                                            else:
-                                                cover_src = url_or_field
-                                        else:
-                                            cover_src = url_or_field
-                                    except Exception:
-                                        cover_src = url_or_field
-                                    break
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
+                cover_src = c.get_cover_url()
                 controls.append(ft.Divider())
                 controls.append(ft.Text("Metadata:", weight=ft.FontWeight.BOLD))
                 controls.append(
-                    ft.Text(f"  Author: {meta.get('author', '')}", selectable=True)
+                    ft.Text(f"  Author: {meta.author}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Category: {meta.get('category', '')}", selectable=True)
+                    ft.Text(f"  Category: {meta.category}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Description: {meta.get('description', '')}", selectable=True)
+                    ft.Text(f"  Description: {meta.description}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Note: {meta.get('note', '')}", selectable=True)
+                    ft.Text(f"  Note: {meta.note}", selectable=True)
                 )
-                tags = meta.get("tags")
+                tags = meta.tags
                 if tags:
                     if isinstance(tags, (list, tuple)):
                         controls.append(
@@ -437,7 +462,7 @@ def make_show_card_details(
                         )
                     else:
                         controls.append(ft.Text(f"  Tags: {tags}", selectable=True))
-                genres = meta.get("genre") or meta.get("genres")
+                genres = meta.genre
                 if genres:
                     if isinstance(genres, (list, tuple)):
                         controls.append(
@@ -445,24 +470,24 @@ def make_show_card_details(
                         )
                     else:
                         controls.append(ft.Text(f"  Genres: {genres}", selectable=True))
-                media = meta.get("media") or {}
+                media = meta.media
                 if media:
                     controls.append(
                         ft.Text(
-                            f"  Duration: {fmt_sec(media.get('duration'))}    FileSize: {media.get('fileSize', '')}",
+                            f"  Duration: {fmt_sec(media.duration)}    FileSize: {media.fileSize}",
                             selectable=True,
                         )
                     )
-                if meta.get("previewAudio"):
+                if meta.previewAudio:
                     controls.append(
                         ft.Text(
-                            f"  Preview Audio: {meta.get('previewAudio')}",
+                            f"  Preview Audio: {meta.previewAudio}",
                             selectable=True,
                         )
                     )
 
-            content = c.get("content") or {}
-            chapters = content.get("chapters") or []
+            content = c.content or {}
+            chapters = content.chapters or []
             # capture header controls (everything up to the chapters section)
             header_controls = list(controls)
             chapters_view = None
@@ -470,113 +495,15 @@ def make_show_card_details(
                 controls.append(ft.Divider())
                 controls.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
 
-                def save_order_click(_ev=None):
-                    show_snack("Saving order...")
-                    page.update()
-
-                    def bg_save():
-                        api = api_ref.get("api")
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
-                        if not card_id:
-                            logger.error("save_order: no card id found")
-                            return
-
-                        dlg_content = getattr(dialog, "content", None)
-                        ui_items = None
-                        reconstructed_titles = []
-                        try:
-                            if dlg_content is not None and hasattr(dlg_content, "controls"):
-                                for ctl in dlg_content.controls:
-                                    try:
-                                        children = getattr(ctl, "controls", None)
-                                        if not children or not isinstance(children, (list, tuple)):
-                                            continue
-                                        matches = 0
-                                        for child in children:
-                                            ch = getattr(child, "_chapter", None)
-                                            if ch is None and hasattr(child, "content"):
-                                                ch = getattr(child.content, "_chapter", None)
-                                            if isinstance(ch, dict):
-                                                matches += 1
-                                        if matches >= max(1, len(children) // 2):
-                                            ui_items = children
-                                            break
-                                    except Exception:
-                                        continue
-                        except Exception:
-                            pass
-
-                        if ui_items is None:
-                            ui_items = list(chapter_items)
-
-                        ordered = []
-                        for i, it in enumerate(chapter_items):
-                            try:
-                                ch = getattr(it, "_chapter", None)
-                                if ch is None and hasattr(it, "content"):
-                                    ch = getattr(it.content, "_chapter", None)
-                                if isinstance(ch, dict):
-                                    ordered.append(deepcopy(ch))
-                            except Exception:
-                                continue
-
-                        if ordered:
-                            if "content" not in c or not isinstance(c.get("content"), dict):
-                                c["content"] = {}
-                            c["content"]["chapters"] = ordered
-
-                        card_model = Card.model_validate(c)
-                        try:
-                            card_model = Card(**c)
-                        except Exception as ex:
-                            logger.error(f"save_order: failed to build Card model: {ex}")
-                            show_snack(f"Failed to prepare card for save: {ex}", error=True)
-                        try:
-                            payload = card_model.model_dump(exclude_none=True)
-                        except Exception:
-                            payload = c
-
-                        if not getattr(card_model, "cardId", None):
-                            if getattr(card_model, "id", None):
-                                card_model.cardId = getattr(card_model, "id")
-                            else:
-                                card_model.cardId = card_id
-
-                        try:
-                            payload = card_model.model_dump(exclude_none=True)
-                        except Exception:
-                            payload = {}
-                        try:
-                            if (c.get("content") or {}).get("chapters"):
-                                payload.setdefault("content", {})
-                                payload["content"]["chapters"] = deepcopy((c.get("content") or {}).get("chapters") or [])
-                        except Exception:
-                            pass
-
-                        try:
-                            updated = api.create_or_update_content(Card.model_validate(payload), return_card=True)
-                            show_card_details(None, updated)
-                            page.update()
-                        except Exception as ex:
-                            logger.error(f"save_order: background save failed: {ex}")
-
-                    threading.Thread(target=bg_save, daemon=True).start()
-                    logger.info("save_order: background save started")
 
                 chapter_items = []
                 for ch_idx, ch in enumerate(chapters):
-                    ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
-                    overlay = ch.get("overlayLabel", "") if isinstance(ch, dict) else ""
-                    key = ch.get("key", "") if isinstance(ch, dict) else ""
+                    # Expect `ch` to be a Chapter model
+                    ch_title = ch.get_title()
+                    overlay = getattr(ch, "overlayLabel", "")
+                    key = getattr(ch, "key", "")
 
-                    icon_field = None
-                    if isinstance(ch, dict):
-                        display = ch.get("display") or {}
-                        icon_field = (
-                            display.get("icon16x16")
-                            if isinstance(display, dict)
-                            else None
-                        )
+                    icon_field = ch.get_icon_field()
 
                     img_control = None
 
@@ -584,11 +511,10 @@ def make_show_card_details(
                         replace_individual_icon(ev, "chapter", ch_index)
 
                     try:
-                        api = api_ref.get("api")
                         if api and icon_field:
                             icon_base64 = api.get_icon_b64_data(icon_field)
                             if icon_base64 is not None:
-                                img = ft.Image(src_base64=icon_base64, width=24, height=24)
+                                img = ft.Image(src=icon_base64, width=24, height=24)
                                 img_control = ft.GestureDetector(content=img, on_tap=_on_tap_ch)
                             else:
                                 img_control = ft.IconButton(icon=ft.Icons.ERROR, tooltip="Click to refresh icon cache", on_click=refresh_icon_cache)
@@ -601,11 +527,10 @@ def make_show_card_details(
                     meta_line = f"key={key}"
                     if overlay:
                         meta_line += f"  overlay={overlay}"
-                    if isinstance(ch, dict) and (ch.get("duration") or ch.get("fileSize")):
-                        meta_line += f"  • Duration: {fmt_sec(ch.get('duration'))}  FileSize: {ch.get('fileSize', '')}"
+                    if getattr(ch, "duration", None) or getattr(ch, "fileSize", None):
+                        meta_line += f"  • Duration: {fmt_sec(getattr(ch, 'duration', None))}  FileSize: {getattr(ch, 'fileSize', '')}"
 
-                    tracks = ch.get("tracks") if isinstance(ch, dict) else None
-                    track_controls = (make_track_items(ch, ch_idx, for_reorder=True) if tracks else [])
+                    track_controls = make_track_items(ch, ch_idx, for_reorder=True)
 
                     def make_track_on_reorder(ch_index):
                         def _on_reorder(ev):
@@ -623,11 +548,11 @@ def make_show_card_details(
                                     new = getattr(ev, "index", None)
                                 if old is None or new is None:
                                     return
-                                tr_list = c.get("content", {}).get("chapters", [])[ch_index].get("tracks") or []
+                                tr_list = c.get_track_list()
                                 item = tr_list.pop(old)
                                 tr_list.insert(new, item)
                                 try:
-                                    page.open(dialog)
+                                    page.show_dialog(dialog)
                                     page.update()
                                 except Exception:
                                     page.update()
@@ -689,30 +614,15 @@ def make_show_card_details(
                             new = getattr(ev, "index", None)
                         if old is None or new is None:
                             return
-                        try:
-                            ch_list = c.get("content", {}).get("chapters", [])
-                            before = [ (ch.get("title") if isinstance(ch, dict) else str(ch)) for ch in list(ch_list) ]
-                        except Exception:
-                            before = []
-                        try:
-                            item = ch_list.pop(old)
-                            ch_list.insert(new, item)
-                        except Exception as err:
-                            print("[playlists] on_reorder: mutation error", err)
-                        try:
-                            after = [ (ch.get("title") if isinstance(ch, dict) else str(ch)) for ch in (c.get("content") or {}).get("chapters") or [] ]
-                        except Exception:
-                            after = []
-                        try:
-                            ui_item = chapter_items.pop(old)
-                            chapter_items.insert(new, ui_item)
-                        except Exception:
-                            pass
-                        try:
-                            page.open(dialog)
-                            page.update()
-                        except Exception:
-                            page.update()
+                        ch_list = c.get_chapters()
+                        before = [ ch.title for ch in list(ch_list) ]
+                        item = ch_list.pop(old)
+                        ch_list.insert(new, item)
+                        after = [ ch.title for ch in list(ch_list) ]
+                        ui_item = chapter_items.pop(old)
+                        chapter_items.insert(new, ui_item)
+                        page.show_dialog(dialog)
+                        page.update()
                     except Exception as ex:
                         print("chapter reorder failed:", ex)
 
@@ -724,7 +634,7 @@ def make_show_card_details(
                     pass
                 controls.append(chapters_rv)
 
-                controls.append(ft.Row([ft.ElevatedButton("Save Order", on_click=save_order_click)]))
+                controls.append(ft.Row([ft.Button("Save Order", on_click=save_order_click)]))
 
                 # Build a chapters_view from the controls appended after the header
                 try:
@@ -735,10 +645,9 @@ def make_show_card_details(
 
                 def use_chapter_icon(ev, ch_i, tr_i):
                     try:
-                        api = ensure_api(api_ref, CLIENT_ID)
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                        card_id = c.cardId
                         if not card_id:
-                            show_snack("Unable to determine card id", error=True)
+                            page.show_snack("Unable to determine card id", error=True)
                             return
 
                         def worker():
@@ -747,24 +656,24 @@ def make_show_card_details(
                                 ch = full.content.chapters[ch_i]
                                 chapter_icon = (getattr(ch.display, "icon16x16", None) if getattr(ch, "display", None) else None)
                                 if not chapter_icon:
-                                    show_snack("Chapter has no icon to copy", error=True)
+                                    page.show_snack("Chapter has no icon to copy", error=True)
                                     return
                                 tr = ch.tracks[tr_i]
                                 if not getattr(tr, "display", None):
                                     tr.display = (type(tr.display)() if hasattr(tr, "display") else None)
                                 tr.display.icon16x16 = chapter_icon
-                                api.update_card(full, return_card_model=False)
-                                page.open(dialog)
+                                page.update_card(full)
+                                page.show_dialog(dialog)
                                 page.update()
-                                show_snack("Track icon updated to chapter icon")
+                                page.show_snack("Track icon updated to chapter icon")
                             except Exception as ee:
-                                show_snack(f"Failed to copy chapter icon: {ee}", error=True)
+                                page.show_snack(f"Failed to copy chapter icon: {ee}", error=True)
                                 page.update()
                             show_card_details(None, full)
 
                         threading.Thread(target=worker, daemon=True).start()
                     except Exception:
-                        show_snack("Failed to start copy operation", error=True)
+                        page.show_snack("Failed to start copy operation", error=True)
 
             else:
                 controls.append(ft.Text("Chapters: None", selectable=True))
@@ -773,102 +682,90 @@ def make_show_card_details(
                 try:
                     controls = [ft.Text(json.dumps(c, indent=2), selectable=True)]
                 except Exception:
-                    controls = [ft.Text(str(card), selectable=True)]
+                    controls = [ft.Text(str(c), selectable=True)]
         except Exception:
             print("Failed to render card details:", traceback.format_exc())
-            controls = [ft.Text(str(card), selectable=True)]
+            controls = [ft.Text(str(c), selectable=True)]
 
         def close_dialog(ev):
-            try:
-                dialog.open = False
-            except Exception:
-                pass
+            logger.debug("Closing card details dialog")
+            page.pop_dialog()
             page.update()
 
         def show_json(ev):
-            try:
-                raw = json.dumps(c, indent=2)
-            except Exception:
-                try:
-                    raw = str(c)
-                except Exception:
-                    raw = "<unable to render JSON>"
+            logger.debug("Preparing raw JSON view")
+            raw = json.dumps(c.model_dump(), indent=2)
 
             def close_json(ev2):
-                try:
-                    json_dialog.open = False
-                except Exception:
-                    pass
+                page.pop_dialog()
                 page.update()
 
             # Render JSON line-by-line into monospace ft.Text controls with
             # simple per-token colouring (keys, strings, numbers, booleans/null).
-            try:
-                lines = raw.splitlines()
-                json_lines = []
-                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
-                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
-                for line in lines:
-                    m = key_value_re.match(line)
-                    if m:
-                        indent = m.group(1)
-                        key = m.group('key')
-                        val = m.group('val')
-                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
-                        # Determine value type for colouring
-                        v = val.strip()
-                        if v.startswith('"') and v.endswith('"'):
-                            val_color = ft.Colors.GREEN
-                        elif v in ('true', 'false', 'null'):
-                            val_color = ft.Colors.ORANGE
-                        elif number_re.match(v):
-                            val_color = ft.Colors.PURPLE
-                        else:
-                            val_color = ft.Colors.BLACK
+            lines = raw.splitlines()
+            json_lines = []
+            key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
+            number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
+            for line in lines:
+                m = key_value_re.match(line)
+                if m:
+                    indent = m.group(1)
+                    key = m.group('key')
+                    val = m.group('val')
+                    trailing_comma = ',' if line.rstrip().endswith(',') else ''
+                    # Determine value type for colouring
+                    v = val.strip()
+                    if v.startswith('"') and v.endswith('"'):
+                        val_color = ft.Colors.GREEN
+                    elif v in ('true', 'false', 'null'):
+                        val_color = ft.Colors.ORANGE
+                    elif number_re.match(v):
+                        val_color = ft.Colors.PURPLE
+                    else:
+                        val_color = ft.Colors.BLACK
 
-                        # spacer for indentation (approx char width)
-                        space_width = 8
-                        spacer = ft.Container(width=len(indent) * space_width)
-                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
-                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
-                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                    # spacer for indentation (approx char width)
+                    space_width = 8
+                    spacer = ft.Container(width=len(indent) * space_width)
+                    key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
+                    colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
+                    val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
+                    row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                    json_lines.append(row)
+                else:
+                    # Braces, brackets, or other lines — preserve leading indentation
+                    stripped = line.strip()
+                    # compute leading space count
+                    leading = len(line) - len(line.lstrip(' '))
+                    space_width = 8
+                    spacer = ft.Container(width=leading * space_width)
+                    if stripped in ('{', '}', '[', ']', '},', '],'):
+                        text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                         json_lines.append(row)
                     else:
-                        # Braces, brackets, or other lines — preserve leading indentation
-                        stripped = line.strip()
-                        # compute leading space count
-                        leading = len(line) - len(line.lstrip(' '))
-                        space_width = 8
-                        spacer = ft.Container(width=leading * space_width)
-                        if stripped in ('{', '}', '[', ']', '},', '],'):
-                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-                        else:
-                            # keep the original line but apply monospace
-                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
+                        # keep the original line but apply monospace
+                        text = ft.Text(line, style=ft.TextStyle(font_family='monospace'), selectable=True)
+                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        json_lines.append(row)
 
-                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
-            except Exception:
-                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
+            json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
+
             def do_copy(_e=None):
                 try:
                     # copy raw JSON to clipboard
                     try:
                         page.set_clipboard(raw)
-                        show_snack("JSON copied to clipboard")
+                        page.show_snack("JSON copied to clipboard")
                     except Exception:
                         # fallback: try assigning to page.clipboard
                         try:
                             page.clipboard = raw
-                            show_snack("JSON copied to clipboard")
+                            page.show_snack("JSON copied to clipboard")
                         except Exception as ex:
-                            show_snack(f"Failed to copy JSON: {ex}", error=True)
+                            page.show_snack(f"Failed to copy JSON: {ex}", error=True)
                 except Exception as ex:
-                    show_snack(f"Clipboard error: {ex}", error=True)
+                    page.show_snack(f"Clipboard error: {ex}", error=True)
 
             json_dialog = ft.AlertDialog(
                 title=ft.Text("Raw card JSON"),
@@ -878,164 +775,17 @@ def make_show_card_details(
                     ft.TextButton("Close", on_click=close_json),
                 ],
             )
-            try:
-                page.open(json_dialog)
-            except Exception:
-                try:
-                    page.dialog = json_dialog
-                    page.update()
-                except Exception:
-                    print("Unable to display JSON dialog in this Flet environment")
-
-        def show_version_json(payload: dict, title: str = "Version JSON", path: Path | None = None):
-            try:
-                try:
-                    raw = json.dumps(payload, indent=2)
-                except Exception:
-                    raw = str(payload)
-            except Exception:
-                raw = "<unable to render JSON>"
-
-            def close_vjson(ev2=None):
-                try:
-                    vjson_dialog.open = False
-                except Exception:
-                    pass
-                page.update()
-
-            try:
-                lines = raw.splitlines()
-                json_lines = []
-                key_value_re = re.compile(r'^(\s*)"(?P<key>(?:\\.|[^"])+)"\s*:\s*(?P<val>.*?)(,?)\s*$')
-                number_re = re.compile(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$')
-                for line in lines:
-                    m = key_value_re.match(line)
-                    if m:
-                        indent = m.group(1)
-                        key = m.group('key')
-                        val = m.group('val')
-                        trailing_comma = ',' if line.rstrip().endswith(',') else ''
-                        v = val.strip()
-                        if v.startswith('"') and v.endswith('"'):
-                            val_color = ft.Colors.GREEN
-                        elif v in ('true', 'false', 'null'):
-                            val_color = ft.Colors.ORANGE
-                        elif number_re.match(v):
-                            val_color = ft.Colors.PURPLE
-                        else:
-                            val_color = ft.Colors.BLACK
-                        space_width = 8
-                        spacer = ft.Container(width=len(indent) * space_width)
-                        key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
-                        colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
-                        val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                        json_lines.append(row)
-                    else:
-                        stripped = line.strip()
-                        leading = len(line) - len(line.lstrip(' '))
-                        space_width = 8
-                        spacer = ft.Container(width=leading * space_width)
-                        if stripped in ('{', '}', '[', ']', '},', '],'):
-                            text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-                        else:
-                            text = ft.Text(line, style=ft.TextStyle(font_family='monospace'))
-                            row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
-                            json_lines.append(row)
-
-                json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
-            except Exception:
-                json_content = ft.ListView([ft.Text(raw, selectable=True)], padding=10, height=500, width=800)
-
-            def do_copy(_e=None):
-                try:
-                    try:
-                        page.set_clipboard(raw)
-                        show_snack("JSON copied to clipboard")
-                    except Exception:
-                        try:
-                            page.clipboard = raw
-                            show_snack("JSON copied to clipboard")
-                        except Exception as ex:
-                            show_snack(f"Failed to copy JSON: {ex}", error=True)
-                except Exception as ex:
-                    show_snack(f"Clipboard error: {ex}", error=True)
-
-            # If a Path is provided, expose a Restore button which asks for confirmation
-            actions = [ft.TextButton("Copy JSON", on_click=do_copy)]
-            if path is not None:
-                def confirm_restore(_ev=None):
-                    try:
-                        # close preview dialog first
-                        try:
-                            vjson_dialog.open = False
-                        except Exception:
-                            pass
-                        page.update()
-
-                        confirm = ft.AlertDialog(
-                            title=ft.Text("Restore version"),
-                            content=ft.Text(f"Restore version {path.name}? This will post the saved card to the server and cannot be undone."),
-                            actions=[
-                                ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=lambda: do_restore_worker(path), daemon=True).start()),
-                                ft.TextButton("No", on_click=lambda e: (setattr(confirm, 'open', False), page.update())),
-                            ],
-                        )
-                        page.open(confirm)
-                        page.update()
-                    except Exception:
-                        show_snack("Failed to start restore confirmation", error=True)
-
-                def do_restore_worker(ppath: Path):
-                    try:
-                        api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                        updated = api_local.restore_version(ppath, return_card=True)
-                        try:
-                            show_snack("Version restored")
-                        except Exception:
-                            pass
-                        try:
-                            show_card_details(None, updated)
-                        except Exception:
-                            pass
-                        page.update()
-                    except Exception as ex:
-                        try:
-                            show_snack(f"Failed to restore version: {ex}", error=True)
-                        except Exception:
-                            pass
-
-                actions.append(ft.TextButton("Restore", on_click=confirm_restore))
-
-            actions.append(ft.TextButton("Close", on_click=close_vjson))
-
-            vjson_dialog = ft.AlertDialog(
-                title=ft.Text(title),
-                content=json_content,
-                actions=actions,
-            )
-            try:
-                page.open(vjson_dialog)
-            except Exception:
-                try:
-                    page.dialog = vjson_dialog
-                    page.update()
-                except Exception:
-                    print("Unable to display version JSON dialog in this Flet environment")
-
+            page.show_dialog(json_dialog)
 
         def show_versions(ev=None):
             try:
-                api = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
                 files = api.list_versions(card_id)
                 if not files:
-                    show_snack("No saved versions found for this card")
+                    page.show_snack("No saved versions found for this card")
                     return
 
                 rows = []
@@ -1061,10 +811,9 @@ def make_show_card_details(
                             title = None
                             cardid = None
                             try:
-                                payload = api.load_version(p)
-                                if isinstance(payload, dict):
-                                    title = payload.get("title") or (payload.get("metadata") or {}).get("title")
-                                    cardid = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+                                card_model = api.load_version(p, as_model=True)
+                                title = card_model.get_title()
+                                cardid = card_model.cardId
                             except Exception:
                                 title = None
                                 cardid = None
@@ -1084,20 +833,22 @@ def make_show_card_details(
                                     return f"{n:.1f}TB"
                                 readable_parts.append(_hr(size))
                             except Exception:
-                                pass
+                                logger.error(f"Failed to get file size for version file {p}")
 
                             if readable_parts:
                                 label = " — ".join(readable_parts)
                         except Exception:
+                            logger.error(f"Failed to build label for version file {p}")
                             label = p.name
                         def make_preview(pp=p):
                             def _preview(ev2=None):
                                 try:
-                                    payload = api.load_version(pp)
+                                    card = api.load_version(pp, as_model=True)
                                     # show the full card details for the saved version
-                                    show_card_details(None, payload, preview_path=pp)
+                                    show_card_details(None, card, preview_path=pp)
                                 except Exception as ex:
-                                    show_snack(f"Failed to load version: {ex}", error=True)
+                                    logger.error(f"Failed to load version for preview: {ex}")
+                                    page.show_snack(f"Failed to load version: {ex}", error=True)
                             return _preview
 
                         def make_restore(pp=p):
@@ -1105,26 +856,17 @@ def make_show_card_details(
                                 try:
                                     # ask for confirmation
                                     def do_confirm_yes(_e=None):
-                                        try:
-                                            confirm_dialog.open = False
-                                        except Exception:
-                                            pass
+                                        page.pop_dialog()
                                         page.update()
-                                        def worker():
+                                        async def worker():
                                             try:
                                                 updated = api.restore_version(pp, return_card=True)
-                                                try:
-                                                    show_snack("Version restored")
-                                                except Exception:
-                                                    pass
-                                                try:
-                                                    show_card_details(None, updated)
-                                                except Exception:
-                                                    pass
+                                                page.show_snack("Version restored")
+                                                show_card_details(None, updated)
                                                 page.update()
                                             except Exception as ex:
-                                                show_snack(f"Failed to restore version: {ex}", error=True)
-                                        threading.Thread(target=worker, daemon=True).start()
+                                                page.show_snack(f"Failed to restore version: {ex}", error=True)
+                                        page.run_task(worker)
 
                                     confirm_dialog = ft.AlertDialog(
                                         title=ft.Text("Restore version"),
@@ -1134,10 +876,10 @@ def make_show_card_details(
                                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                                         ],
                                     )
-                                    page.open(confirm_dialog)
+                                    page.show_dialog(confirm_dialog)
                                     page.update()
                                 except Exception:
-                                    show_snack("Failed to show restore confirmation", error=True)
+                                    page.show_snack("Failed to show restore confirmation", error=True)
                             return _restore
 
                         def make_delete(pp=p):
@@ -1150,17 +892,17 @@ def make_show_card_details(
                                         except Exception:
                                             pass
                                         page.update()
-                                        def worker_del():
+                                        async def worker_del():
                                             try:
                                                 pp.unlink()
-                                                show_snack(f"Deleted version {pp.name}")
-                                                versions_dialog.open = False
+                                                page.show_snack(f"Deleted version {pp.name}")
+                                                page.pop_dialog()
                                                 page.update()
                                                 show_versions(None)
                                             except Exception as ex:
-                                                show_snack(f"Failed to delete version: {ex}", error=True)
+                                                page.show_snack(f"Failed to delete version: {ex}", error=True)
                                                 logger.debug(f"delete version error: {ex}")
-                                        threading.Thread(target=worker_del, daemon=True).start()
+                                        page.run_task(worker_del)
 
                                     confirm_del = ft.AlertDialog(
                                         title=ft.Text("Delete version"),
@@ -1170,10 +912,10 @@ def make_show_card_details(
                                             ft.TextButton("No", on_click=lambda e: (setattr(confirm_del, 'open', False), page.update())),
                                         ],
                                     )
-                                    page.open(confirm_del)
+                                    page.show_dialog(confirm_del)
                                     page.update()
                                 except Exception:
-                                    show_snack("Failed to show delete confirmation", error=True)
+                                    page.show_snack("Failed to show delete confirmation", error=True)
                             return _delete
 
                         rows.append(
@@ -1193,7 +935,7 @@ def make_show_card_details(
                     def _delete_all(ev=None):
                         try:
                             if dir_path is None:
-                                show_snack("No versions directory found", error=True)
+                                page.show_snack("No versions directory found", error=True)
                                 return
 
                             def do_yes(_e=None):
@@ -1209,31 +951,15 @@ def make_show_card_details(
                                             try:
                                                 if fpath.is_file():
                                                     fpath.unlink()
-                                            except Exception:
-                                                pass
-                                        try:
-                                            # attempt to remove dir if empty
-                                            dir_path.rmdir()
-                                        except Exception:
-                                            pass
-                                        try:
-                                            show_snack("All versions deleted")
-                                        except Exception:
-                                            pass
-                                        try:
-                                            versions_dialog.open = False
-                                        except Exception:
-                                            pass
+                                            except Exception as ex:
+                                                logger.debug(f"Failed to delete version file {fpath}: {ex}")
+                                        dir_path.rmdir()
+                                        page.show_snack("All versions deleted")
+                                        page.pop_dialog()
                                         page.update()
-                                        try:
-                                            show_versions(None)
-                                        except Exception:
-                                            pass
+                                        show_versions(None)
                                     except Exception as ex:
-                                        try:
-                                            show_snack(f"Failed to delete all versions: {ex}", error=True)
-                                        except Exception:
-                                            pass
+                                        page.show_snack(f"Failed to delete all versions: {ex}", error=True)
 
                                 threading.Thread(target=worker_all, daemon=True).start()
 
@@ -1245,10 +971,10 @@ def make_show_card_details(
                                     ft.TextButton("No", on_click=lambda e: (setattr(confirm_all, 'open', False), page.update())),
                                 ],
                             )
-                            page.open(confirm_all)
+                            page.show_dialog(confirm_all)
                             page.update()
                         except Exception:
-                            show_snack("Failed to show delete-all confirmation", error=True)
+                            page.show_snack("Failed to show delete-all confirmation", error=True)
 
                     return _delete_all
 
@@ -1261,7 +987,7 @@ def make_show_card_details(
                     ],
                 )
                 try:
-                    page.open(versions_dialog)
+                    page.show_dialog(versions_dialog)
                     page.update()
                 except Exception:
                     try:
@@ -1270,27 +996,23 @@ def make_show_card_details(
                     except Exception:
                         pass
             except Exception as ex:
-                show_snack(f"Failed to list versions: {ex}", error=True)
+                page.show_snack(f"Failed to list versions: {ex}", error=True)
 
         def show_add_cover(ev):
             from yoto_app.add_cover_dialog import add_cover_dialog
 
             add_cover_dialog(
                 page,
-                api_ref,
                 c,
-                fetch_playlists_sync,
                 Card,
-                CLIENT_ID,
                 on_close=lambda e=None: show_card_details(None, c, preview_path=preview_path),
             )
 
         def relabel_keys(ev=None):
             try:
-                api = ensure_api(api_ref, CLIENT_ID)
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
 
                 def worker():
@@ -1298,25 +1020,24 @@ def make_show_card_details(
                         full = api.get_card(card_id)
                         # rewrite 'key' sequentially across tracks
                         updated = api.rewrite_track_fields(full, field="key", sequential=True)
-                        api.update_card(updated, return_card_model=False)
-                        show_snack("Track keys relabelled")
+                        page.update_card(updated)
+                        page.show_snack("Track keys relabelled")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             pass
                     except Exception as ex:
-                        show_snack(f"Failed to relabel keys: {ex}", error=True)
+                        page.show_snack(f"Failed to relabel keys: {ex}", error=True)
 
                 threading.Thread(target=worker, daemon=True).start()
             except Exception:
-                show_snack("Failed to start relabel keys operation", error=True)
+                page.show_snack("Failed to start relabel keys operation", error=True)
 
         def relabel_overlays(ev=None):
             try:
-                api = ensure_api(api_ref, CLIENT_ID)
-                card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                card_id = c.cardId
                 if not card_id:
-                    show_snack("Unable to determine card id", error=True)
+                    page.show_snack("Unable to determine card id", error=True)
                     return
 
                 def worker():
@@ -1325,42 +1046,38 @@ def make_show_card_details(
                         # rewrite 'overlayLabel' sequentially
                         updated = api.rewrite_track_fields(full, field="overlayLabel", sequential=True)
                         updated = api.rewrite_chapter_fields(updated, field="overlayLabel", sequential=True)
-                        api.update_card(updated, return_card_model=False)
-                        show_snack("Overlay labels relabelled")
+                        page.update_card(updated)
+                        page.show_snack("Overlay labels relabelled")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             pass
                     except Exception as ex:
-                        show_snack(f"Failed to relabel overlays: {ex}", error=True)
+                        page.show_snack(f"Failed to relabel overlays: {ex}", error=True)
 
                 threading.Thread(target=worker, daemon=True).start()
             except Exception:
-                show_snack("Failed to start relabel overlays operation", error=True)
+                page.show_snack("Failed to start relabel overlays operation", error=True)
 
         def merge_chapters(ev=None):
             try:
                 def do_merge(_e=None):
+                    page.pop_dialog()
                     try:
-                        confirm_dialog.open = False
-                    except Exception:
-                        pass
-                    try:
-                        api = ensure_api(api_ref, CLIENT_ID)
-                        card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                        card_id = c.cardId
                         if not card_id:
-                            show_snack("Unable to determine card id", error=True)
+                            page.show_snack("Unable to determine card id", error=True)
                             return
                         full = api.get_card(card_id)
                         updated = api.merge_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
-                        api.update_card(updated, return_card_model=False)
-                        show_snack("Chapters merged")
+                        page.update_card(updated)
+                        page.show_snack("Chapters merged")
                         try:
                             show_card_details(None, updated)
                         except Exception:
                             logger.debug("merge_chapters: failed to refresh details view after merge")
                     except Exception as ex:
-                        show_snack(f"Failed to merge chapters: {ex}", error=True)
+                        page.show_snack(f"Failed to merge chapters: {ex}", error=True)
 
                 confirm_dialog = ft.AlertDialog(
                     title=ft.Text("Merge chapters"),
@@ -1382,31 +1099,27 @@ Merging will result in:
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                     ],
                 )
-                page.open(confirm_dialog)
+                page.show_dialog(confirm_dialog)
             except Exception:
-                show_snack("Failed to start merge chapters operation", error=True)
+                page.show_snack("Failed to start merge chapters operation", error=True)
 
         def expand_all_tracks(ev=None):
             try:
                 def do_expand(_e=None):
-                    try:
-                        confirm_expand.open = False
-                    except Exception:
-                        pass
+                    page.pop_dialog()
                     page.update()
 
                     def worker():
                         try:
-                            api = ensure_api(api_ref, CLIENT_ID)
-                            card_id = c.get("cardId") or c.get("id") or c.get("contentId")
+                            card_id = c.cardId
                             if not card_id:
-                                show_snack("Unable to determine card id", error=True)
+                                page.show_snack("Unable to determine card id", error=True)
                                 return
                             full = api.get_card(card_id)
                             updated = api.expand_all_tracks_into_chapters(full, reset_overlay_labels=True, reset_track_keys=True)
-                            api.update_card(updated, return_card_model=False)
+                            page.update_card(updated)
                             try:
-                                show_snack("Expanded all tracks into individual chapters")
+                                page.show_snack("Expanded all tracks into individual chapters")
                             except Exception:
                                 pass
                             try:
@@ -1416,7 +1129,7 @@ Merging will result in:
                             page.update()
                         except Exception as ex:
                             try:
-                                show_snack(f"Failed to expand tracks: {ex}", error=True)
+                                page.show_snack(f"Failed to expand tracks: {ex}", error=True)
                             except Exception:
                                 pass
 
@@ -1430,44 +1143,18 @@ Merging will result in:
                         ft.TextButton("No", on_click=lambda e: (setattr(confirm_expand, 'open', False), page.update())),
                     ],
                 )
-                page.open(confirm_expand)
+                page.show_dialog(confirm_expand)
                 page.update()
             except Exception:
-                show_snack("Failed to start expand operation", error=True)
+                page.show_snack("Failed to start expand operation", error=True)
 
         def replace_icons(ev):
-            try:
-                # Start background replace with persistent badge
-                from yoto_up.yoto_app.replace_icons import start_replace_icons_background
-                start_replace_icons_background(
-                    page,
-                    api_ref,
-                    c,
-                    fetch_playlists_sync,
-                    ensure_api,
-                    CLIENT_ID,
-                    show_snack,
-                    playlists_list,
-                    make_playlist_row,
-                    show_card_details,
-                )
-            except Exception:
-                # Fallback to the old dialog if background starter isn't available
-                try:
-                    show_replace_icons_dialog(
-                        page,
-                        api_ref,
-                        c,
-                        fetch_playlists_sync,
-                        ensure_api,
-                        CLIENT_ID,
-                        show_snack,
-                        playlists_list,
-                        make_playlist_row,
-                        show_card_details,
-                    )
-                except Exception:
-                    pass
+            # Start background replace with persistent badge
+            from yoto_up.yoto_app.replace_icons import start_replace_icons_background
+            start_replace_icons_background(
+                page,
+                c,
+            )
 
         # popup dialog for track-related actions (shows title + cover image)
         tracks_dialog = None
@@ -1475,46 +1162,11 @@ Merging will result in:
         def show_tracks_popup(_ev=None):
             nonlocal tracks_dialog
             try:
-                title_text = c.get("title", "") if isinstance(c, dict) else str(c)
-                cover_img = None
-                try:
-                    cover = (c.get("metadata") or {}).get("cover") or {}
-                    for key in ("imageL", "imageM", "imageS", "image"):
-                        url_or_field = cover.get(key)
-                        if not url_or_field:
-                            continue
-                        # remote URL
-                            try:
-                                if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
-                                    try:
-                                        cache_fn = getattr(page, 'get_cached_cover', None)
-                                        if callable(cache_fn):
-                                            p = cache_fn(url_or_field)
-                                            if p:
-                                                cover_img = ft.Image(src=str(p), width=160, height=160)
-                                            else:
-                                                cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                        else:
-                                            cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                    except Exception:
-                                        cover_img = ft.Image(src=url_or_field, width=160, height=160)
-                                    break
-                            except Exception:
-                                pass
-                        ## try cached icon path
-                        #try:
-                        #    api_local = api_ref.get("api") or ensure_api(api_ref, CLIENT_ID)
-                        #    tp = api_local.get_icon_cache_path(url_or_field)
-                        #    if tp and Path(tp).exists():
-                        #        cover_img = ft.Image(src=str(tp), width=160, height=160)
-                        #        break
-                        #except Exception:
-                        #    pass
-                except Exception:
-                    pass
+                title_text = c.get_title()
+                cover_img = c.get_cover_url()
 
                 body = []
-                if cover_img:
+                if cover_img is not None:
                     body.append(ft.Row([cover_img, ft.Column([ft.Text(title_text, weight=ft.FontWeight.BOLD)])], alignment=ft.MainAxisAlignment.START, spacing=12))
                 else:
                     body.append(ft.Text(title_text, weight=ft.FontWeight.BOLD))
@@ -1536,22 +1188,19 @@ Renumbering keys will assign sequential keys to all tracks.
 
                 # build chapters + tracks view (showing track title, key and overlayLabel)
                 try:
-                    chapters = (c.get("content") or {}).get("chapters") or []
+                    chapters = getattr(getattr(c, 'content', None), 'chapters', []) or []
                     chapter_rows = []
                     for ch_idx, ch in enumerate(chapters):
-                        ch_title = ch.get("title", "") if isinstance(ch, dict) else str(ch)
+                        ch_title = getattr(ch, 'title', '')
                         header = ft.Text(f"Chapter {ch_idx + 1}. {ch_title}", weight=ft.FontWeight.BOLD)
                         track_items = []
-                        tracks = ch.get("tracks") if isinstance(ch, dict) else None
+                        tracks = getattr(ch, 'tracks', None) or []
                         if tracks:
                             for t_idx, t in enumerate(tracks, 1):
-                                if isinstance(t, dict):
-                                    t_title = t.get("title", "")
-                                    t_key = t.get("key", "")
-                                    t_overlay = t.get("overlayLabel", "")
-                                    track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
-                                else:
-                                    track_items.append(ft.Text(f"• {str(t)}", size=12))
+                                t_title = getattr(t, 'title', '')
+                                t_key = getattr(t, 'key', '')
+                                t_overlay = getattr(t, 'overlayLabel', '')
+                                track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
                         else:
                             track_items.append(ft.Text("(no tracks)", size=12))
 
@@ -1571,13 +1220,13 @@ Renumbering keys will assign sequential keys to all tracks.
                     title=ft.Text("Track actions"),
                     content=ft.Column(body, spacing=8),
                     actions=[
-                        ft.ElevatedButton(
+                        ft.Button(
                             "Renumber overlayLabels",
                             on_click=lambda ev: (
                                 relabel_overlays(ev),
                             ),
                         ),
-                        ft.ElevatedButton(
+                        ft.Button(
                             "Renumber keys",
                             on_click=lambda ev: (
                                 relabel_keys(ev),
@@ -1588,17 +1237,10 @@ Renumbering keys will assign sequential keys to all tracks.
                         ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
                     ],
                 )
-                try:
-                    page.open(tracks_dialog)
-                    page.update()
-                except Exception:
-                    try:
-                        page.dialog = tracks_dialog
-                        page.update()
-                    except Exception:
-                        pass
+                page.show_dialog(tracks_dialog)
+                page.update()
             except Exception:
-                pass
+                logger.exception("Failed to show tracks popup")
 
         try:
             win_h = getattr(page, "window_height", None) or getattr(page, "height", None)
@@ -1615,83 +1257,72 @@ Renumbering keys will assign sequential keys to all tracks.
             dlg_h, dlg_w = 500, 800
 
         # Build dialog content. If we found a cover, place it in a right-hand column
-        try:
-            if cover_src:
-                # thumbnail sizing: keep it reasonably sized relative to dialog
-                thumb_w = min(320, max(120, int(dlg_w * 0.28)))
-                thumb_h = max(64, min(320, dlg_h - 120))
+        if cover_src:
+            # thumbnail sizing: keep it reasonably sized relative to dialog
+            thumb_w = min(320, max(120, int(dlg_w * 0.28)))
+            thumb_h = max(64, min(320, dlg_h - 120))
 
+            try:
+                # clicking the cover should open the Add Cover dialog
+                img_w = ft.Image(src=cover_src, width=thumb_w, height=thumb_h)
                 try:
-                    # clicking the cover should open the Add Cover dialog
-                    img_w = ft.Image(src=cover_src, width=thumb_w, height=thumb_h)
-                    try:
-                        cover_widget = ft.GestureDetector(content=img_w, on_tap=lambda ev: show_add_cover(ev))
-                    except Exception:
-                        cover_widget = ft.GestureDetector(content=img_w, on_tap=show_add_cover)
+                    cover_widget = ft.GestureDetector(content=img_w, on_tap=lambda ev: show_add_cover(ev))
                 except Exception:
-                    # fallback: non-interactive image
-                    cover_widget = ft.Image(src=cover_src)
+                    cover_widget = ft.GestureDetector(content=img_w, on_tap=show_add_cover)
+            except Exception:
+                # fallback: non-interactive image
+                cover_widget = ft.Image(src=cover_src)
 
-                # left pane should contain header/metadata controls (use Column so it sizes to content)
-                left_col = ft.Column(header_controls, spacing=6)
-                right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
+            # left pane should contain header/metadata controls (use Column so it sizes to content)
+            left_col = ft.Column(header_controls, spacing=6)
+            right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
 
-                header_row = ft.Row([
-                    ft.Container(content=left_col, expand=True),
-                    ft.Container(width=12),
-                    right_col,
-                ], alignment=ft.MainAxisAlignment.START)
+            header_row = ft.Row([
+                ft.Container(content=left_col, expand=True),
+                ft.Container(width=12),
+                right_col,
+            ], alignment=ft.MainAxisAlignment.START)
 
-                # Build a single scrolling ListView for the dialog content so header + chapters scroll together
-                parts = [header_row]
-                if chapters_view:
-                    parts.append(ft.Divider())
-                    parts.append(chapters_view)
+            # Build a single scrolling ListView for the dialog content so header + chapters scroll together
+            parts = [header_row]
+            if chapters_view:
+                parts.append(ft.Divider())
+                parts.append(chapters_view)
 
-                dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
-            else:
-                dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
-        except Exception:
+            dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
+        else:
             dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
         def export_card(_ev=None):
             try:
                 def worker():
                     try:
                         Path("cards").mkdir(exist_ok=True)
-                        if isinstance(c, dict):
-                            data = c
-                        else:
-                            try:
-                                data = c.model_dump(exclude_none=True)
-                            except Exception:
-                                data = c
-                        title_part = (c.get('title') or '') if isinstance(c, dict) else ''
-                        id_part = (c.get('cardId') or c.get('id') or c.get('contentId') or 'card') if isinstance(c, dict) else 'card'
+                        try:
+                            data = c.model_dump(exclude_none=True)
+                        except Exception:
+                            data = {}
+                        title_part = getattr(c, 'title', '') or ''
+                        id_part = getattr(c, 'cardId', 'card') or 'card'
                         safe_title = re.sub(r"[^0-9A-Za-z._-]", "-", str(title_part))[:80]
                         fname = Path('cards') / f"{safe_title}_{id_part}.json"
                         with fname.open('w', encoding='utf-8') as f:
                             f.write(json.dumps(data, indent=2, ensure_ascii=False))
                     except Exception as e:
                         try:
-                            show_snack(f"Export failed: {e}", error=True)
+                            page.show_snack(f"Export failed: {e}", error=True)
                         except Exception:
                             pass
                 threading.Thread(target=worker, daemon=True).start()
-                try:
-                    show_snack("Export started...")
-                except Exception:
-                    pass
+                page.show_snack("Export started...")
             except Exception:
-                try:
-                    show_snack("Failed to start export", error=True)
-                except Exception:
-                    pass
+                logger.exception("Failed to start export")
+                page.show_snack("Failed to start export", error=True)
 
         # If preview_path is provided, we're showing a saved version preview and
         # expose a Restore button in the dialog actions.
         # Place the JSON and Versions buttons in the dialog title (top-right)
         dialog_actions = [
-            ft.ElevatedButton("Save Order", on_click=save_order_click),
+            ft.Button("Save Order", on_click=save_order_click),
             ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
         ]
 
@@ -1717,31 +1348,21 @@ Renumbering keys will assign sequential keys to all tracks.
                 def _restore(ev2=None):
                     try:
                         # close this dialog
-                        try:
-                            dialog.open = False
-                        except Exception:
-                            pass
+                        page.pop_dialog()
                         page.update()
 
-                        def worker():
+                        async def worker():
                             try:
-                                api_local = ensure_api(api_ref, CLIENT_ID)
-                                updated = api_local.restore_version(ppath, return_card=True)
-                                try:
-                                    show_snack("Version restored")
-                                except Exception:
-                                    pass
-                                try:
-                                    show_card_details(None, updated)
-                                except Exception:
-                                    pass
+                                updated = api.restore_version(ppath, return_card=True)
+                                page.show_snack("Version restored")
+                                show_card_details(None, updated)
                                 page.update()
                             except Exception as ex:
-                                show_snack(f"Failed to restore version: {ex}", error=True)
+                                page.show_snack(f"Failed to restore version: {ex}", error=True)
 
-                        threading.Thread(target=worker, daemon=True).start()
+                        page.run_task(worker)
                     except Exception:
-                        show_snack("Failed to start restore", error=True)
+                        page.show_snack("Failed to start restore", error=True)
 
                 return _restore
 
@@ -1754,16 +1375,11 @@ Renumbering keys will assign sequential keys to all tracks.
                 ft.TextButton(
                     "Edit",
                     on_click=lambda ev: (
-                        setattr(dialog, 'open', False),
+                        page.pop_dialog(),
                         page.update(),
                         show_edit_card_dialog(
                             c,
                             page,
-                            ensure_api,
-                            CLIENT_ID,
-                            status_ctrl,
-                            fetch_playlists_sync,
-                            show_card_details=show_card_details,
                         ),
                     ),
                 ),
@@ -1773,13 +1389,6 @@ Renumbering keys will assign sequential keys to all tracks.
                 ft.TextButton("Close", on_click=close_dialog),
             ],
         )
-        try:
-            page.open(dialog)
-        except Exception:
-            try:
-                page.dialog = dialog
-                page.update()
-            except Exception:
-                print("Unable to display dialog in this Flet environment")
+        page.show_dialog(dialog)
 
     return show_card_details

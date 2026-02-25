@@ -36,13 +36,14 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     - search box to filter cached icons
     - 'Search YotoIcons' button to trigger online search (uses ensure_api/api_ref)
     """
+    logger.debug("Building Icon Browser panel")
     # top-level panel: header + row with left (scrollable icons) and right (fixed details)
     panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD),
                            ft.Button("Refresh Index", on_click=lambda e: build_index())])
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())
-    online_search_btn = ft.ElevatedButton("Search YotoIcons online", on_click=lambda e: do_online_search())
+    online_search_btn = ft.Button("Search YotoIcons online", on_click=lambda e: do_online_search())
     # keep the main search field and the online search button in the top row; the Filter button
     # will be visually grouped with the fuzzy controls below for clarity.
     # Group fuzzy controls + filter button into a bordered container so it's clear they belong together.
@@ -475,11 +476,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         new_w, new_h = (min(160, 160), min(160, 160))
                 else:
                     new_w, new_h = (min(160, 160), min(160, 160))
-                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.ImageFit.CONTAIN)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.BoxFit.CONTAIN)
             except Exception:
                 # final fallback
-                large_preview = ft.Image(src_base64=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.ImageFit.CONTAIN)
-            small_preview = ft.Image(src_base64=get_base64_from_path(Path(src)), width=16, height=16)
+                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.BoxFit.CONTAIN)
+            small_preview = ft.Image(src=get_base64_from_path(Path(src)), width=16, height=16)
             details_panel.controls.append(large_preview)
             details_panel.controls.append(small_preview)
             # show human-friendly title if available
@@ -538,9 +539,9 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     show_snack('Unable to open folder', True)
 
             btn_row = ft.Row([
-                ft.ElevatedButton("Use this icon", on_click=set_selected),
+                ft.Button("Use this icon", on_click=set_selected),
                 ft.TextButton("Open folder", on_click=open_in_explorer),
-                ft.ElevatedButton("Edit Icon", on_click=lambda e: open_icon_editor())
+                ft.Button("Edit Icon", on_click=lambda e: open_icon_editor())
             ])
             details_panel.controls.append(btn_row)
         except Exception:
@@ -553,8 +554,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         #        ft.Text(f"Name: {os.path.basename(path)}"),
         #        ft.Text(f"Source: {'Official cache' if path.startswith('.yoto_icon_cache') else ('YotoIcons' if path.startswith('.yotoicons_cache') else 'Local')}"),
         #    ], scroll=ft.ScrollMode.AUTO)
-        #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.close(dlg))], scrollable=True)
-        #    page.open(dlg)
+        #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())], scrollable=True)
+        #    page.show_dialog(dlg)
         #except Exception:
         #    pass
         page.update()
@@ -611,7 +612,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 try:
                     dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
                     page.dialog = dlg
-                    page.open(dlg)
+                    page.show_dialog(dlg)
                     page.update()
                 except Exception:
                     logger.exception("Failed to open editor dialog fallback")
@@ -630,12 +631,13 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             logger.exception("open_icon_editor failed")
 
     def render_icons(icons):
+        logger.debug(f"render_icons: rendering {len(icons)} icons")
         icons_container.controls.clear()
         for path in icons:
             # Load b64 thumbnail image data for each icon
             try:
 
-                img = ft.Image(src_base64=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
+                img = ft.Image(src=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
                 # attach on_click in the constructor so Flet will register the handler
                 def _on_click(e, p=path):
                     # small debug feedback
@@ -645,6 +647,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 icons_container.controls.append(btn)
             except Exception as ex:
                 logger.exception(f"Failed to load icon {path}: {ex}")
+        logger.debug("Finished rendering icons, updating page")
         page.update()
 
     def do_filter():
@@ -900,6 +903,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     # the active filter so the displayed icons reflect updated caches.
     try:
         def _on_cache_refreshed():
+            logger.debug("Icon cache refreshed callback triggered")
             nonlocal _meta_loaded, _index_built
             try:
                 _meta_loaded = False
@@ -917,6 +921,6 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             page.icon_cache_refreshed_callbacks = []
         page.icon_cache_refreshed_callbacks.append(_on_cache_refreshed)
     except Exception:
-        pass
+        logger.error("Failed to register cache refreshed callback on page")
 
     return {"panel": panel}

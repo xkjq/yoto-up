@@ -119,8 +119,8 @@ def open_image_stamp_dialog(editor, e):
 
     files = []
     status = ft.Text("")
-    preview = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
-    preview_applied = ft.Image(width=64, height=64, fit=ft.ImageFit.CONTAIN)
+    preview = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
+    preview_applied = ft.Image(width=64, height=64, fit=ft.BoxFit.CONTAIN)
 
     provided_dir = STAMPS_DIR / 'provided'
     seed_stamps_if_empty(provided_dir)
@@ -191,10 +191,10 @@ def open_image_stamp_dialog(editor, e):
     if not files:
         status.value = "No saved small icons found in .stamps or saved_icons"
         content = ft.Column([status], spacing=8)
-        dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("OK", on_click=lambda ev: page.close(dlg))], open=False)
+        dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("OK", on_click=lambda ev: page.pop_dialog())], open=False)
         STAMP_DIALOG = dlg
         if page:
-            page.open(dlg)
+            page.show_dialog(dlg)
         return
 
     # build dropdown (labels mark imported vs stamps)
@@ -245,7 +245,7 @@ def open_image_stamp_dialog(editor, e):
             pass
 
         page = ev.page if ev and hasattr(ev, 'page') else None
-        page.open(STAMP_DIALOG)
+        page.show_dialog(STAMP_DIALOG)
 
         
 
@@ -324,7 +324,7 @@ def open_image_stamp_dialog(editor, e):
                 tmpf = _temp.NamedTemporaryFile(suffix='.png', delete=False)
                 thumb.save(tmpf.name)
 
-                img_widget = ft.Image(src_base64=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.ImageFit.CONTAIN)
+                img_widget = ft.Image(src=get_base64_from_path(Path(tmpf.name)), width=48, height=48, fit=ft.BoxFit.CONTAIN)
                 try:
                     img_ctrl = ft.Container(content=img_widget, width=48, height=48, on_click=lambda ev, lbl=label: select_stamp(lbl, ev))
                 except Exception:
@@ -381,13 +381,13 @@ def open_image_stamp_dialog(editor, e):
                                         logger.exception("Error deleting imported stamp")
                                     finally:
                                         try:
-                                            page.close(confirm_dlg)
+                                            page.pop_dialog()
                                         except Exception:
                                             pass
 
-                                confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {lbl}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(confirm_dlg)), ft.TextButton("Delete", on_click=_do_delete)], open=False)
+                                confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {lbl}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()), ft.TextButton("Delete", on_click=_do_delete)], open=False)
                                 try:
-                                    page.open(confirm_dlg)
+                                    page.show_dialog(confirm_dlg)
                                 except Exception:
                                     pass
                             except Exception:
@@ -432,7 +432,7 @@ def open_image_stamp_dialog(editor, e):
                     build_stamp_grid(filter_dropdown.value)
                 except Exception:
                     pass
-            filter_dropdown.on_change = on_filter_change
+            filter_dropdown.on_select = on_filter_change
             # initial build with current filter
             build_stamp_grid(filter_dropdown.value)
             # place the stamp_grid inside a scrollable Column so the gallery can scroll
@@ -443,7 +443,12 @@ def open_image_stamp_dialog(editor, e):
             except Exception:
                 pass
             gallery_content = ft.Column([ft.Row([ft.Text('Filter:'), filter_dropdown]), grid_container], spacing=8, width=420)
-            dlg_gallery = ft.AlertDialog(title=ft.Text("Stamp Gallery"), content=gallery_content, actions=[ft.TextButton("Close", on_click=lambda e: page_local.close(dlg_gallery))], open=False)
+            dlg_gallery = ft.AlertDialog(
+                title=ft.Text("Stamp Gallery"),
+                content=gallery_content,
+                actions=[ft.TextButton("Close", on_click=lambda e: page_local.pop_dialog())],
+                open=False,
+            )
             global STAMP_GALLERY_DIALOG
             STAMP_GALLERY_DIALOG = dlg_gallery
             try:
@@ -456,11 +461,11 @@ def open_image_stamp_dialog(editor, e):
                 pass
             gallery_dialog = dlg_gallery
             if page_local:
-                page_local.open(dlg_gallery)
+                page_local.show_dialog(dlg_gallery)
         except Exception:
             logger.exception("Error opening stamp gallery dialog")
 
-    import_btn = ft.ElevatedButton("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
+    import_btn = ft.Button("Import sprite sheet", on_click=lambda ev: open_import_dialog(ev))
     pos_x = ft.TextField(label="X (left)", value="0", width=80)
     pos_y = ft.TextField(label="Y (top)", value="0", width=80)
     opaque_only = ft.Checkbox(label="Ignore transparent pixels (stamp only opaque)", value=False)
@@ -483,7 +488,7 @@ def open_image_stamp_dialog(editor, e):
             picker = ColourPicker(current_color=chroma_color_field.value, saved_dir=editor._ensure_saved_dir(), on_color_selected=on_chroma_selected)
             dialog = picker.build_dialog(page=page_local, caller_page_dialog=page_local.dialog if page_local else None)
             if page_local and dialog:
-                page_local.open(dialog)
+                page_local.show_dialog(dialog)
         except Exception:
             pass
 
@@ -947,7 +952,7 @@ def open_image_stamp_dialog(editor, e):
         except Exception as ex:
             logger.exception(f"Error previewing selected stamp image: {ex}")
 
-    dropdown.on_change = on_select
+    dropdown.on_select = on_select
 
     def do_stamp(ev):
         fn = dropdown.value
@@ -990,7 +995,7 @@ def open_image_stamp_dialog(editor, e):
                             stamp[ty][tx] = v
             editor._stamp_pixels(stamp)
             try:
-                page.close(dlg)
+                page.pop_dialog()
             except Exception:
                 pass
         except Exception as ex:
@@ -1054,14 +1059,14 @@ def open_image_stamp_dialog(editor, e):
             finally:
                 try:
                     global STAMP_GALLERY_DIALOG
-                    page.open(STAMP_GALLERY_DIALOG)
+                    page.show_dialog(STAMP_GALLERY_DIALOG)
                 except Exception:
                     pass
 
         global STAMP_GALLERY_DIALOG
-        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {os.path.basename(mapped)}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.open(STAMP_GALLERY_DIALOG)), ft.TextButton("Delete", on_click=_do_delete_selected)], open=False)
+        confirm_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Stamp"), content=ft.Text(f"Delete {os.path.basename(mapped)}?"), actions=[ft.TextButton("Cancel", on_click=lambda e: page.show_dialog(STAMP_GALLERY_DIALOG)), ft.TextButton("Delete", on_click=_do_delete_selected)], open=False)
         try:
-            page.open(confirm_dlg)
+            page.show_dialog(confirm_dlg)
         except Exception:
             pass
 
@@ -1145,7 +1150,7 @@ def open_image_stamp_dialog(editor, e):
             except Exception:
                 pass
 
-        group_dropdown.on_change = on_group_change
+        group_dropdown.on_select = on_group_change
 
         def _do_delete_group(ev3):
             try:
@@ -1199,19 +1204,19 @@ def open_image_stamp_dialog(editor, e):
                 logger.exception('Error deleting imported sheet group')
             finally:
                 try:
-                    page.close(group_dlg)
+                    page.pop_dialog()
                 except Exception:
                     pass
 
-        group_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Column([group_dropdown, info], spacing=8), actions=[ft.TextButton("Cancel", on_click=lambda e: page.close(group_dlg)), ft.TextButton("Delete", on_click=_do_delete_group)], open=False)
+        group_dlg = ft.AlertDialog(title=ft.Text("Delete Imported Sheet"), content=ft.Column([group_dropdown, info], spacing=8), actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()), ft.TextButton("Delete", on_click=_do_delete_group)], open=False)
         try:
-            page.open(group_dlg)
+            page.show_dialog(group_dlg)
         except Exception:
             pass
 
     pos_x.on_change = lambda ev: on_select(None)
     pos_y.on_change = lambda ev: on_select(None)
-    scale_dropdown.on_change = lambda ev: on_select(None)
+    scale_dropdown.on_select = lambda ev: on_select(None)
 
     logger.debug(f"Stamp dialog initialized: {len(files)} files found, option_map keys: {list(option_map.keys())}")
 
@@ -1227,11 +1232,11 @@ def open_image_stamp_dialog(editor, e):
         status
     ], spacing=8, width=620)
 
-    dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: page.close(dlg))], open=False)
+    dlg = ft.AlertDialog(title=ft.Text("Stamp Image"), content=content, actions=[ft.TextButton("Stamp", on_click=do_stamp), ft.TextButton("Cancel", on_click=lambda ev: page.pop_dialog())], open=False)
     STAMP_DIALOG = dlg
     if page:
         page.dialog = dlg
-        page.open(dlg)
+        page.show_dialog(dlg)
         try:
             if not dropdown.value and dropdown.options:
                 dropdown.value = dropdown.options[0].text if hasattr(dropdown.options[0], 'text') else getattr(dropdown.options[0], 'key', None) or getattr(dropdown.options[0], 'value', None)

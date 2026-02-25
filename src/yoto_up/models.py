@@ -41,6 +41,18 @@ class Track(BaseModel):
     ambient: Optional[Ambient] = None
     hasStreams: Optional[bool] = None
 
+    def get_title(self) -> str:
+        try:
+            return self.title or ""
+        except Exception:
+            return ""
+
+    def get_icon_field(self) -> Optional[str]:
+        try:
+            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
+        except Exception:
+            return None
+
 class ChapterDisplay(BaseModel):
     icon16x16: Optional[str] = None
 
@@ -60,6 +72,25 @@ class Chapter(BaseModel):
     hasStreams: Optional[bool] = None
     ambient: Optional[Ambient] = None
     availableFrom: Optional[str] = None
+
+
+    def get_title(self) -> str:
+        try:
+            return self.title or ""
+        except Exception:
+            return ""
+
+    def get_icon_field(self) -> Optional[str]:
+        try:
+            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
+        except Exception:
+            return None
+    
+    def get_tracks(self) -> List[Track]:
+        try:
+            return self.tracks or []
+        except Exception:
+            return []
 
 class CardStatus(BaseModel):
     name: Literal["new", "inprogress", "complete", "live", "archived"]
@@ -126,6 +157,138 @@ class Card(BaseModel):
     createdByClientId: Optional[str] = None
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
+
+    def get_metadata(self) -> CardMetadata:
+        """Return the card's metadata, or an empty CardMetadata if not available."""
+        try:
+            return self.metadata or CardMetadata()
+        except Exception:
+            logger.warning(f"Failed to get metadata for card {self.cardId}")
+            return CardMetadata()
+
+    def get_id(self) -> Optional[str]:
+        """Return the cardId for the card (cardId only)."""
+        try:
+            return self.cardId
+        except Exception:
+            return None
+
+    def get_author(self) -> Optional[str]:
+        try:
+            meta = self.get_metadata()
+            return getattr(meta, "author", None)
+        except Exception:
+            return None
+
+    def get_category(self) -> Optional[str]:
+        try:
+            meta = self.get_metadata()
+            return getattr(meta, "category", None) or ""
+        except Exception:
+            return ""
+
+    def get_genres(self) -> list[str]:
+        """Return a list of genres for the card (robust to string or list forms)."""
+        try:
+            meta = self.get_metadata()
+            # Prefer structured metadata.genre
+            genres = getattr(meta, "genre", None) or []
+            if isinstance(genres, str):
+                return [g.strip() for g in genres.split(",") if g.strip()]
+            if genres:
+                return [g for g in genres if g]
+            # Fallback: inspect raw payload for alternate keys
+            try:
+                d = self.model_dump(exclude_none=True)
+                meta_raw = d.get("metadata") or {}
+                alt = meta_raw.get("genres") or meta_raw.get("genre") or []
+                if isinstance(alt, str):
+                    return [g.strip() for g in alt.split(",") if g.strip()]
+                return [g for g in alt if g]
+            except Exception:
+                return []
+        except Exception:
+            return []
+
+    def get_title(self) -> str:
+        """Return the card's title, or an empty string if not available."""
+        return self.title
+
+
+    def get_tags(self) -> list[str]:
+        """Return combined tags from card-level and metadata-level tags."""
+        try:
+            tags = []
+            if self.tags:
+                tags.extend([t for t in self.tags if t])
+            meta = self.get_metadata()
+            mtags = getattr(meta, "tags", None) or []
+            if isinstance(mtags, str):
+                tags.extend([t.strip() for t in mtags.split(",") if t.strip()])
+            else:
+                tags.extend([t for t in (mtags or []) if t])
+            return tags
+        except Exception:
+            return []
+
+    def get_preview_titles(self, count: int = 3) -> list[str]:
+        """Return up to `count` chapter titles for compact preview."""
+        try:
+            ch = self.get_chapters()
+            titles = []
+            for c in ch[:count]:
+                if hasattr(c, "title") and c.title:
+                    titles.append(c.title)
+                else:
+                    try:
+                        titles.append(str(c))
+                    except Exception:
+                        titles.append("")
+            return [t for t in titles if t]
+        except Exception:
+            return []
+
+    def get_short_description(self, limit: int = 80) -> str:
+        try:
+            meta = self.get_metadata()
+            desc = getattr(meta, "description", None) or ""
+            if not desc:
+                return ""
+            s = str(desc)
+            return s if len(s) <= limit else s[: limit - 1] + "…"
+        except Exception:
+            return ""
+
+    def get_chapters(self) -> List[Chapter]:
+        """Return the list of chapters in the card, or an empty list if not available."""
+        try:
+            if self.content and self.content.chapters:
+                return self.content.chapters
+        except Exception:
+            logger.warning(f"Failed to get chapters for card {self.cardId}")
+        return []
+
+    def get_track_list(self) -> List[Track]:
+        """Return the list of tracks in the card, or an empty list if not available."""
+        try:
+            tracks = []
+            chapters = self.get_chapters()
+            for ch in chapters:
+                if ch.tracks:
+                    tracks.extend(ch.tracks)
+            return tracks
+        except Exception:
+            logger.warning(f"Failed to get track list for card {self.cardId}")
+            return []
+
+    def get_cover_url(self) -> Optional[str]:
+        """Return the URL of the card's cover image, if available."""
+        try:
+            if self.metadata and self.metadata.cover and self.metadata.cover.imageL:
+                return self.metadata.cover.imageL
+        except Exception:
+            logger.warning(f"Failed to get cover URL for card {self.cardId}")
+        return None
 
     def display_card(self, truncate_fields_limit: int | None = 50, render_icons: bool = False, api: object | None = None, render_method: str = "braille", braille_dims: tuple[int, int] = (8, 4), braille_x_scale: int | None = None, include_chapters: bool = True ):
         def trunc(val):

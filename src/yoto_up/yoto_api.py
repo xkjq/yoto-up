@@ -79,6 +79,7 @@ except (ImportError, ModuleNotFoundError):
 
     nltk_stopwords = _FallbackStopwords
 from yoto_up.icons import render_icon
+from yoto_up.audio_splitter import split_audio as _split_audio_file
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console
@@ -180,8 +181,10 @@ class YotoAPI:
     def __init__(self, client_id, debug=False, cache_requests=False, cache_max_age_seconds=0, auto_refresh_tokens=True, auto_start_authentication=True, app_path:Path|None=None):
         self.client_id = client_id
         self.debug = debug
-        logger.remove()
-        logger.add(lambda msg: print(msg, end=""), level="DEBUG" if debug else "WARNING")
+        #logger.remove()
+        #if debug:
+        #    logger.add(lambda msg: print(msg, end=""), level="DEBUG")
+        # When debug=False, don't add any handler to suppress all loguru output
         # Intercept standard library logging with loguru
         import logging
         class InterceptHandler(logging.Handler):
@@ -190,15 +193,20 @@ class YotoAPI:
                     level = logger.level(record.levelname).name
                 except ValueError:
                     level = record.levelno
-                logger.log(level, record.getMessage())
-        logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO)
-        httpx_logger = logging.getLogger("httpx")
-        httpx_logger.propagate = True
-        httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
+                # Add traceback info if available for errors
+                msg = record.getMessage()
+                if record.exc_info:
+                    import traceback
+                    msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+                logger.log(level, msg)
+        #logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO)
+        #httpx_logger = logging.getLogger("httpx")
+        #httpx_logger.propagate = True
+        #httpx_logger.setLevel(logging.INFO if debug else logging.WARNING)
         if debug:
             logger.debug("Debug mode enabled for YotoAPI")
-        logger.debug(f"YotoAPI initialized with client_id: {client_id}")
-        logger.debug(f"App path: {app_path}")
+            logger.debug(f"YotoAPI initialized with client_id: {client_id}")
+            logger.debug(f"App path: {app_path}")
         self.cache_requests = cache_requests
         self.cache_max_age_seconds = cache_max_age_seconds
         self._cache_lock = threading.Lock()
@@ -300,7 +308,7 @@ class YotoAPI:
 
     def _version_path_for(self, payload: dict) -> Path:
         # Determine an id for the card to store versions under
-        card_id = payload.get("cardId") or payload.get("id") or payload.get("contentId")
+        card_id = payload.get("cardId")
         if not card_id:
             # fallback to slugified title + timestamp
             title = (payload.get("title") or "untitled").strip()[:100]
@@ -325,7 +333,7 @@ class YotoAPI:
         except Exception:
             return None
 
-    def list_versions(self, card_id: str):
+    def list_versions(self, card_id: str) -> List[Path]:
         """Return list of version files for a card id (or title-derived id)."""
         try:
             dir_path = self.VERSIONS_DIR / str(card_id)
@@ -336,26 +344,22 @@ class YotoAPI:
         except Exception:
             return []
 
-    def load_version(self, path: Path) -> dict:
+    def load_version(self, path: Path, as_model=False) -> dict | Card | None:
         try:
             with Path(path).open("r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if as_model:
+                    return Card.model_validate(data)
+                return data
         except Exception:
-            return {}
+            logger.exception(f"Failed to load version from {path}")
+            return None
 
     def restore_version(self, path: Path, return_card=True):
         """Restore a saved version by posting it to the API.
         Returns the created/updated card (model) if return_card True.
         """
-        payload = self.load_version(path)
-        if not payload:
-            raise Exception("Version payload empty or unreadable")
-        # If payload contains card id fields, they will be used by the API
-        # Validate using Card model if available
-        try:
-            card_model = Card.model_validate(payload) if 'Card' in globals() else None
-        except Exception:
-            card_model = None
+        card_model = self.load_version(path, as_model=True)
         if card_model is not None:
             return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
         else:
@@ -366,6 +370,23 @@ class YotoAPI:
             if return_card:
                 return Card.model_validate(response.json().get("card") or response.json())
             return response.json()
+
+    def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
+                    silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
+                    show_progress: bool = True, console: Optional[Console] = None) -> list:
+        """Thin wrapper that splits an audio file into multiple tracks.
+
+        Returns a list of output file Paths. Requires `ffmpeg` to be installed.
+        """
+        return _split_audio_file(input_path,
+                     target_tracks=target_tracks,
+                     min_track_length_sec=min_track_length_sec,
+                     silence_thresh_db=silence_thresh_db,
+                     min_silence_len_ms=min_silence_len_ms,
+                     output_dir=output_dir,
+                     show_progress=show_progress,
+                     console=console)
+
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {
             "method": method,
@@ -618,7 +639,7 @@ class YotoAPI:
             find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
-    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True):
+    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True) -> dict |Card:
         """
         Accepts a Card model instance and sends it to the API.
 
@@ -1405,7 +1426,7 @@ class YotoAPI:
 
     def delete_content(self, content_id: str):
         """
-        Delete a piece of content (MYO card) by contentId.
+        Delete a piece of content (MYO card) by cardId.
         Returns the API response (status or error).
         """
         url = f"https://api.yotoplay.com/content/{content_id}"
@@ -1418,7 +1439,7 @@ class YotoAPI:
         response.raise_for_status()
         return response.json() if response.text else {"status": response.status_code}
 
-    def update_card(self, card: Card, return_card_model=True):
+    def update_card(self, card: Card, return_card_model=True) -> dict | Card:
         """
         Update a card by creating a new card and deleting the old one.
 

@@ -13,12 +13,12 @@ from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 
 class IconReplaceDialog:
-    def __init__(self, api, card, page, show_snack, show_card_details, kind='chapter', ch_i=None, tr_i=None):
+    def __init__(self, api, card, page, kind='chapter', ch_i=None, tr_i=None):
         self.api = api
         self.card = card
         self.page = page
-        self.show_snack = show_snack
-        self.show_card_details = show_card_details
+        self.show_snack = page.show_snack
+        self.show_card_details = page.show_card_details
         self.kind = kind
         self.ch_i = ch_i
         self.tr_i = tr_i
@@ -116,7 +116,7 @@ class IconReplaceDialog:
 
         # Selected-icon preview (hidden when no selection). Will be shown next to the "Selected icon" button.
         preview_label = ft.Text("Selected icon", size=12, weight=ft.FontWeight.BOLD, visible=False)
-        preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.ImageFit.CONTAIN)
+        preview_image = ft.Image(src='', width=32, height=32, visible=False, fit=ft.BoxFit.CONTAIN)
         preview_name = ft.Text('', size=12, visible=False)
         # pack preview into a small column
         preview_column = ft.Column([preview_label, preview_image, preview_name], alignment=ft.MainAxisAlignment.CENTER, visible=True)
@@ -186,7 +186,7 @@ class IconReplaceDialog:
                             def use_icon(ev2, icon=icon):
                                 def use_worker():
                                     # Perform upload (if required) using robust helper
-                                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                                    full = self.api.get_card(self.card.cardId)
                                     media_id = icon.get('mediaId')
                                     if not media_id and 'id' in icon:
                                         uploaded = self._upload_icon_payload(icon)
@@ -215,7 +215,7 @@ class IconReplaceDialog:
                                         if not getattr(target_tr, 'display', False):
                                             target_tr.display = TrackDisplay()
                                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                                    self.api.update_card(full, return_card_model=False)
+                                    self.page.update_card(full)
                                     self.show_card_details(None, full)
                                 threading.Thread(target=use_worker, daemon=True).start()
 
@@ -225,7 +225,7 @@ class IconReplaceDialog:
                                 row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
                             elif img_src is not None:
                                 try:
-                                    img = ft.Image(src_base64=get_base64_from_path(img_src), width=48, height=48)
+                                    img = ft.Image(src=get_base64_from_path(img_src), width=48, height=48)
                                     row_children.append(ft.GestureDetector(content=img, on_tap=use_icon))
                                 except Exception as ex:
                                     logger.exception(f"Failed to load icon image: {ex}")
@@ -236,7 +236,7 @@ class IconReplaceDialog:
                                 row_children.append(ft.GestureDetector(content=placeholder, on_tap=use_icon, mouse_cursor=ft.MouseCursor.CLICK))
                             title_text = icon.get('title') or icon.get('id') or icon.get('displayIconId') or str(icon)
                             row_children.append(ft.Column([ft.Text(title_text, selectable=True), ft.Text(', '.join(icon.get('tags', [])[:5]) if icon.get('tags') else '')]))
-                            row_children.append(ft.ElevatedButton('Use', on_click=use_icon))
+                            row_children.append(ft.Button('Use', on_click=use_icon))
                             results_list.controls.append(ft.Row(row_children, alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
                     _schedule_page_update()
                 except Exception as e:
@@ -343,7 +343,7 @@ class IconReplaceDialog:
                                         return
                                     media_id = uploaded.get('mediaId')
                                     # apply to card (same logic as remote icons)
-                                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                                    full = self.api.get_card(self.card.cardId)
                                     if self.kind == 'chapter':
                                         target_ch = full.content.chapters[self.ch_i]
                                         if not getattr(target_ch, 'display', False):
@@ -365,7 +365,7 @@ class IconReplaceDialog:
                                         if not getattr(target_tr, 'display', False):
                                             target_tr.display = TrackDisplay()
                                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                                    self.api.update_card(full, return_card_model=False)
+                                    self.page.update_card(full)
                                     self.show_card_details(None, full)
                                 except Exception as ex:
                                     self.show_snack(f"Failed to use saved icon: {ex}", True)
@@ -403,13 +403,13 @@ class IconReplaceDialog:
 
                     # visual row for this saved icon
                     try:
-                        preview = ft.Image(src_base64=get_base64_from_path(p), width=48, height=48)
+                        preview = ft.Image(src=get_base64_from_path(p), width=48, height=48)
                     except Exception:
                         preview = ft.Container(width=48, height=48, bgcolor=ft.Colors.GREY_200)
                     row = ft.Row([
                         ft.Column([preview]),
                         ft.Column([ft.Text(p.name, selectable=True)]),
-                        ft.Row([ft.ElevatedButton("Edit", on_click=make_edit(p)), ft.ElevatedButton("Use", on_click=make_use(p))])
+                        ft.Row([ft.Button("Edit", on_click=make_edit(p)), ft.Button("Use", on_click=make_use(p))])
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, spacing=12)
                     saved_icons_list.controls.append(row)
             except Exception as e:
@@ -545,7 +545,7 @@ class IconReplaceDialog:
                         self.show_snack("Upload failed or returned no mediaId", True)
                         return
                     media_id = uploaded.get('mediaId')
-                    full = self.api.get_card(self.card.get('cardId') or self.card.get('id') or self.card.get('contentId'))
+                    full = self.api.get_card(self.card.cardId)
                     if self.kind == 'chapter':
                         target_ch = full.content.chapters[self.ch_i]
                         if not getattr(target_ch, 'display', False):
@@ -567,8 +567,8 @@ class IconReplaceDialog:
                         if not getattr(target_tr, 'display', False):
                             target_tr.display = TrackDisplay()
                         target_tr.display.icon16x16 = f"yoto:#{media_id}"
-                    self.api.update_card(full, return_card_model=False)
-                    self.show_card_details(None, full)
+                    self.page.update_card(full)
+                    self.page.show_card_details(None, full)
                     self.show_snack("Applied marked icon")
                 except Exception as ex:
                     logger.exception("use_selected_icon failed")
@@ -576,19 +576,47 @@ class IconReplaceDialog:
             threading.Thread(target=_worker, daemon=True).start()
 
         # Build a Tabs control inside the dialog so user can switch between Search and My Icons
-        tabs = ft.Tabs(selected_index=0, tabs=[
-            ft.Tab(text="Search", content=ft.Column([
-                ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
-                # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
-                (lambda: ft.Row(
-                    [c for c in ([include_yoto] + ([apply_to_first_track] if apply_to_first_track else []) + [max_searches_field, top_n_field])]
-                ))(),
-                 results_list
-             ], width=900, expand=True)),
-            ft.Tab(text="My Icons", content=ft.Column([
-                saved_icons_list
-            ], width=900, expand=True))
-        ], expand=True)
+        # In Flet 0.80, Tab objects are just labels, content is passed separately to Tabs
+        search_tab = ft.Tab(label="Search")
+        search_content = ft.Column([
+            ft.Row([search_field, ft.Row([search_btn, search_progress, search_status])]),
+            # build row dynamically so the apply_to_first_track checkbox is only placed when relevant
+            (lambda: ft.Row(
+                [c for c in ([include_yoto] + ([apply_to_first_track] if apply_to_first_track else []) + [max_searches_field, top_n_field])]
+            ))(),
+             results_list
+         ], width=900, expand=True)
+        search_content.visible = True
+        
+        my_icons_tab = ft.Tab(label="My Icons")
+        my_icons_content = ft.Column([
+            saved_icons_list
+        ], width=900, expand=True)
+        my_icons_content.visible = True
+        
+        # Separate tab labels and content panels for Flet 0.80
+        all_tab_labels = [search_tab, my_icons_tab]
+        all_tab_content = [search_content, my_icons_content]
+        # Diagnostic: log each content entry's type and visible attribute before creating Tabs
+        try:
+            logger.debug(f"Dialog Tabs diagnostic: preparing to create Tabs with {len(all_tab_content)} content entries")
+            for i, c in enumerate(all_tab_content):
+                try:
+                    v = getattr(c, 'visible', None)
+                    logger.debug(f"Dialog Tabs diagnostic: content[{i}] type={type(c)!r} visible={v!r} repr={repr(c)!s}")
+                except Exception:
+                    logger.exception(f"Dialog Tabs diagnostic: failed inspecting content[{i}]")
+            for i, t in enumerate(all_tab_labels):
+                try:
+                    disabled = getattr(t, 'disabled', None)
+                    logger.debug(f"Dialog Tabs diagnostic: tab_label[{i}] type={type(t)!r} disabled={disabled!r} repr={repr(t)!s}")
+                except Exception:
+                    logger.exception(f"Dialog Tabs diagnostic: failed inspecting tab_label[{i}]")
+        except Exception:
+            logger.exception("Dialog Tabs diagnostic: top-level failure")
+
+        tabs = ft.Tabs(content=all_tab_content, length=len(all_tab_content), selected_index=0, expand=True)
+        tabs.tabs = all_tab_labels
 
         # include a "Use marked icon" action so the user can apply the icon selected from the browser
         use_selected_btn = ft.TextButton("Selected icon", on_click=use_selected_icon)
@@ -606,7 +634,7 @@ class IconReplaceDialog:
             actions=[use_selected_btn, preview_column, ft.TextButton('Close', on_click=close_replace)],
         )
 
-        self.page.open(self.dialog)
+        self.page.show_dialog(self.dialog)
         # initialize preview to current page.replace_icon_path (if any)
         try:
             marked_now = getattr(self.page, "replace_icon_path", None)
