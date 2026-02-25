@@ -1284,17 +1284,10 @@ Renumbering keys will assign sequential keys to all tracks.
                         ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
                     ],
                 )
-                try:
-                    page.show_dialog(tracks_dialog)
-                    page.update()
-                except Exception:
-                    try:
-                        page.dialog = tracks_dialog
-                        page.update()
-                    except Exception:
-                        pass
+                page.show_dialog(tracks_dialog)
+                page.update()
             except Exception:
-                pass
+                logger.exception("Failed to show tracks popup")
 
         try:
             win_h = getattr(page, "window_height", None) or getattr(page, "height", None)
@@ -1311,43 +1304,40 @@ Renumbering keys will assign sequential keys to all tracks.
             dlg_h, dlg_w = 500, 800
 
         # Build dialog content. If we found a cover, place it in a right-hand column
-        try:
-            if cover_src:
-                # thumbnail sizing: keep it reasonably sized relative to dialog
-                thumb_w = min(320, max(120, int(dlg_w * 0.28)))
-                thumb_h = max(64, min(320, dlg_h - 120))
+        if cover_src:
+            # thumbnail sizing: keep it reasonably sized relative to dialog
+            thumb_w = min(320, max(120, int(dlg_w * 0.28)))
+            thumb_h = max(64, min(320, dlg_h - 120))
 
+            try:
+                # clicking the cover should open the Add Cover dialog
+                img_w = ft.Image(src=cover_src, width=thumb_w, height=thumb_h)
                 try:
-                    # clicking the cover should open the Add Cover dialog
-                    img_w = ft.Image(src=cover_src, width=thumb_w, height=thumb_h)
-                    try:
-                        cover_widget = ft.GestureDetector(content=img_w, on_tap=lambda ev: show_add_cover(ev))
-                    except Exception:
-                        cover_widget = ft.GestureDetector(content=img_w, on_tap=show_add_cover)
+                    cover_widget = ft.GestureDetector(content=img_w, on_tap=lambda ev: show_add_cover(ev))
                 except Exception:
-                    # fallback: non-interactive image
-                    cover_widget = ft.Image(src=cover_src)
+                    cover_widget = ft.GestureDetector(content=img_w, on_tap=show_add_cover)
+            except Exception:
+                # fallback: non-interactive image
+                cover_widget = ft.Image(src=cover_src)
 
-                # left pane should contain header/metadata controls (use Column so it sizes to content)
-                left_col = ft.Column(header_controls, spacing=6)
-                right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
+            # left pane should contain header/metadata controls (use Column so it sizes to content)
+            left_col = ft.Column(header_controls, spacing=6)
+            right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
 
-                header_row = ft.Row([
-                    ft.Container(content=left_col, expand=True),
-                    ft.Container(width=12),
-                    right_col,
-                ], alignment=ft.MainAxisAlignment.START)
+            header_row = ft.Row([
+                ft.Container(content=left_col, expand=True),
+                ft.Container(width=12),
+                right_col,
+            ], alignment=ft.MainAxisAlignment.START)
 
-                # Build a single scrolling ListView for the dialog content so header + chapters scroll together
-                parts = [header_row]
-                if chapters_view:
-                    parts.append(ft.Divider())
-                    parts.append(chapters_view)
+            # Build a single scrolling ListView for the dialog content so header + chapters scroll together
+            parts = [header_row]
+            if chapters_view:
+                parts.append(ft.Divider())
+                parts.append(chapters_view)
 
-                dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
-            else:
-                dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
-        except Exception:
+            dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
+        else:
             dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
         def export_card(_ev=None):
             try:
@@ -1370,15 +1360,10 @@ Renumbering keys will assign sequential keys to all tracks.
                         except Exception:
                             pass
                 threading.Thread(target=worker, daemon=True).start()
-                try:
-                    page.show_snack("Export started...")
-                except Exception:
-                    pass
+                page.show_snack("Export started...")
             except Exception:
-                try:
-                    page.show_snack("Failed to start export", error=True)
-                except Exception:
-                    pass
+                logger.exception("Failed to start export")
+                page.show_snack("Failed to start export", error=True)
 
         # If preview_path is provided, we're showing a saved version preview and
         # expose a Restore button in the dialog actions.

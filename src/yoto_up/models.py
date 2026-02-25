@@ -203,6 +203,11 @@ class Card(BaseModel):
         except Exception:
             return []
 
+    def get_title(self) -> str:
+        """Return the card's title, or an empty string if not available."""
+        return self.title
+
+
     def get_tags(self) -> list[str]:
         """Return combined tags from card-level and metadata-level tags."""
         try:

@@ -1706,7 +1706,8 @@ def build_playlists_panel(
             cards = await asyncio.to_thread(api.get_myo_content)
             page.cards = cards  # Cache cards on page for access by details view and other helpers
         except Exception as ex:
-            logger.debug("fetch_playlists error:", ex)
+            logger.error("fetch_playlists error:")
+            logger.error(ex)
             return
         finally:
             try:
