@@ -22,6 +22,8 @@ import tempfile
 import math
 import sys
 import pydantic
+from yoto_up.audio_splitter import split_audio as split_audio_files, _get_duration
+from yoto_up.models import Track, Chapter, CardContent, CardMetadata, CardMedia
 
 app = typer.Typer()
 console = Console()
@@ -1410,7 +1412,7 @@ def create_card_from_folder(
     poll_interval: float = typer.Option(2, help="Transcoding poll interval (seconds)"),
     max_attempts: int = typer.Option(120, help="Max transcoding poll attempts"),
     files_as_tracks: bool = typer.Option(
-        False, help="Treat each file as a separate track"
+        False, help="Treat each file as a separate track in a single chapter (instead of separate chapters)"
     ),
     add_to_card: str = typer.Option(None, help="Add tracks to an existing card"),
     strip_track_numbers: bool = typer.Option(
@@ -2363,6 +2365,87 @@ def split_audio(
         silence_thresh_db=silence_thresh_db,
         output_name_template=output_name_template,
     )
+    if files:
+        rprint(f"Created {len(files)} segment(s):")
+        for f in files:
+            rprint(f" - {f}")
+
+
+@app.command()
+def create_card_from_file(
+    path: str,
+    title: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    target_tracks: Optional[int] = 10,
+    output_name_template: Optional[str] = "Track {index}",
+    min_track_len_sec: int = 30,
+    min_silence_len_ms: int = 1000,
+    silence_thresh_db: int = -40,
+    create_card: bool = True,
+):
+    """Split an audio file into tracks and create a Card from the resulting segments.
+
+    If `create_card` is False the function will only split and print the resulting files and card payload.
+    """
+    API: YotoAPI = get_api()
+
+    async def async_main():
+        files = API.split_audio(
+            path,
+            output_dir=output_dir,
+            target_tracks=target_tracks,
+            min_track_length_sec=min_track_len_sec,
+            min_silence_len_ms=min_silence_len_ms,
+            silence_thresh_db=silence_thresh_db,
+            output_name_template=output_name_template,
+        )
+
+        if not files:
+            rprint("No segments created; aborting card creation.")
+            raise typer.Exit(code=1)
+
+        # Upload and transcode the split files
+        media_files = [Path(f) for f in files]
+        transcoded_audios = await API.upload_and_transcode_many_async(
+            media_files, loudnorm=False, poll_interval=2, max_attempts=120, show_progress=True
+        )
+
+        # Build tracks from transcoded responses
+        tracks = []
+        for idx, transcoded_audio in enumerate(transcoded_audios, start=1):
+            media_file = media_files[idx - 1]
+            track_title = media_file.stem
+            # strip leading numbers like '01 - '
+            track_title = re.sub(r"^\d+\s*[-_.\s]*", "", track_title)
+            track = API.get_track_from_transcoded_audio(
+                transcoded_audio, track_details={"title": track_title, "key": f"{idx:02d}"}
+            )
+            tracks.append(track)
+
+        chapter = Chapter(title=title or Path(path).stem, tracks=tracks)
+        card_content = CardContent(chapters=[chapter])
+        total_dur = sum([t.duration or 0 for t in tracks]) if tracks else None
+        try:
+            total_size = sum([f.stat().st_size for f in media_files])
+        except Exception:
+            total_size = None
+        card_media = CardMedia(duration=total_dur, fileSize=total_size)
+        card_metadata = CardMetadata(media=card_media)
+        card = Card(title=title or Path(path).stem, content=card_content, metadata=card_metadata)
+
+        if not create_card:
+            rprint(Panel.fit("Card payload (not created):"))
+            rprint(card.model_dump(exclude_none=True))
+            return
+
+        try:
+            created = API.create_or_update_content(card, return_card=True)
+            rprint(Panel.fit(created.display_card(render_icons=True), title="Created Card"))
+        except Exception as e:
+            rprint(f"Failed to create card: {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(async_main())
 
 @app.command()
 def gui():
