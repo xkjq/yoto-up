@@ -1,3 +1,4 @@
+from nltk.lm.vocabulary import _
 from colorlog import log
 from yoto_up.models import Card
 import asyncio
@@ -152,16 +153,12 @@ def main(page: ft.Page):
     page.show_snack = show_snack  # expose on page for easy access from helpers
 
 
-    def start_device_auth(e, instr=None):
+    async def start_device_auth(instr=None):
         logger.debug("[start_device_auth] Starting device auth flow")
         # Prefer using the YotoAPI device auth flow directly (so we reuse
         # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
         # existing auth module on any error.
-        try:
-            device_info = api.get_device_code()
-        except Exception as e:
-            # If YotoAPI can't get a device code, fallback to auth_mod
-            raise
+        device_info = api.get_device_code()
 
         verification_uri = device_info.get("verification_uri") or ""
         verification_uri_complete = (
@@ -190,9 +187,14 @@ def main(page: ft.Page):
                             ft.TextButton(
                                 verification_uri_complete,
                                 on_click=lambda e, url=verification_uri_complete: (
+                                    logger.debug(f"Opening browser for URL: {url}"),
                                     __import__("webbrowser").open(url)
                                 ),
                             ),
+                            ft.Button("Copy Link", on_click=lambda e, url=verification_uri_complete: (
+                                logger.debug(f"Copying URL to clipboard: {url}"),
+                                ft.Clipboard().set(url),
+                            )),
                         ]
                     )
                 )
@@ -207,7 +209,7 @@ def main(page: ft.Page):
                 container.controls.append(getattr(page, "auth_status", ft.Text("")))
                 page.update()
         except Exception:
-            pass
+            logger.error(f"Failed to populate auth instructions: {traceback.format_exc()}")
 
         # Start background poll using YotoAPI.poll_for_token
         def _poll_thread():
@@ -217,29 +219,12 @@ def main(page: ft.Page):
                     device_info.get("interval", 5),
                     device_info.get("expires_in", 300),
                 )
-                try:
-                    api.save_tokens(access, refresh)
-                except Exception:
-                    # best-effort save into centralized TOKENS_FILE
-                    try:
-                        ensure_parents(TOKENS_FILE)
-                        atomic_write(
-                            TOKENS_FILE,
-                            json.dumps(
-                                {"access_token": access, "refresh_token": refresh}
-                            ),
-                            text_mode=True,
-                        )
-                    except Exception:
-                        pass
+                api.save_tokens(access, refresh)
                 api.access_token = access
                 api.refresh_token = refresh
                 api_ref["api"] = api
                 show_snack("Authenticated")
-                try:
-                    page.auth_complete()
-                except Exception:
-                    pass
+                page.auth_complete()
                 try:
                     # update instruction UI
                     if instr is not None and hasattr(instr, "controls"):
@@ -254,12 +239,12 @@ def main(page: ft.Page):
                         )
                         page.update()
                 except Exception:
-                    pass
+                    logger.error(f"Failed to update auth instructions after successful auth: {traceback.format_exc()}")
             except Exception as e:
                 logger.error(f"start_device_auth: auth failed: {e}")
                 show_snack(f"Auth failed: {e}", error=True)
 
-        threading.Thread(target=_poll_thread, daemon=True).start()
+        page.run_thread(_poll_thread)  # also run as a task to ensure exceptions are logged   
 
 
     page.show_card_details = make_show_card_details(
@@ -289,8 +274,6 @@ def main(page: ft.Page):
         auth_instructions.controls.append(ft.Text("Preparing authentication..."))
         page.update()
 
-        # Prefer browser OAuth via Flet when possible (works for web and desktop)
-
         def on_login(evt):
             logger.debug(
                 f"[on_login] evt: {evt}; page.auth: {getattr(page, 'auth', None)}"
@@ -312,7 +295,7 @@ def main(page: ft.Page):
                     ensure_parents(TOKENS_FILE)
                     atomic_write(TOKENS_FILE, json.dumps(tmp))
                 except Exception:
-                    pass
+                    logger.error(f"Failed to save tokens to {TOKENS_FILE}: {traceback.format_exc()}")
                 # Initialize API with saved tokens
                 try:
                     api = page.get_api()
@@ -334,9 +317,8 @@ def main(page: ft.Page):
                 except Exception as e:
                     show_snack(f"Failed to initialize API: {e}", error=True)
 
-        threading.Thread(
-            target=lambda: start_device_auth(e, auth_instructions), daemon=True
-        ).start()
+
+        page.run_task(start_device_auth, auth_instructions)
         logger.debug("[on_auth_click] _auth_click done")
 
     auth_btn.on_click = _auth_click
@@ -373,9 +355,13 @@ def main(page: ft.Page):
             invalidate_authentication()
             if reauth:
                 # Start re-authentication in a background thread
-                threading.Thread(
-                    target=lambda: start_device_auth(None), daemon=True
-                ).start()
+                async def _start_reauth():
+                    try:
+                        await start_device_auth(auth_instructions)
+                    except Exception as ex:
+                        logger.error(f"Failed to start re-authentication: {ex}")
+                        show_snack(f"Failed to start re-authentication: {ex}", error=True)
+                page.run_task(_start_reauth)
 
             # threading.Thread(target=_do_reset, daemon=True).start()
 
@@ -889,6 +875,50 @@ def main(page: ft.Page):
     page.add(tabs_control)
     logger.debug("Tabs control added to page")
 
+    def auth_complete():
+        logger.debug("Auth complete")
+        # Enable all tabs - access TabBar from tabs_control.content.controls[0]
+        tab_bar = tabs_control.content.controls[
+            0
+        ]  # First control in Column is TabBar
+        for i in range(1, len(tab_bar.tabs)):
+            tab_bar.tabs[i].disabled = False
+
+        api = page.get_api()
+
+        if api:
+            # Run icon cache refresh in a background thread so the UI doesn't hang.
+            async def _refresh_icons_bg():
+                logger.debug("Refreshing icon caches (in background thread)...")
+                try:
+                    if hasattr(page, "set_icon_refreshing"):
+                        page.set_icon_refreshing(True, "Refreshing icon caches...")
+                    try:
+                        api.get_public_icons(show_in_console=False)
+                    except Exception as e:
+                        logger.exception(f"get_public_icons failed: {e}")
+                    try:
+                        api.get_user_icons(show_in_console=False)
+                    except Exception as e:
+                        logger.exception(f"get_user_icons failed: {e}")
+                finally:
+                    try:
+                        if hasattr(page, "set_icon_refreshing"):
+                            page.set_icon_refreshing(False)
+                    except Exception as e:
+                        logger.error("Failed to hide icon refreshing badge: %s", traceback.format_exc())
+                # Notify any icon browser listeners that the cache refresh finished
+                cbs = getattr(page, "icon_cache_refreshed_callbacks", None)
+                if cbs:
+                    for cb in list(cbs):
+                        try:
+                            cb()
+                        except Exception as e:
+                            logger.error("Icon cache refreshed callback failed: %s", traceback.format_exc())
+
+            page.run_task(_refresh_icons_bg)
+
+    page.auth_complete = auth_complete
 
     # Define functions that reference tabs_control after it's created
     def invalidate_authentication():
@@ -950,50 +980,6 @@ def main(page: ft.Page):
     logger.debug("Showing development warning dialog")
     show_dev_warning(page)
 
-    def auth_complete():
-        logger.debug("Auth complete")
-        # Enable all tabs - access TabBar from tabs_control.content.controls[0]
-        tab_bar = tabs_control.content.controls[
-            0
-        ]  # First control in Column is TabBar
-        for i in range(1, len(tab_bar.tabs)):
-            tab_bar.tabs[i].disabled = False
-
-        api = page.get_api()
-
-        if api:
-            # Run icon cache refresh in a background thread so the UI doesn't hang.
-            async def _refresh_icons_bg():
-                logger.debug("Refreshing icon caches (in background thread)...")
-                try:
-                    if hasattr(page, "set_icon_refreshing"):
-                        page.set_icon_refreshing(True, "Refreshing icon caches...")
-                    try:
-                        api.get_public_icons(show_in_console=False)
-                    except Exception as e:
-                        logger.exception(f"get_public_icons failed: {e}")
-                    try:
-                        api.get_user_icons(show_in_console=False)
-                    except Exception as e:
-                        logger.exception(f"get_user_icons failed: {e}")
-                finally:
-                    try:
-                        if hasattr(page, "set_icon_refreshing"):
-                            page.set_icon_refreshing(False)
-                    except Exception as e:
-                        logger.error("Failed to hide icon refreshing badge: %s", traceback.format_exc())
-                # Notify any icon browser listeners that the cache refresh finished
-                cbs = getattr(page, "icon_cache_refreshed_callbacks", None)
-                if cbs:
-                    for cb in list(cbs):
-                        try:
-                            cb()
-                        except Exception as e:
-                            logger.error("Icon cache refreshed callback failed: %s", traceback.format_exc())
-
-            page.run_task(_refresh_icons_bg)
-
-    page.auth_complete = auth_complete
 
     # Now that the UI controls are added to the page, try to reuse tokens.json (if present)
     logger.debug("Checking for existing tokens...")
