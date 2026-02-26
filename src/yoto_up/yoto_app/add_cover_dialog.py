@@ -5,11 +5,11 @@ import shutil
 import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
-from yoto_up.yoto_api import YotoAPI
+from yoto_up.yoto_api import YotoAPI, Card
 import tempfile
 import os
 
-def add_cover_dialog(page, c, Card, on_close=None):
+def add_cover_dialog(page, c: Card, on_close=None):
     api: YotoAPI = ensure_api(page.api_ref)
 
     def do_remove_cover(_e=None):
@@ -254,7 +254,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
 
     def do_search_cover(_e=None):
         try:
-            default_query = c.get("title") or c.get("name") or ""
+            default_query = c.title
             results_column = ft.Column(controls=[])
             # Define do_search_action first so it can be referenced
             def do_search_action(_e2=None):
@@ -409,17 +409,17 @@ def add_cover_dialog(page, c, Card, on_close=None):
                     search_field,
                     ft.Text(value="Click an image to select it as the cover art."),
                     results_column
-                ], scroll="auto", height=400, width=500),
+                ], height=400, width=500),
                 actions=[
                     ft.TextButton(content="Search", on_click=do_search_action),
-                    ft.TextButton(content="Close", on_click=lambda e: setattr(search_dialog, 'open', False) or page.update()),
+                    ft.TextButton(content="Close", on_click=lambda e: page.pop_dialog()),
                 ],
             )
             page.show_dialog(search_dialog)
             # Trigger initial search when dialog opens
             do_search_action()
-        except Exception:
-            logger.error("Error opening search dialog")
+        except Exception as ex:
+            logger.error(f"Error opening search dialog: {ex}")
 
     # Build the dialog content, showing current cover (if any) above the controls
     content_children = []
