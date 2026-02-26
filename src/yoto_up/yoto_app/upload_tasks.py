@@ -15,6 +15,8 @@ from yoto_up.yoto_app.ui_state import set_state, get_state
 import threading
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
+from pydub import AudioSegment
+import webbrowser
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
@@ -207,8 +209,7 @@ class FileUploadRow:
         # Update the filename attribute on the row container
         setattr(self.row, "filename", new_filepath)
         # Update the displayed file name in the UI
-        if self.inner_row.controls and isinstance(self.inner_row.controls[0], Text):
-            self.inner_row.controls[0].value = self.name
+        self.inner_row.controls[0].value = self.name
         # Optionally reset status and progress
         self.set_status("Queued")
         self.set_progress(0.0)
@@ -827,8 +828,6 @@ class UploadManager:
 
                         def _worker():
                             try:
-                                from pydub import AudioSegment
-                                import webbrowser
 
                                 src = str(path)
                                 # For a consistent removal across matched files we use the computed common_removal_end_sec.
