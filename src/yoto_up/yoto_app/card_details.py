@@ -732,16 +732,8 @@ def make_show_card_details(
             def do_copy(_e=None):
                 try:
                     # copy raw JSON to clipboard
-                    try:
-                        page.set_clipboard(raw)
-                        page.show_snack("JSON copied to clipboard")
-                    except Exception:
-                        # fallback: try assigning to page.clipboard
-                        try:
-                            page.clipboard = raw
-                            page.show_snack("JSON copied to clipboard")
-                        except Exception as ex:
-                            page.show_snack(f"Failed to copy JSON: {ex}", error=True)
+                    ft.Clipboard().set(raw)
+                    page.show_snack("JSON copied to clipboard")
                 except Exception as ex:
                     page.show_snack(f"Clipboard error: {ex}", error=True)
 
