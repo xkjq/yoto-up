@@ -66,10 +66,7 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                             out['id_token'] = idt
                         try:
                             # prefer centralized helper
-                            try:
-                                from yoto_up import paths
-                            except Exception:
-                                paths = None
+                            from yoto_up import paths
                             if paths and getattr(paths, 'atomic_write', None):
                                 try:
                                     paths.ensure_parents(paths.TOKENS_FILE)
