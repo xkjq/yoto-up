@@ -1,14 +1,16 @@
 from yoto_up.yoto_app.api_manager import ensure_api
 import flet as ft
-import threading
 from types import SimpleNamespace
 from copy import deepcopy
 from loguru import logger
+from typing import Literal, cast
 
-from yoto_up.yoto_api import YotoAPI
 from yoto_up.models import Card, CardContent
 
 from .icon_import_helpers import get_base64_from_path
+
+
+_EDIT_DIALOG_STATE = SimpleNamespace(flat_items=None, last_card_id=None)
 
 # This function is designed to be imported and called from playlists.py
 # It expects the same arguments as the original show_edit closure.
@@ -33,9 +35,7 @@ def show_edit_card_dialog(
     card_pre_edit = deepcopy(c)
 
     # Persistent state for DnD and field mapping
-    if not hasattr(show_edit_card_dialog, "_state") or not isinstance(getattr(show_edit_card_dialog, "_state", None), SimpleNamespace):
-        show_edit_card_dialog._state = SimpleNamespace(flat_items=None, last_card_id=None)
-    state = show_edit_card_dialog._state
+    state = _EDIT_DIALOG_STATE
 
 
     chapter_fields = []
@@ -61,13 +61,13 @@ def show_edit_card_dialog(
     )
     description_field = ft.TextField(
         label="Description",
-        value=meta.description,
+        value=meta.description or "",
         multiline=True,
         width=760,
     )
     note_field = ft.TextField(
         label="Note (metadata)",
-        value=meta.note,
+        value=meta.note or "",
         multiline=True,
         min_lines=2,
         max_lines=6,
@@ -106,7 +106,7 @@ def show_edit_card_dialog(
     edit_controls = [
         title_field,
         ft.Divider(),
-        ft.Text("Metadata", weight=ft.FontWeight.BOLD),
+        ft.Text(value="Metadata", weight=ft.FontWeight.BOLD),
         category_dropdown,
         description_field,
         note_field,
@@ -115,7 +115,7 @@ def show_edit_card_dialog(
         tags_field,
         author_field,
         ft.Divider(),
-        ft.Text("Chapters & Tracks", weight=ft.FontWeight.BOLD),
+        ft.Text(value="Chapters & Tracks", weight=ft.FontWeight.BOLD),
     ]
     # Flatten chapters and tracks into a single list for DnD, using persistent state
     if state.flat_items is None or state.last_card_id != id(c):
@@ -139,14 +139,14 @@ def show_edit_card_dialog(
             def make_delete_chapter(idx=ci, ch_title=ch_title):
                 def delete_chapter(_e):
                     confirm_dialog = ft.AlertDialog(
-                        title=ft.Text("Delete Chapter"),
-                        content=ft.Text(f"Delete chapter '{ch_title}' and all its tracks? This cannot be undone."),
+                        title=ft.Text(value="Delete Chapter"),
+                        content=ft.Text(value=f"Delete chapter '{ch_title}' and all its tracks? This cannot be undone."),
                         actions=[
-                            ft.TextButton("Yes", on_click=lambda e: (setattr(confirm_dialog, 'open', False), chapters_local.pop(idx), show_edit_card_dialog(
+                            ft.TextButton(content="Yes", on_click=lambda e: (setattr(confirm_dialog, 'open', False), chapters_local.pop(idx), show_edit_card_dialog(
                                 c,
                                 page,
                             ))),
-                            ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), show_edit_card_dialog(
+                            ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), show_edit_card_dialog(
                                 c,
                                 page,
                             ))),
@@ -241,11 +241,21 @@ def show_edit_card_dialog(
         for entry in flat_items:
             if entry["type"] == "chapter":
                 current_ch = deepcopy(entry["ch"])
-                current_ch["tracks"] = []
+                if hasattr(current_ch, "tracks"):
+                    current_tracks = getattr(current_ch, "tracks", None)
+                    if isinstance(current_tracks, list):
+                        current_tracks.clear()
+                elif isinstance(current_ch, dict):
+                    current_ch["tracks"] = []
                 new_chapters.append(current_ch)
             elif entry["type"] == "track":
                 if current_ch is not None:
-                    current_ch["tracks"].append(entry["tr"])
+                    if hasattr(current_ch, "tracks"):
+                        current_tracks = getattr(current_ch, "tracks", None)
+                        if isinstance(current_tracks, list):
+                            current_tracks.append(entry["tr"])
+                    elif isinstance(current_ch, dict):
+                        current_ch.setdefault("tracks", []).append(entry["tr"])
         chapters_local.clear()
         chapters_local.extend(new_chapters)
         # After reorder, rebuild dialog so labels are correct
@@ -267,7 +277,7 @@ def show_edit_card_dialog(
             def delete_chapter_at(idx=idx):
                 def _delete(_e):
                     # Remove chapter and any following tracks until next chapter or end
-                    state = show_edit_card_dialog._state
+                    state = _EDIT_DIALOG_STATE
                     items = state.flat_items
                     # Remove the chapter
                     items.pop(idx)
@@ -281,9 +291,9 @@ def show_edit_card_dialog(
                     )
                 return _delete
             dnd_controls.append(
-                ft.Row([
+                ft.Row(controls=[
                     ft.Container(
-                        content=ft.Row([
+                        content=ft.Row(controls=[
                             entry["ch_icon"] if entry["ch_icon"] else ft.Container(width=24),
                             entry["ch_field"],
                             ft.IconButton(icon=ft.Icons.DELETE, tooltip="Delete chapter", on_click=delete_chapter_at()),
@@ -298,7 +308,7 @@ def show_edit_card_dialog(
             entry["tr_field"].label = f"Track {track_counter} Title"
             def delete_track_at(idx=idx):
                 def _delete(_e):
-                    state = show_edit_card_dialog._state
+                    state = _EDIT_DIALOG_STATE
                     items = state.flat_items
                     items.pop(idx)
                     state.flat_items = items
@@ -308,9 +318,9 @@ def show_edit_card_dialog(
                     )
                 return _delete
             dnd_controls.append(
-                ft.Row([
+                ft.Row(controls=[
                     ft.Container(
-                        content=ft.Row([
+                        content=ft.Row(controls=[
                             entry["tr_icon"] if entry["tr_icon"] else ft.Container(width=20),
                             entry["tr_field"],
                             ft.IconButton(icon=ft.Icons.DELETE, tooltip="Delete track", on_click=delete_track_at()),
@@ -321,7 +331,7 @@ def show_edit_card_dialog(
             )
 
     edit_controls.append(
-        ft.ReorderableListView(dnd_controls, on_reorder=on_reorder)
+        ft.ReorderableListView(controls=dnd_controls, on_reorder=on_reorder)
     )
 
     def do_save(_ev=None):
@@ -344,7 +354,10 @@ def show_edit_card_dialog(
 
         # Ensure metadata object exists and update fields
         meta = card_model.get_metadata()
-        meta.category = category_dropdown.value or None
+        CategoryType = Literal["", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"]
+        cat_value = category_dropdown.value
+        allowed_categories = {"", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"}
+        meta.category = cast(CategoryType, cat_value) if cat_value in allowed_categories else None
         desc = description_field.value or ""
         meta.description = desc if desc else None
         meta.note = note_field.value or None
@@ -355,7 +368,7 @@ def show_edit_card_dialog(
         card_model.metadata = meta
 
         # Rebuild chapters from flat_items (preserve non-title fields where possible)
-        state = show_edit_card_dialog._state
+        state = _EDIT_DIALOG_STATE
         flat_items = state.flat_items or []
         new_chapters = []
         chapter_fields_save = []
@@ -371,11 +384,11 @@ def show_edit_card_dialog(
                     try:
                         ch_copy.tracks = []
                     except Exception:
-                        # For dict-like, set key
-                        ch_copy["tracks"] = []
+                        pass
                 else:
                     ch_copy = deepcopy(src_ch) or {}
-                    ch_copy["tracks"] = []
+                    if isinstance(ch_copy, dict):
+                        ch_copy["tracks"] = []
                 new_chapters.append(ch_copy)
                 chapter_fields_save.append(entry.get("ch_field"))
                 current_ch = ch_copy
@@ -386,16 +399,12 @@ def show_edit_card_dialog(
                 src_tr = entry.get("tr")
                 # Append a deepcopy of the original track object/dict to preserve metadata
                 tr_copy = deepcopy(src_tr)
-                try:
-                    # If current_ch is model-like, append to .tracks
-                    if hasattr(current_ch, "tracks"):
-                        current_ch.tracks.append(tr_copy)
-                    else:
-                        current_ch.setdefault("tracks", []).append(tr_copy)
-                except Exception:
-                    # fallback for dict-like
-                    if isinstance(current_ch, dict):
-                        current_ch["tracks"].append(tr_copy)
+                if hasattr(current_ch, "tracks"):
+                    current_tracks = getattr(current_ch, "tracks", None)
+                    if isinstance(current_tracks, list):
+                        current_tracks.append(tr_copy)
+                elif isinstance(current_ch, dict):
+                    current_ch.setdefault("tracks", []).append(tr_copy)
                 # Track field mapping for title edits
                 if track_fields_save:
                     track_fields_save[-1].append(entry.get("tr_field"))
@@ -408,8 +417,9 @@ def show_edit_card_dialog(
 
         # Apply edited titles from input fields back into the model chapters/tracks
         try:
-            if card_model.content and getattr(card_model.content, "chapters", None):
-                for idx, ch_model in enumerate(card_model.content.chapters):
+            chapters_for_save = card_model.content.chapters if card_model.content and card_model.content.chapters else []
+            if chapters_for_save:
+                for idx, ch_model in enumerate(chapters_for_save):
                     if idx < len(chapter_fields_save) and chapter_fields_save[idx] is not None:
                         try:
                             ch_model.title = chapter_fields_save[idx].value
@@ -445,14 +455,14 @@ def show_edit_card_dialog(
         page.update()
 
     edit_list = ft.ListView(
-        edit_controls, spacing=6, padding=10, height=500, width=800
+        controls=edit_controls, spacing=6, padding=10, height=500, width=800
     )
     edit_dialog = ft.AlertDialog(
-        title=ft.Text("Edit card"),
+        title=ft.Text(value="Edit card"),
         content=edit_list,
         actions=[
-            ft.TextButton("Save", on_click=do_save),
-            ft.TextButton("Cancel", on_click=close_edit),
+            ft.TextButton(content="Save", on_click=do_save),
+            ft.TextButton(content="Cancel", on_click=close_edit),
         ],
     )
 
