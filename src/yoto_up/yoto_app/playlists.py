@@ -13,6 +13,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict
 import shutil
+from dataclasses import dataclass
 
 
 import flet as ft
@@ -43,6 +44,12 @@ from yoto_up.paths import save_playlists, VERSIONS_DIR
 _playlists_fetch_lock = threading.Lock()
 _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
+
+
+@dataclass
+class PlaylistCheckboxData:
+    cid: str
+    idx: int | None
 
 
 def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
@@ -258,11 +265,13 @@ def make_playlist_row(page, card_obj: Card, idx=None):
         cb.visible = page.playlist_multi_select_mode
     except Exception:
         logger.error("Error setting checkbox visibility for multi-select mode")
-    cb.data = {"type": "playlist_checkbox", "cid": cid, "idx": idx}
+    cb.data = PlaylistCheckboxData(cid=cid or "", idx=idx)
 
-    def _is_playlist_checkbox_control(ctrl: object) -> bool:
+    def _get_playlist_checkbox_control(ctrl: object) -> ft.Checkbox | None:
         data = getattr(ctrl, "data", None)
-        return isinstance(ctrl, ft.Checkbox) and isinstance(data, dict) and data.get("type") == "playlist_checkbox"
+        if isinstance(ctrl, ft.Checkbox) and isinstance(data, PlaylistCheckboxData):
+            return ctrl
+        return None
 
     def _on_checkbox_change(ev):
         try:
@@ -294,15 +303,15 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                         row_ctrl = page.playlists_list.controls[i]
                         cb_found = None
                         for child in getattr(row_ctrl, "controls", []):
-                            if _is_playlist_checkbox_control(child):
-                                cb_found = child
+                            checkbox_ctrl = _get_playlist_checkbox_control(child)
+                            if checkbox_ctrl is not None:
+                                cb_found = checkbox_ctrl
                                 break
                         if cb_found:
                             cb_found.value = True
                             data = getattr(cb_found, "data", None)
-                            page.selected_playlist_ids.add(
-                                data.get("cid", "") if isinstance(data, dict) else ""
-                            )
+                            if isinstance(data, PlaylistCheckboxData):
+                                page.selected_playlist_ids.add(data.cid)
                     except Exception:
                         pass
                 page.update_multiselect_buttons()
@@ -312,8 +321,9 @@ def make_playlist_row(page, card_obj: Card, idx=None):
             # Normal multi-select toggle
             cb_found = None
             for child in row.controls:
-                if _is_playlist_checkbox_control(child):
-                    cb_found = child
+                checkbox_ctrl = _get_playlist_checkbox_control(child)
+                if checkbox_ctrl is not None:
+                    cb_found = checkbox_ctrl
                     break
             if cb_found:
                 cb_found.value = not cb_found.value
@@ -334,8 +344,9 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                     row_ctrl = page.playlists_list.controls[i]
                     cb_found = None
                     for child in getattr(row_ctrl, "controls", []):
-                        if _is_playlist_checkbox_control(child):
-                            cb_found = child
+                        checkbox_ctrl = _get_playlist_checkbox_control(child)
+                        if checkbox_ctrl is not None:
+                            cb_found = checkbox_ctrl
                             break
                         if hasattr(child, "content") and getattr(child, "content"):
                             for sub in (
@@ -344,8 +355,9 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                                 and hasattr(getattr(child, "content"), "controls")
                                 else []
                             ):
-                                if _is_playlist_checkbox_control(sub):
-                                    cb_found = sub
+                                nested_checkbox = _get_playlist_checkbox_control(sub)
+                                if nested_checkbox is not None:
+                                    cb_found = nested_checkbox
                                     break
                         if cb_found:
                             break
@@ -353,9 +365,8 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                         try:
                             cb_found.value = True
                             data = getattr(cb_found, "data", None)
-                            page.selected_playlist_ids.add(
-                                data.get("cid", "") if isinstance(data, dict) else ""
-                            )
+                            if isinstance(data, PlaylistCheckboxData):
+                                page.selected_playlist_ids.add(data.cid)
                         except Exception:
                             pass
                 except Exception:
@@ -445,7 +456,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     delete_btn.on_click = lambda ev, page=page, card=card_obj, row_container=row: (
         delete_playlist(ev, page, card, row_container)
     )
-    row.data = {"idx": idx}
+    row.data = idx
     return row
 
 
