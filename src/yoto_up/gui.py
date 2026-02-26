@@ -275,50 +275,6 @@ def main(page: ft.Page):
         auth_instructions.controls.append(ft.Text("Preparing authentication..."))
         page.update()
 
-        def on_login(evt):
-            logger.debug(
-                f"[on_login] evt: {evt}; page.auth: {getattr(page, 'auth', None)}"
-            )
-            # evt is a LoginEvent
-            if getattr(evt, "error", None):
-                show_snack(f"Login error: {evt.error}", error=True)
-                status.value = f"Login error: {evt.error}"
-                page.update()
-                return
-
-            token = page.auth.token
-            access = getattr(token, "access_token", None)
-            refresh = getattr(token, "refresh_token", None)
-            if access:
-                # Persist tokens.json
-                tmp = {"access_token": access, "refresh_token": refresh}
-                try:
-                    ensure_parents(TOKENS_FILE)
-                    atomic_write(TOKENS_FILE, json.dumps(tmp))
-                except Exception:
-                    logger.error(f"Failed to save tokens to {TOKENS_FILE}: {traceback.format_exc()}")
-                # Initialize API with saved tokens
-                try:
-                    api = page.get_api()
-                    api.access_token = access
-                    api.refresh_token = refresh
-                    api_ref["api"] = api
-                    show_snack("Authenticated")
-                    page.auth_complete()
-                    auth_instructions.controls.clear()
-                    auth_instructions.controls.append(
-                        ft.Text(
-                            "Authentication complete",
-                            size=18,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.GREEN,
-                        )
-                    )
-                    page.update()
-                except Exception as e:
-                    show_snack(f"Failed to initialize API: {e}", error=True)
-
-
         page.run_task(start_device_auth, auth_instructions)
         logger.debug("[on_auth_click] _auth_click done")
 

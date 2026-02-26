@@ -65,34 +65,17 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                         if idt:
                             out['id_token'] = idt
                         try:
-                            # Ensure parent directory exists and write tokens directly.
-                            TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
-                            with TOKENS_FILE.open('w') as f:
-                                json.dump(out, f)
+                            api = ensure_api(api_ref, client)
+                            try:
+                                api.save_tokens(access, refresh)
+                            except Exception as e:
+                                logger.debug(f"poll_device_token: api.save_tokens failed: {e}")
                         except Exception as e:
-                            logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
-                        api = ensure_api(api_ref, client)
+                            logger.debug(f"poll_device_token: failed to initialize API for saving tokens: {e}")
+                            api = ensure_api(api_ref, client)
                     except Exception as e:
                         logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
                         api = ensure_api(api_ref, client)
-                    #try:
-                    #    api.save_tokens(access, refresh)
-                    #    if idt:
-                    #        try:
-                    #            with open('tokens.json', 'r') as f:
-                    #                cur = json.load(f)
-                    #        except Exception:
-                    #            cur = {"access_token": access, "refresh_token": refresh}
-                    #        cur['id_token'] = idt
-                    #        tmp2 = 'tokens.json.tmp2'
-                    #        try:
-                    #            with open(tmp2, 'w') as f:
-                    #                json.dump(cur, f)
-                    #            os.replace(tmp2, 'tokens.json')
-                    #        except Exception as ex:
-                    #            logger.debug(f"[auth] failed to preserve id_token: {ex}")
-                    #except Exception as e:
-                    #    logger.debug(f"poll_device_token: failed while saving tokens or preserving id_token: {e}")
                     api_ref['api'] = api
                     show_snack_fn('Authenticated')
                     # Enable tabs if function provided
