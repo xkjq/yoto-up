@@ -1928,7 +1928,7 @@ class YotoAPI:
                             if img.size != (16, 16):
                                 img = img.resize((16, 16), Image.Resampling.NEAREST)
                             img.save(cache_path)
-                        except Exception as e:
+                        except Exception:
                             # If Pillow fails, just save the raw bytes
                             cache_path.write_bytes(img_bytes)
                     except Exception as e:
@@ -2253,14 +2253,6 @@ class YotoAPI:
             logger.debug(f"No cached icon found for field: {icon_field}")
             return None
         try:
-            mime_type = "image/png"  # Default mime type
-            ext = cache_path.suffix.lower()
-            if ext == ".jpg" or ext == ".jpeg":
-                mime_type = "image/jpeg"
-            elif ext == ".svg":
-                mime_type = "image/svg+xml"
-            elif ext == ".gif":
-                mime_type = "image/gif"
             img_bytes = cache_path.read_bytes()
             b64_data = base64.b64encode(img_bytes).decode()
             return b64_data
@@ -2373,8 +2365,6 @@ class YotoAPI:
             cache_path = self.YOTOICONS_CACHE_DIR / f"{url_hash}{ext}"
         if not cache_path or not cache_path.exists():
             raise FileNotFoundError(f"Cached icon image not found for icon: {icon}")
-        # Use category or id for filename if available
-        filename = "".join(icon.get("tags", [])) or icon.get("id") or cache_path.stem
         return self.upload_custom_icon(str(cache_path), auto_convert=auto_convert, yotoicons_id=icon.get("id"))
 
     def replace_card_default_icons(self, card: Card, progress_callback: Optional[Callable[[str, float], None]] = None, cancel_event: Optional[threading.Event] = None, include_yotoicons: bool = True, max_searches: int = 3) -> Card:
@@ -2397,8 +2387,8 @@ class YotoAPI:
 
         # First, scan how many replacements we need to do so we can report progress
         targets = []
-        if hasattr(card, "content") and hasattr(card.content, "chapters") and card.content.chapters:
-            for ch_idx, chapter in enumerate(card.content.chapters):
+        chapters = card.content.chapters if card.content and card.content.chapters else []
+        for ch_idx, chapter in enumerate(chapters):
                 # chapter icon
                 if hasattr(chapter, "display") and chapter.display:
                     icon_field = getattr(chapter.display, "icon16x16", None)
@@ -2425,7 +2415,7 @@ class YotoAPI:
                 return card
             try:
                 if kind == 'chapter':
-                    chapter = card.content.chapters[ch_idx]
+                    chapter = chapters[ch_idx]
                     query = getattr(chapter, 'title', '')
                     _cb(f"Finding icon for chapter '{query}'", completed / total)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches)
@@ -2443,7 +2433,7 @@ class YotoAPI:
                             chapter.display.icon16x16 = f"yoto:#{media_id}"
                             logger.info(f"Replaced chapter '{chapter.title}' icon with mediaId: {media_id}")
                 else:
-                    chapter = card.content.chapters[ch_idx]
+                    chapter = chapters[ch_idx]
                     track = chapter.tracks[tr_idx]
                     query = getattr(track, 'title', getattr(chapter, 'title', ''))
                     _cb(f"Finding icon for track '{query}'", completed / total)
@@ -2490,7 +2480,7 @@ class YotoAPI:
         devices = [Device.model_validate(device) for device in devices]
         return devices
 
-    def get_device_status(self, device_id: str) -> dict:
+    def get_device_status(self, device_id: str) -> DeviceStatus:
         """
         Retrieves the current status of a specific device.
 
@@ -2513,7 +2503,7 @@ class YotoAPI:
             find_extra_fields(DeviceStatus, response.json(), warn_extra=True)
         return DeviceStatus.model_validate(response.json())
 
-    def get_device_config(self, device_id: str) -> dict:
+    def get_device_config(self, device_id: str) -> DeviceObject:
         """
         Retrieves the configuration settings of a specific device.
 
@@ -2727,7 +2717,8 @@ class YotoAPI:
             card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
         if reset_track_keys:
             card = self.rewrite_track_fields(card, field="key", sequential=True)
-        logger.debug(f"Merged {len(card.content.chapters)} chapters into one with title '{chapter_title}' and duration {total_duration} seconds.")
+        merged_count = len(card.content.chapters) if card.content and card.content.chapters is not None else 0
+        logger.debug(f"Merged {merged_count} chapters into one with title '{chapter_title}' and duration {total_duration} seconds.")
         return card
 
     def split_chapters(self, card: Card, max_tracks_per_chapter: int = 5, reset_overlay_labels: bool = True, reset_track_keys: bool = True, include_part_in_title: bool = True) -> Card:
@@ -2767,7 +2758,8 @@ class YotoAPI:
             card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
         if reset_track_keys:
             card = self.rewrite_track_fields(card, field="key", sequential=True)
-        logger.debug(f"Split {len(card.content.chapters)} chapters into smaller chapters.")
+        split_count = len(card.content.chapters) if card.content and card.content.chapters is not None else 0
+        logger.debug(f"Split {split_count} chapters into smaller chapters.")
         return card
 
     def expand_all_tracks_into_chapters(self, card: Card, reset_overlay_labels: bool = True, reset_track_keys: bool = True) -> Card:
@@ -2821,5 +2813,6 @@ class YotoAPI:
             card = self.rewrite_track_fields(card, field="overlayLabel", sequential=True)
         if reset_track_keys:
             card = self.rewrite_track_fields(card, field="key", sequential=True)
-        logger.debug(f"Expanded all tracks into {len(card.content.chapters)} individual chapters.")
+        expanded_count = len(card.content.chapters) if card.content and card.content.chapters is not None else 0
+        logger.debug(f"Expanded all tracks into {expanded_count} individual chapters.")
         return card
