@@ -18,9 +18,7 @@ import sys
 import base64
 from typing import Any, Dict, List, Optional
 from enum import Enum
-import asyncio
 import threading
-import json
 
 import flet as ft
 from loguru import logger
@@ -33,8 +31,6 @@ except ImportError:
     HAS_PIL = False
 
 try:
-    import websockets
-    import watchdog
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler
     HAS_WATCHDOG = True
