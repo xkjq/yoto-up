@@ -18,7 +18,12 @@ from yoto_up.paths import (
     _BASE_CONFIG_DIR,
 )
 
-from yoto_up.yoto_app.ui_state import set_state, get_state,remove_state_file, get_state_path
+from yoto_up.yoto_app.ui_state import (
+    set_state,
+    get_state,
+    remove_state_file,
+    get_state_path,
+)
 from yoto_up.yoto_app.card_details import make_show_card_details
 from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
 
@@ -39,7 +44,7 @@ from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.playlists import build_playlists_panel, build_playlists_ui
 from loguru import logger
 from yoto_up.yoto_app.upload_tasks import (
- UploadManager,
+    UploadManager,
 )
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 from yoto_up import paths as paths_mod
@@ -68,8 +73,15 @@ To authenticate with your Yoto account:
 3. Enter the code and complete the authentication process.
 """
 
+
 def main(page: ft.Page):
-    logger.add(sys.stderr, level="DEBUG", format="{time} {level} {message}", enqueue=True, catch=True)
+    logger.add(
+        sys.stderr,
+        level="DEBUG",
+        format="{time} {level} {message}",
+        enqueue=True,
+        catch=True,
+    )
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
 
@@ -87,18 +99,18 @@ def main(page: ft.Page):
         except Exception:
             logger.error(f"Failed to update local card cache: {traceback.format_exc()}")
 
-    page.update_local_card_cache = update_local_card_cache  # expose on page for easy access from helpers
+    page.update_local_card_cache = (
+        update_local_card_cache  # expose on page for easy access from helpers
+    )
 
     api_ref = {"api": None}
 
-    page.api_ref = api_ref  # expose on page for easy access from helpers   
-
+    page.api_ref = api_ref  # expose on page for easy access from helpers
 
     def get_api():
         return ensure_api(api_ref)
 
     page.get_api = get_api
-
 
     def update_card(card: Card) -> None:
         """
@@ -119,7 +131,9 @@ def main(page: ft.Page):
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
 
-    page.selected_playlist_ids = set()  # exposed on page for easy access from playlist row callbacks
+    page.selected_playlist_ids = (
+        set()
+    )  # exposed on page for easy access from playlist row callbacks
 
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
@@ -132,12 +146,16 @@ def main(page: ft.Page):
     def show_snack(message: str, error: bool = False, duration: int = 3000):
         # print(f"[gui] show_snack: {message}")  # Commented out for performance
         bg = ft.Colors.RED if error else None
-        page.snack_bar = ft.SnackBar(content=ft.Text(value=message), bgcolor=bg, duration=duration)
+        page.snack_bar = ft.SnackBar(
+            content=ft.Text(value=message), bgcolor=bg, duration=duration
+        )
         page.show_dialog(page.snack_bar)
         try:
             page.update()
         except AssertionError:
-            logger.error("Failed to update page after showing snack: %s", traceback.format_exc())
+            logger.error(
+                "Failed to update page after showing snack: %s", traceback.format_exc()
+            )
             # Flet may raise AssertionError if a control list contains
             # invalid entries (None or non-Control). If the playlists module
             # exposed a cleaner, call it and retry once.
@@ -146,14 +164,18 @@ def main(page: ft.Page):
                 if callable(cleaner):
                     cleaner()
             except Exception:
-                logger.error("Failed to clean UI after showing snack: %s", traceback.format_exc())
+                logger.error(
+                    "Failed to clean UI after showing snack: %s", traceback.format_exc()
+                )
             try:
                 page.update()
             except Exception:
-                logger.error("Failed to update page after showing snack: %s", traceback.format_exc())
+                logger.error(
+                    "Failed to update page after showing snack: %s",
+                    traceback.format_exc(),
+                )
 
     page.show_snack = show_snack  # expose on page for easy access from helpers
-
 
     async def start_device_auth(instr=None):
         logger.debug("[start_device_auth] Starting device auth flow")
@@ -179,13 +201,20 @@ def main(page: ft.Page):
             if container is not None:
                 container.controls.clear()
                 container.controls.append(
-                    ft.Text(value=f"Visit: {verification_uri} and enter the code displayed below.", selectable=True)
+                    ft.Text(
+                        value=f"Visit: {verification_uri} and enter the code displayed below.",
+                        selectable=True,
+                    )
                 )
-                container.controls.append(ft.Text(value=f"Code: {user_code}", selectable=True))
+                container.controls.append(
+                    ft.Text(value=f"Code: {user_code}", selectable=True)
+                )
                 container.controls.append(
                     ft.Row(
                         controls=[
-                            ft.Text(value="Alternatively open (click) this direct link: "),
+                            ft.Text(
+                                value="Alternatively open (click) this direct link: "
+                            ),
                             ft.TextButton(
                                 content=ft.Text(value=verification_uri_complete),
                                 on_click=lambda e, url=verification_uri_complete: (
@@ -193,25 +222,32 @@ def main(page: ft.Page):
                                     __import__("webbrowser").open(url),
                                 ),
                             ),
-                            ft.TextButton(content=ft.Text(value="Copy Link"), on_click=lambda e, url=verification_uri_complete: (
-                                logger.debug(f"Copying URL to clipboard: {url}"),
-                                ft.Clipboard().set(url),
-                            )),
+                            ft.TextButton(
+                                content=ft.Text(value="Copy Link"),
+                                on_click=lambda e, url=verification_uri_complete: (
+                                    logger.debug(f"Copying URL to clipboard: {url}"),
+                                    ft.Clipboard().set(url),
+                                ),
+                            ),
                         ]
                     )
                 )
                 container.controls.append(
                     ft.Row(
-                        [
-                            ft.Text("Doing this links you Yoto account with this app."),
-                            ft.Text(""),
+                        controls=[
+                            ft.Text(
+                                value="Doing this links you Yoto account with this app."
+                            ),
+                            ft.Text(value=""),
                         ]
                     )
                 )
-                container.controls.append(getattr(page, "auth_status", ft.Text("")))
+                container.controls.append(getattr(page, "auth_status", ft.Text(value="")))
                 page.update()
         except Exception:
-            logger.error(f"Failed to populate auth instructions: {traceback.format_exc()}")
+            logger.error(
+                f"Failed to populate auth instructions: {traceback.format_exc()}"
+            )
 
         # Start background poll using YotoAPI.poll_for_token
         def _poll_thread():
@@ -233,28 +269,30 @@ def main(page: ft.Page):
                         instr.controls.clear()
                         instr.controls.append(
                             ft.Text(
-                                "Authentication complete",
+                                value="Authentication complete",
                                 size=18,
                                 weight=ft.FontWeight.BOLD,
                                 color=ft.Colors.GREEN,
                             )
                         )
                 except Exception:
-                    logger.error(f"Failed to update auth instructions after successful auth: {traceback.format_exc()}")
+                    logger.error(
+                        f"Failed to update auth instructions after successful auth: {traceback.format_exc()}"
+                    )
             except Exception as e:
                 logger.error(f"start_device_auth: auth failed: {e}")
                 show_snack(f"Auth failed: {e}", error=True)
             finally:
                 page.update()
 
-        page.run_thread(_poll_thread)  # also run as a task to ensure exceptions are logged   
-
+        page.run_thread(
+            _poll_thread
+        )  # also run as a task to ensure exceptions are logged
 
     page.show_card_details = make_show_card_details(
-            page=page,
-            IconReplaceDialog=IconReplaceDialog,
-        )
-
+        page=page,
+        IconReplaceDialog=IconReplaceDialog,
+    )
 
     logger.debug("Building playlists panel")
     playlists_ui = build_playlists_panel(
@@ -274,7 +312,7 @@ def main(page: ft.Page):
         status.value = "Starting authentication..."
         # show preparing text in the embedded instructions area
         auth_instructions.controls.clear()
-        auth_instructions.controls.append(ft.Text("Preparing authentication..."))
+        auth_instructions.controls.append(ft.Text(value="Preparing authentication..."))
         page.update()
 
         page.run_task(start_device_auth, auth_instructions)
@@ -291,9 +329,9 @@ def main(page: ft.Page):
 
         # Confirmation dialog handlers
         dlg = ft.AlertDialog(
-            title=ft.Text("Confirm Reset Authentication"),
+            title=ft.Text(value="Confirm Reset Authentication"),
             content=ft.Text(
-                f"This will remove saved authentication tokens ({TOKENS_FILE.name}) and sign out. Continue?"
+                value=f"This will remove saved authentication tokens ({TOKENS_FILE.name}) and sign out. Continue?"
             ),
             actions=[],
         )
@@ -319,24 +357,27 @@ def main(page: ft.Page):
                         await start_device_auth(auth_instructions)
                     except Exception as ex:
                         logger.error(f"Failed to start re-authentication: {ex}")
-                        show_snack(f"Failed to start re-authentication: {ex}", error=True)
+                        show_snack(
+                            f"Failed to start re-authentication: {ex}", error=True
+                        )
+
                 page.run_task(_start_reauth)
 
             # threading.Thread(target=_do_reset, daemon=True).start()
 
         dlg.actions = [
-            ft.TextButton("Cancel", on_click=_cancel),
-            ft.TextButton("Confirm", on_click=_confirm),
+            ft.TextButton(content="Cancel", on_click=_cancel),
+            ft.TextButton(content="Confirm", on_click=_confirm),
         ]
 
         page.show_dialog(dlg)
         page.update()
 
     reset_btn = ft.TextButton(
-        "Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False)
+        content="Reset Auth", on_click=lambda e: reset_auth_gui(e, reauth=False)
     )
     reset_and_reauth_btn = ft.TextButton(
-        "Reset & Reauth", on_click=lambda e: reset_auth_gui(e, reauth=True)
+        content="Reset & Reauth", on_click=lambda e: reset_auth_gui(e, reauth=True)
     )
 
     def clear_all_user_data_gui(e=None):
@@ -347,9 +388,9 @@ def main(page: ft.Page):
             paths_mod = None
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Confirm Clear All User Data"),
+            title=ft.Text(value="Confirm Clear All User Data"),
             content=ft.Text(
-                "This will DELETE local tokens, UI state, caches, icon caches and saved versions. This cannot be undone. Continue?"
+                value="This will DELETE local tokens, UI state, caches, icon caches and saved versions. This cannot be undone. Continue?"
             ),
             actions=[],
         )
@@ -445,8 +486,8 @@ def main(page: ft.Page):
             threading.Thread(target=_worker, daemon=True).start()
 
         dlg.actions = [
-            ft.TextButton("Cancel", on_click=_cancel),
-            ft.TextButton("Confirm", on_click=_confirm),
+            ft.TextButton(content="Cancel", on_click=_cancel),
+            ft.TextButton(content="Confirm", on_click=_confirm),
         ]
         page.show_dialog(dlg)
         page.update()
@@ -455,15 +496,14 @@ def main(page: ft.Page):
 
     auth_column = ft.Column(
         [
-            ft.Row([auth_btn, reset_btn, reset_and_reauth_btn]),
+            ft.Row(content=[auth_btn, reset_btn, reset_and_reauth_btn]),
             ft.Divider(),
-            ft.Text("Instructions:"),
+            ft.Text(value="Instructions:"),
             auth_instructions,
         ],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
     )
-
 
     # Add About button to the top right
     about_btn = ft.IconButton(
@@ -480,11 +520,11 @@ def main(page: ft.Page):
 
     # Small badge to indicate background icon cache refresh activity.
     icon_refresh_badge_text = ft.Text(
-        "Updating icon cache...", size=12, color=ft.Colors.ORANGE
+        value="Updating icon cache...", size=12, color=ft.Colors.ORANGE
     )
     icon_refresh_badge = ft.Container(
         content=ft.Row(
-            [ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
+            content=[ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
             spacing=6,
         ),
         padding=6,
@@ -497,7 +537,7 @@ def main(page: ft.Page):
     autoselect_badge_text = ft.Text("", size=11, color=ft.Colors.BLUE)
     autoselect_badge = ft.Container(
         content=ft.Row(
-            [ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
+            content=[ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
             spacing=4,
         ),
         padding=4,
@@ -510,7 +550,9 @@ def main(page: ft.Page):
     try:
         autoselect_badge.tooltip = "Selecting icons"
     except Exception:
-        logger.error("Failed to set tooltip on autoselect badge: %s", traceback.format_exc())
+        logger.error(
+            "Failed to set tooltip on autoselect badge: %s", traceback.format_exc()
+        )
 
     def _on_autoselect_click(e=None):
         try:
@@ -755,11 +797,10 @@ def main(page: ft.Page):
         logger.debug("Icon browser panel built")
 
     # Build covers panel
-    #logger.debug("Building covers panel")   
-    #covers_ui = build_covers_panel(page=page, show_snack=show_snack)
-    #covers_panel = covers_ui.get("panel") if isinstance(covers_ui, dict) else None
-    #logger.debug("Covers panel built")
-
+    # logger.debug("Building covers panel")
+    # covers_ui = build_covers_panel(page=page, show_snack=show_snack)
+    # covers_panel = covers_ui.get("panel") if isinstance(covers_ui, dict) else None
+    # logger.debug("Covers panel built")
 
     logger.debug("Building pixel editor panel")
     editor = PixelArtEditor(page=page)
@@ -775,7 +816,7 @@ def main(page: ft.Page):
     page.upload_manager.column.visible = True
     if ENABLE_ICON_BROWSER and hasattr(icon_panel, "visible"):
         icon_panel.visible = True
-    #if hasattr(covers_panel, "visible"):
+    # if hasattr(covers_panel, "visible"):
     #    covers_panel.visible = True
 
     # Create tab labels for TabBar
@@ -784,21 +825,21 @@ def main(page: ft.Page):
     upload_tab = ft.Tab(label="Upload", disabled=True)
     if ENABLE_ICON_BROWSER:
         icons_tab = ft.Tab(label="Icons", disabled=True)
-    #covers_tab = ft.Tab(label="Covers", disabled=True)
+    # covers_tab = ft.Tab(label="Covers", disabled=True)
     editor_tab = ft.Tab(label="Editor", disabled=True)
 
     all_tab_labels = [
         auth_tab,
         playlists_tab,
         upload_tab,
-        #covers_tab,
+        # covers_tab,
         editor_tab,
     ]
     all_tab_content = [
         auth_column,
         playlists_column,
         page.upload_manager.column,
-        #covers_panel,
+        # covers_panel,
         editor_content,
     ]
     if ENABLE_ICON_BROWSER:
@@ -837,9 +878,7 @@ def main(page: ft.Page):
     def auth_complete():
         logger.debug("Auth complete")
         # Enable all tabs - access TabBar from tabs_control.content.controls[0]
-        tab_bar = tabs_control.content.controls[
-            0
-        ]  # First control in Column is TabBar
+        tab_bar = tabs_control.content.controls[0]  # First control in Column is TabBar
         for i in range(1, len(tab_bar.tabs)):
             tab_bar.tabs[i].disabled = False
 
@@ -865,7 +904,10 @@ def main(page: ft.Page):
                         if hasattr(page, "set_icon_refreshing"):
                             page.set_icon_refreshing(False)
                     except Exception as e:
-                        logger.error("Failed to hide icon refreshing badge: %s", traceback.format_exc())
+                        logger.error(
+                            "Failed to hide icon refreshing badge: %s",
+                            traceback.format_exc(),
+                        )
                 # Notify any icon browser listeners that the cache refresh finished
                 cbs = getattr(page, "icon_cache_refreshed_callbacks", None)
                 if cbs:
@@ -873,7 +915,10 @@ def main(page: ft.Page):
                         try:
                             cb()
                         except Exception as e:
-                            logger.error("Icon cache refreshed callback failed: %s", traceback.format_exc())
+                            logger.error(
+                                "Icon cache refreshed callback failed: %s",
+                                traceback.format_exc(),
+                            )
 
             page.run_task(_refresh_icons_bg)
 
@@ -938,7 +983,6 @@ def main(page: ft.Page):
 
     logger.debug("Showing development warning dialog")
     show_dev_warning(page)
-
 
     # Now that the UI controls are added to the page, try to reuse tokens.json (if present)
     logger.debug("Checking for existing tokens...")
