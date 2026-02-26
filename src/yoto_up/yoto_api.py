@@ -1857,13 +1857,21 @@ class YotoAPI:
                 soup = BeautifulSoup(resp.text, "html.parser")
                 icons = []
                 for div in soup.select("section#search_results div.icon"):
-                    onclick = div.get("onclick", "")
+                    onclick_attr = div.get("onclick")
+                    onclick = onclick_attr if isinstance(onclick_attr, str) else ""
                     m = re.search(r"populate_icon_modal\('(\d+)',\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*'(\d+)'\)", onclick)
                     if not m:
                         continue
                     icon_id, category, tag1, tag2, author, downloads = m.groups()
                     img_tag = div.select_one(".icon_background img")
-                    img_url = "https://www.yotoicons.com" + img_tag.get("src") if img_tag else None
+                    src_attr = img_tag.get("src") if img_tag else None
+                    src = src_attr if isinstance(src_attr, str) else None
+                    if src and src.startswith("http"):
+                        img_url = src
+                    elif src:
+                        img_url = f"https://www.yotoicons.com{src}"
+                    else:
+                        img_url = None
                     icons.append({
                         "id": icon_id,
                         "category": category,
@@ -2112,7 +2120,7 @@ class YotoAPI:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": mime_type,
         }
-        response = httpx.post(url, headers=headers, params=params, data=icon_bytes)
+        response = httpx.post(url, headers=headers, params=params, content=icon_bytes)
         try:
             response.raise_for_status()
         except httpx.HTTPError:
@@ -2168,7 +2176,7 @@ class YotoAPI:
             params["filename"] = filename
 
         # If uploading a local file, stream the bytes as the request body with an appropriate mime-type
-        data = None
+        data: bytes | None = None
         if image_path:
             p = Path(image_path)
             if not p.exists():
@@ -2198,7 +2206,7 @@ class YotoAPI:
 
         _call_cb('Uploading cover...', 0.0)
         if data is not None:
-            resp = httpx.post(url, headers=headers, params=params, data=data)
+            resp = httpx.post(url, headers=headers, params=params, content=data)
         else:
             resp = httpx.post(url, headers=headers, params=params)
 
@@ -2215,7 +2223,7 @@ class YotoAPI:
 
         # Cache uploaded image bytes locally when we uploaded from a file and server returned a mediaUrl
         try:
-            if data is not None and isinstance(cover, dict) and cover.get("mediaUrl"):
+            if data is not None and image_path is not None and isinstance(cover, dict) and cover.get("mediaUrl"):
                 url_hash = hashlib.sha256(cover.get("mediaUrl").encode()).hexdigest()
                 # Save original bytes into official cache for quick local access
                 try:
