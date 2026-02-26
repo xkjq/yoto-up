@@ -1055,7 +1055,9 @@ class YotoAPI:
                         chapter_details = {'title': filename_list[i]}
                 except Exception:
                     chapter_details = None
-                ch = self.get_chapter_from_transcoded_audio(tr, chapter_details=chapter_details)
+                if tr is None:
+                    raise ValueError("Missing transcoded audio result while building chapters")
+                ch = self.get_chapter_from_transcoded_audio(TranscodedAudio.model_validate(tr), chapter_details=chapter_details)
                 if ch is not None:
                     ch.key = f"{i+1:02}"
                     if hasattr(ch, 'tracks') and ch.tracks:
@@ -1182,33 +1184,27 @@ class YotoAPI:
             return Track.model_validate(merged)
         return track
 
-    def get_chapter_from_transcoded_audio(self, transcoded_audio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None) -> Optional[Chapter]:
-        media_info = transcoded_audio.get("transcodedInfo", {})
-        # Use chapter_details['title'] if provided, else fallback to metadata title, else 'Unknown Chapter'
-        chapter_title = None
-        if chapter_details and "title" in chapter_details:
-            chapter_title = chapter_details["title"]
-        else:
-            chapter_title = media_info.get("metadata", {}).get("title") or "Unknown Chapter"
-        # Merge custom track details
-        track_kwargs = dict(
+    def get_chapter_from_transcoded_audio(self, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None) -> Optional[Chapter]:
+        media_info = transcoded_audio.transcodedInfo
+        metadata_title = media_info.metadata.title if media_info and media_info.metadata and media_info.metadata.title else None
+        chapter_title = chapter_details["title"] if chapter_details and "title" in chapter_details else (metadata_title or "Unknown Chapter")
+
+        track = Track(
             key="01",
             title=chapter_title,
-            trackUrl=f"yoto:#{transcoded_audio['transcodedSha256']}",
-            format=media_info.get("format", "mp3"),
+            trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
+            format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
-            channels=media_info.get("channels"),
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
+            channels=media_info.channels if media_info else None,
             overlayLabel="1",
             display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if track_details:
-            track_kwargs.update(track_details)
-        track = Track(**track_kwargs)
+            track = Track.model_validate({**track.model_dump(exclude_none=True), **track_details})
 
-        # Merge custom chapter details
-        chapter_kwargs = dict(
+        chapter = Chapter(
             key="01",
             title=chapter_title,
             overlayLabel="1",
@@ -1216,37 +1212,29 @@ class YotoAPI:
             display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if chapter_details:
-            chapter_kwargs.update(chapter_details)
-        # Ensure required fields
-        if "title" not in chapter_kwargs:
-            chapter_kwargs["title"] = chapter_title
-        if "tracks" not in chapter_kwargs:
-            chapter_kwargs["tracks"] = [track]
-        chapter = Chapter(**chapter_kwargs)
+            chapter = Chapter.model_validate({**chapter.model_dump(exclude_none=True), **chapter_details})
         return chapter
 
-    def create_card_from_transcoded_audio(self, card_title: str, transcoded_audio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None):
-        media_info = transcoded_audio.get("transcodedInfo", {})
-        chapter_title = media_info.get("metadata", {}).get("title") or card_title
-        # Merge custom track details
-        track_kwargs = dict(
+    def create_card_from_transcoded_audio(self, card_title: str, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None):
+        media_info = transcoded_audio.transcodedInfo
+        chapter_title = (media_info.metadata.title if media_info and media_info.metadata and media_info.metadata.title else None) or card_title
+
+        track = Track(
             key="01",
             title=chapter_title,
-            trackUrl=f"yoto:#{transcoded_audio['transcodedSha256']}",
-            format=media_info.get("format", "mp3"),
+            trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
+            format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
-            channels=media_info.get("channels"),
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
+            channels=media_info.channels if media_info else None,
             overlayLabel="1",
             display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if track_details:
-            track_kwargs.update(track_details)
-        track = Track(**track_kwargs)
+            track = Track.model_validate({**track.model_dump(exclude_none=True), **track_details})
 
-        # Merge custom chapter details
-        chapter_kwargs = dict(
+        chapter = Chapter(
             key="01",
             title=chapter_title,
             overlayLabel="1",
@@ -1254,17 +1242,11 @@ class YotoAPI:
             display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if chapter_details:
-            chapter_kwargs.update(chapter_details)
-        # Ensure required fields
-        if "title" not in chapter_kwargs:
-            chapter_kwargs["title"] = chapter_title
-        if "tracks" not in chapter_kwargs:
-            chapter_kwargs["tracks"] = [track]
-        chapter = Chapter(**chapter_kwargs)
+            chapter = Chapter.model_validate({**chapter.model_dump(exclude_none=True), **chapter_details})
         card_content = CardContent(chapters=[chapter])
         card_media = CardMedia(
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
         )
         card_metadata = CardMetadata(media=card_media)
         card = Card(title=card_title, content=card_content, metadata=card_metadata)
@@ -1298,7 +1280,7 @@ class YotoAPI:
             poll_interval=poll_interval,
             max_attempts=max_attempts,
         )
-        return self.create_card_from_transcoded_audio(card_title, transcoded_audio, track_details, chapter_details)
+        return self.create_card_from_transcoded_audio(card_title, TranscodedAudio.model_validate(transcoded_audio), track_details, chapter_details)
 
     def upload_audio_to_existing_card(
         self,
