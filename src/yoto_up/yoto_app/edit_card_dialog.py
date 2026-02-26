@@ -430,7 +430,7 @@ def show_edit_card_dialog(
                     logger.debug(f"Update card failed: {ex}")
                 finally:
                     page.pop_dialog()
-                    page.show_card_details(None, card_model)
+                    page.show_card_details(card_model)
                     page.update()
 
             page.run_task(save_thread)
@@ -441,7 +441,7 @@ def show_edit_card_dialog(
 
     def close_edit(_ev):
         page.pop_dialog()
-        page.show_card_details(None, card_pre_edit)
+        page.show_card_details(card_pre_edit)
         page.update()
 
     edit_list = ft.ListView(

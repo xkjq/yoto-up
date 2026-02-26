@@ -177,7 +177,7 @@ Continue?"""
                                 logger.exception("replace_icons error")
                             time.sleep(1)
                             try:
-                                show_card_details(None, new_card)
+                                show_card_details(new_card)
                             except Exception:
                                 pass
 

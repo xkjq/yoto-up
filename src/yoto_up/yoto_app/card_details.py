@@ -20,15 +20,16 @@ def make_show_card_details(
     page,
     IconReplaceDialog,
 ):
-    """Factory that returns a callable with signature (ev, card).
+    """Factory that returns a callable with signature (card).
 
-    The returned `show_card_details(ev, card)` function was extracted from
+    The returned `show_card_details(card)` function was extracted from
     `yoto_app.playlists` to keep the playlists module smaller. The factory
     captures the dependencies that were previously closed-over in the
     nested function.
     """
 
-    def show_card_details(e, card: Card, preview_path: Path | None = None):
+    def show_card_details(card: Card, preview_path: Path | None = None):
+        logger.debug(f"Showing details for card id {card.cardId} with title '{card.title}'")
 
         assert isinstance(card, Card), f"Expected card to be a Card model instance, got {type(card)}"
 
@@ -102,7 +103,7 @@ def make_show_card_details(
                         page.update_local_card_cache(updated)
                         page.pop_dialog()
                         page.pop_dialog()
-                        show_card_details(None, updated)
+                        show_card_details(updated)
                         page.update()
                     except Exception as ex:
                         logger.error(f"save_order: background save failed: {ex}")
@@ -192,7 +193,7 @@ def make_show_card_details(
 
                             page.update_card(full)
                             page.show_snack('Chapter icon cleared')
-                            show_card_details(None, full)
+                            show_card_details(full)
                         except Exception as ee:
                             page.show_snack(f'Failed to clear chapter icon: {ee}', error=True)
 
@@ -223,7 +224,7 @@ def make_show_card_details(
                                 page.show_snack('Track has no icon to clear', error=True)
                                 return
                             page.update_card(full)
-                            show_card_details(None, full)
+                            show_card_details(full)
                         except Exception as ee:
                             page.show_snack(f'Failed to clear track icon: {ee}', error=True)
 
@@ -670,7 +671,7 @@ def make_show_card_details(
                             except Exception as ee:
                                 page.show_snack(f"Failed to copy chapter icon: {ee}", error=True)
                                 page.update()
-                            show_card_details(None, full)
+                            show_card_details(full)
 
                         threading.Thread(target=worker, daemon=True).start()
                     except Exception:
@@ -846,7 +847,7 @@ def make_show_card_details(
                                 try:
                                     card = api.load_version(pp, as_model=True)
                                     # show the full card details for the saved version
-                                    show_card_details(None, card, preview_path=pp)
+                                    show_card_details(card, preview_path=pp)
                                 except Exception as ex:
                                     logger.error(f"Failed to load version for preview: {ex}")
                                     page.show_snack(f"Failed to load version: {ex}", error=True)
@@ -863,7 +864,7 @@ def make_show_card_details(
                                             try:
                                                 updated = api.restore_version(pp, return_card=True)
                                                 page.show_snack("Version restored")
-                                                show_card_details(None, updated)
+                                                show_card_details(updated)
                                                 page.update()
                                             except Exception as ex:
                                                 page.show_snack(f"Failed to restore version: {ex}", error=True)
@@ -1004,7 +1005,6 @@ def make_show_card_details(
             add_cover_dialog(
                 page,
                 c,
-                on_close=lambda e=None: show_card_details(None, c, preview_path=preview_path),
             )
 
         def relabel_keys(ev=None):
@@ -1022,7 +1022,7 @@ def make_show_card_details(
                         page.update_card(updated)
                         page.show_snack("Track keys relabelled")
                         try:
-                            show_card_details(None, updated)
+                            show_card_details(updated)
                         except Exception:
                             pass
                     except Exception as ex:
@@ -1048,7 +1048,7 @@ def make_show_card_details(
                         page.update_card(updated)
                         page.show_snack("Overlay labels relabelled")
                         try:
-                            show_card_details(None, updated)
+                            show_card_details(updated)
                         except Exception:
                             pass
                     except Exception as ex:
@@ -1072,7 +1072,7 @@ def make_show_card_details(
                         page.update_card(updated)
                         page.show_snack("Chapters merged")
                         try:
-                            show_card_details(None, updated)
+                            show_card_details(updated)
                         except Exception:
                             logger.debug("merge_chapters: failed to refresh details view after merge")
                     except Exception as ex:
@@ -1122,7 +1122,7 @@ Merging will result in:
                             except Exception:
                                 pass
                             try:
-                                show_card_details(None, updated)
+                                show_card_details(updated)
                             except Exception:
                                 pass
                             page.update()
@@ -1354,7 +1354,7 @@ Renumbering keys will assign sequential keys to all tracks.
                             try:
                                 updated = api.restore_version(ppath, return_card=True)
                                 page.show_snack("Version restored")
-                                show_card_details(None, updated)
+                                show_card_details(updated)
                                 page.update()
                             except Exception as ex:
                                 page.show_snack(f"Failed to restore version: {ex}", error=True)
@@ -1382,12 +1382,13 @@ Renumbering keys will assign sequential keys to all tracks.
                         ),
                     ),
                 ),
-                ft.TextButton("Add Cover", on_click=lambda ev: show_add_cover(ev)),
+                ft.TextButton("Cover", on_click=lambda ev: show_add_cover(ev)),
                 ft.TextButton("Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
                 ft.TextButton("Export", on_click=export_card),
                 ft.TextButton("Close", on_click=close_dialog),
             ],
         )
         page.show_dialog(dialog)
+        page.update()
 
     return show_card_details

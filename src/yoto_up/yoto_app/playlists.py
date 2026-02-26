@@ -409,7 +409,7 @@ def make_playlist_row(page, card_obj, idx=None):
             page.update()
             page.playlist_last_selected_index = this_idx
             return
-        page.show_card_details(ev, card)
+        page.show_card_details(card)
 
     # Compact preview of first few chapter titles (use model helper when present)
     preview = ""

@@ -12,13 +12,15 @@ from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.api_manager import ensure_api
 
 
-def add_cover_dialog(page, c: Card, on_close=None):
+def add_cover_dialog(page, c: Card):
     api: YotoAPI = ensure_api(page.api_ref)
 
     def do_remove_cover(c: Card = c):
         try:
             card_model = c.clear_cover()
             page.update_card(card_model)
+            page.pop_dialog()
+            page.show_card_details(card_model)
         except Exception as e:
             logger.error(f"Remove cover error: {e}")
             page.update()
@@ -137,22 +139,15 @@ def add_cover_dialog(page, c: Card, on_close=None):
             page.update()
 
         page.pop_dialog()
+        page.pop_dialog()
+        page.pop_dialog()
+        page.pop_dialog()
+        page.show_card_details(card_model)
         page.update()
 
     def close_add(_e):
         page.pop_dialog()
         page.update()
-        try:
-            if callable(on_close):
-                try:
-                    on_close()
-                except Exception:
-                    try:
-                        on_close(None)
-                    except Exception:
-                        logger.exception("on_close callback failed")
-        except Exception:
-            pass
 
     def do_search_cover(_e=None):
         try:
@@ -207,10 +202,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
                             tmp_path = tmpf.name
 
                         def progress_cb(_msg, _frac):
-                            try:
-                                page.update()
-                            except Exception:
-                                logger.error("Error in progress_cb (confirm upload)")
+                            page.update()
 
                         res = api.upload_cover_image(
                             image_path=tmp_path,
@@ -237,6 +229,10 @@ def add_cover_dialog(page, c: Card, on_close=None):
                         except Exception:
                             logger.error(f"Failed to remove temp file {tmp_path}")
                         page.pop_dialog()
+                        page.pop_dialog()
+                        page.pop_dialog()
+                        page.pop_dialog()
+                        page.show_card_details(card_model)
                         page.update()
                     except Exception as e:
                         logger.error(f"Top-level upload error (confirm upload): {e}")
