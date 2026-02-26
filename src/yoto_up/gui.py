@@ -524,7 +524,7 @@ def main(page: ft.Page):
     )
     icon_refresh_badge = ft.Container(
         content=ft.Row(
-            controls=[ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
+            [ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
             spacing=6,
         ),
         padding=6,
@@ -537,7 +537,7 @@ def main(page: ft.Page):
     autoselect_badge_text = ft.Text("", size=11, color=ft.Colors.BLUE)
     autoselect_badge = ft.Container(
         content=ft.Row(
-            controls=[ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
+            [ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
             spacing=4,
         ),
         padding=4,
