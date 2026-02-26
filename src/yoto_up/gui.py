@@ -495,8 +495,8 @@ def main(page: ft.Page):
     # clear_data_btn removed; Clear action is available from the About dialog
 
     auth_column = ft.Column(
-        [
-            ft.Row(content=[auth_btn, reset_btn, reset_and_reauth_btn]),
+        controls=[
+            ft.Row(controls=[auth_btn, reset_btn, reset_and_reauth_btn]),
             ft.Divider(),
             ft.Text(value="Instructions:"),
             auth_instructions,
@@ -524,7 +524,7 @@ def main(page: ft.Page):
     )
     icon_refresh_badge = ft.Container(
         content=ft.Row(
-            content=[ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
+            controls=[ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
             spacing=6,
         ),
         padding=6,
@@ -537,7 +537,7 @@ def main(page: ft.Page):
     autoselect_badge_text = ft.Text("", size=11, color=ft.Colors.BLUE)
     autoselect_badge = ft.Container(
         content=ft.Row(
-            content=[ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
+            controls=[ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
             spacing=4,
         ),
         padding=4,
