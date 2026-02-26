@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 import traceback
 import tempfile
 import shutil
@@ -13,48 +14,59 @@ import re
 from loguru import logger
 import webbrowser
 import flet as ft
+from types import ModuleType
+from typing import Optional
 import sys
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import threading
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
+from pydub import AudioSegment
+from yoto_up.yoto_app import utils as utils_mod
+import subprocess
 
-
-
-utils_mod = audio_adjust_utils
-INTRO_OUTRO_DIALOG: Any = None
-_simpleaudio = None
+# Try to import simpleaudio for audio playback
+# Annotate module variable as optional to satisfy type checkers
+_simpleaudio: Optional[ModuleType] = None
 HAS_SIMPLEAUDIO = False
-_UPLOAD_CTX: dict[str, Any] = {}
+try:
+    import importlib
+
+    _simpleaudio = importlib.import_module("simpleaudio")
+    HAS_SIMPLEAUDIO = True
+except Exception:
+    _simpleaudio = None
+    HAS_SIMPLEAUDIO = False
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
+# module-level placeholder for the intro/outro analysis dialog (set when opened)
+INTRO_OUTRO_DIALOG = None
 
 
 # --- Robust FileUploadRow class ---
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
 
-        from flet import ProgressBar
+        # use ft.* controls
 
         self.filepath = filepath
         self.original_filepath = filepath  # Always keep the original file path
         self.name = os.path.basename(filepath)
-        self.status_text = Text("Queued")
-        self.progress = ProgressBar(width=300, visible=False)
-        self.inner_row = Row(
-            [
-                Text(self.name, width=300),
-                Button("Preview", on_click=self.on_preview),
+        self.status_text = ft.Text(value="Queued")
+        self.progress = ft.ProgressBar(width=300, visible=False)
+        self.name_text = ft.Text(value=self.name, width=300)
+        self.inner_row = ft.Row(
+            controls=[
+                self.name_text,
+                ft.TextButton(content=ft.Text(value="Preview"), on_click=self.on_preview),
                 self.progress,
                 self.status_text,
-                Button("View details", on_click=self.on_view_details),
-                Button("Remove", on_click=self.on_remove),
+                ft.TextButton(content=ft.Text(value="View details"), on_click=self.on_view_details),
+                ft.TextButton(content=ft.Text(value="Remove"), on_click=self.on_remove),
             ]
         )
-        from flet import Container
-
-        self.row = Container(content=self.inner_row, bgcolor=None, padding=0)
+        self.row = ft.Container(content=self.inner_row, bgcolor=None, padding=0)
         setattr(self.row, "filename", filepath)
         setattr(self.row, "_fileuploadrow", self)
         self.maybe_page = maybe_page
@@ -168,14 +180,14 @@ class FileUploadRow:
                     tags["error"] = f"Fallback tag read failed: {fe}"
             lines = []
             if not tags:
-                lines = [Text("No tags found")]
+                lines = [ft.Text(value="No tags found")]
             else:
                 for k, v in tags.items():
-                    lines.append(Text(f"{k}: {v}"))
-            dlg = AlertDialog(
-                title=Text(f"Media details: {self.name}"),
-                content=Column(lines),
-                actions=[Button("OK", on_click=lambda e: page.pop_dialog())],
+                    lines.append(ft.Text(value=f"{k}: {v}"))
+            dlg = ft.AlertDialog(
+                title=ft.Text(value=f"Media details: {self.name}"),
+                content=ft.Column(controls=lines),
+                actions=[ft.TextButton(content=ft.Text(value="OK"), on_click=lambda e: page.pop_dialog())],
             )
             page.show_dialog(dlg)
             page.update()
@@ -220,8 +232,7 @@ class FileUploadRow:
         # Update the filename attribute on the row container
         setattr(self.row, "filename", new_filepath)
         # Update the displayed file name in the UI
-        if self.inner_row.controls and isinstance(self.inner_row.controls[0], _ft.Text):
-            self.inner_row.controls[0].value = self.name
+        self.name_text.value = self.name
         # Optionally reset status and progress
         self.set_status("Queued")
         self.set_progress(0.0)
@@ -245,9 +256,10 @@ class UploadManager:
     def __init__(self, page, api_ref: dict, show_snack):
         # store page reference for helper methods
         self.page = page
+        ctx = {}
         overall_bar = ft.ProgressBar(width=400, visible=False)
-        overall_text = ft.Text("")
-        file_rows_column = ft.Column()
+        overall_text = ft.Text(value="")
+        file_rows_column = ft.Column(controls=[])
         # Counters for overall progress
         total_files = 0
         completed_count = 0
@@ -380,11 +392,9 @@ class UploadManager:
             ]
             page.update()
 
-        start_btn = ft.Button("Start Upload")
-        stop_btn = ft.Button("Stop Upload", disabled=True)
-        remove_uploaded_btn = ft.Button(
-            "Remove Uploaded", on_click=remove_uploaded_files
-        )
+        start_btn = ft.TextButton(content=ft.Text(value="Start Upload"))
+        stop_btn = ft.TextButton(content=ft.Text(value="Stop Upload"), disabled=True)
+        remove_uploaded_btn = ft.TextButton(content=ft.Text(value="Remove Uploaded"), on_click=remove_uploaded_files)
 
         def update_overall():
             # update overall progress bar when a file completes
@@ -405,6 +415,16 @@ class UploadManager:
             overall_bar.value = (completed_count / total) if total else 0
             overall_text.value = f"{completed_count}/{total} completed"
             page.update()
+
+        # expose commonly-used internals for external helpers/tests
+        self.files_row_column = file_rows_column
+        self.overall_bar = overall_bar
+        self.overall_text = overall_text
+        self.show_snack = show_snack
+        self.update_overall = update_overall
+        self.ctx = ctx
+        # page.status is created by gui; expose it if available
+        self.status = getattr(page, "status", None)
 
 
         def clear_queue(ev=None):
@@ -453,7 +473,7 @@ class UploadManager:
                     )
                 if not files:
                     file_rows_column.controls.append(
-                        ft.Text(f"No audio files found in {folder_path}")
+                        ft.Text(value=f"No audio files found in {folder_path}")
                     )
                 page.update()
             except Exception:
@@ -553,7 +573,7 @@ class UploadManager:
         folder.on_change = _on_folder_change
 
         show_waveforms_btn = ft.TextButton(
-            "Show Waveforms",
+            content=ft.Text(value="Show Waveforms"),
             on_click=lambda: show_waveforms_popup(
                 page=page,
                 file_rows_column=file_rows_column,
@@ -567,7 +587,7 @@ class UploadManager:
         )
 
         # Analyze/trim button for intro/outro detection
-        analyze_intro_btn = ft.Button("Analyze intro/outro")
+        analyze_intro_btn = ft.TextButton(content=ft.Text(value="Analyze intro/outro"))
 
         async def _do_analysis_and_show_dialog(dialog_controls):
             """Perform analysis using settings from dialog_controls and update dialog content.
@@ -591,7 +611,7 @@ class UploadManager:
 
             # import here so missing dependency only affects this feature
             try:
-                from yoto_up.yoto_app.intro_outro import (
+                from .intro_outro import (
                     per_window_common_prefix,
                     trim_audio_file,
                 )
@@ -604,6 +624,8 @@ class UploadManager:
             # read config from dialog controls
             side = dialog_controls["intro_outro_side"].value or "intro"
             seconds = float(dialog_controls["intro_seconds"].value or 10.0)
+            # NOTE: per-window analysis uses window-specific similarity controls;
+            # the top-level similarity field here is unused and therefore not read.
             try:
                 padding_seconds = float(
                     dialog_controls.get("padding_seconds").value or 0.25
@@ -617,7 +639,7 @@ class UploadManager:
             content_col.controls.clear()
             content_col.controls.append(
                 ft.Row(
-                    [ft.ProgressRing(), ft.Text("Analyzing files...")],
+                    controls=[ft.ProgressRing(), ft.Text(value="Analyzing files...")],
                     alignment=ft.MainAxisAlignment.CENTER,
                 )
             )
@@ -690,7 +712,7 @@ class UploadManager:
             per_file_per_window = dict(result.per_file_per_window)
 
             if windows_matched <= 0 or seconds_matched <= 0.0:
-                content_col.controls.append(ft.Text("No common intro/outro detected"))
+                content_col.controls.append(ft.Text(value="No common intro/outro detected"))
                 try:
                     page.update()
                 except Exception:
@@ -715,7 +737,7 @@ class UploadManager:
 
             content_col.controls.append(
                 ft.Text(
-                    f"Planned removal: from start up to {seconds_matched:.2f}s (same for all matched files)"
+                    value=f"Planned removal: from start up to {seconds_matched:.2f}s (same for all matched files)"
                 )
             )
             # Persist a small debug JSON so the preview/trim actions can be inspected
@@ -773,11 +795,7 @@ class UploadManager:
                 checkbox_map[p] = cb
 
                 # Preview button: extract the matched segment into a temp file and play it
-                preview_btn = ft.TextButton(
-                    "Preview",
-                    on_click=None,
-                    tooltip="Preview the matched intro/outro segment",
-                )
+                preview_btn = ft.TextButton(content=ft.Text(value="Preview"), on_click=None, tooltip="Preview the matched intro/outro segment")
 
                 def make_preview_handler(path, preview_button, seg_seconds, side_label):
                     def _on_preview(ev=None):
@@ -798,11 +816,11 @@ class UploadManager:
 
                         # Create a preview dialog so the user sees progress while we extract
                         preview_content = ft.Column(
-                            [
+                            controls=[
                                 ft.Row(
-                                    [
+                                    controls=[
                                         ft.ProgressRing(),
-                                        ft.Text("Preparing preview..."),
+                                        ft.Text(value="Preparing preview..."),
                                     ],
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 )
@@ -810,13 +828,10 @@ class UploadManager:
                             scroll=ft.ScrollMode.AUTO,
                         )
                         preview_dlg = ft.AlertDialog(
-                            title=ft.Text("Preview"),
+                            title=ft.Text(value="Preview"),
                             content=preview_content,
                             actions=[
-                                ft.TextButton(
-                                    "Close",
-                                    on_click=lambda e: open_intro_outro_dialog(e),
-                                )
+                                        ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: open_intro_outro_dialog(e),)
                             ],
                             modal=True,
                         )
@@ -828,8 +843,6 @@ class UploadManager:
 
                         def _worker():
                             try:
-                                from pydub import AudioSegment
-                                import webbrowser
 
                                 src = str(path)
                                 # For a consistent removal across matched files we use the computed common_removal_end_sec.
@@ -896,7 +909,7 @@ class UploadManager:
 
                                 # Build result dialog with Play (enabled only if WAV exists) and Open buttons
                                 def make_result_dialog(wav_available: bool):
-                                    items = [ft.Text(f"Preview: {Path(src).name}")]
+                                    items = [ft.Text(value=f"Preview: {Path(src).name}")]
 
                                     if wav_available or segment is not None:
 
@@ -952,12 +965,10 @@ class UploadManager:
                                                 target=_play_thread, daemon=True
                                             ).start()
 
-                                        items.append(ft.Button("Play", on_click=_play))
+                                        items.append(ft.TextButton(content=ft.Text(value="Play"), on_click=_play))
                                     else:
                                         items.append(
-                                            ft.Text(
-                                                "Preview playback not available (conversion failed)"
-                                            )
+                                            ft.Text(value="Preview playback not available (conversion failed)")
                                         )
 
                                     def _open_external(e=None):
@@ -978,10 +989,7 @@ class UploadManager:
                                             )
 
                                     items.append(
-                                        ft.TextButton(
-                                            "Open in external player",
-                                            on_click=_open_external,
-                                        )
+                                        ft.TextButton(content=ft.Text(value="Open in external player"), on_click=_open_external)
                                     )
                                     # Show the absolute path so users can verify which file will be opened/played
                                     try:
@@ -991,27 +999,17 @@ class UploadManager:
                                             else preview_path
                                         )
                                         items.append(
-                                            ft.Text(
-                                                str(Path(display_target).resolve()),
-                                                size=12,
-                                            )
+                                            ft.Text(value=str(Path(display_target).resolve()), size=12)
                                         )
                                     except Exception:
                                         pass
 
-                                    content = ft.Column(
-                                        items, scroll=ft.ScrollMode.AUTO
-                                    )
+                                    content = ft.Column(controls=items, scroll=ft.ScrollMode.AUTO)
                                     return ft.AlertDialog(
-                                        title=ft.Text("Preview"),
+                                        title=ft.Text(value="Preview"),
                                         content=content,
                                         actions=[
-                                            ft.TextButton(
-                                                "Close",
-                                                on_click=lambda e: (
-                                                    open_intro_outro_dialog(e)
-                                                ),
-                                            )
+                                            ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: (open_intro_outro_dialog(e)),)
                                         ],
                                         modal=True,
                                     )
@@ -1051,7 +1049,7 @@ class UploadManager:
 
                 # Layout: checkbox + preview button on the same row
                 content_col.controls.append(
-                    ft.Row([cb, preview_btn], alignment=ft.MainAxisAlignment.START)
+                    ft.Row(controls=[cb, preview_btn], alignment=ft.MainAxisAlignment.START)
                 )
 
             # trim handler: shows a trimming dialog and runs trimming in background
@@ -1084,10 +1082,10 @@ class UploadManager:
                 # confirmation dialog. It will open its own progress dialog.
                 def _trim_worker():
                     trim_progress = ft.ProgressBar(width=400, value=0.0, visible=True)
-                    trim_label = ft.Text(f"Trimming 0/{total_to_trim}")
+                    trim_label = ft.Text(value=f"Trimming 0/{total_to_trim}")
                     trim_dlg = ft.AlertDialog(
-                        title=ft.Text("Trimming..."),
-                        content=ft.Column([trim_label, trim_progress]),
+                        title=ft.Text(value="Trimming..."),
+                        content=ft.Column(controls=[trim_label, trim_progress]),
                         actions=[],
                     )
                     try:
@@ -1301,7 +1299,7 @@ class UploadManager:
                 try:
                     if comp_val > 0.0:
                         confirm_text = ft.Text(
-                            f"You are about to trim {comp_val:.2f}s from {total_to_trim} file(s).\n\nThis will modify the selected files. Proceed?"
+                            value=f"You are about to trim {comp_val:.2f}s from {total_to_trim} file(s).\n\nThis will modify the selected files. Proceed?"
                         )
 
                         def _on_proceed(e=None):
@@ -1318,10 +1316,10 @@ class UploadManager:
                             except Exception:
                                 pass
 
-                        proceed_btn = ft.Button("Proceed", on_click=_on_proceed)
-                        cancel_btn = ft.TextButton("Cancel", on_click=_on_cancel)
+                        proceed_btn = ft.TextButton(content=ft.Text(value="Proceed"), on_click=_on_proceed)
+                        cancel_btn = ft.TextButton(content=ft.Text(value="Cancel"), on_click=_on_cancel)
                         confirm_dlg = ft.AlertDialog(
-                            title=ft.Text("Confirm trimming"),
+                            title=ft.Text(value="Confirm trimming"),
                             content=confirm_text,
                             actions=[proceed_btn, cancel_btn],
                         )
@@ -1375,7 +1373,7 @@ class UploadManager:
                 label="Computed removal (s)", value="0.00", width=120
             )
             # confirm removal checkbox removed — rely on final confirmation dialog
-            content_column = ft.Column([], scroll=ft.ScrollMode.AUTO)
+            content_column = ft.Column(controls=[], scroll=ft.ScrollMode.AUTO)
 
             def on_run(ev=None):
                 dlg_controls = {
@@ -1401,19 +1399,17 @@ class UploadManager:
 
                 threading.Thread(target=_runner, daemon=True).start()
 
-            run_btn = ft.Button("Run analysis", on_click=on_run)
-            trim_btn = ft.Button("Trim selected", disabled=True)
-            close_btn = ft.TextButton("Close", on_click=lambda e: page.pop_dialog())
+            run_btn = ft.TextButton(content=ft.Text(value="Run analysis"), on_click=on_run)
+            trim_btn = ft.TextButton(content=ft.Text(value="Trim selected"), disabled=True)
+            close_btn = ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog())
 
             dlg = ft.AlertDialog(
-                title=ft.Text("Analyze intro/outro"),
+                title=ft.Text(value="Analyze intro/outro"),
                 content=ft.Column(
-                    [
-                        ft.Row([d_side, d_max_seconds, d_padding, d_fast]),
-                        ft.Row(
-                            [d_window_seconds, d_window_similarity, d_window_min_files]
-                        ),
-                        ft.Row([d_computed_removal]),
+                    controls=[
+                        ft.Row(controls=[d_side, d_max_seconds, d_padding, d_fast]),
+                        ft.Row(controls=[d_window_seconds, d_window_similarity, d_window_min_files]),
+                        ft.Row(controls=[d_computed_removal]),
                         ft.Divider(),
                         content_column,
                     ],
@@ -1490,11 +1486,7 @@ class UploadManager:
             target = getattr(upload_target_dropdown, "value", "Create new card")
 
             target_card_sel = getattr(self.existing_card_dropdown, "value", None)
-            card_id = (
-                self.existing_card_map.get(target_card_sel)
-                if target_card_sel
-                else None
-            )
+            card_id = self.existing_card_map.get(target_card_sel) if target_card_sel else None
             run_coro_in_thread(
                 start_uploads,
                 e,
@@ -1505,6 +1497,7 @@ class UploadManager:
                 target=target,
                 new_card_title=new_card_title.value,
                 existing_card_id=card_id,
+                ctx=ctx,
             )
 
         start_btn.on_click = _start_click
@@ -1560,15 +1553,15 @@ class UploadManager:
         # Build the inner container and expander before creating the upload column
         _local_norm_inner = ft.Container(
             content=ft.Column(
-                [
+                controls=[
                     ft.Text(
-                        "Normalise audio loudness before upload. Use the target LUFS and choose batch mode for album-style normalization.",
+                        value="Normalise audio loudness before upload. Use the target LUFS and choose batch mode for album-style normalization.",
                         size=12,
                         color=ft.Colors.GREY,
                     ),
-                    ft.Row([local_norm_checkbox, local_norm_target, local_norm_batch]),
+                    ft.Row(controls=[local_norm_checkbox, local_norm_target, local_norm_batch]),
                     ft.Text(
-                        "For waveform-based inspection and additional normalisation options, click 'Show Waveforms'.",
+                        value="For waveform-based inspection and additional normalisation options, click 'Show Waveforms'.",
                         size=11,
                         italic=True,
                         color=ft.Colors.GREY,
@@ -1581,15 +1574,13 @@ class UploadManager:
 
         local_norm_expander = ft.ExpansionTile(
             title=ft.Container(
-                content=ft.Text(
-                    "ffmpeg normalisation", size=12, weight=ft.FontWeight.W_400
-                )
+                content=ft.Text(value="ffmpeg normalisation", size=12, weight=ft.FontWeight.W_400)
             ),
             controls=[_local_norm_inner],
         )
         # Ensure collapsed by default (set attribute after construction to avoid constructor arg mismatch)
         try:
-            local_norm_expander.open = False
+            setattr(local_norm_expander, "open", False)
         except Exception:
             pass
 
@@ -1599,28 +1590,20 @@ class UploadManager:
             margin=ft.Margin(top=6, bottom=6, left=0, right=0),
         )
         # Card info/link display (persistent at bottom)
-        card_info_display = ft.Column([], visible=False)
+        card_info_display = ft.Column(controls=[], visible=False)
         self.card_info_display = card_info_display  # expose to show_card_info
 
         self.column = ft.Column(
-            [
-                ft.Row(
-                    [upload_target_dropdown, new_card_title, self.existing_card_dropdown]
-                ),
-                ft.Row(
-                    [
-                        concurrency,
-                        strip_leading_checkbox,
-                        upload_mode_dropdown,  # Add the new dropdown here
-                    ]
-                ),
+            controls=[
+                ft.Row(controls=[upload_target_dropdown, new_card_title, self.existing_card_dropdown]),
+                ft.Row(controls=[concurrency, strip_leading_checkbox, upload_mode_dropdown]),
                 _local_norm_container,
                 ft.Row(
-                    [
+                    controls=[
                         folder,
-                        ft.TextButton("Browse Folder...", on_click=_open_folder_picker),
-                        ft.TextButton("Add Files...", on_click=_open_files_picker),
-                        ft.TextButton("Clear Queue", on_click=clear_queue),
+                        ft.TextButton(content=ft.Text(value="Browse Folder..."), on_click=_open_folder_picker),
+                        ft.TextButton(content=ft.Text(value="Add Files..."), on_click=_open_files_picker),
+                        ft.TextButton(content=ft.Text(value="Clear Queue"), on_click=clear_queue),
                         show_waveforms_btn,
                         analyze_intro_btn,
                         ft.IconButton(
@@ -1634,17 +1617,15 @@ class UploadManager:
                         ),
                     ]
                 ),
-                ft.Row([start_btn, stop_btn, remove_uploaded_btn]),
+                ft.Row(controls=[start_btn, stop_btn, remove_uploaded_btn]),
                 ft.Divider(),
                 overall_text,
                 overall_bar,
                 ft.Divider(),
-                ft.Text("Files:"),
-                ft.Container(
-                    content=file_rows_column, padding=10, bgcolor=ft.Colors.WHITE
-                ),
+                ft.Text(value="Files:"),
+                ft.Container(content=file_rows_column, padding=10, bgcolor=ft.Colors.WHITE),
                 ft.Divider(),
-                ft.Row([page.status]),
+                ft.Row(controls=[page.status]),
                 ft.Divider(),
                 card_info_display,
             ],
@@ -1699,38 +1680,38 @@ def show_card_popup(page, card):
     # Show a dialog with full card details
     lines = []
     lines.append(
-        Text(
-            f"Title: {getattr(card, 'title', '')}",
+        ft.Text(
+            value=f"Title: {getattr(card, 'title', '')}",
             size=18,
             weight=ft.FontWeight.BOLD,
         )
     )
-    lines.append(Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
+    lines.append(ft.Text(value=f"Card ID: {getattr(card, 'cardId', '')}", size=14))
     if getattr(card, "metadata", None):
         meta = card.metadata
         if getattr(meta, "author", None):
-            lines.append(Text(f"Author: {meta.author}"))
+            lines.append(ft.Text(value=f"Author: {meta.author}"))
         if getattr(meta, "description", None):
-            lines.append(Text(f"Description: {meta.description}"))
+            lines.append(ft.Text(value=f"Description: {meta.description}"))
         if getattr(meta, "note", None):
-            lines.append(Text(f"Note: {meta.note}"))
+            lines.append(ft.Text(value=f"Note: {meta.note}"))
         if getattr(meta, "cover", None) and getattr(meta.cover, "imageL", None):
             lines.append(ft.Image(src=meta.cover.imageL, width=120, height=120))
     if getattr(card, "content", None) and getattr(card.content, "chapters", None):
-        lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
+        lines.append(ft.Text(value="Chapters:", weight=ft.FontWeight.BOLD))
         for ch in card.content.chapters:
-            lines.append(Text(f"- {getattr(ch, 'title', '')}"))
+            lines.append(ft.Text(value=f"- {getattr(ch, 'title', '')}"))
     lines.append(
-        TextButton(
-            "View card",
-            on_click=lambda: page.show_card_details(card),
+                ft.TextButton(
+            content=ft.Text(value="View card"),
+            on_click=lambda e: getattr(page, "show_card_details", lambda _e, _c: None)(e, card),
             style=ft.ButtonStyle(color=ft.Colors.BLUE),
         )
     )
-    dlg = AlertDialog(
-        title=Text("Card Details"),
-        content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
-        actions=[TextButton("Close", on_click=lambda e: page.pop_dialog())],
+    dlg = ft.AlertDialog(
+        title=ft.Text(value="Card Details"),
+        content=ft.Column(controls=lines, scroll=ft.ScrollMode.AUTO, expand=True),
+        actions=[ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog())],
         scrollable=True,
     )
     page.show_dialog(dlg)
@@ -1752,13 +1733,9 @@ def show_card_info(page, card):
 
     if not card or not getattr(card, "cardId", None):
         row = ft.Row(
-            [
-                ft.Text("No card info available", color=ft.Colors.RED),
-                ft.TextButton(
-                    "Dismiss",
-                    on_click=lambda e: dismiss_item(row),
-                    style=ft.ButtonStyle(color=ft.Colors.RED),
-                ),
+            controls=[
+                ft.Text(value="No card info available", color=ft.Colors.RED),
+                ft.TextButton(content=ft.Text(value="Dismiss"), on_click=lambda e: dismiss_item(row), style=ft.ButtonStyle(color=ft.Colors.RED),),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
@@ -1766,23 +1743,11 @@ def show_card_info(page, card):
     else:
         summary = ft.Container(
             content=ft.Row(
-                [
-                    ft.Text(
-                        getattr(card, "title", ""),
-                        size=16,
-                        weight=ft.FontWeight.BOLD,
-                    ),
-                    ft.Text(
-                        f"ID: {getattr(card, 'cardId', '')}",
-                        size=12,
-                        color=ft.Colors.GREY,
-                    ),
-                    ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE),
-                    ft.TextButton(
-                        "Dismiss",
-                        on_click=lambda e: dismiss_item(summary),
-                        style=ft.ButtonStyle(color=ft.Colors.RED),
-                    ),
+                controls=[
+                    ft.Text(value=getattr(card, "title", ""), size=16, weight=ft.FontWeight.BOLD),
+                    ft.Text(value=f"ID: {getattr(card, 'cardId', '')}", size=12, color=ft.Colors.GREY),
+                    ft.Icon(icon=ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE),
+                    ft.TextButton(content=ft.Text(value="Dismiss"), on_click=lambda e: dismiss_item(summary), style=ft.ButtonStyle(color=ft.Colors.RED),),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
@@ -1884,10 +1849,18 @@ async def start_uploads(
     target="Create new card",
     new_card_title=None,
     existing_card_id=None,
+    ctx=None,
 ):
     """Start uploads migrated from gui; ctx is the UI/context dict."""
-    ctx = _UPLOAD_CTX
-    gain_adjusted_files = gain_adjusted_files or {}
+    if gain_adjusted_files is None:
+        gain_adjusted_files = {}
+    if ctx is None:
+        # try to pull context from the page's upload_manager if available
+        ctx = getattr(page, "upload_manager", None)
+        try:
+            ctx = getattr(page.upload_manager, "ctx", {}) if ctx is not None else {}
+        except Exception:
+            ctx = {}
     file_rows_column = page.upload_manager.files_row_column
     overall_bar = page.upload_manager.overall_bar
     overall_text = page.upload_manager.overall_text
@@ -2237,7 +2210,7 @@ async def start_uploads(
                 "[start_uploads] Waiting for all uploads to complete before appending"
             )
 
-            print(f"[start_uploads] Selected existing card: {existing_card_id}")
+            print(f"[start_uploads] Selected existing card: {sel} -> {existing_card_id}")
             if not existing_card_id:
                 status.value = "No target card selected"
                 page.update()
@@ -2375,12 +2348,8 @@ async def start_uploads(
 
         status.value = "Finished"
         try:
-            start_btn = ctx.get("start_btn")
-            stop_btn = ctx.get("stop_btn")
-            if start_btn is not None:
-                start_btn.disabled = False
-            if stop_btn is not None:
-                stop_btn.disabled = True
+            ctx.get("start_btn").disabled = False
+            ctx.get("stop_btn").disabled = True
         except Exception:
             pass
         logger.debug("[start_uploads] Upload process finished")

@@ -42,26 +42,19 @@ class Track(BaseModel):
     hasStreams: Optional[bool] = None
 
     def get_title(self) -> str:
-        try:
-            return self.title or ""
-        except Exception:
-            return ""
+        return self.title
 
     def get_icon_field(self) -> Optional[str]:
-        """Return the icon16x16 field from the track's display, automatically
-        creating the display object if needed, and safely handling missing fields."""
         if self.display is None:
-            self.display = TrackDisplay()
+            self.display = TrackDisplay()  # Ensure display is at least an empty ChapterDisplay to avoid attribute errors
         
         return self.display.icon16x16
     
-    def set_icon_field(self, icon_value: Optional[str]) -> None:
-        """Set the icon16x16 field in the track's display to the given value,
-        automatically creating the display object if needed."""
+    def clear_icon_field(self):
         if self.display is None:
             self.display = TrackDisplay()
-        
-        self.display.icon16x16 = icon_value
+        self.display.icon16x16 = None
+
 
 class ChapterDisplay(BaseModel):
     icon16x16: Optional[str] = None
@@ -83,6 +76,10 @@ class Chapter(BaseModel):
     ambient: Optional[Ambient] = None
     availableFrom: Optional[str] = None
 
+
+    def get_title(self) -> str:
+        return self.title
+
     def get_icon_field(self) -> Optional[str]:
         """Return the icon16x16 field from the chapter's display, automatically 
         creating the display object if needed, and safely handling missing fields."""
@@ -98,6 +95,13 @@ class Chapter(BaseModel):
             self.display = ChapterDisplay()
         
         self.display.icon16x16 = icon_value
+    
+    def clear_icon_field(self) -> None:
+        """Clear the icon16x16 field in the chapter's display."""
+        if self.display is None:
+            self.display = ChapterDisplay()
+        
+        self.display.icon16x16 = None
     
     def get_tracks(self) -> List[Track]:
         try:
@@ -189,6 +193,13 @@ class Card(BaseModel):
     createdByClientId: Optional[str] = None
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
+
+    def clear_all_icons(self):
+        """Utility method to remove all icon references from the card's chapters and tracks (for testing/debugging)."""
+        for ch in self.get_chapters():
+            ch.clear_icon_field()
+            for t in ch.get_tracks():
+                t.clear_icon_field()
 
     def get_metadata(self) -> CardMetadata:
         if self.metadata is None:
