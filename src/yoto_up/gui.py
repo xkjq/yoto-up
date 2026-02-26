@@ -69,7 +69,7 @@ def main(page: ft.Page):
     def update_local_card_cache(card: Card, refresh_ui: bool = True):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
         try:
-            existing = next((c for c in page.cards if c.id == card.id), None)
+            existing = next((c for c in page.cards if c.cardId == card.cardId), None)
             if existing:
                 page.cards.remove(existing)
             page.cards.append(card)
