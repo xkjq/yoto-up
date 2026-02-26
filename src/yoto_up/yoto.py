@@ -449,10 +449,11 @@ def get_card(
         "--schema",
         help="Show the Card schema (paths, types) and values for this card",
     ),
+    playable: bool = typer.Option(False, help="Fetch playable content (if available) for this card"),
 ):
     """Get details of a Yoto card by its ID."""
     API = get_api()
-    card = API.get_card(card_id)
+    card = API.get_card(card_id, playable=playable)
     if card:
         if show_schema:
             # Prepare model introspection helpers (copied/adapted from edit_card --list-keys)

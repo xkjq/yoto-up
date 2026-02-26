@@ -603,10 +603,14 @@ class YotoAPI:
         logger.debug(f"Parsed {len(cards)} cards from response")
         return [Card.model_validate(card) for card in cards]
 
-    def get_card(self, card_id, save_version_if_missing: bool = True) -> Card:
+    def get_card(self, card_id, playable=False, save_version_if_missing: bool = True) -> Card:
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        logger.debug(f"GET {self.CONTENT_URL}/{card_id}")
-        response = self._cached_request("GET", f"{self.CONTENT_URL}/{card_id}", headers=headers)
+        if playable:
+            logger.debug(f"GET {self.CONTENT_URL}/{card_id}/?playable=true")
+            response = self._cached_request("GET", f"{self.CONTENT_URL}/{card_id}/?playable=true", headers=headers)
+        else:
+            logger.debug(f"GET {self.CONTENT_URL}/{card_id}")
+            response = self._cached_request("GET", f"{self.CONTENT_URL}/{card_id}", headers=headers)
         logger.debug(f"Content response: {response.status_code} {response.text}")
         response.raise_for_status()
         self.response_history.append(response)
