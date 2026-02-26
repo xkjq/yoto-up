@@ -6,6 +6,8 @@ import sys
 
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_api import YotoAPI
+import tempfile
+import os
 
 def add_cover_dialog(page, c, Card, on_close=None):
     api: YotoAPI = ensure_api(page.api_ref)
@@ -55,13 +57,13 @@ def add_cover_dialog(page, c, Card, on_close=None):
             page.services.append(picker)
         except Exception:
             pass
-    file_label = ft.Text("No file chosen")
+    file_label = ft.Text(value="No file chosen")
 
     def _warn_missing_file_picker():
         try:
             page.snack_bar = ft.SnackBar(
-                ft.Text(
-                    "File dialogs are unavailable because 'zenity' is not installed. "
+                content=ft.Text(
+                    value="File dialogs are unavailable because 'zenity' is not installed. "
                     "On Ubuntu/Debian: sudo apt-get install zenity"
                 ),
                 bgcolor=ft.Colors.RED,
@@ -134,6 +136,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
         # mimic previous on_result flow
         try:
             class _E:
+                files = []
                 pass
             ev = _E()
             ev.files = files
@@ -222,7 +225,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                 print(card_model)
                 page.update_card(card_model)
             except Exception as ex:
-                logger.error("Upload succeeded but attach failed")
+                logger.error(f"Upload succeeded but attach failed, {ex}")
             finally:
                 page.update()
         except Exception as e:
@@ -252,7 +255,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
     def do_search_cover(_e=None):
         try:
             default_query = c.get("title") or c.get("name") or ""
-            results_column = ft.Column([])
+            results_column = ft.Column(controls=[])
             # Define do_search_action first so it can be referenced
             def do_search_action(_e2=None):
                 query = (search_field.value or "").strip()
@@ -268,7 +271,7 @@ def add_cover_dialog(page, c, Card, on_close=None):
                     data = resp.json()
                     albums = data.get("results", [])
                     if not albums:
-                        results_column.controls.append(ft.Text("No results found."))
+                        results_column.controls.append(ft.Text(value="No results found."))
                     else:
                         img_row = []
                         for album in albums:
@@ -283,10 +286,10 @@ def add_cover_dialog(page, c, Card, on_close=None):
                                 )
                                 img_row.append(btn)
                         if img_row:
-                            results_column.controls.append(ft.Row(img_row, wrap=True, scroll="auto"))
+                            results_column.controls.append(ft.Row(controls=img_row, wrap=True))
                 except Exception as ex:
                     logger.error(f"Error searching for cover art: {ex}")
-                    results_column.controls.append(ft.Text("Error searching for cover art."))
+                    results_column.controls.append(ft.Text(value="Error searching for cover art."))
                 page.update()
 
             search_field = ft.TextField(label="Search for cover art", value=default_query, on_submit=do_search_action)
@@ -296,7 +299,6 @@ def add_cover_dialog(page, c, Card, on_close=None):
                         try:
                             page.update()
                             # Download the image to a temporary file
-                            import tempfile, httpx, os
                             resp = httpx.get(img_url, timeout=15)
                             resp.raise_for_status()
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmpf:
@@ -390,11 +392,11 @@ def add_cover_dialog(page, c, Card, on_close=None):
                         page.pop_dialog()
                         page.update()
                     confirm_dialog = ft.AlertDialog(
-                        title=ft.Text("Use this cover image?"),
+                        title=ft.Text(value="Use this cover image?"),
                         content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
                         actions=[
-                            ft.TextButton("Use this image", on_click=do_confirm_upload),
-                            ft.TextButton("Cancel", on_click=do_cancel),
+                            ft.TextButton(content="Use this image", on_click=do_confirm_upload),
+                            ft.TextButton(content="Cancel", on_click=do_cancel),
                         ],
                     )
                     page.show_dialog(confirm_dialog)
@@ -402,15 +404,15 @@ def add_cover_dialog(page, c, Card, on_close=None):
 
 
             search_dialog = ft.AlertDialog(
-                title=ft.Text("Search for Cover Art"),
-                content=ft.Column([
+                title=ft.Text(value="Search for Cover Art"),
+                content=ft.Column(controls=[
                     search_field,
-                    ft.Text("Click an image to select it as the cover art."),
+                    ft.Text(value="Click an image to select it as the cover art."),
                     results_column
                 ], scroll="auto", height=400, width=500),
                 actions=[
-                    ft.TextButton("Search", on_click=do_search_action),
-                    ft.TextButton("Close", on_click=lambda e: setattr(search_dialog, 'open', False) or page.update()),
+                    ft.TextButton(content="Search", on_click=do_search_action),
+                    ft.TextButton(content="Close", on_click=lambda e: setattr(search_dialog, 'open', False) or page.update()),
                 ],
             )
             page.show_dialog(search_dialog)
@@ -424,39 +426,39 @@ def add_cover_dialog(page, c, Card, on_close=None):
     if cover_src:
         try:
             preview = ft.Image(src=cover_src, width=240, height=240, fit=ft.BoxFit.CONTAIN)
-            content_children.append(ft.Column([ft.Text("Current cover"), preview], spacing=6))
+            content_children.append(ft.Column(controls=[ft.Text(value="Current cover"), preview], spacing=6))
         except Exception:
             pass
 
     content_children.extend([
         url_field,
-        ft.Row(
+        ft.Row(controls=
             [
                 ft.TextButton(
-                    "Pick file...",
+                    content="Pick file...",
                     on_click=_pick_cover_file,
                 ),
                 file_label,
             ]
         ),
         ft.TextButton(
-            "Search for cover art",
+            content="Search for cover art",
             on_click=do_search_cover,
         ),
     ])
 
-    add_cover_list = ft.Column(content_children)
+    add_cover_list = ft.Column(controls=content_children)
     dialog = ft.AlertDialog(
-        title=ft.Text("Add Cover Image"),
+        title=ft.Text(value="Add Cover Image"),
         content=add_cover_list,
         actions=[
-            ft.TextButton("Upload", on_click=do_upload),
+            ft.TextButton(content="Upload", on_click=do_upload),
             ft.TextButton(
-                "Remove cover art",
+                content="Remove cover art",
                 on_click=do_remove_cover,
                 style=ft.ButtonStyle(bgcolor=ft.Colors.ERROR, color=ft.Colors.WHITE),
             ),
-            ft.TextButton("Cancel", on_click=close_add),
+            ft.TextButton(content="Cancel", on_click=close_add),
         ],
     )
     page.show_dialog(dialog)

@@ -55,7 +55,7 @@ import shutil
 from yoto_up.yoto_app.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
-ENABLE_ICON_BROWSER = True
+ENABLE_ICON_BROWSER = False
 
 # ft.context.disable_auto_update()
 
