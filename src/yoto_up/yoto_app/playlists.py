@@ -152,21 +152,18 @@ def delete_playlist(ev, page, card: Card, row_container=None):
                 return
             # save a local version snapshot before deleting so it can be restored
             try:
-                try:
-                    payload = (
-                        card.model_dump(exclude_none=True)
-                        if hasattr(card, "model_dump")
-                        else None
-                    )
-                except Exception:
-                    payload = None
-                if isinstance(payload, dict):
-                    try:
-                        api.save_version(payload)
-                    except Exception:
-                        pass
+                payload = (
+                    card.model_dump(exclude_none=True)
+                    if hasattr(card, "model_dump")
+                    else None
+                )
             except Exception:
-                pass
+                payload = None
+            if isinstance(payload, dict):
+                try:
+                    api.save_version(payload)
+                except Exception:
+                    logger.error("Error saving version snapshot before deletion")
             api.delete_content(content_id)
             try:
                 # Only remove if row_container looks like a real control and is present

@@ -151,7 +151,7 @@ class CardMetadata(BaseModel):
     previewAudio: str = ""
     hidden: bool = False
 
-    def ensure_cover(self) -> CardCover:
+    def get_cover(self) -> CardCover:
         if self.cover is None:
             self.cover = CardCover()
         return self.cover
@@ -177,21 +177,21 @@ class Card(BaseModel):
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
 
-    def ensure_metadata(self) -> CardMetadata:
+    def get_metadata(self) -> CardMetadata:
         if self.metadata is None:
             self.metadata = CardMetadata()
         return self.metadata
 
-    def ensure_cover(self) -> CardCover:
-        return self.ensure_metadata().ensure_cover()
+    def get_cover(self) -> CardCover:
+        return self.get_metadata().get_cover()
 
     def clear_cover(self) -> "Card":
-        self.ensure_metadata().cover = CardCover()
+        self.get_metadata().cover = CardCover()
         return self
 
     def set_cover_url(self, url: Optional[str]) -> "Card":
         if isinstance(url, str) and url:
-            self.ensure_cover().imageL = url
+            self.get_cover().imageL = url
         return self
 
     def apply_cover_upload_result(self, upload_result: object, fallback_url: Optional[str] = None) -> "Card":
@@ -201,10 +201,6 @@ class Card(BaseModel):
         else:
             self.set_cover_url(fallback_url)
         return self
-
-    def get_metadata(self) -> CardMetadata:
-        """Return the card's metadata, creating and storing one if absent."""
-        return self.ensure_metadata()
 
     def get_author(self) -> Optional[str]:
         try:
