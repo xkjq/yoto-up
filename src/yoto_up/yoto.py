@@ -8,7 +8,6 @@ from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-import difflib
 import json
 from rich.prompt import Confirm
 from pathlib import Path
@@ -22,8 +21,7 @@ import tempfile
 import math
 import sys
 import pydantic
-from yoto_up.audio_splitter import split_audio as split_audio_files, _get_duration
-from yoto_up.models import Track, Chapter, CardContent, CardMetadata, CardMedia
+from yoto_up.models import CardMedia
 
 app = typer.Typer()
 console = Console()
@@ -326,7 +324,7 @@ def list_cards(
         None, help="Comma-separated list of tags to filter by (card must include all)"
     ),
     category: Optional[str] = typer.Option(None, help="Filter by metadata.category"),
-    truncate: Optional[int] = typer.Option(
+    truncate: int = typer.Option(
         50, help="Truncate fields to this many characters"
     ),
     table: bool = typer.Option(False, help="Display cards in a table format"),
@@ -377,7 +375,7 @@ def list_cards(
                         truncate_fields_limit=truncate,
                         include_chapters=include_chapters,
                     ),
-                    title=f"[bold green]Card[/bold green]",
+                    title="[bold green]Card[/bold green]",
                     subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
                 )
             )
@@ -1271,6 +1269,7 @@ def versions(
     """
     API = get_api()
     verb_l = (verb or "").lower()
+    card_id = target  # Initialize card_id from target
     try:
         # If the user passed a path as the positional target, prefer it for show/preview/restore/delete
         effective_path = None
@@ -1323,7 +1322,7 @@ def versions(
                 rprint(
                     Panel.fit(
                         card.display_card(truncate_fields_limit=100),
-                        title=f"[bold green]Card Preview[/bold green]",
+                        title="[bold green]Card Preview[/bold green]",
                         subtitle=f"[bold cyan]{getattr(card, 'cardId', getattr(card, 'id', 'unknown'))}[/bold cyan]",
                     )
                 )
@@ -1649,15 +1648,11 @@ def intro_outro(
 
     # Print a concise summary similar to GUI, using rich for nicer formatting
     tpl = result.get("template") or ""
-    windows_matched = int(result.get("windows_matched", 0) or 0)
-    seconds_matched = float(result.get("seconds_matched", 0.0) or 0.0)
+    windows_matched = int(result.get("windows_matched") or 0)
+    seconds_matched = float(result.get("seconds_matched") or 0)
     per_window_frac = result.get("per_window_frac", []) or []
     per_file_per_window = result.get("per_file_per_window", {}) or {}
 
-    # Summary panel
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.align import Align
 
     summary_lines = [
         f"Seconds matched: {seconds_matched}",
@@ -1830,9 +1825,6 @@ def intro(
         "--keep-silence-ms",
         help="Milliseconds of silence to keep at each trimmed edge",
     ),
-    gain_db: Optional[float] = typer.Option(
-        None, "--gain-db", help="(unused) kept for compatibility"
-    ),
 ):
     """Analyze the intro side (shortcut for `intro-outro --side intro`)."""
     return intro_outro(
@@ -1848,7 +1840,6 @@ def intro(
         dest_dir=dest_dir,
         dry_run=dry_run,
         keep_silence_ms=keep_silence_ms,
-        gain_db=gain_db,
     )
 
 
@@ -1893,9 +1884,6 @@ def outro(
         "--keep-silence-ms",
         help="Milliseconds of silence to keep at each trimmed edge",
     ),
-    gain_db: Optional[float] = typer.Option(
-        None, "--gain-db", help="(unused) kept for compatibility"
-    ),
 ):
     """Analyze the outro side (shortcut for `intro-outro --side outro`)."""
     return intro_outro(
@@ -1911,7 +1899,6 @@ def outro(
         dest_dir=dest_dir,
         dry_run=dry_run,
         keep_silence_ms=keep_silence_ms,
-        gain_db=gain_db,
     )
 
 
@@ -2294,6 +2281,7 @@ def fix_card(
             subtitle=f"[bold cyan]{card.cardId}[/bold cyan]",
         )
     )
+    return card
 
 
 @app.command()
