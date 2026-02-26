@@ -640,3 +640,19 @@ class DeviceObject(BaseModel):
             f"[blue]Volume Level:[/] [bold]{self.config.volumeLevel if self.config and self.config.volumeLevel else ''}[/bold]\n"
         )
         return config_info
+
+class TranscodedMetadata(BaseModel):
+    title: Optional[str] = None
+
+
+class TranscodedInfo(BaseModel):
+    metadata: Optional[TranscodedMetadata] = None
+    duration: Optional[float] = None
+    fileSize: Optional[float] = None
+    channels: Optional[Literal["stereo", "mono", 1, 2]] = None
+    format: Optional[str] = None
+
+
+class TranscodedAudio(BaseModel):
+    transcodedSha256: str
+    transcodedInfo: Optional[TranscodedInfo] = None

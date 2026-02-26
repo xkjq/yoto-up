@@ -10,7 +10,7 @@ import threading
 from typing import Optional, Callable
 
 from loguru import logger
-from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig
+from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig, TranscodedAudio
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn, TaskID
 from rich.table import Table
@@ -1030,7 +1030,9 @@ class YotoAPI:
                         track_details = {'title': filename_list[i]}
                 except Exception:
                     track_details = None
-                track = self.get_track_from_transcoded_audio(tr, track_details=track_details)
+                if tr is None:
+                    raise ValueError("Missing transcoded audio result while building tracks")
+                track = self.get_track_from_transcoded_audio(TranscodedAudio.model_validate(tr), track_details=track_details)
                 if track is not None:
                     track.key = f"{i+1:02}"
                     tracks.append(track)
@@ -1161,25 +1163,24 @@ class YotoAPI:
                 raise Exception("Transcoding timed out.")
         return transcoded_audio
 
-    def get_track_from_transcoded_audio(self, transcoded_audio, track_details: Optional[dict] = None) -> Optional[Track]:
-        media_info = transcoded_audio.get("transcodedInfo", {})
-        track_title = media_info.get("metadata", {}).get("title") or "Unknown Track"
-        # Merge custom track details
-        track_kwargs = dict(
+    def get_track_from_transcoded_audio(self, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None) -> Optional[Track]:
+        media_info = transcoded_audio.transcodedInfo
+        track = Track(
             key="01",
-            title=track_title,
-            trackUrl=f"yoto:#{transcoded_audio['transcodedSha256']}",
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
-            channels=media_info.get("channels"),
-            format=media_info.get("format"),
+            title=(media_info.metadata.title if media_info and media_info.metadata and media_info.metadata.title else "Unknown Track"),
+            trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
+            channels=media_info.channels if media_info else None,
+            format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel="1",
             display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if track_details:
-            track_kwargs.update(track_details)
-        return Track(**track_kwargs)
+            merged = {**track.model_dump(exclude_none=True), **track_details}
+            return Track.model_validate(merged)
+        return track
 
     def get_chapter_from_transcoded_audio(self, transcoded_audio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None) -> Optional[Chapter]:
         media_info = transcoded_audio.get("transcodedInfo", {})
