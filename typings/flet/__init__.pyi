@@ -26,7 +26,7 @@ class Image(Control):
 
 
 class Icon(Control):
-    def __init__(self, name: Any = None, **kwargs: Any) -> None: ...
+    def __init__(self, icon: Any = None, **kwargs: Any) -> None: ...
 
 
 class Page(Control):

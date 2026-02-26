@@ -1,45 +1,27 @@
 from nltk.lm.vocabulary import _
 from colorlog import log
 from yoto_up.models import Card
-import asyncio
-import os
-import tempfile
 from pathlib import Path
-import platform
 import sys
 
 from yoto_up.paths import (
-    UI_STATE_FILE as UI_STATE_PATH,
-    FLET_APP_STORAGE_DATA,
     TOKENS_FILE,
-    atomic_write,
-    ensure_parents,
-    _BASE_DATA_DIR,
-    _BASE_CONFIG_DIR,
 )
 
 from yoto_up.yoto_app.ui_state import (
-    set_state,
-    get_state,
     remove_state_file,
     get_state_path,
 )
 from yoto_up.yoto_app.card_details import make_show_card_details
 from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
 
-import importlib.util
-from typing import cast, Any
 import traceback
-import json
 import threading
 
 import flet as ft
 
 # from flet.auth import OAuthProvider
-from yoto_up.yoto_app import utils as utils_mod
 from yoto_up.yoto_app import ui_helpers as ui_helpers
-from yoto_up.yoto_app import auth as auth_mod
-from yoto_up.yoto_app import config as yoto_config
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.playlists import build_playlists_panel, build_playlists_ui
 from loguru import logger
@@ -47,17 +29,13 @@ from yoto_up.yoto_app.upload_tasks import (
     UploadManager,
 )
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
-from yoto_up import paths as paths_mod
 import hashlib
 
 from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
 from yoto_up.yoto_app.about_dialog import show_about_dialog
-import subprocess
 import shutil
-
-from yoto_up.yoto_app.startup import HAS_SIMPLEAUDIO
 
 INTRO_OUTRO_DIALOG = None
 ENABLE_ICON_BROWSER = False
@@ -524,7 +502,7 @@ def main(page: ft.Page):
     )
     icon_refresh_badge = ft.Container(
         content=ft.Row(
-            [ft.Icon(ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
+            controls=[ft.Icon(icon=ft.Icons.CACHED, color=ft.Colors.ORANGE), icon_refresh_badge_text],
             spacing=6,
         ),
         padding=6,
@@ -534,10 +512,10 @@ def main(page: ft.Page):
     )
 
     # Small autoselect progress badge (smaller than icon_refresh_badge)
-    autoselect_badge_text = ft.Text("", size=11, color=ft.Colors.BLUE)
+    autoselect_badge_text = ft.Text(value="", size=11, color=ft.Colors.BLUE)
     autoselect_badge = ft.Container(
         content=ft.Row(
-            [ft.Icon(ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
+            controls=[ft.Icon(icon=ft.Icons.REFRESH, color=ft.Colors.BLUE), autoselect_badge_text],
             spacing=4,
         ),
         padding=4,
@@ -644,7 +622,7 @@ def main(page: ft.Page):
 
             hide_checkbox.on_select = on_hide_change
 
-            status_txt = ft.Text(autoselect_badge_text.value or "Autoselect running...")
+            status_txt = ft.Text(value=autoselect_badge_text.value or "Autoselect running...")
             # Keep a reference on the page so the progress updater can refresh this control
             try:
                 page.autoselect_status_ctrl = status_txt
@@ -652,31 +630,32 @@ def main(page: ft.Page):
                 pass
 
             # A secondary detail control shows verbose info about the current icon/search
-            detail_txt = ft.Text("", size=12)
+            detail_txt = ft.Text(value="", size=12)
             try:
                 page.autoselect_status_detail = detail_txt
             except Exception:
                 pass
 
             # Use a fixed width column so the dialog doesn't constantly resize
-            content_col = ft.Column(
+            content_col = ft.Column(controls=
                 [status_txt, detail_txt, hide_checkbox],
                 width=480,
                 scroll=ft.ScrollMode.AUTO,
             )
 
             dlg = ft.AlertDialog(
-                title=ft.Text("Autoselect status"),
+                title=ft.Text(value="Autoselect status"),
                 content=content_col,
                 actions=[
                     ft.TextButton(
+                        content=
                         "Cancel",
                         on_click=lambda e: (
                             cancel_event.set() if cancel_event else None,
                             page.pop_dialog(),
                         ),
                     ),
-                    ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
+                    ft.TextButton(content="Close", on_click=lambda e: page.pop_dialog()),
                 ],
             )
             page.show_dialog(dlg)
@@ -864,9 +843,10 @@ def main(page: ft.Page):
     # Place About button above tabs
     page.add(
         ft.Row(
+            controls=
             [
-                ft.Text("Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True),
-                ft.Row([icon_refresh_badge, autoselect_badge, about_btn]),
+                ft.Text(value="Yoto Up", size=22, weight=ft.FontWeight.BOLD, expand=True),
+                ft.Row(controls=[icon_refresh_badge, autoselect_badge, about_btn]),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
@@ -944,6 +924,7 @@ def main(page: ft.Page):
         auth_instructions.controls.clear()
         auth_instructions.controls.append(
             ft.Text(
+                value=
                 AUTHENTICATE_TEXT,
                 size=16,
                 weight=ft.FontWeight.BOLD,
@@ -963,20 +944,20 @@ def main(page: ft.Page):
 
     def show_dev_warning(page):
         dlg = ft.AlertDialog(
-            title=ft.Text("Yoto Up: In Development"),
+            title=ft.Text(value="Yoto Up: In Development"),
             content=ft.Column(
-                [
+                controls=[
                     ft.Text(
-                        "This app is under active development. Features may be incomplete, unstable, or change at any time.\n\nPlease report bugs and use with caution!"
+                        value="This app is under active development. Features may be incomplete, unstable, or change at any time.\n\nPlease report bugs and use with caution!"
                     ),
                     ft.TextButton(
-                        "View on GitHub",
+                        content="View on GitHub",
                         url="https://github.com/xkjq/yoto-up",
                         style=ft.ButtonStyle(color=ft.Colors.BLUE),
                     ),
                 ]
             ),
-            actions=[ft.TextButton("OK", on_click=lambda e: page.pop_dialog())],
+            actions=[ft.TextButton(content="OK", on_click=lambda e: page.pop_dialog())],
         )
         page.show_dialog(dlg)
         page.update()
@@ -998,12 +979,12 @@ def main(page: ft.Page):
         auth_instructions.controls.extend(
             [
                 ft.Text(
-                    "Authenticated (from existing tokens)",
+                    value="Authenticated (from existing tokens)",
                     size=16,
                     weight=ft.FontWeight.BOLD,
                     color=ft.Colors.GREEN,
                 ),
-                ft.Text(str(api.TOKEN_FILE), size=10),
+                ft.Text(value=str(api.TOKEN_FILE), size=10),
             ]
         )
         auth_complete()
