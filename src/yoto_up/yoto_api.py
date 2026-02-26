@@ -1300,7 +1300,6 @@ class YotoAPI:
         """
         # Fetch existing card
         card = self.get_card(card_id)
-        media_info = None
         new_chapter = None
 
         file_path = Path(audio_path)
@@ -1321,51 +1320,48 @@ class YotoAPI:
         else:
             logger.info(f"Uploading audio to: {audio_upload_url}")
             self.upload_audio_file(audio_upload_url, audio_bytes)
-        transcoded_audio = self.poll_for_transcoding(upload_id, loudnorm, poll_interval, max_attempts)
-        media_info = transcoded_audio.get("transcodedInfo", {})
+        transcoded_audio_raw = self.poll_for_transcoding(upload_id, loudnorm, poll_interval, max_attempts)
+        transcoded_audio = TranscodedAudio.model_validate(transcoded_audio_raw)
+        media_info = transcoded_audio.transcodedInfo
 
         # Determine next chapter key
         chapters = card.content.chapters if card.content and card.content.chapters else []
         next_chapter_number = len(chapters)
+        metadata_title = media_info.metadata.title if media_info and media_info.metadata and media_info.metadata.title else None
+        detail_title = track_details.get("title") if track_details and isinstance(track_details.get("title"), str) else None
+        track_title = metadata_title or detail_title or file_path.stem
 
         # Prepare new chapter with the uploaded audio as a track
-        track_kwargs = dict(
+        new_track = Track(
             key="01",
-            title=media_info.get("metadata", {}).get("title") or (track_details.get("title") if track_details else file_path.stem),
-            trackUrl=f"yoto:#{transcoded_audio['transcodedSha256']}",
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
-            channels=media_info.get("channels"),
-            format=media_info.get("format"),
+            title=track_title,
+            trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
+            channels=media_info.channels if media_info else None,
+            format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel=str(next_chapter_number),
             display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
         )
         if track_details:
-            track_kwargs.update(track_details)
-        new_track = Track(**track_kwargs)
+            new_track = Track.model_validate({**new_track.model_dump(exclude_none=True), **track_details})
 
-        chapter_kwargs = dict(
+        new_chapter = Chapter(
             key=f"{next_chapter_number:02}",
             title=new_track.title,
             overlayLabel=str(next_chapter_number),
             tracks=[new_track],
             display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
-            duration=media_info.get("duration"),
-            fileSize=media_info.get("fileSize"),
+            duration=media_info.duration if media_info else None,
+            fileSize=media_info.fileSize if media_info else None,
         )
         if chapter_details:
-            chapter_kwargs.update(chapter_details)
-        # Ensure required fields
-        if "title" not in chapter_kwargs:
-            chapter_kwargs["title"] = new_track.title
-        if "tracks" not in chapter_kwargs:
-            chapter_kwargs["tracks"] = [new_track]
-        new_chapter = Chapter(**chapter_kwargs)
+            new_chapter = Chapter.model_validate({**new_chapter.model_dump(exclude_none=True), **chapter_details})
 
         # Add new chapter to card
         if not card.content:
-            card.content = type(card.content)()
+            card.content = CardContent(chapters=[])
         if not card.content.chapters:
             card.content.chapters = []
         card.content.chapters.append(new_chapter)
