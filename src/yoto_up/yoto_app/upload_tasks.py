@@ -1479,8 +1479,8 @@ class UploadManager:
 
             target = getattr(upload_target_dropdown, "value", "Create new card")
 
-            target_card_sel = getattr(existing_card_dropdown, "value", None)
-            card_id = existing_card_map.get(target_card_sel) if target_card_sel else None
+            target_card_sel = getattr(self.existing_card_dropdown, "value", None)
+            card_id = self.existing_card_map.get(target_card_sel) if target_card_sel else None
             run_coro_in_thread(
                 start_uploads,
                 e,
@@ -1710,7 +1710,7 @@ def show_card_popup(page, card):
     lines.append(
         ft.TextButton(
             "View card",
-            on_click=lambda e: show_card_details(e, card),
+            on_click=lambda e: getattr(page, "show_card_details", lambda _e, _c: None)(e, card),
             style=ft.ButtonStyle(color=ft.Colors.BLUE),
         )
     )
