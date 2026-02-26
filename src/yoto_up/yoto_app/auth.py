@@ -55,14 +55,12 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                     tokens = token_resp.json()
                 except Exception as e:
                     logger.debug(f"poll_device_token: failed to parse token response JSON: {e}")
-                    tokens = {}
+                    return
                 access = tokens.get('access_token')
                 refresh = tokens.get('refresh_token')
                 idt = tokens.get('id_token') if isinstance(tokens, dict) else None
                 if access:
                     try:
-                        # Ensure we have an API instance to persist tokens and update state
-
                         out = {"access_token": access, "refresh_token": refresh}
                         if idt:
                             out['id_token'] = idt
@@ -97,10 +95,7 @@ def poll_device_token(info, client, page, instr_container, api_ref, show_snack_f
                                             json.dump(out, f)
                         except Exception as e:
                             logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
-                        try:
-                            api = ensure_api(api_ref, client)
-                        except Exception:
-                            api = ensure_api(api_ref, client)
+                        api = ensure_api(api_ref, client)
                     except Exception as e:
                         logger.debug(f"poll_device_token: failed to write tokens.json: {e}")
                         api = ensure_api(api_ref, client)

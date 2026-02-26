@@ -237,12 +237,13 @@ def main(page: ft.Page):
                                 color=ft.Colors.GREEN,
                             )
                         )
-                        page.update()
                 except Exception:
                     logger.error(f"Failed to update auth instructions after successful auth: {traceback.format_exc()}")
             except Exception as e:
                 logger.error(f"start_device_auth: auth failed: {e}")
                 show_snack(f"Auth failed: {e}", error=True)
+            finally:
+                page.update()
 
         page.run_thread(_poll_thread)  # also run as a task to ensure exceptions are logged   
 
