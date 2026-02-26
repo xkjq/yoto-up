@@ -49,6 +49,12 @@ class Track(BaseModel):
             self.display = TrackDisplay()  # Ensure display is at least an empty ChapterDisplay to avoid attribute errors
         
         return self.display.icon16x16
+
+    def set_icon_field(self, icon_value: Optional[str]) -> None:
+        if self.display is None:
+            self.display = TrackDisplay()
+        
+        self.display.icon16x16 = icon_value
     
     def clear_icon_field(self):
         if self.display is None:

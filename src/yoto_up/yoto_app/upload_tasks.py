@@ -2210,7 +2210,7 @@ async def start_uploads(
                 "[start_uploads] Waiting for all uploads to complete before appending"
             )
 
-            print(f"[start_uploads] Selected existing card: {sel} -> {existing_card_id}")
+            print(f"[start_uploads] Selected existing card id: {existing_card_id}")
             if not existing_card_id:
                 status.value = "No target card selected"
                 page.update()
@@ -2348,8 +2348,12 @@ async def start_uploads(
 
         status.value = "Finished"
         try:
-            ctx.get("start_btn").disabled = False
-            ctx.get("stop_btn").disabled = True
+            _sb = ctx.get("start_btn")
+            if _sb is not None:
+                _sb.disabled = False
+            _sp = ctx.get("stop_btn")
+            if _sp is not None:
+                _sp.disabled = True
         except Exception:
             pass
         logger.debug("[start_uploads] Upload process finished")
