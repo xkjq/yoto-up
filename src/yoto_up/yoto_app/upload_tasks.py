@@ -3,19 +3,64 @@ import os
 import traceback
 import tempfile
 import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
 from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.normalization import AudioNormalizer
-from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
 import webbrowser
-import flet as ft
+import flet as _ft
 import sys
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import threading
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
+
+ft: Any = _ft
+
+
+def Text(value: object = "", **kwargs: Any):
+    return _ft.Text(value=str(value) if value is not None else "", **kwargs)
+
+
+def Button(label: str = "", **kwargs: Any):
+    if "content" not in kwargs and "text" not in kwargs:
+        kwargs["content"] = _ft.Text(value=label)
+    return _ft.Button(**kwargs)
+
+
+def TextButton(label: str = "", **kwargs: Any):
+    if "content" not in kwargs and "text" not in kwargs:
+        kwargs["content"] = label
+    return _ft.TextButton(**kwargs)
+
+
+def Row(controls: list[Any] | None = None, **kwargs: Any):
+    return _ft.Row(controls=controls or [], **kwargs)
+
+
+def Column(controls: list[Any] | None = None, **kwargs: Any):
+    return _ft.Column(controls=controls or [], **kwargs)
+
+
+def AlertDialog(
+    *,
+    title: Any | None = None,
+    content: Any | None = None,
+    actions: list[Any] | None = None,
+    **kwargs: Any,
+):
+    return _ft.AlertDialog(title=title, content=content, actions=actions or [], **kwargs)
+
+
+utils_mod = audio_adjust_utils
+INTRO_OUTRO_DIALOG: Any = None
+_simpleaudio = None
+HAS_SIMPLEAUDIO = False
+_UPLOAD_CTX: dict[str, Any] = {}
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
@@ -25,7 +70,7 @@ _LAST_PAGE = None
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
 
-        from flet import Row, ProgressBar
+        from flet import ProgressBar
 
         self.filepath = filepath
         self.original_filepath = filepath  # Always keep the original file path
@@ -210,7 +255,7 @@ class FileUploadRow:
         # Update the filename attribute on the row container
         setattr(self.row, "filename", new_filepath)
         # Update the displayed file name in the UI
-        if self.inner_row.controls and isinstance(self.inner_row.controls[0], Text):
+        if self.inner_row.controls and isinstance(self.inner_row.controls[0], _ft.Text):
             self.inner_row.controls[0].value = self.name
         # Optionally reset status and progress
         self.set_status("Queued")
@@ -581,7 +626,7 @@ class UploadManager:
 
             # import here so missing dependency only affects this feature
             try:
-                from yoto_app.intro_outro import (
+                from yoto_up.yoto_app.intro_outro import (
                     per_window_common_prefix,
                     trim_audio_file,
                 )
@@ -594,7 +639,6 @@ class UploadManager:
             # read config from dialog controls
             side = dialog_controls["intro_outro_side"].value or "intro"
             seconds = float(dialog_controls["intro_seconds"].value or 10.0)
-            thresh = float(dialog_controls["similarity_threshold"].value or 0.75)
             try:
                 padding_seconds = float(
                     dialog_controls.get("padding_seconds").value or 0.25
@@ -662,7 +706,7 @@ class UploadManager:
                             min_files_fraction=min_files_fraction,
                         )
                     )
-                except Exception as e:
+                except Exception:
                     raise
             except Exception as e:
                 # analysis failed — update the dialog content column rather than trying
@@ -780,7 +824,7 @@ class UploadManager:
                             pass
 
                         def open_intro_outro_dialog(ev=None):
-                            logger.debug(f"TEST")
+                            logger.debug("TEST")
                             global INTRO_OUTRO_DIALOG
                             logger.debug(
                                 f"open_intro_outro_dialog: reopening dialog: {INTRO_OUTRO_DIALOG}"
@@ -1165,11 +1209,11 @@ class UploadManager:
                             return (orig_p, None, str(e))
 
                     # Run trims in parallel but limit concurrency using ThreadPoolExecutor
+                    concurrent_futures: Any = None
                     try:
-                        import concurrent.futures
+                        import concurrent.futures as concurrent_futures
                     except Exception:
-                        concurrent = None
-                        concurrent_futures = None
+                        pass
 
                     # Determine max workers from UI control or fallback to 4
                     try:
@@ -1179,7 +1223,9 @@ class UploadManager:
 
                     futures = []
                     try:
-                        with concurrent.futures.ThreadPoolExecutor(
+                        if concurrent_futures is None:
+                            raise RuntimeError("concurrent.futures unavailable")
+                        with concurrent_futures.ThreadPoolExecutor(
                             max_workers=max_workers
                         ) as executor:
                             for orig_p, norm_p in selected_paths:
@@ -1188,7 +1234,7 @@ class UploadManager:
                                 )
 
                             # iterate as futures complete and update UI
-                            for fut in concurrent.futures.as_completed(futures):
+                            for fut in concurrent_futures.as_completed(futures):
                                 orig_p, dest, err = fut.result()
                                 with lock:
                                     trimmed_count += 1
@@ -1252,7 +1298,7 @@ class UploadManager:
                                     trimmed_paths.add(orig_p)
                                 except Exception:
                                     pass
-                    except Exception as e:
+                    except Exception:
                         # If executor failed for some reason, fall back to sequential loop
                         logger.exception(
                             "Parallel trimming failed, falling back to sequential"
@@ -1439,6 +1485,8 @@ class UploadManager:
             threading.Thread(target=_runner, daemon=True).start()
 
         def _start_click(e):
+            global _UPLOAD_CTX
+            ctx = _UPLOAD_CTX
             # update ctx with the current checkbox value
             try:
                 ctx["strip_leading_track_numbers"] = bool(strip_leading_checkbox.value)
@@ -1470,10 +1518,18 @@ class UploadManager:
             except Exception:
                 ctx["intro_outro_threshold"] = 0.75
 
+            ctx["upload_mode_dropdown"] = upload_mode_dropdown
+            ctx["start_btn"] = start_btn
+            ctx["stop_btn"] = stop_btn
+
             target = getattr(upload_target_dropdown, "value", "Create new card")
 
-            target_card_sel = getattr(existing_card_dropdown, "value", None)
-            card_id = existing_card_map.get(target_card_sel) if target_card_sel else None
+            target_card_sel = getattr(self.existing_card_dropdown, "value", None)
+            card_id = (
+                self.existing_card_map.get(target_card_sel)
+                if target_card_sel
+                else None
+            )
             run_coro_in_thread(
                 start_uploads,
                 e,
@@ -1676,8 +1732,6 @@ class UploadManager:
 
 def show_card_popup(page, card):
     # Show a dialog with full card details
-    from flet import AlertDialog, Text, Column, TextButton, Image
-
     lines = []
     lines.append(
         Text(
@@ -1696,7 +1750,7 @@ def show_card_popup(page, card):
         if getattr(meta, "note", None):
             lines.append(Text(f"Note: {meta.note}"))
         if getattr(meta, "cover", None) and getattr(meta.cover, "imageL", None):
-            lines.append(Image(src=meta.cover.imageL, width=120, height=120))
+            lines.append(ft.Image(src=meta.cover.imageL, width=120, height=120))
     if getattr(card, "content", None) and getattr(card.content, "chapters", None):
         lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
         for ch in card.content.chapters:
@@ -1860,13 +1914,15 @@ async def start_uploads(
     event,
     api_ref,
     page,
-    gain_adjusted_files=dict,
+    gain_adjusted_files: dict[str, dict[str, Any]] | None = None,
     concurrency=4,
     target="Create new card",
     new_card_title=None,
     existing_card_id=None,
 ):
     """Start uploads migrated from gui; ctx is the UI/context dict."""
+    ctx = _UPLOAD_CTX
+    gain_adjusted_files = gain_adjusted_files or {}
     file_rows_column = page.upload_manager.files_row_column
     overall_bar = page.upload_manager.overall_bar
     overall_text = page.upload_manager.overall_text
@@ -2216,7 +2272,7 @@ async def start_uploads(
                 "[start_uploads] Waiting for all uploads to complete before appending"
             )
 
-            print(f"[start_uploads] Selected existing card: {sel} -> {existing_card_id}")
+            print(f"[start_uploads] Selected existing card: {existing_card_id}")
             if not existing_card_id:
                 status.value = "No target card selected"
                 page.update()
@@ -2354,8 +2410,12 @@ async def start_uploads(
 
         status.value = "Finished"
         try:
-            ctx.get("start_btn").disabled = False
-            ctx.get("stop_btn").disabled = True
+            start_btn = ctx.get("start_btn")
+            stop_btn = ctx.get("stop_btn")
+            if start_btn is not None:
+                start_btn.disabled = False
+            if stop_btn is not None:
+                stop_btn.disabled = True
         except Exception:
             pass
         logger.debug("[start_uploads] Upload process finished")
