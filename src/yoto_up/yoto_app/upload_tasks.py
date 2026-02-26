@@ -23,7 +23,6 @@ from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
 from pydub import AudioSegment
 from yoto_up.yoto_app import utils as utils_mod
-import subprocess
 
 # Try to import simpleaudio for audio playback
 # Annotate module variable as optional to satisfy type checkers
@@ -1446,8 +1445,7 @@ class UploadManager:
             threading.Thread(target=_runner, daemon=True).start()
 
         def _start_click(e):
-            global _UPLOAD_CTX
-            ctx = _UPLOAD_CTX
+            nonlocal ctx
             # update ctx with the current checkbox value
             try:
                 ctx["strip_leading_track_numbers"] = bool(strip_leading_checkbox.value)
