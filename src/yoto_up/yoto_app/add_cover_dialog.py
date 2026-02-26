@@ -1,48 +1,28 @@
-import flet as ft
-from loguru import logger
-import httpx
+import os
 import shutil
 import sys
-
-from yoto_up.yoto_app.api_manager import ensure_api
-from yoto_up.yoto_api import YotoAPI, Card
 import tempfile
-import os
+
+import flet as ft
+import httpx
+from loguru import logger
+
+from yoto_up.models import Card
+from yoto_up.yoto_api import YotoAPI
+from yoto_up.yoto_app.api_manager import ensure_api
+
 
 def add_cover_dialog(page, c: Card, on_close=None):
     api: YotoAPI = ensure_api(page.api_ref)
 
-    def do_remove_cover(_e=None):
+    def do_remove_cover(c: Card = c):
         try:
-            card_id = c.cardId
-            if api and card_id is not None:
-                full = api.get_card(card_id)
-                if hasattr(full, "model_dump"):
-                    cd = full.model_dump(exclude_none=True)
-                elif isinstance(full, dict):
-                    cd = full
-                else:
-                    cd = c
-            else:
-                cd = c
-            if "metadata" not in cd or not isinstance(cd.get("metadata"), dict):
-                cd["metadata"] = {}
-            # Remove the cover art
-            if "cover" in cd["metadata"]:
-                cd["metadata"]["cover"] = {}
-            try:
-                card_model = Card.model_validate(cd)
-            except Exception:
-                logger.error("Card.model_validate failed in remove cover")
-                try:
-                    card_model = Card(**cd)
-                except Exception:
-                    logger.error("Card(**cd) failed in remove cover")
-                    return
+            card_model = c.clear_cover()
             page.update_card(card_model)
         except Exception as e:
             logger.error(f"Remove cover error: {e}")
             page.update()
+
     url_field = ft.TextField(label="Image URL (leave empty to upload file)")
     _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
     try:
@@ -74,43 +54,19 @@ def add_cover_dialog(page, c: Card, on_close=None):
         except Exception:
             pass
 
-    # If the card already has a cover, try to locate a suitable image URL/path
     cover_src = None
     try:
-        meta = (c.get("metadata") or {})
-        cover = meta.get("cover") or {}
-        cover_src = Card.get_cover_url()
-        if isinstance(cover, dict):
-            for key in ("imageL", "imageM", "imageS", "image"):
-                url_or_field = cover.get(key)
-                if not url_or_field:
-                    continue
-                try:
-                    if isinstance(url_or_field, str) and (url_or_field.startswith("http") or url_or_field.startswith("//")):
-                        cache_fn = getattr(page, "get_cached_cover", None)
-                        if callable(cache_fn):
-                            p = cache_fn(url_or_field)
-                            cover_src = str(p) if p else url_or_field
-                        else:
-                            cover_src = url_or_field
-                        break
-                    # if it's already a local path
-                    if isinstance(url_or_field, str) and url_or_field and url_or_field.startswith("/"):
-                        cover_src = url_or_field
-                        break
-                    # some implementations may store a dict with mediaUrl
-                    if isinstance(url_or_field, dict):
-                        media = url_or_field.get("mediaUrl") or url_or_field.get("media_url")
-                        if media:
-                            cache_fn = getattr(page, "get_cached_cover", None)
-                            if callable(cache_fn):
-                                p = cache_fn(media)
-                                cover_src = str(p) if p else media
-                            else:
-                                cover_src = media
-                            break
-                except Exception:
-                    continue
+        current_cover = c.get_cover_url()
+        if isinstance(current_cover, str) and current_cover:
+            if current_cover.startswith("http") or current_cover.startswith("//"):
+                cache_fn = getattr(page, "get_cached_cover", None)
+                if callable(cache_fn):
+                    p = cache_fn(current_cover)
+                    cover_src = str(p) if p else current_cover
+                else:
+                    cover_src = current_cover
+            elif current_cover.startswith("/"):
+                cover_src = current_cover
     except Exception:
         cover_src = None
 
@@ -133,31 +89,25 @@ def add_cover_dialog(page, c: Card, on_close=None):
             _warn_missing_file_picker()
             return
         files = await picker.pick_files(allow_multiple=False)
-        # mimic previous on_result flow
         try:
             class _E:
                 files = []
-                pass
+
             ev = _E()
             ev.files = files
             on_pick_result(ev)
         except Exception:
             pass
 
-
-    def do_upload(_e=None):
-        img_path = (
-            file_label.value
-            if file_label.value and file_label.value != "No file chosen"
-            else None
-        )
+    def do_upload(card: Card):
+        img_path = file_label.value if file_label.value and file_label.value != "No file chosen" else None
         img_url = (url_field.value or "").strip() or None
         if not img_path and not img_url:
             page.update()
             return
 
         try:
-            def progress_cb(msg, frac):
+            def progress_cb(_msg, _frac):
                 try:
                     page.update()
                 except Exception:
@@ -171,58 +121,12 @@ def add_cover_dialog(page, c: Card, on_close=None):
                 filename=None,
                 progress_callback=progress_cb,
             )
-            print(f"Uploaded cover response: {res}")
-            cover = (
-                res.get("coverImage")
-                if isinstance(res, dict) and "coverImage" in res
-                else res
-            )
-            mediaUrl = None
-            if isinstance(cover, dict):
-                mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
+            logger.debug(f"Uploaded cover response: {res}")
             try:
-                card_id = c.cardId
-                if api and card_id is not None:
-                    full = api.get_card(card_id)
-                    if hasattr(full, "model_dump"):
-                        cd = full.model_dump(exclude_none=True)
-                    elif isinstance(full, dict):
-                        cd = full
-                    else:
-                        cd = c
-                else:
-                    cd = c
-                if "metadata" not in cd or not isinstance(
-                    cd.get("metadata"), dict
-                ):
-                    cd["metadata"] = {}
-                if "cover" not in cd["metadata"] or not isinstance(
-                    cd["metadata"].get("cover"), dict
-                ):
-                    cd["metadata"]["cover"] = {}
-                elif mediaUrl:
-                    cd["metadata"]["cover"]["imageL"] = mediaUrl
-                elif img_url:
-                    cd["metadata"]["cover"]["imageL"] = img_url
-
-                try:
-                    card_model = Card.model_validate(cd)
-                except Exception:
-                    logger.error("Card.model_validate failed")
-                    try:
-                        card_model = Card(**cd)
-                    except Exception:
-                        logger.error("Card(**cd) failed")
-                        try:
-                            api.create_or_update_content(
-                                Card.model_validate(cd)
-                            )
-                        except Exception:
-                            logger.error("api.create_or_update_content failed")
-                        page.update()
-                        return
-
-                print(card_model)
+                card_model = card.apply_cover_upload_result(
+                    upload_result=res,
+                    fallback_url=img_url,
+                )
                 page.update_card(card_model)
             except Exception as ex:
                 logger.error(f"Upload succeeded but attach failed, {ex}")
@@ -238,13 +142,11 @@ def add_cover_dialog(page, c: Card, on_close=None):
     def close_add(_e):
         page.pop_dialog()
         page.update()
-        # call optional on_close callback (e.g., to reopen parent dialog)
         try:
             if callable(on_close):
                 try:
                     on_close()
                 except Exception:
-                    # allow on_close to accept an event param
                     try:
                         on_close(None)
                     except Exception:
@@ -256,7 +158,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
         try:
             default_query = c.title
             results_column = ft.Column(controls=[])
-            # Define do_search_action first so it can be referenced
+
             def do_search_action(_e2=None):
                 query = (search_field.value or "").strip()
                 logger.info(f"Searching for cover art with query: {query}")
@@ -265,7 +167,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
                     resp = httpx.get(
                         "https://itunes.apple.com/search",
                         params={"term": query, "media": "music", "entity": "album", "limit": 12},
-                        timeout=10
+                        timeout=10,
                     )
                     resp.raise_for_status()
                     data = resp.json()
@@ -295,133 +197,86 @@ def add_cover_dialog(page, c: Card, on_close=None):
             search_field = ft.TextField(label="Search for cover art", value=default_query, on_submit=do_search_action)
 
             def select_image(img_url):
-                    def do_confirm_upload(_e=None):
-                        try:
-                            page.update()
-                            # Download the image to a temporary file
-                            resp = httpx.get(img_url, timeout=15)
-                            resp.raise_for_status()
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmpf:
-                                tmpf.write(resp.content)
-                                tmp_path = tmpf.name
-                            # Upload using the same logic as do_upload, but with the temp file
-                            def progress_cb(msg, frac):
-                                try:
-                                    page.update()
-                                except Exception:
-                                    logger.error("Error in progress_cb (confirm upload)")
-                            res = api.upload_cover_image(
-                                image_path=tmp_path,
-                                imageUrl=None,
-                                autoconvert=True,
-                                coverType=None,
-                                filename=None,
-                                progress_callback=progress_cb,
-                            )
-                            logger.error(f"Uploaded cover response (confirm upload): {res}")
-                            cover = (
-                                res.get("coverImage")
-                                if isinstance(res, dict) and "coverImage" in res
-                                else res
-                            )
-                            mediaUrl = None
-                            if isinstance(cover, dict):
-                                mediaUrl = cover.get("mediaUrl") or cover.get("media_url")
+                def do_confirm_upload(_e=None):
+                    try:
+                        page.update()
+                        resp = httpx.get(img_url, timeout=15)
+                        resp.raise_for_status()
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmpf:
+                            tmpf.write(resp.content)
+                            tmp_path = tmpf.name
+
+                        def progress_cb(_msg, _frac):
                             try:
-                                card_id = c.cardId
-                                if api and card_id is not None:
-                                    full = api.get_card(card_id)
-                                    if hasattr(full, "model_dump"):
-                                        cd = full.model_dump(exclude_none=True)
-                                    elif isinstance(full, dict):
-                                        cd = full
-                                    else:
-                                        cd = c
-                                else:
-                                    cd = c
-                                if "metadata" not in cd or not isinstance(
-                                    cd.get("metadata"), dict
-                                ):
-                                    cd["metadata"] = {}
-                                if "cover" not in cd["metadata"] or not isinstance(
-                                    cd["metadata"].get("cover"), dict
-                                ):
-                                    cd["metadata"]["cover"] = {}
-
-                                if mediaUrl:
-                                    cd["metadata"]["cover"]["imageL"] = mediaUrl
-                                elif img_url:
-                                    cd["metadata"]["cover"]["imageL"] = img_url
-
-                                logger.error(f"Card data for update (confirm upload): {cd}")
-
-                                try:
-                                    card_model = Card.model_validate(cd)
-                                except Exception:
-                                    logger.error("Card.model_validate failed (confirm upload)")
-                                    try:
-                                        card_model = Card(**cd)
-                                    except Exception:
-                                        logger.error("Card(**cd) failed (confirm upload)")
-                                        try:
-                                            api.create_or_update_content(
-                                                Card.model_validate(cd)
-                                            )
-                                        except Exception:
-                                            logger.error("api.create_or_update_content failed (confirm upload)")
-                                        page.update()
-                                        return
-
-
-                                page.update_card(card_model)
-                            except Exception as ex:
-                                logger.error("Upload succeeded but attach failed (confirm upload)")
-                            finally:
                                 page.update()
-                            # Clean up temp file
-                            try:
-                                os.remove(tmp_path)
                             except Exception:
-                                logger.error(f"Failed to remove temp file {tmp_path}")
-                            page.pop_dialog()
+                                logger.error("Error in progress_cb (confirm upload)")
+
+                        res = api.upload_cover_image(
+                            image_path=tmp_path,
+                            imageUrl=None,
+                            autoconvert=True,
+                            coverType=None,
+                            filename=None,
+                            progress_callback=progress_cb,
+                        )
+                        logger.debug(f"Uploaded cover response (confirm upload): {res}")
+                        try:
+                            card_model = _get_latest_card_model().apply_cover_upload_result(
+                                upload_result=res,
+                                fallback_url=img_url,
+                            )
+                            page.update_card(card_model)
+                        except Exception:
+                            logger.error("Upload succeeded but attach failed (confirm upload)")
+                        finally:
                             page.update()
-                        except Exception as e:
-                            logger.error(f"Top-level upload error (confirm upload): {e}")
-                            page.update()
-                    def do_cancel(_e=None):
+
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            logger.error(f"Failed to remove temp file {tmp_path}")
                         page.pop_dialog()
                         page.update()
-                    confirm_dialog = ft.AlertDialog(
-                        title=ft.Text(value="Use this cover image?"),
-                        content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
-                        actions=[
-                            ft.TextButton(content="Use this image", on_click=do_confirm_upload),
-                            ft.TextButton(content="Cancel", on_click=do_cancel),
-                        ],
-                    )
-                    page.show_dialog(confirm_dialog)
+                    except Exception as e:
+                        logger.error(f"Top-level upload error (confirm upload): {e}")
+                        page.update()
 
+                def do_cancel(_e=None):
+                    page.pop_dialog()
+                    page.update()
 
+                confirm_dialog = ft.AlertDialog(
+                    title=ft.Text(value="Use this cover image?"),
+                    content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
+                    actions=[
+                        ft.TextButton(content="Use this image", on_click=do_confirm_upload),
+                        ft.TextButton(content="Cancel", on_click=do_cancel),
+                    ],
+                )
+                page.show_dialog(confirm_dialog)
 
             search_dialog = ft.AlertDialog(
                 title=ft.Text(value="Search for Cover Art"),
-                content=ft.Column(controls=[
-                    search_field,
-                    ft.Text(value="Click an image to select it as the cover art."),
-                    results_column
-                ], height=400, width=500),
+                content=ft.Column(
+                    controls=[
+                        search_field,
+                        ft.Text(value="Click an image to select it as the cover art."),
+                        results_column,
+                    ],
+                    height=400,
+                    width=500,
+                ),
                 actions=[
                     ft.TextButton(content="Search", on_click=do_search_action),
                     ft.TextButton(content="Close", on_click=lambda e: page.pop_dialog()),
                 ],
             )
             page.show_dialog(search_dialog)
-            # Trigger initial search when dialog opens
             do_search_action()
         except Exception as ex:
             logger.error(f"Error opening search dialog: {ex}")
 
-    # Build the dialog content, showing current cover (if any) above the controls
     content_children = []
     if cover_src:
         try:
@@ -430,32 +285,34 @@ def add_cover_dialog(page, c: Card, on_close=None):
         except Exception:
             pass
 
-    content_children.extend([
-        url_field,
-        ft.Row(controls=
-            [
-                ft.TextButton(
-                    content="Pick file...",
-                    on_click=_pick_cover_file,
-                ),
-                file_label,
-            ]
-        ),
-        ft.TextButton(
-            content="Search for cover art",
-            on_click=do_search_cover,
-        ),
-    ])
+    content_children.extend(
+        [
+            url_field,
+            ft.Row(
+                controls=[
+                    ft.TextButton(
+                        content="Pick file...",
+                        on_click=_pick_cover_file,
+                    ),
+                    file_label,
+                ]
+            ),
+            ft.TextButton(
+                content="Search for cover art",
+                on_click=do_search_cover,
+            ),
+        ]
+    )
 
     add_cover_list = ft.Column(controls=content_children)
     dialog = ft.AlertDialog(
         title=ft.Text(value="Add Cover Image"),
         content=add_cover_list,
         actions=[
-            ft.TextButton(content="Upload", on_click=do_upload),
+            ft.TextButton(content="Upload", on_click=lambda e: do_upload(c)),
             ft.TextButton(
                 content="Remove cover art",
-                on_click=do_remove_cover,
+                on_click=lambda e: do_remove_cover(c),
                 style=ft.ButtonStyle(bgcolor=ft.Colors.ERROR, color=ft.Colors.WHITE),
             ),
             ft.TextButton(content="Cancel", on_click=close_add),

@@ -1,5 +1,5 @@
 from asyncio.log import logger
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, cast
 from pydantic import BaseModel
 from yoto_up.icons import render_icon
 
@@ -99,6 +99,20 @@ class CardStatus(BaseModel):
 class CardCover(BaseModel):
     imageL: Optional[str] = None
 
+    @staticmethod
+    def media_url_from_upload_response(upload_result: object) -> Optional[str]:
+        if not isinstance(upload_result, dict):
+            return None
+        payload = cast(dict[str, object], upload_result)
+        cover_obj = payload.get("coverImage")
+        if isinstance(cover_obj, dict):
+            cover_payload = cast(dict[str, object], cover_obj)
+            media = cover_payload.get("mediaUrl") or cover_payload.get("media_url")
+            if isinstance(media, str) and media:
+                return media
+        top_level = payload.get("mediaUrl") or payload.get("media_url")
+        return top_level if isinstance(top_level, str) and top_level else None
+
 class CardMedia(BaseModel):
     duration: Optional[float] = None
     fileSize: Optional[float] = None
@@ -137,6 +151,11 @@ class CardMetadata(BaseModel):
     previewAudio: str = ""
     hidden: bool = False
 
+    def ensure_cover(self) -> CardCover:
+        if self.cover is None:
+            self.cover = CardCover()
+        return self.cover
+
 class CardContent(BaseModel):
     activity: Optional[str] = None
     chapters: Optional[List[Chapter]] = None
@@ -157,6 +176,31 @@ class Card(BaseModel):
     createdByClientId: Optional[str] = None
     updatedAt: Optional[str] = None
     userId: Optional[str] = None
+
+    def ensure_metadata(self) -> CardMetadata:
+        if self.metadata is None:
+            self.metadata = CardMetadata()
+        return self.metadata
+
+    def ensure_cover(self) -> CardCover:
+        return self.ensure_metadata().ensure_cover()
+
+    def clear_cover(self) -> "Card":
+        self.ensure_metadata().cover = CardCover()
+        return self
+
+    def set_cover_url(self, url: Optional[str]) -> "Card":
+        if isinstance(url, str) and url:
+            self.ensure_cover().imageL = url
+        return self
+
+    def apply_cover_upload_result(self, upload_result: object, fallback_url: Optional[str] = None) -> "Card":
+        media_url = CardCover.media_url_from_upload_response(upload_result)
+        if media_url:
+            self.set_cover_url(media_url)
+        else:
+            self.set_cover_url(fallback_url)
+        return self
 
     def get_metadata(self) -> CardMetadata:
         """Return the card's metadata, or an empty CardMetadata if not available."""
