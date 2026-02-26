@@ -55,17 +55,7 @@ def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
     cat = (filters.get("category") or "").strip().lower()
     if cat:
         try:
-            if hasattr(card_obj, "get_category") and callable(card_obj.get_category):
-                cval = (card_obj.get_category() or "").strip().lower()
-            else:
-                meta = (
-                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
-                )
-                if meta is None:
-                    # try attribute access
-                    meta = getattr(card_obj, "metadata", None)
-                cval = (getattr(meta, "category", None) if meta else None) or ""
-                cval = str(cval).strip().lower()
+            cval = (card_obj.get_category() or "").strip().lower()
             if cval != cat:
                 return False
         except Exception:
@@ -75,23 +65,7 @@ def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
     if gf:
         want = {g.strip().lower() for g in gf.split(",") if g.strip()}
         try:
-            if hasattr(card_obj, "get_genres") and callable(card_obj.get_genres):
-                card_genres = card_obj.get_genres()
-            else:
-                meta = (
-                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
-                )
-                if meta is None:
-                    meta = getattr(card_obj, "metadata", None)
-                card_genres = []
-                if meta:
-                    val = getattr(meta, "genre", None) if not isinstance(meta, dict) else meta.get("genre")
-                    if not val:
-                        val = meta.get("genres") if isinstance(meta, dict) else getattr(meta, "genres", None)
-                    if isinstance(val, str):
-                        card_genres = [g.strip() for g in val.split(",") if g.strip()]
-                    else:
-                        card_genres = val or []
+            card_genres = card_obj.get_genres()
             card_genres_set = {g.strip().lower() for g in (card_genres or []) if g}
             if not (want & card_genres_set):
                 return False
@@ -102,23 +76,7 @@ def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
     if tg:
         want_tags = {t.strip().lower() for t in tg.split(",") if t.strip()}
         try:
-            if hasattr(card_obj, "get_tags") and callable(card_obj.get_tags):
-                card_tags = card_obj.get_tags()
-            else:
-                meta = (
-                    card_obj.get("metadata") if isinstance(card_obj, dict) else None
-                )
-                if meta is None:
-                    meta = getattr(card_obj, "metadata", None)
-                card_tags = []
-                if meta:
-                    val = getattr(meta, "tags", None) if not isinstance(meta, dict) else meta.get("tags")
-                    if not val:
-                        val = getattr(meta, "genre", None) if not isinstance(meta, dict) else meta.get("genre")
-                    if isinstance(val, str):
-                        card_tags = [t.strip() for t in val.split(",") if t.strip()]
-                    else:
-                        card_tags = val or []
+            card_tags = card_obj.get_tags()
             card_tags_set = {t.strip().lower() for t in (card_tags or []) if t}
             if not (want_tags & card_tags_set):
                 return False
@@ -151,15 +109,12 @@ def delete_playlist(ev, page, card: Card, row_container=None):
                 logger.error("Unable to determine card id for deletion")
                 return
             # save a local version snapshot before deleting so it can be restored
+            payload: dict[str, Any] | None
             try:
-                payload = (
-                    card.model_dump(exclude_none=True)
-                    if hasattr(card, "model_dump")
-                    else None
-                )
+                payload = card.model_dump(exclude_none=True)
             except Exception:
                 payload = None
-            if isinstance(payload, dict):
+            if payload is not None:
                 try:
                     api.save_version(payload)
                 except Exception:
@@ -206,13 +161,13 @@ def delete_playlist(ev, page, card: Card, row_container=None):
         page.update()
 
     confirm_dialog = ft.AlertDialog(
-        title=ft.Text("Delete playlist?"),
-        content=ft.Text(
-            f"Delete playlist '{card.title}' (id={card.cid})? This cannot be undone."
+        title=ft.Text(value="Delete playlist?"),
+        content=ft.Text(value=
+            f"Delete playlist '{card.title}' (id={card.cardId})? This cannot be undone."
         ),
         actions=[
-            ft.TextButton("Yes", on_click=confirm_yes),
-            ft.TextButton("No", on_click=confirm_no),
+            ft.TextButton(content="Yes", on_click=confirm_yes),
+            ft.TextButton(content="No", on_click=confirm_no),
         ],
     )
     try:
@@ -225,21 +180,17 @@ def delete_playlist(ev, page, card: Card, row_container=None):
             logger.debug("Unable to show confirmation dialog")
 
 
-def make_playlist_row(page, card_obj, idx=None):
+def make_playlist_row(page, card_obj: Card, idx=None):
     logger.debug(f"Building row for card: {card_obj.cardId}")
     try:
-        title = getattr(card_obj, "title", None) or (
-            card_obj.get("title") if isinstance(card_obj, dict) else None
-        )
-        if not title:
-            title = str(card_obj)
+        title = card_obj.get_title() or str(card_obj)
     except Exception:
         title = str(card_obj)
     cid = card_obj.cardId
     logger.debug(f"Card ID for row: {cid}")
 
     delete_btn = ft.TextButton(
-        "Delete",
+        content="Delete",
         on_click=lambda ev, page=page, card=card_obj, row_container=None: (
             delete_playlist(ev, page, card, row_container)
         ),
@@ -307,9 +258,11 @@ def make_playlist_row(page, card_obj, idx=None):
         cb.visible = page.playlist_multi_select_mode
     except Exception:
         logger.error("Error setting checkbox visibility for multi-select mode")
-    cb._is_playlist_checkbox = True
-    cb._cid = cid
-    cb._idx = idx
+    cb.data = {"type": "playlist_checkbox", "cid": cid, "idx": idx}
+
+    def _is_playlist_checkbox_control(ctrl: object) -> bool:
+        data = getattr(ctrl, "data", None)
+        return isinstance(ctrl, ft.Checkbox) and isinstance(data, dict) and data.get("type") == "playlist_checkbox"
 
     def _on_checkbox_change(ev):
         try:
@@ -341,13 +294,14 @@ def make_playlist_row(page, card_obj, idx=None):
                         row_ctrl = page.playlists_list.controls[i]
                         cb_found = None
                         for child in getattr(row_ctrl, "controls", []):
-                            if getattr(child, "_is_playlist_checkbox", False):
+                            if _is_playlist_checkbox_control(child):
                                 cb_found = child
                                 break
                         if cb_found:
                             cb_found.value = True
+                            data = getattr(cb_found, "data", None)
                             page.selected_playlist_ids.add(
-                                getattr(cb_found, "_cid", "")
+                                data.get("cid", "") if isinstance(data, dict) else ""
                             )
                     except Exception:
                         pass
@@ -358,7 +312,7 @@ def make_playlist_row(page, card_obj, idx=None):
             # Normal multi-select toggle
             cb_found = None
             for child in row.controls:
-                if getattr(child, "_is_playlist_checkbox", False):
+                if _is_playlist_checkbox_control(child):
                     cb_found = child
                     break
             if cb_found:
@@ -380,17 +334,17 @@ def make_playlist_row(page, card_obj, idx=None):
                     row_ctrl = page.playlists_list.controls[i]
                     cb_found = None
                     for child in getattr(row_ctrl, "controls", []):
-                        if getattr(child, "_is_playlist_checkbox", False):
+                        if _is_playlist_checkbox_control(child):
                             cb_found = child
                             break
                         if hasattr(child, "content") and getattr(child, "content"):
                             for sub in (
                                 getattr(child, "content").controls
                                 if getattr(child, "content")
-                                and hasattr(child, "content", "controls")
+                                and hasattr(getattr(child, "content"), "controls")
                                 else []
                             ):
-                                if getattr(sub, "_is_playlist_checkbox", False):
+                                if _is_playlist_checkbox_control(sub):
                                     cb_found = sub
                                     break
                         if cb_found:
@@ -398,8 +352,9 @@ def make_playlist_row(page, card_obj, idx=None):
                     if cb_found:
                         try:
                             cb_found.value = True
+                            data = getattr(cb_found, "data", None)
                             page.selected_playlist_ids.add(
-                                getattr(cb_found, "_cid", "")
+                                data.get("cid", "") if isinstance(data, dict) else ""
                             )
                         except Exception:
                             pass
@@ -411,69 +366,20 @@ def make_playlist_row(page, card_obj, idx=None):
             return
         page.show_card_details(card)
 
-    # Compact preview of first few chapter titles (use model helper when present)
+    # Compact preview of first few chapter titles
     preview = ""
     try:
-        if hasattr(card_obj, "get_preview_titles") and callable(card_obj.get_preview_titles):
-            titles = card_obj.get_preview_titles(3)
-        else:
-            # fallback to legacy parsing
-            try:
-                d_preview = card_obj.model_dump(exclude_none=True) if hasattr(card_obj, "model_dump") else (card_obj if isinstance(card_obj, dict) else {})
-            except Exception:
-                d_preview = card_obj if isinstance(card_obj, dict) else {}
-            content_preview = d_preview.get("content") or {}
-            chapters_preview = content_preview.get("chapters") or []
-            titles = []
-            for ch in chapters_preview[:3]:
-                if isinstance(ch, dict):
-                    titles.append(ch.get("title", "") or "")
-                else:
-                    titles.append(str(ch))
+        titles = card_obj.get_preview_titles(3)
         preview = "  •  ".join([t for t in (titles or []) if t])
     except Exception:
         preview = ""
 
-    # Extract metadata fields for display using model helpers when available
+    # Extract metadata fields for display
     try:
-        if hasattr(card_obj, "get_tags") and callable(card_obj.get_tags):
-            tags = card_obj.get_tags() or []
-        else:
-            # fallback
-            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
-            tags = []
-            if meta_fallback:
-                tval = meta_fallback.get("tags") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "tags", None)
-                if isinstance(tval, str):
-                    tags = [t.strip() for t in tval.split(",") if t.strip()]
-                else:
-                    tags = tval or []
-
-        if hasattr(card_obj, "get_genres") and callable(card_obj.get_genres):
-            genres = card_obj.get_genres() or []
-        else:
-            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
-            gval = None
-            if meta_fallback:
-                gval = meta_fallback.get("genre") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "genre", None)
-                if not gval:
-                    gval = meta_fallback.get("genres") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "genres", None)
-            if isinstance(gval, str):
-                genres = [g.strip() for g in gval.split(",") if g.strip()]
-            else:
-                genres = gval or []
-
-        if hasattr(card_obj, "get_category") and callable(card_obj.get_category):
-            category = card_obj.get_category() or ""
-        else:
-            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
-            category = (meta_fallback.get("category") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "category", None)) or ""
-
-        if hasattr(card_obj, "get_author") and callable(card_obj.get_author):
-            author = card_obj.get_author() or ""
-        else:
-            meta_fallback = card_obj.get("metadata") if isinstance(card_obj, dict) else getattr(card_obj, "metadata", None)
-            author = (meta_fallback.get("author") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "author", None)) or (meta_fallback.get("creator") if isinstance(meta_fallback, dict) else getattr(meta_fallback, "creator", None)) or ""
+        tags = card_obj.get_tags() or []
+        genres = card_obj.get_genres() or []
+        category = card_obj.get_category() or ""
+        author = card_obj.get_author() or ""
     except Exception:
         tags = []
         genres = []
@@ -507,7 +413,7 @@ def make_playlist_row(page, card_obj, idx=None):
 
     short_desc = ""
     try:
-        short_desc = _trunc(meta.get("description") or "")
+        short_desc = card_obj.get_short_description(80)
     except Exception:
         short_desc = ""
 
@@ -518,31 +424,28 @@ def make_playlist_row(page, card_obj, idx=None):
 
     # Add truncated description as a subtitle line (if present)
     try:
-        short_desc = _trunc(meta.get("description") or "")
+        short_desc = card_obj.get_short_description(80)
     except Exception:
         short_desc = ""
     if short_desc:
         subtitle_items.append(ft.Text(short_desc, size=12, color=ft.Colors.BLACK45))
     if meta_text:
         subtitle_items.append(meta_text)
-    subtitle = ft.Column(subtitle_items)
-    tile = ft.ListTile(title=ft.Text(title), subtitle=subtitle, on_click=_on_tile_click)
+    subtitle = ft.Column(controls=subtitle_items)
+    tile = ft.ListTile(title=ft.Text(value=title), subtitle=subtitle, on_click=_on_tile_click)
 
     # Card ID placed to the right of the row (muted)
-    id_text = ft.Text(str(cid), size=11, color=ft.Colors.BLACK45)
+    id_text = ft.Text(value=str(cid), size=11, color=ft.Colors.BLACK45)
 
     row = ft.Row(
-        [cb, img_ctrl, ft.Container(content=tile, expand=True), id_text, delete_btn],
+        controls=[cb, img_ctrl, ft.Container(content=tile, expand=True), id_text, delete_btn],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
     delete_btn.on_click = lambda ev, page=page, card=card_obj, row_container=row: (
         delete_playlist(ev, page, card, row_container)
     )
-    try:
-        row._idx = idx
-    except Exception:
-        pass
+    row.data = {"idx": idx}
     return row
 
 
@@ -556,45 +459,25 @@ def build_playlists_ui(page, cards=None):
     filters = page.get_playlist_filters()
     logger.debug(f"Applying filters: {filters} to {len(cards) if cards else 0} cards")
     if not cards or cards is None:
-        page.playlists_list.controls.append(ft.Text("No playlists found"))
+        page.playlists_list.controls.append(ft.Text(value="No playlists found"))
     else:
         # Sort cards based on dropdown
         sort_key = page.current_playlist_sort
 
-        def get_meta(card):
-            # Return tuple (raw_dict_or_model, metadata_obj_or_dict)
-            if isinstance(card, dict):
-                d = card
-                meta = d.get("metadata") or {}
-                return d, meta
-            # Model instance: prefer helpers/attributes
-            try:
-                meta = card.get_metadata() if hasattr(card, "get_metadata") else getattr(card, "metadata", {})
-            except Exception:
-                try:
-                    d = card.model_dump(exclude_none=True)
-                    meta = d.get("metadata") or {}
-                except Exception:
-                    meta = {}
-            return card, meta
 
         def sort_func(card: Card):
-            d, meta = get_meta(card)
+            meta = card.get_metadata()
             # Title
-            def title_val(obj):
-                if isinstance(obj, dict):
-                    return (obj.get("title") or "").lower()
-                return (getattr(obj, "title", None) or "").lower()
+            def title_val(obj: Card) -> str:
+                return (obj.get_title() or "").lower()
 
             if sort_key == "title_asc":
-                return title_val(d)
+                return title_val(card)
             if sort_key == "title_desc":
-                return title_val(d)
+                return title_val(card)
             if sort_key == "category":
                 try:
-                    if isinstance(meta, dict):
-                        return (meta.get("category") or "").lower()
-                    return (getattr(meta, "category", None) or "").lower()
+                    return (meta.category or "").lower()
                 except Exception:
                     return ""
             if sort_key in (
@@ -604,12 +487,7 @@ def build_playlists_ui(page, cards=None):
                 "updated_asc",
             ):
                 key_name = "createdAt" if "created" in sort_key else "updatedAt"
-                # prefer attribute access on model, fallback to dict
-                value = None
-                if isinstance(d, dict):
-                    value = d.get(key_name)
-                else:
-                    value = getattr(d, key_name, None)
+                value = getattr(card, key_name, None)
                 ts = 0
                 if value:
                     from datetime import datetime
@@ -623,13 +501,13 @@ def build_playlists_ui(page, cards=None):
                         ts = int(dt.timestamp())
                     except Exception as e:
                         print(
-                            f"[sort_func] Failed to parse {key_name} '{value}' for card {d.get('title', '?')}: {e}"
+                            f"[sort_func] Failed to parse {key_name} '{value}' for card {card.get_title()}: {e}"
                         )
                 print(
-                    f"[sort_func] card: {d.get('title', '?')}, {key_name}: {value}, ts: {ts}"
+                    f"[sort_func] card: {card.get_title()}, {key_name}: {value}, ts: {ts}"
                 )
                 return ts
-            return (d.get("title") or "").lower()
+            return (card.get_title() or "").lower()
 
         if sort_key.endswith("_desc"):
             reverse = True
@@ -845,15 +723,9 @@ def build_playlists_panel(
                             try:
                                 with latest.open("r", encoding="utf-8") as fh:
                                     payload = json.load(fh)
-                                    title = (
-                                        payload.get("title")
-                                        if isinstance(payload, dict)
-                                        else None
-                                    )
-                                    card_id = (
-                                        payload.get("cardId")
-                                        or card_dir.name
-                                    )
+                                    parsed = Card.model_validate(payload)
+                                    title = parsed.get_title()
+                                    card_id = parsed.cardId or card_dir.name
                             except Exception:
                                 title = None
                             # Check whether the card currently exists on the server; if it does not,
@@ -876,15 +748,9 @@ def build_playlists_panel(
                             try:
                                 with latest.open("r", encoding="utf-8") as fh:
                                     payload = json.load(fh)
-                                    title = (
-                                        payload.get("title")
-                                        if isinstance(payload, dict)
-                                        else None
-                                    )
-                                    card_id = (
-                                        payload.get("cardId")
-                                        or latest.stem
-                                    )
+                                    parsed = Card.model_validate(payload)
+                                    title = parsed.get_title()
+                                    card_id = parsed.cardId or latest.stem
                             except Exception:
                                 title = None
                             try:
@@ -1332,17 +1198,10 @@ def build_playlists_panel(
             try:
                 card = api.get_card(cid)
                 try:
-                    data = (
-                        card.model_dump(exclude_none=True)
-                        if hasattr(card, "model_dump")
-                        else dict(card)
-                    )
+                    data = card.model_dump(exclude_none=True)
                 except Exception:
-                    try:
-                        data = dict(card)
-                    except Exception:
-                        data = str(card)
-                title = (data.get("title") or "") if isinstance(data, dict) else ""
+                    data = {}
+                title = card.get_title()
                 import re
 
                 def _safe_filename(s: str) -> str:
