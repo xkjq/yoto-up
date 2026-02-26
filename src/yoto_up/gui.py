@@ -124,15 +124,15 @@ def main(page: ft.Page):
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
     # client_id = ft.TextField(label="Client ID", value="RslORm04nKbhf04qb91r2Pxwjsn3Hnd5", width=400, disabled=True)
-    auth_btn = ft.Button("Authenticate")
-    status = ft.Text("")
+    auth_btn = ft.TextButton(content=ft.Text(value="Authenticate"))
+    status = ft.Text(value="")
     page.status = status  # expose on page for easy access from helpers
-    auth_instructions = ft.Column([ft.Text(AUTHENTICATE_TEXT)])
+    auth_instructions = ft.Column(controls=[ft.Text(value=AUTHENTICATE_TEXT)])
 
-    def show_snack(message: str, error: bool = False, duration: int | None = None):
+    def show_snack(message: str, error: bool = False, duration: int = 3000):
         # print(f"[gui] show_snack: {message}")  # Commented out for performance
         bg = ft.Colors.RED if error else None
-        page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=bg, duration=duration)
+        page.snack_bar = ft.SnackBar(content=ft.Text(value=message), bgcolor=bg, duration=duration)
         page.show_dialog(page.snack_bar)
         try:
             page.update()
@@ -160,6 +160,11 @@ def main(page: ft.Page):
         # Prefer using the YotoAPI device auth flow directly (so we reuse
         # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
         # existing auth module on any error.
+        api = get_api()
+        if api is None:
+            logger.error("start_device_auth: API instance not available")
+            show_snack("API unavailable; cannot start authentication", error=True)
+            return
         device_info = api.get_device_code()
 
         verification_uri = device_info.get("verification_uri") or ""
@@ -174,26 +179,21 @@ def main(page: ft.Page):
             if container is not None:
                 container.controls.clear()
                 container.controls.append(
-                    ft.Text(
-                        f"Visit: {verification_uri} and enter the code displayed below.",
-                        selectable=True,
-                    )
+                    ft.Text(value=f"Visit: {verification_uri} and enter the code displayed below.", selectable=True)
                 )
-                container.controls.append(
-                    ft.Text(f"Code: {user_code}", selectable=True)
-                )
+                container.controls.append(ft.Text(value=f"Code: {user_code}", selectable=True))
                 container.controls.append(
                     ft.Row(
-                        [
-                            ft.Text("Alternatively open (click) this direct link: "),
+                        controls=[
+                            ft.Text(value="Alternatively open (click) this direct link: "),
                             ft.TextButton(
-                                verification_uri_complete,
+                                content=ft.Text(value=verification_uri_complete),
                                 on_click=lambda e, url=verification_uri_complete: (
                                     logger.debug(f"Opening browser for URL: {url}"),
-                                    __import__("webbrowser").open(url)
+                                    __import__("webbrowser").open(url),
                                 ),
                             ),
-                            ft.Button("Copy Link", on_click=lambda e, url=verification_uri_complete: (
+                            ft.TextButton(content=ft.Text(value="Copy Link"), on_click=lambda e, url=verification_uri_complete: (
                                 logger.debug(f"Copying URL to clipboard: {url}"),
                                 ft.Clipboard().set(url),
                             )),
