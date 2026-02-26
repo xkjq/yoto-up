@@ -12,48 +12,13 @@ from yoto_up.normalization import AudioNormalizer
 import re
 from loguru import logger
 import webbrowser
-import flet as _ft
+import flet as ft
 import sys
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import threading
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
 
-ft: Any = _ft
-
-
-def Text(value: object = "", **kwargs: Any):
-    return _ft.Text(value=str(value) if value is not None else "", **kwargs)
-
-
-def Button(label: str = "", **kwargs: Any):
-    if "content" not in kwargs and "text" not in kwargs:
-        kwargs["content"] = _ft.Text(value=label)
-    return _ft.Button(**kwargs)
-
-
-def TextButton(label: str = "", **kwargs: Any):
-    if "content" not in kwargs and "text" not in kwargs:
-        kwargs["content"] = label
-    return _ft.TextButton(**kwargs)
-
-
-def Row(controls: list[Any] | None = None, **kwargs: Any):
-    return _ft.Row(controls=controls or [], **kwargs)
-
-
-def Column(controls: list[Any] | None = None, **kwargs: Any):
-    return _ft.Column(controls=controls or [], **kwargs)
-
-
-def AlertDialog(
-    *,
-    title: Any | None = None,
-    content: Any | None = None,
-    actions: list[Any] | None = None,
-    **kwargs: Any,
-):
-    return _ft.AlertDialog(title=title, content=content, actions=actions or [], **kwargs)
 
 
 utils_mod = audio_adjust_utils
