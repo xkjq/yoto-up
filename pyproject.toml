@@ -63,6 +63,8 @@ gui = [
   "librosa>=0.10",
   "pyloudnorm>=0.1",
   "watchdog>=3.0.0",
+  # Optional native audio playback (may require system ALSA headers on Linux)
+  "simpleaudio>=1.0.4",
 ]
 
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and

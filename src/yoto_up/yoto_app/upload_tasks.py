@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 import traceback
 import tempfile
 import shutil
@@ -16,7 +17,16 @@ import threading
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
 from pydub import AudioSegment
-import webbrowser
+from yoto_up.yoto_app import utils as utils_mod
+import subprocess
+
+# Try to import simpleaudio for audio playback
+try:
+    import simpleaudio as _simpleaudio
+    HAS_SIMPLEAUDIO = True
+except ImportError:
+    _simpleaudio = None
+    HAS_SIMPLEAUDIO = False
 
 # module-level reference to the last active page so row buttons can open dialogs
 _LAST_PAGE = None
@@ -2232,7 +2242,7 @@ async def start_uploads(
                 "[start_uploads] Waiting for all uploads to complete before appending"
             )
 
-            print(f"[start_uploads] Selected existing card: {sel} -> {existing_card_id}")
+            print(f"[start_uploads] Selected existing card id: {existing_card_id}")
             if not existing_card_id:
                 status.value = "No target card selected"
                 page.update()
