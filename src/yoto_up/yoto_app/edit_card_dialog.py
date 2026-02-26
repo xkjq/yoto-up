@@ -5,7 +5,7 @@ from copy import deepcopy
 from loguru import logger
 from typing import Literal, cast
 
-from yoto_up.models import Card, CardContent
+from yoto_up.models import Card, CardContent, Chapter, Track
 
 from .icon_import_helpers import get_base64_from_path
 
@@ -188,13 +188,13 @@ def show_edit_card_dialog(
                         def delete_track(_e):
                             try:
                                 ch_obj = chapters_local[ci]
-                                if isinstance(ch_obj, dict) and "tracks" in ch_obj:
-                                    if 0 <= ti < len(ch_obj["tracks"]):
-                                        del ch_obj["tracks"][ti]
-                                        show_edit_card_dialog(
-                                            c,
-                                            page,
-                                        )
+                                tracks_for_chapter = ch_obj.get_tracks()
+                                if 0 <= ti < len(tracks_for_chapter):
+                                    del tracks_for_chapter[ti]
+                                    show_edit_card_dialog(
+                                        c,
+                                        page,
+                                    )
                             except Exception as ex:
                                 logger.error(f"Failed to delete track: {ex}")
                         return delete_track
@@ -236,26 +236,16 @@ def show_edit_card_dialog(
         item = flat_items.pop(old)
         flat_items.insert(new, item)
         # Rebuild chapters_local from flat_items
-        new_chapters = []
-        current_ch = None
+        new_chapters: list[Chapter] = []
+        current_ch: Chapter | None = None
         for entry in flat_items:
             if entry["type"] == "chapter":
-                current_ch = deepcopy(entry["ch"])
-                if hasattr(current_ch, "tracks"):
-                    current_tracks = getattr(current_ch, "tracks", None)
-                    if isinstance(current_tracks, list):
-                        current_tracks.clear()
-                elif isinstance(current_ch, dict):
-                    current_ch["tracks"] = []
+                current_ch = deepcopy(cast(Chapter, entry["ch"]))
+                current_ch.tracks = []
                 new_chapters.append(current_ch)
             elif entry["type"] == "track":
                 if current_ch is not None:
-                    if hasattr(current_ch, "tracks"):
-                        current_tracks = getattr(current_ch, "tracks", None)
-                        if isinstance(current_tracks, list):
-                            current_tracks.append(entry["tr"])
-                    elif isinstance(current_ch, dict):
-                        current_ch.setdefault("tracks", []).append(entry["tr"])
+                    current_ch.tracks.append(cast(Track, entry["tr"]))
         chapters_local.clear()
         chapters_local.extend(new_chapters)
         # After reorder, rebuild dialog so labels are correct
@@ -370,44 +360,31 @@ def show_edit_card_dialog(
         # Rebuild chapters from flat_items (preserve non-title fields where possible)
         state = _EDIT_DIALOG_STATE
         flat_items = state.flat_items or []
-        new_chapters = []
-        chapter_fields_save = []
-        track_fields_save = []
-        current_ch = None
+        new_chapters: list[Chapter] = []
+        chapter_fields_save: list[ft.TextField | None] = []
+        track_fields_save: list[list[ft.TextField | None]] = []
+        current_ch: Chapter | None = None
 
         for entry in flat_items:
             if entry["type"] == "chapter":
                 # Start a new chapter copy
-                src_ch = entry.get("ch")
-                if hasattr(src_ch, "model_dump"):
-                    ch_copy = deepcopy(src_ch)
-                    try:
-                        ch_copy.tracks = []
-                    except Exception:
-                        pass
-                else:
-                    ch_copy = deepcopy(src_ch) or {}
-                    if isinstance(ch_copy, dict):
-                        ch_copy["tracks"] = []
+                src_ch = cast(Chapter, entry["ch"])
+                ch_copy = deepcopy(src_ch)
+                ch_copy.tracks = []
                 new_chapters.append(ch_copy)
-                chapter_fields_save.append(entry.get("ch_field"))
+                chapter_fields_save.append(cast(ft.TextField | None, entry.get("ch_field")))
                 current_ch = ch_copy
                 track_fields_save.append([])
             elif entry["type"] == "track":
                 if current_ch is None:
                     continue
-                src_tr = entry.get("tr")
+                src_tr = cast(Track, entry["tr"])
                 # Append a deepcopy of the original track object/dict to preserve metadata
                 tr_copy = deepcopy(src_tr)
-                if hasattr(current_ch, "tracks"):
-                    current_tracks = getattr(current_ch, "tracks", None)
-                    if isinstance(current_tracks, list):
-                        current_tracks.append(tr_copy)
-                elif isinstance(current_ch, dict):
-                    current_ch.setdefault("tracks", []).append(tr_copy)
+                current_ch.tracks.append(tr_copy)
                 # Track field mapping for title edits
                 if track_fields_save:
-                    track_fields_save[-1].append(entry.get("tr_field"))
+                    track_fields_save[-1].append(cast(ft.TextField | None, entry.get("tr_field")))
 
         # Assign chapters into card_model.content
         if card_model.content is None:
@@ -422,16 +399,20 @@ def show_edit_card_dialog(
                 for idx, ch_model in enumerate(chapters_for_save):
                     if idx < len(chapter_fields_save) and chapter_fields_save[idx] is not None:
                         try:
-                            ch_model.title = chapter_fields_save[idx].value
+                            chapter_field = chapter_fields_save[idx]
+                            if chapter_field is not None:
+                                ch_model.title = chapter_field.value
                         except Exception:
                             pass
-                    if hasattr(ch_model, "tracks") and ch_model.tracks:
-                        for t_idx, tr_model in enumerate(ch_model.tracks):
-                            if t_idx < len(track_fields_save[idx]) and track_fields_save[idx][t_idx] is not None:
-                                try:
-                                    tr_model.title = track_fields_save[idx][t_idx].value
-                                except Exception:
-                                    pass
+                    chapter_tracks = ch_model.get_tracks()
+                    for t_idx, tr_model in enumerate(chapter_tracks):
+                        if t_idx < len(track_fields_save[idx]) and track_fields_save[idx][t_idx] is not None:
+                            try:
+                                track_field = track_fields_save[idx][t_idx]
+                                if track_field is not None:
+                                    tr_model.title = track_field.value
+                            except Exception:
+                                pass
 
             async def save_thread():
                 try:
