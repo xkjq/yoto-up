@@ -203,19 +203,8 @@ class Card(BaseModel):
         return self
 
     def get_metadata(self) -> CardMetadata:
-        """Return the card's metadata, or an empty CardMetadata if not available."""
-        try:
-            return self.metadata or CardMetadata()
-        except Exception:
-            logger.warning(f"Failed to get metadata for card {self.cardId}")
-            return CardMetadata()
-
-    def get_id(self) -> Optional[str]:
-        """Return the cardId for the card (cardId only)."""
-        try:
-            return self.cardId
-        except Exception:
-            return None
+        """Return the card's metadata, creating and storing one if absent."""
+        return self.ensure_metadata()
 
     def get_author(self) -> Optional[str]:
         try:
@@ -377,12 +366,16 @@ class Card(BaseModel):
         # Genre / Languages
         try:
             if self.metadata and getattr(self.metadata, 'genre', None):
-                header_lines.append(f"[green]Genre:[/] {', '.join(self.metadata.genre)}")
+                genres = [str(g) for g in (self.metadata.genre or []) if g]
+                if genres:
+                    header_lines.append(f"[green]Genre:[/] {', '.join(genres)}")
         except Exception:
             pass
         try:
             if self.metadata and getattr(self.metadata, 'languages', None):
-                header_lines.append(f"[green]Languages:[/] {', '.join(self.metadata.languages)}")
+                languages = [str(lang) for lang in (self.metadata.languages or []) if lang]
+                if languages:
+                    header_lines.append(f"[green]Languages:[/] {', '.join(languages)}")
         except Exception:
             pass
 

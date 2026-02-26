@@ -129,7 +129,7 @@ def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
 
 
 def _extract_cover_source(card_item: Card, api_instance):
-    logger.debug(f"Extracting cover source for card: {get_card_id_local(card_item)}")
+    logger.debug(f"Extracting cover source for card: {card_item.cardId}")
     meta = card_item.metadata
     if meta is None:
         return None
@@ -141,35 +141,12 @@ def _extract_cover_source(card_item: Card, api_instance):
         return None
     return v
 
-
-def get_card_id_local(card):
-    # Prefer model helper if available
-    try:
-        if hasattr(card, "get_id") and callable(getattr(card, "get_id")):
-            cid = card.get_id()
-            if cid:
-                return cid
-    except Exception:
-        pass
-    if hasattr(card, "cardId") and getattr(card, "cardId"):
-        return getattr(card, "cardId")
-    if isinstance(card, dict):
-        return card.cardId
-    try:
-        if hasattr(card, "model_dump"):
-            d = card.model_dump(exclude_none=True)
-            return d.cardId
-    except Exception:
-        pass
-    return None
-
-
 def delete_playlist(ev, page, card: Card, row_container=None):
     def do_delete(_ev=None):
         try:
             client = CLIENT_ID
             api = ensure_api(page.api_ref, client)
-            content_id = get_card_id_local(card)
+            content_id = card.cardId
             if not content_id:
                 logger.error("Unable to determine card id for deletion")
                 return
@@ -252,7 +229,7 @@ def delete_playlist(ev, page, card: Card, row_container=None):
 
 
 def make_playlist_row(page, card_obj, idx=None):
-    logger.debug(f"Building row for card: {get_card_id_local(card_obj)}")
+    logger.debug(f"Building row for card: {card_obj.cardId}")
     try:
         title = getattr(card_obj, "title", None) or (
             card_obj.get("title") if isinstance(card_obj, dict) else None
@@ -261,7 +238,7 @@ def make_playlist_row(page, card_obj, idx=None):
             title = str(card_obj)
     except Exception:
         title = str(card_obj)
-    cid = get_card_id_local(card_obj) or ""
+    cid = card_obj.cardId
     logger.debug(f"Card ID for row: {cid}")
 
     delete_btn = ft.TextButton(
@@ -676,7 +653,7 @@ def build_playlists_ui(page, cards=None):
             if row is not None and isinstance(row, ft.Control):
                 page.playlists_list.controls.append(row)
             else:
-                logger.error(f"make_playlist_row did not return a valid control for card {get_card_id_local(c)}")
+                logger.error(f"make_playlist_row did not return a valid control for card {c.cardId}")
     page.update()
 
 def fetch_playlists_sync(page):

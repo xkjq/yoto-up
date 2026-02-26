@@ -1,5 +1,6 @@
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
+from yoto_up.yoto_app.add_cover_dialog import add_cover_dialog
 from yoto_up.models import Card
 import threading
 import asyncio
@@ -999,12 +1000,10 @@ def make_show_card_details(
                 page.show_snack(f"Failed to list versions: {ex}", error=True)
 
         def show_add_cover(ev):
-            from yoto_app.add_cover_dialog import add_cover_dialog
-
+            """Show the add cover dialog."""
             add_cover_dialog(
                 page,
                 c,
-                Card,
                 on_close=lambda e=None: show_card_details(None, c, preview_path=preview_path),
             )
 
