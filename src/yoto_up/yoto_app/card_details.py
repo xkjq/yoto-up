@@ -3,12 +3,10 @@ from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
 from yoto_up.yoto_app.add_cover_dialog import add_cover_dialog
 from yoto_up.models import Card
 import threading
-import asyncio
 import json
 import traceback
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict
 
 import flet as ft
 import re
@@ -262,7 +260,6 @@ def make_show_card_details(
 
                     def _on_download_click(ev=None, url=tr_url, title=tr_title):
                         import httpx
-                        import os
                         from pathlib import Path
                         try:
                             resolved_url = None
@@ -294,7 +291,7 @@ def make_show_card_details(
                             #tp = api.get_icon_cache_path(tr_icon_field)
                             based_image = api.get_icon_b64_data(tr_icon_field)
                             if based_image is not None:
-                                img = ft.Image(src=based_image, width=20, height=20, tooltip=f"Click to replace icon")
+                                img = ft.Image(src=based_image, width=20, height=20, tooltip="Click to replace icon")
                                 tr_img = ft.GestureDetector(
                                     content=img,
                                     on_tap=lambda ev,
@@ -325,19 +322,20 @@ def make_show_card_details(
                         )
 
                     tr_col = ft.Column(
-                        [
+                        controls=[
                             ft.Row(
-                                [
+                                controls=[
                                     tr_img if tr_img else ft.Container(width=20, tooltip="Click to replace icon"),
-                                    ft.Text(f"Track {t_idx}. {tr_title}", size=12),
+                                    ft.Text(value=f"Track {t_idx}. {tr_title}", size=12),
                                 ],
                                 alignment=ft.MainAxisAlignment.START,
                                 spacing=8,
                             ),
                             ft.Row(
-                                [
+                                controls=[
                                     ft.Container(width=20),
                                     ft.Text(
+                                        value=
                                         f"{tr_format}  • {tr_duration}  • size={tr_size}",
                                         size=11,
                                         color=ft.Colors.BLACK45,
@@ -346,9 +344,10 @@ def make_show_card_details(
                                 alignment=ft.MainAxisAlignment.START,
                             ),
                             ft.Row(
-                                [
+                                controls=[
                                     ft.Container(width=20),
                                     ft.Text(
+                                        value=
                                         f"key={tr_key}  overlay={tr_overlay}",
                                         size=11,
                                         color=ft.Colors.BLACK45,
@@ -361,7 +360,7 @@ def make_show_card_details(
                     )
 
                     row = ft.Row(
-                        [
+                        controls=[
                             ft.Container(width=20),
                             tr_col,
                             ft.IconButton(
@@ -394,10 +393,10 @@ def make_show_card_details(
                     if tr_url:
                         row.controls.append(
                             ft.Row(
-                                [
+                                controls=[
                                     ft.Container(width=20),
                                     ft.Text(
-                                        f"URL: {tr_url}", selectable=True, size=11
+                                        value=f"URL: {tr_url}", selectable=True, size=11
                                     ),
                                 ]
                             )
@@ -421,19 +420,21 @@ def make_show_card_details(
             controls = []
             # capture cover source found in metadata and defer building the Image
             cover_src = None
-            controls.append(ft.Text(f"Title: {c.title}", selectable=True))
-            controls.append(ft.Text(f"Card ID: {c.cardId}", selectable=True))
+            controls.append(ft.Text(value=f"Title: {c.title}", selectable=True))
+            controls.append(ft.Text(value=f"Card ID: {c.cardId}", selectable=True))
             controls.append(
                 ft.Text(
+                    value=
                     f"Created by Client ID: {c.createdByClientId}",
                     selectable=True,
                 )
             )
             controls.append(
-                ft.Text(f"Created At: {c.createdAt}", selectable=True)
+                ft.Text(value=f"Created At: {c.createdAt}", selectable=True)
             )
             controls.append(
                 ft.Text(
+                    value=
                     f"Deleted: {c.deleted}",
                     selectable=True,
                 )
@@ -443,39 +444,40 @@ def make_show_card_details(
             if meta:
                 cover_src = c.get_cover_url()
                 controls.append(ft.Divider())
-                controls.append(ft.Text("Metadata:", weight=ft.FontWeight.BOLD))
+                controls.append(ft.Text(value="Metadata:", weight=ft.FontWeight.BOLD))
                 controls.append(
-                    ft.Text(f"  Author: {meta.author}", selectable=True)
+                    ft.Text(value=f"  Author: {meta.author}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Category: {meta.category}", selectable=True)
+                    ft.Text(value=f"  Category: {meta.category}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Description: {meta.description}", selectable=True)
+                    ft.Text(value=f"  Description: {meta.description}", selectable=True)
                 )
                 controls.append(
-                    ft.Text(f"  Note: {meta.note}", selectable=True)
+                    ft.Text(value=f"  Note: {meta.note}", selectable=True)
                 )
                 tags = meta.tags
                 if tags:
                     if isinstance(tags, (list, tuple)):
                         controls.append(
-                            ft.Text(f"  Tags: {', '.join(tags)}", selectable=True)
+                            ft.Text(value=f"  Tags: {', '.join(tags)}", selectable=True)
                         )
                     else:
-                        controls.append(ft.Text(f"  Tags: {tags}", selectable=True))
+                        controls.append(ft.Text(value=f"  Tags: {tags}", selectable=True))
                 genres = meta.genre
                 if genres:
                     if isinstance(genres, (list, tuple)):
                         controls.append(
-                            ft.Text(f"  Genres: {', '.join(genres)}", selectable=True)
+                            ft.Text(value=f"  Genres: {', '.join(genres)}", selectable=True)
                         )
                     else:
-                        controls.append(ft.Text(f"  Genres: {genres}", selectable=True))
+                        controls.append(ft.Text(value=f"  Genres: {genres}", selectable=True))
                 media = meta.media
                 if media:
                     controls.append(
                         ft.Text(
+                            value=
                             f"  Duration: {fmt_sec(media.duration)}    FileSize: {media.fileSize}",
                             selectable=True,
                         )
@@ -483,19 +485,20 @@ def make_show_card_details(
                 if meta.previewAudio:
                     controls.append(
                         ft.Text(
+                            value=
                             f"  Preview Audio: {meta.previewAudio}",
                             selectable=True,
                         )
                     )
 
-            content = c.content or {}
-            chapters = content.chapters or []
+            content = c.content
+            chapters = content.chapters if content and content.chapters else []
             # capture header controls (everything up to the chapters section)
             header_controls = list(controls)
             chapters_view = None
             if chapters:
                 controls.append(ft.Divider())
-                controls.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
+                controls.append(ft.Text(value="Chapters:", weight=ft.FontWeight.BOLD))
 
 
                 chapter_items = []
@@ -565,16 +568,17 @@ def make_show_card_details(
 
                     chapter_panel_children = [
                         ft.Row(
-                            [
+                            controls=[
                                 img_control if img_control else ft.Container(width=24),
                                 ft.Column(
-                                    [
+                                    controls=[
                                         ft.Text(
+                                            value=
                                             f"Chapter {ch_idx + 1}. {ch_title}",
                                             weight=ft.FontWeight.BOLD,
                                         ),
                                         ft.Text(
-                                            meta_line, size=12, color=ft.Colors.BLACK45
+                                            value=meta_line, size=12, color=ft.Colors.BLACK45
                                         ),
                                     ]
                                 ),
@@ -591,14 +595,10 @@ def make_show_card_details(
                         )
                     ]
 
-                    tracks_rv = ft.ReorderableListView(track_controls, on_reorder=make_track_on_reorder(ch_idx))
+                    tracks_rv = ft.ReorderableListView(controls=track_controls, on_reorder=make_track_on_reorder(ch_idx))
                     chapter_panel_children.append(tracks_rv)
 
-                    col = ft.Column(chapter_panel_children, spacing=6)
-                    try:
-                        col._chapter = ch
-                    except Exception:
-                        pass
+                    col = ft.Column(controls=chapter_panel_children, spacing=6)
                     chapter_items.append(col)
 
                 def make_chapter_on_reorder(ev):
@@ -617,10 +617,8 @@ def make_show_card_details(
                         if old is None or new is None:
                             return
                         ch_list = c.get_chapters()
-                        before = [ ch.title for ch in list(ch_list) ]
                         item = ch_list.pop(old)
                         ch_list.insert(new, item)
-                        after = [ ch.title for ch in list(ch_list) ]
                         ui_item = chapter_items.pop(old)
                         chapter_items.insert(new, ui_item)
                         page.show_dialog(dialog)
@@ -628,20 +626,15 @@ def make_show_card_details(
                     except Exception as ex:
                         print("chapter reorder failed:", ex)
 
-                chapters_rv = ft.ReorderableListView(chapter_items, on_reorder=make_chapter_on_reorder)
-                try:
-                    chapters_rv._is_chapter_rv = True
-                    chapters_rv._chapter_items_ref = chapter_items
-                except Exception:
-                    pass
+                chapters_rv = ft.ReorderableListView(controls=chapter_items, on_reorder=make_chapter_on_reorder)
                 controls.append(chapters_rv)
 
-                controls.append(ft.Row([ft.Button("Save Order", on_click=save_order_click)]))
+                controls.append(ft.Row(controls=[ft.TextButton(content="Save Order", on_click=save_order_click)]))
 
                 # Build a chapters_view from the controls appended after the header
                 try:
                     chapters_portion = controls[len(header_controls):]
-                    chapters_view = ft.Column(chapters_portion, spacing=6)
+                    chapters_view = ft.Column(controls=chapters_portion, spacing=6)
                 except Exception:
                     chapters_view = None
 
@@ -662,8 +655,9 @@ def make_show_card_details(
                                     return
                                 tr = ch.tracks[tr_i]
                                 if not getattr(tr, "display", None):
-                                    tr.display = (type(tr.display)() if hasattr(tr, "display") else None)
-                                tr.display.icon16x16 = chapter_icon
+                                    tr.display = type(ch.display)() if getattr(ch, "display", None) else None
+                                if tr.display is not None:
+                                    setattr(tr.display, "icon16x16", chapter_icon)
                                 page.update_card(full)
                                 page.show_dialog(dialog)
                                 page.update()
@@ -678,16 +672,16 @@ def make_show_card_details(
                         page.show_snack("Failed to start copy operation", error=True)
 
             else:
-                controls.append(ft.Text("Chapters: None", selectable=True))
+                controls.append(ft.Text(value="Chapters: None", selectable=True))
 
             if not controls:
                 try:
-                    controls = [ft.Text(json.dumps(c, indent=2), selectable=True)]
+                    controls = [ft.Text(value=json.dumps(c, indent=2), selectable=True)]
                 except Exception:
-                    controls = [ft.Text(str(c), selectable=True)]
+                    controls = [ft.Text(value=str(c), selectable=True)]
         except Exception:
             print("Failed to render card details:", traceback.format_exc())
-            controls = [ft.Text(str(c), selectable=True)]
+            controls = [ft.Text(value=str(c), selectable=True)]
 
         def close_dialog(ev):
             logger.debug("Closing card details dialog")
@@ -729,10 +723,10 @@ def make_show_card_details(
                     # spacer for indentation (approx char width)
                     space_width = 8
                     spacer = ft.Container(width=len(indent) * space_width)
-                    key_text = ft.Text(f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
-                    colon_text = ft.Text(': ', style=ft.TextStyle(font_family='monospace'))
-                    val_text = ft.Text(f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
-                    row = ft.Row([spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                    key_text = ft.Text(value=f'"{key}"', style=ft.TextStyle(color=ft.Colors.BLUE, font_family='monospace'))
+                    colon_text = ft.Text(value=': ', style=ft.TextStyle(font_family='monospace'))
+                    val_text = ft.Text(value=f'{val}{trailing_comma}', style=ft.TextStyle(color=val_color, font_family='monospace'), selectable=True)
+                    row = ft.Row(controls=[spacer, key_text, colon_text, val_text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                     json_lines.append(row)
                 else:
                     # Braces, brackets, or other lines — preserve leading indentation
@@ -742,16 +736,16 @@ def make_show_card_details(
                     space_width = 8
                     spacer = ft.Container(width=leading * space_width)
                     if stripped in ('{', '}', '[', ']', '},', '],'):
-                        text = ft.Text(stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        text = ft.Text(value=stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
+                        row = ft.Row(controls=[spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                         json_lines.append(row)
                     else:
                         # keep the original line but apply monospace
-                        text = ft.Text(line, style=ft.TextStyle(font_family='monospace'), selectable=True)
-                        row = ft.Row([spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
+                        text = ft.Text(value=line, style=ft.TextStyle(font_family='monospace'), selectable=True)
+                        row = ft.Row(controls=[spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                         json_lines.append(row)
 
-            json_content = ft.ListView(json_lines, padding=10, height=500, width=800)
+            json_content = ft.ListView(controls=json_lines, padding=10, height=500, width=800)
 
             def do_copy(_e=None):
                 try:
@@ -770,11 +764,11 @@ def make_show_card_details(
                     page.show_snack(f"Clipboard error: {ex}", error=True)
 
             json_dialog = ft.AlertDialog(
-                title=ft.Text("Raw card JSON"),
+                title=ft.Text(value="Raw card JSON"),
                 content=json_content,
                 actions=[
-                    ft.TextButton("Copy JSON", on_click=do_copy),
-                    ft.TextButton("Close", on_click=close_json),
+                    ft.TextButton(content="Copy JSON", on_click=do_copy),
+                    ft.TextButton(content="Close", on_click=close_json),
                 ],
             )
             page.show_dialog(json_dialog)
@@ -828,11 +822,12 @@ def make_show_card_details(
                             try:
                                 size = p.stat().st_size
                                 def _hr(n: int) -> str:
+                                    value = float(n)
                                     for u in ['B', 'KB', 'MB', 'GB']:
-                                        if n < 1024:
-                                            return f"{n:.0f}{u}" if u == 'B' else f"{n/1024:.1f}{u}"
-                                        n = n / 1024
-                                    return f"{n:.1f}TB"
+                                        if value < 1024:
+                                            return f"{value:.0f}{u}" if u == 'B' else f"{value/1024:.1f}{u}"
+                                        value = value / 1024
+                                    return f"{value:.1f}TB"
                                 readable_parts.append(_hr(size))
                             except Exception:
                                 logger.error(f"Failed to get file size for version file {p}")
@@ -871,11 +866,11 @@ def make_show_card_details(
                                         page.run_task(worker)
 
                                     confirm_dialog = ft.AlertDialog(
-                                        title=ft.Text("Restore version"),
-                                        content=ft.Text(f"Restore version {pp.name}? This will post the saved card to the server and cannot be undone."),
+                                        title=ft.Text(value="Restore version"),
+                                        content=ft.Text(value=f"Restore version {pp.name}? This will post the saved card to the server and cannot be undone."),
                                         actions=[
-                                            ft.TextButton("Yes", on_click=do_confirm_yes),
-                                            ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
+                                            ft.TextButton(content="Yes", on_click=do_confirm_yes),
+                                            ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                                         ],
                                     )
                                     page.show_dialog(confirm_dialog)
@@ -907,11 +902,11 @@ def make_show_card_details(
                                         page.run_task(worker_del)
 
                                     confirm_del = ft.AlertDialog(
-                                        title=ft.Text("Delete version"),
-                                        content=ft.Text(f"Delete version {pp.name}? This cannot be undone."),
+                                        title=ft.Text(value="Delete version"),
+                                        content=ft.Text(value=f"Delete version {pp.name}? This cannot be undone."),
                                         actions=[
-                                            ft.TextButton("Yes", on_click=do_yes),
-                                            ft.TextButton("No", on_click=lambda e: (setattr(confirm_del, 'open', False), page.update())),
+                                            ft.TextButton(content="Yes", on_click=do_yes),
+                                            ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_del, 'open', False), page.update())),
                                         ],
                                     )
                                     page.show_dialog(confirm_del)
@@ -921,17 +916,20 @@ def make_show_card_details(
                             return _delete
 
                         rows.append(
-                            ft.Row([
-                                ft.Text(label, selectable=True),
-                                ft.TextButton("Preview", on_click=make_preview(p)),
-                                ft.TextButton("Restore", on_click=make_restore(p)),
-                                ft.TextButton("Delete", on_click=make_delete(p)),
-                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                            ft.Row(
+                                controls=[
+                                    ft.Text(value=label, selectable=True),
+                                    ft.TextButton(content="Preview", on_click=make_preview(p)),
+                                    ft.TextButton(content="Restore", on_click=make_restore(p)),
+                                    ft.TextButton(content="Delete", on_click=make_delete(p)),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            )
                         )
                     except Exception:
                         continue
 
-                versions_list = ft.ListView(rows, spacing=6, padding=6, height=350, width=700)
+                versions_list = ft.ListView(controls=rows, spacing=6, padding=6, height=350, width=700)
 
                 def make_delete_all(dir_path=(files[0].parent if files else None)):
                     def _delete_all(ev=None):
@@ -966,11 +964,11 @@ def make_show_card_details(
                                 threading.Thread(target=worker_all, daemon=True).start()
 
                             confirm_all = ft.AlertDialog(
-                                title=ft.Text("Delete all versions"),
-                                content=ft.Text("Delete ALL saved versions for this card? This cannot be undone."),
+                                title=ft.Text(value="Delete all versions"),
+                                content=ft.Text(value="Delete ALL saved versions for this card? This cannot be undone."),
                                 actions=[
-                                    ft.TextButton("Yes", on_click=do_yes),
-                                    ft.TextButton("No", on_click=lambda e: (setattr(confirm_all, 'open', False), page.update())),
+                                    ft.TextButton(content="Yes", on_click=do_yes),
+                                    ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_all, 'open', False), page.update())),
                                 ],
                             )
                             page.show_dialog(confirm_all)
@@ -981,11 +979,11 @@ def make_show_card_details(
                     return _delete_all
 
                 versions_dialog = ft.AlertDialog(
-                    title=ft.Text("Saved Versions"),
+                    title=ft.Text(value="Saved Versions"),
                     content=versions_list,
                     actions=[
-                        ft.TextButton("Delete all", on_click=make_delete_all()),
-                        ft.TextButton("Close", on_click=lambda e: (setattr(versions_dialog, 'open', False), page.update())),
+                        ft.TextButton(content="Delete all", on_click=make_delete_all()),
+                        ft.TextButton(content="Close", on_click=lambda e: (setattr(versions_dialog, 'open', False), page.update())),
                     ],
                 )
                 try:
@@ -1079,8 +1077,8 @@ def make_show_card_details(
                         page.show_snack(f"Failed to merge chapters: {ex}", error=True)
 
                 confirm_dialog = ft.AlertDialog(
-                    title=ft.Text("Merge chapters"),
-                    content=ft.Text("""Merge all chapters into one chapter? 
+                    title=ft.Text(value="Merge chapters"),
+                    content=ft.Text(value="""Merge all chapters into one chapter? 
 
 This will concatenate all tracks into a single chapter and
 relabel all overlayLabels and keys sequentially.                                    
@@ -1094,8 +1092,8 @@ Merging will result in:
     Chapter 1: Track 1, Track 2, Track 3, Track 4, Track 5, Track 6
 """),
                     actions=[
-                        ft.TextButton("Yes", on_click=lambda e: threading.Thread(target=do_merge, daemon=True).start()),
-                        ft.TextButton("No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
+                        ft.TextButton(content="Yes", on_click=lambda e: threading.Thread(target=do_merge, daemon=True).start()),
+                        ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_dialog, 'open', False), page.update())),
                     ],
                 )
                 page.show_dialog(confirm_dialog)
@@ -1135,11 +1133,11 @@ Merging will result in:
                     threading.Thread(target=worker, daemon=True).start()
 
                 confirm_expand = ft.AlertDialog(
-                    title=ft.Text("Expand all tracks"),
-                    content=ft.Text("Expand every track into its own chapter? This will create one chapter per track and relabel overlays/keys."),
+                    title=ft.Text(value="Expand all tracks"),
+                    content=ft.Text(value="Expand every track into its own chapter? This will create one chapter per track and relabel overlays/keys."),
                     actions=[
-                        ft.TextButton("Yes", on_click=do_expand),
-                        ft.TextButton("No", on_click=lambda e: (setattr(confirm_expand, 'open', False), page.update())),
+                        ft.TextButton(content="Yes", on_click=do_expand),
+                        ft.TextButton(content="No", on_click=lambda e: (setattr(confirm_expand, 'open', False), page.update())),
                     ],
                 )
                 page.show_dialog(confirm_expand)
@@ -1166,15 +1164,25 @@ Merging will result in:
 
                 body = []
                 if cover_img is not None:
-                    body.append(ft.Row([cover_img, ft.Column([ft.Text(title_text, weight=ft.FontWeight.BOLD)])], alignment=ft.MainAxisAlignment.START, spacing=12))
+                    body.append(
+                        ft.Row(
+                            controls=[
+                                ft.Image(src=cover_img, width=72, height=72, fit=ft.BoxFit.CONTAIN),
+                                ft.Column(controls=[ft.Text(value=title_text, weight=ft.FontWeight.BOLD)]),
+                            ],
+                            alignment=ft.MainAxisAlignment.START,
+                            spacing=12,
+                        )
+                    )
                 else:
-                    body.append(ft.Text(title_text, weight=ft.FontWeight.BOLD))
+                    body.append(ft.Text(value=title_text, weight=ft.FontWeight.BOLD))
 
                 body.append(ft.Divider())
 
                 # Add description about the buttons
                 body.append(
                     ft.Text(
+                        value=
                         """Below you can renumber all overlayLabels or keys for tracks in this card.
 Renumbering overlayLabels will assign sequential overlay labels to tracks.
 Renumbering keys will assign sequential keys to all tracks.
@@ -1191,7 +1199,7 @@ Renumbering keys will assign sequential keys to all tracks.
                     chapter_rows = []
                     for ch_idx, ch in enumerate(chapters):
                         ch_title = getattr(ch, 'title', '')
-                        header = ft.Text(f"Chapter {ch_idx + 1}. {ch_title}", weight=ft.FontWeight.BOLD)
+                        header = ft.Text(value=f"Chapter {ch_idx + 1}. {ch_title}", weight=ft.FontWeight.BOLD)
                         track_items = []
                         tracks = getattr(ch, 'tracks', None) or []
                         if tracks:
@@ -1199,41 +1207,41 @@ Renumbering keys will assign sequential keys to all tracks.
                                 t_title = getattr(t, 'title', '')
                                 t_key = getattr(t, 'key', '')
                                 t_overlay = getattr(t, 'overlayLabel', '')
-                                track_items.append(ft.Text(f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
+                                track_items.append(ft.Text(value=f"Track {t_idx}: {t_title}    key={t_key}    overlay={t_overlay}", size=12))
                         else:
-                            track_items.append(ft.Text("(no tracks)", size=12))
+                            track_items.append(ft.Text(value="(no tracks)", size=12))
 
-                        chapter_rows.append(ft.Column([header, ft.Column(track_items, spacing=4)], spacing=6))
+                        chapter_rows.append(ft.Column(controls=[header, ft.Column(controls=track_items, spacing=4)], spacing=6))
 
                     if chapter_rows:
-                        chapters_view = ft.ListView(chapter_rows, spacing=6, padding=6, height=300)
+                        chapters_view = ft.ListView(controls=chapter_rows, spacing=6, padding=6, height=300)
                         body.append(chapters_view)
                     else:
-                        body.append(ft.Text("No chapters available", size=12))
+                        body.append(ft.Text(value="No chapters available", size=12))
                 except Exception:
-                    body.append(ft.Text("Unable to render chapters", size=12))
+                    body.append(ft.Text(value="Unable to render chapters", size=12))
 
                 body.append(ft.Divider())
 
                 tracks_dialog = ft.AlertDialog(
-                    title=ft.Text("Track actions"),
-                    content=ft.Column(body, spacing=8),
+                    title=ft.Text(value="Track actions"),
+                    content=ft.Column(controls=body, spacing=8),
                     actions=[
-                        ft.Button(
-                            "Renumber overlayLabels",
+                        ft.TextButton(
+                            content="Renumber overlayLabels",
                             on_click=lambda ev: (
                                 relabel_overlays(ev),
                             ),
                         ),
-                        ft.Button(
-                            "Renumber keys",
+                        ft.TextButton(
+                            content="Renumber keys",
                             on_click=lambda ev: (
                                 relabel_keys(ev),
                             ),
                         ),
-                        ft.TextButton("Merge chapters", on_click=lambda ev: merge_chapters(ev)),
-                        ft.TextButton("Expand tracks → chapters", on_click=lambda ev: expand_all_tracks(ev)),
-                        ft.TextButton("Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
+                        ft.TextButton(content="Merge chapters", on_click=lambda ev: merge_chapters(ev)),
+                        ft.TextButton(content="Expand tracks → chapters", on_click=lambda ev: expand_all_tracks(ev)),
+                        ft.TextButton(content="Close", on_click=lambda e: (setattr(tracks_dialog, 'open', False), page.update()))
                     ],
                 )
                 page.show_dialog(tracks_dialog)
@@ -1273,10 +1281,10 @@ Renumbering keys will assign sequential keys to all tracks.
                 cover_widget = ft.Image(src=cover_src)
 
             # left pane should contain header/metadata controls (use Column so it sizes to content)
-            left_col = ft.Column(header_controls, spacing=6)
-            right_col = ft.Container(content=ft.Column([cover_widget], tight=False), padding=6, width=thumb_w + 24)
+            left_col = ft.Column(controls=header_controls, spacing=6)
+            right_col = ft.Container(content=ft.Column(controls=[cover_widget], tight=False), padding=6, width=thumb_w + 24)
 
-            header_row = ft.Row([
+            header_row = ft.Row(controls=[
                 ft.Container(content=left_col, expand=True),
                 ft.Container(width=12),
                 right_col,
@@ -1288,9 +1296,9 @@ Renumbering keys will assign sequential keys to all tracks.
                 parts.append(ft.Divider())
                 parts.append(chapters_view)
 
-            dialog_content = ft.ListView(parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
+            dialog_content = ft.ListView(controls=parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
         else:
-            dialog_content = ft.ListView(controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
+            dialog_content = ft.ListView(controls=controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
         def export_card(_ev=None):
             try:
                 def worker():
@@ -1321,18 +1329,18 @@ Renumbering keys will assign sequential keys to all tracks.
         # expose a Restore button in the dialog actions.
         # Place the JSON and Versions buttons in the dialog title (top-right)
         dialog_actions = [
-            ft.Button("Save Order", on_click=save_order_click),
-            ft.TextButton("Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
+            ft.TextButton(content="Save Order", on_click=save_order_click),
+            ft.TextButton(content="Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
         ]
 
         # Title row with buttons on the top-right
         title_row = ft.Row(
-            [
-                ft.Text("Playlist details"),
+            controls=[
+                ft.Text(value="Playlist details"),
                 ft.Row(
-                    [
-                        ft.TextButton("JSON", on_click=show_json),
-                        ft.TextButton("Versions", on_click=lambda ev: show_versions(ev)),
+                    controls=[
+                        ft.TextButton(content="JSON", on_click=show_json),
+                        ft.TextButton(content="Versions", on_click=lambda ev: show_versions(ev)),
                     ],
                     spacing=6,
                 ),
@@ -1365,14 +1373,14 @@ Renumbering keys will assign sequential keys to all tracks.
 
                 return _restore
 
-            dialog_actions.append(ft.TextButton("Restore this version", on_click=make_restore_from_preview()))
+            dialog_actions.append(ft.TextButton(content="Restore this version", on_click=make_restore_from_preview()))
 
         dialog = ft.AlertDialog(
             title=title_row,
             content=dialog_content,
             actions=dialog_actions + [
                 ft.TextButton(
-                    "Edit",
+                    content="Edit",
                     on_click=lambda ev: (
                         page.pop_dialog(),
                         page.update(),
@@ -1382,10 +1390,10 @@ Renumbering keys will assign sequential keys to all tracks.
                         ),
                     ),
                 ),
-                ft.TextButton("Cover", on_click=lambda ev: show_add_cover(ev)),
-                ft.TextButton("Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
-                ft.TextButton("Export", on_click=export_card),
-                ft.TextButton("Close", on_click=close_dialog),
+                ft.TextButton(content="Cover", on_click=lambda ev: show_add_cover(ev)),
+                ft.TextButton(content="Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
+                ft.TextButton(content="Export", on_click=export_card),
+                ft.TextButton(content="Close", on_click=close_dialog),
             ],
         )
         page.show_dialog(dialog)
