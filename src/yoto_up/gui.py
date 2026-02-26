@@ -17,6 +17,7 @@ from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
 
 import traceback
 import threading
+from typing import Optional
 
 import flet as ft
 
@@ -555,7 +556,7 @@ def main(page: ft.Page):
     page.autoselect_hide_dialog_default = False
 
     def set_autoselect_progress(
-        msg: str | None, frac: float | None = None, visible: bool = True
+        msg: Optional[str], frac: Optional[float] = None, visible: bool = True
     ):
         try:
             if not visible:
@@ -607,7 +608,7 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    def open_autoselect_status_dialog(cancel_event: threading.Event | None = None):
+    def open_autoselect_status_dialog(cancel_event: Optional[threading.Event] = None):
         try:
             hide_checkbox = ft.Checkbox(
                 label="Hide this dialog by default",
@@ -667,7 +668,7 @@ def main(page: ft.Page):
     page.set_autoselect_progress = set_autoselect_progress
     page.open_autoselect_status_dialog = open_autoselect_status_dialog
 
-    def set_icon_refreshing(flag: bool, message: str | None = None):
+    def set_icon_refreshing(flag: bool, message: Optional[str] = None):
         try:
             icon_refresh_badge.visible = bool(flag)
             if message is not None:
@@ -682,7 +683,7 @@ def main(page: ft.Page):
     # Expose setter on page so other modules (icon_browser) can toggle the badge
     page.set_icon_refreshing = set_icon_refreshing
 
-    def get_cached_cover(url_or_field: str) -> str | None:
+    def get_cached_cover(url_or_field: str) -> Optional[str]:
         """
         Given a remote cover URL (http/https) or a local path, ensure it's cached
         under OFFICIAL_ICON_CACHE_DIR / 'covers' and return a path suitable for
