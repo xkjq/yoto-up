@@ -6,7 +6,6 @@ import shutil
 from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.normalization import AudioNormalizer
-from flet import Text, ElevatedButton, AlertDialog, Column
 import re
 from loguru import logger
 import webbrowser
@@ -25,26 +24,24 @@ _LAST_PAGE = None
 class FileUploadRow:
     def __init__(self, filepath, maybe_page=None, maybe_column=None):
 
-        from flet import Row, ProgressBar
+        # use ft.* controls
 
         self.filepath = filepath
         self.original_filepath = filepath  # Always keep the original file path
         self.name = os.path.basename(filepath)
-        self.status_text = Text("Queued")
-        self.progress = ProgressBar(width=300, visible=False)
-        self.inner_row = Row(
+        self.status_text = ft.Text("Queued")
+        self.progress = ft.ProgressBar(width=300, visible=False)
+        self.inner_row = ft.Row(
             [
-                Text(self.name, width=300),
-                Button("Preview", on_click=self.on_preview),
+                ft.Text(self.name, width=300),
+                ft.Button("Preview", on_click=self.on_preview),
                 self.progress,
                 self.status_text,
-                Button("View details", on_click=self.on_view_details),
-                Button("Remove", on_click=self.on_remove),
+                ft.Button("View details", on_click=self.on_view_details),
+                ft.Button("Remove", on_click=self.on_remove),
             ]
         )
-        from flet import Container
-
-        self.row = Container(content=self.inner_row, bgcolor=None, padding=0)
+        self.row = ft.Container(content=self.inner_row, bgcolor=None, padding=0)
         setattr(self.row, "filename", filepath)
         setattr(self.row, "_fileuploadrow", self)
         self.maybe_page = maybe_page
@@ -158,14 +155,14 @@ class FileUploadRow:
                     tags["error"] = f"Fallback tag read failed: {fe}"
             lines = []
             if not tags:
-                lines = [Text("No tags found")]
+                lines = [ft.Text("No tags found")]
             else:
                 for k, v in tags.items():
-                    lines.append(Text(f"{k}: {v}"))
-            dlg = AlertDialog(
-                title=Text(f"Media details: {self.name}"),
-                content=Column(lines),
-                actions=[Button("OK", on_click=lambda e: page.pop_dialog())],
+                    lines.append(ft.Text(f"{k}: {v}"))
+            dlg = ft.AlertDialog(
+                title=ft.Text(f"Media details: {self.name}"),
+                content=ft.Column(lines),
+                actions=[ft.Button("OK", on_click=lambda e: page.pop_dialog())],
             )
             page.show_dialog(dlg)
             page.update()
@@ -235,6 +232,7 @@ class UploadManager:
     def __init__(self, page, api_ref: dict, show_snack):
         # store page reference for helper methods
         self.page = page
+        ctx = {}
         overall_bar = ft.ProgressBar(width=400, visible=False)
         overall_text = ft.Text("")
         file_rows_column = ft.Column()
@@ -395,6 +393,16 @@ class UploadManager:
             overall_bar.value = (completed_count / total) if total else 0
             overall_text.value = f"{completed_count}/{total} completed"
             page.update()
+
+        # expose commonly-used internals for external helpers/tests
+        self.files_row_column = file_rows_column
+        self.overall_bar = overall_bar
+        self.overall_text = overall_text
+        self.show_snack = show_snack
+        self.update_overall = update_overall
+        self.ctx = ctx
+        # page.status is created by gui; expose it if available
+        self.status = getattr(page, "status", None)
 
 
         def clear_queue(ev=None):
@@ -1484,6 +1492,7 @@ class UploadManager:
                 target=target,
                 new_card_title=new_card_title.value,
                 existing_card_id=card_id,
+                ctx=ctx,
             )
 
         start_btn.on_click = _start_click
@@ -1676,42 +1685,40 @@ class UploadManager:
 
 def show_card_popup(page, card):
     # Show a dialog with full card details
-    from flet import AlertDialog, Text, Column, TextButton, Image
-
     lines = []
     lines.append(
-        Text(
+        ft.Text(
             f"Title: {getattr(card, 'title', '')}",
             size=18,
             weight=ft.FontWeight.BOLD,
         )
     )
-    lines.append(Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
+    lines.append(ft.Text(f"Card ID: {getattr(card, 'cardId', '')}", size=14))
     if getattr(card, "metadata", None):
         meta = card.metadata
         if getattr(meta, "author", None):
-            lines.append(Text(f"Author: {meta.author}"))
+            lines.append(ft.Text(f"Author: {meta.author}"))
         if getattr(meta, "description", None):
-            lines.append(Text(f"Description: {meta.description}"))
+            lines.append(ft.Text(f"Description: {meta.description}"))
         if getattr(meta, "note", None):
-            lines.append(Text(f"Note: {meta.note}"))
+            lines.append(ft.Text(f"Note: {meta.note}"))
         if getattr(meta, "cover", None) and getattr(meta.cover, "imageL", None):
-            lines.append(Image(src=meta.cover.imageL, width=120, height=120))
+            lines.append(ft.Image(src=meta.cover.imageL, width=120, height=120))
     if getattr(card, "content", None) and getattr(card.content, "chapters", None):
-        lines.append(Text("Chapters:", weight=ft.FontWeight.BOLD))
+        lines.append(ft.Text("Chapters:", weight=ft.FontWeight.BOLD))
         for ch in card.content.chapters:
-            lines.append(Text(f"- {getattr(ch, 'title', '')}"))
+            lines.append(ft.Text(f"- {getattr(ch, 'title', '')}"))
     lines.append(
-        TextButton(
+        ft.TextButton(
             "View card",
             on_click=lambda e: show_card_details(e, card),
             style=ft.ButtonStyle(color=ft.Colors.BLUE),
         )
     )
-    dlg = AlertDialog(
-        title=Text("Card Details"),
-        content=Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
-        actions=[TextButton("Close", on_click=lambda e: page.pop_dialog())],
+    dlg = ft.AlertDialog(
+        title=ft.Text("Card Details"),
+        content=ft.Column(lines, scroll=ft.ScrollMode.AUTO, expand=True),
+        actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
         scrollable=True,
     )
     page.show_dialog(dlg)
@@ -1860,13 +1867,23 @@ async def start_uploads(
     event,
     api_ref,
     page,
-    gain_adjusted_files=dict,
+    gain_adjusted_files=None,
     concurrency=4,
     target="Create new card",
     new_card_title=None,
     existing_card_id=None,
+    ctx=None,
 ):
     """Start uploads migrated from gui; ctx is the UI/context dict."""
+    if gain_adjusted_files is None:
+        gain_adjusted_files = {}
+    if ctx is None:
+        # try to pull context from the page's upload_manager if available
+        ctx = getattr(page, "upload_manager", None)
+        try:
+            ctx = getattr(page.upload_manager, "ctx", {}) if ctx is not None else {}
+        except Exception:
+            ctx = {}
     file_rows_column = page.upload_manager.files_row_column
     overall_bar = page.upload_manager.overall_bar
     overall_text = page.upload_manager.overall_text
