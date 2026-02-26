@@ -34,7 +34,7 @@ class ChapterIconWidget(Static):
         self.refresh_icon()
 
     def get_cache_path(self):
-        icon_field = getattr(self.chapter.display, "icon16x16", None) if hasattr(self.chapter, "display") and self.chapter.display else None
+        icon_field = self.chapter.get_icon_field() if hasattr(self.chapter, "get_icon_field") else None
         logging.info(f"Chapter {self.chapter_idx} icon field: {icon_field}")
         # Ask the API for the canonical cache path
         cache_path = None
@@ -75,8 +75,8 @@ class ChapterIconWidget(Static):
         if icons_metadata is not None:
             self.icons_metadata = icons_metadata
         # Update chapter's display field
-        if hasattr(self.chapter, "display") and self.chapter.display:
-            self.chapter.display.icon16x16 = f"yoto:#{media_id}"
+        if hasattr(self.chapter, "set_icon_field"):
+            self.chapter.set_icon_field(f"yoto:#{media_id}")
         self.cache_path = self.get_cache_path()
         self.refresh_icon()
 
@@ -92,7 +92,7 @@ class TrackIconWidget(Static):
         self.refresh_icon()
 
     def get_cache_path(self):
-        icon_field = getattr(self.track.display, "icon16x16", None) if hasattr(self.track, "display") and self.track.display else None
+        icon_field = self.track.get_icon_field() if hasattr(self.track, "get_icon_field") else None
         logging.info(f"Track {self.track_idx} icon field: {icon_field}")
         cache_path = None
         try:
@@ -126,8 +126,8 @@ class TrackIconWidget(Static):
         logging.info(f"Setting icon for track {self.track_idx}: {media_id}")
         if icons_metadata is not None:
             self.icons_metadata = icons_metadata
-        if hasattr(self.track, "display") and self.track.display:
-            self.track.display.icon16x16 = f"yoto:#{media_id}"
+        if hasattr(self.track, "set_icon_field"):
+            self.track.set_icon_field(f"yoto:#{media_id}")
         self.cache_path = self.get_cache_path()
         self.refresh_icon()
 
@@ -446,8 +446,7 @@ class EditCardApp(App):
                         if pixelart_widget:
                             pixelart_widget.set_icon(media_id)
                         if hasattr(chapter, "tracks") and chapter.tracks:
-                            if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                                chapter.tracks[0].display.icon16x16 = f"yoto:#{media_id}"
+                            chapter.tracks[0].set_icon_field(f"yoto:#{media_id}")
                         logging.info(f"YotoIcons icon uploaded and set: {media_id}")
                 except Exception as e:
                     logging.error(f"Failed to upload YotoIcons icon: {e}")
@@ -459,8 +458,7 @@ class EditCardApp(App):
                     except Exception:
                         logging.exception("Failed to set chapter pixelart widget icon")
                 if hasattr(chapter, "tracks") and chapter.tracks:
-                    if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                        chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['mediaId']}"
+                    chapter.tracks[0].set_icon_field(f"yoto:#{selected_icon['mediaId']}")
             elif isinstance(selected_icon, dict) and "id" in selected_icon:
                 if pixelart_widget:
                     try:
@@ -468,8 +466,7 @@ class EditCardApp(App):
                     except Exception:
                         logging.exception("Failed to set chapter pixelart widget icon")
                 if hasattr(chapter, "tracks") and chapter.tracks:
-                    if hasattr(chapter.tracks[0], "display") and chapter.tracks[0].display:
-                        chapter.tracks[0].display.icon16x16 = f"yoto:#{selected_icon['id']}"
+                    chapter.tracks[0].set_icon_field(f"yoto:#{selected_icon['id']}")
             self.refresh()
             # If selected_icon refers to a cached file path, display it directly and set model to file://
             if isinstance(selected_icon, dict) and 'cache_path' in selected_icon:
@@ -486,8 +483,7 @@ class EditCardApp(App):
                         except Exception:
                             pass
                     if hasattr(chapter, 'tracks') and chapter.tracks:
-                        if hasattr(chapter.tracks[0], 'display') and chapter.tracks[0].display:
-                            chapter.tracks[0].display.icon16x16 = f"file://{cp}"
+                        chapter.tracks[0].set_icon_field(f"file://{cp}")
                 except Exception:
                     logging.exception("Failed to apply cached icon for chapter")
         self.refresh()
@@ -679,8 +675,7 @@ class EditCardApp(App):
                     if media_id:
                         if pixelart_widget:
                             pixelart_widget.set_icon(media_id)
-                        if hasattr(track, "display") and track.display:
-                            track.display.icon16x16 = f"yoto:#{media_id}"
+                        track.set_icon_field(f"yoto:#{media_id}")
                         logging.info(f"YotoIcons icon uploaded and set for track: {media_id}")
                 except Exception as e:
                     logging.error(f"Failed to upload YotoIcons icon: {e}")
@@ -691,16 +686,14 @@ class EditCardApp(App):
                         pixelart_widget.set_icon(selected_icon['mediaId'])
                     except Exception:
                         logging.exception("Failed to set track pixelart widget icon")
-                if hasattr(track, "display") and track.display:
-                    track.display.icon16x16 = f"yoto:#{selected_icon['mediaId']}"
+                track.set_icon_field(f"yoto:#{selected_icon['mediaId']}")
             elif isinstance(selected_icon, dict) and "id" in selected_icon:
                 if pixelart_widget:
                     try:
                         pixelart_widget.set_icon(selected_icon['id'])
                     except Exception:
                         logging.exception("Failed to set track pixelart widget icon")
-                if hasattr(track, "display") and track.display:
-                    track.display.icon16x16 = f"yoto:#{selected_icon['id']}"
+                track.set_icon_field(f"yoto:#{selected_icon['id']}")
             self.refresh()
 
             # If selected_icon refers to a cached file path, display it directly and set model to file://
@@ -718,8 +711,8 @@ class EditCardApp(App):
                             pixelart_widget.cache_path = cp
                         except Exception:
                             pass
-                    if hasattr(track, 'display') and track.display and cp is not None:
-                        track.display.icon16x16 = f"file://{cp}"
+                    if cp is not None:
+                        track.set_icon_field(f"file://{cp}")
                     self.refresh()
                     return
                 except Exception:

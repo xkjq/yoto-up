@@ -581,16 +581,12 @@ class YotoAPI:
         if not card.content or not card.content.chapters:
             return
         for ch in card.content.chapters:
-            if not ch.display:
-                ch.display = ChapterDisplay()
-            if not hasattr(ch.display, 'icon16x16') or ch.display.icon16x16 is None:
-                ch.display.icon16x16 = DEFAULT_MEDIA_ID
+            if ch.get_icon_field() is None:
+                ch.set_icon_field(DEFAULT_MEDIA_ID)
             if ch.tracks:
                 for tr in ch.tracks:
-                    if not tr.display:
-                        tr.display = TrackDisplay()
-                    if not hasattr(tr.display, 'icon16x16') or tr.display.icon16x16 is None:
-                        tr.display.icon16x16 = DEFAULT_MEDIA_ID
+                    if tr.get_icon_field() is None:
+                        tr.set_icon_field(DEFAULT_MEDIA_ID)
         return card
 
     def get_myo_content(self):
@@ -2390,17 +2386,15 @@ class YotoAPI:
         chapters = card.content.chapters if card.content and card.content.chapters else []
         for ch_idx, chapter in enumerate(chapters):
                 # chapter icon
-                if hasattr(chapter, "display") and chapter.display:
-                    icon_field = getattr(chapter.display, "icon16x16", None)
-                    if icon_field and icon_field.endswith(DEFAULT_MEDIA_ID):
-                        targets.append(("chapter", ch_idx, None))
+                icon_field = chapter.get_icon_field()
+                if icon_field and icon_field.endswith(DEFAULT_MEDIA_ID):
+                    targets.append(("chapter", ch_idx, None))
                 # track icons
                 if hasattr(chapter, "tracks") and chapter.tracks:
                     for tr_idx, track in enumerate(chapter.tracks):
-                        if hasattr(track, "display") and track.display:
-                            ticon = getattr(track.display, "icon16x16", None)
-                            if ticon and ticon.endswith(DEFAULT_MEDIA_ID):
-                                targets.append(("track", ch_idx, tr_idx))
+                        ticon = track.get_icon_field()
+                        if ticon and ticon.endswith(DEFAULT_MEDIA_ID):
+                            targets.append(("track", ch_idx, tr_idx))
 
         total = len(targets)
         if total == 0:
@@ -2430,7 +2424,7 @@ class YotoAPI:
                             uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(best_icon)
                             media_id = uploaded_icon.get('mediaId')
                         if media_id:
-                            chapter.display.icon16x16 = f"yoto:#{media_id}"
+                            chapter.set_icon_field(f"yoto:#{media_id}")
                             logger.info(f"Replaced chapter '{chapter.title}' icon with mediaId: {media_id}")
                 else:
                     chapter = chapters[ch_idx]
@@ -2449,7 +2443,7 @@ class YotoAPI:
                             uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(best_icon)
                             media_id = uploaded_icon.get('mediaId')
                         if media_id:
-                            track.display.icon16x16 = f"yoto:#{media_id}"
+                            track.set_icon_field(f"yoto:#{media_id}")
                             logger.info(f"Replaced track '{track.title}' icon with mediaId: {media_id}")
             except Exception as e:
                 logger.error(f"Error replacing icon for {kind} at {ch_idx}/{tr_idx}: {e}")
@@ -2790,19 +2784,9 @@ class YotoAPI:
                     )
                     try:
                         # if the track has a display with an icon, propagate it to the new chapter display
-                        track_display = getattr(track, 'display', None)
-                        if track_display is not None:
-                            icon = getattr(track_display, 'icon16x16', None)
-                            if icon:
-                                # ensure chapter has a display object and set its icon
-                                if not getattr(new_chapter, 'display', None):
-                                    # import here to avoid circular import issues if any
-                                    new_chapter.display = ChapterDisplay()
-                                try:
-                                    setattr(new_chapter.display, 'icon16x16', icon)
-                                except Exception:
-                                    # best-effort: ignore failures to set attribute
-                                    pass
+                        icon = track.get_icon_field()
+                        if icon:
+                            new_chapter.set_icon_field(icon)
                     except Exception:
                         pass
                     new_chapters.append(new_chapter)

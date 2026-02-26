@@ -7,7 +7,6 @@ import os
 import tempfile
 import base64
 
-from yoto_up.models import TrackDisplay, ChapterDisplay
 from yoto_up.paths import USER_ICONS_DIR
 from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
@@ -253,11 +252,7 @@ class IconReplaceDialog:
                                         return
                                     if self.kind == "chapter":
                                         target_ch = full.content.chapters[self.ch_i]
-                                        if not getattr(target_ch, "display", False):
-                                            target_ch.display = ChapterDisplay()
-                                        target_ch.display.icon16x16 = (
-                                            f"yoto:#{media_id}"
-                                        )
+                                        target_ch.set_icon_field(f"yoto:#{media_id}")
                                         # Optionally also apply to the first track of this chapter
                                         try:
                                             if (
@@ -269,25 +264,13 @@ class IconReplaceDialog:
                                                     and len(target_ch.tracks) > 0
                                                 ):
                                                     first_tr = target_ch.tracks[0]
-                                                    if not getattr(
-                                                        first_tr, "display", False
-                                                    ):
-                                                        first_tr.display = (
-                                                            TrackDisplay()
-                                                        )
-                                                    first_tr.display.icon16x16 = (
-                                                        f"yoto:#{media_id}"
-                                                    )
+                                                    first_tr.set_icon_field(f"yoto:#{media_id}")
                                         except Exception:
                                             pass
                                     else:
                                         target_ch = full.content.chapters[self.ch_i]
                                         target_tr = target_ch.tracks[self.tr_i]
-                                        if not getattr(target_tr, "display", False):
-                                            target_tr.display = TrackDisplay()
-                                        target_tr.display.icon16x16 = (
-                                            f"yoto:#{media_id}"
-                                        )
+                                        target_tr.set_icon_field(f"yoto:#{media_id}")
                                     self.page.update_card(full)
                                     self.show_card_details(full)
 
@@ -569,11 +552,7 @@ class IconReplaceDialog:
                                     full = self.api.get_card(self.card.cardId)
                                     if self.kind == "chapter":
                                         target_ch = full.content.chapters[self.ch_i]
-                                        if not getattr(target_ch, "display", False):
-                                            target_ch.display = ChapterDisplay()
-                                        target_ch.display.icon16x16 = (
-                                            f"yoto:#{media_id}"
-                                        )
+                                        target_ch.set_icon_field(f"yoto:#{media_id}")
                                         # Optionally also apply to the first track of this chapter
                                         try:
                                             if (
@@ -585,25 +564,13 @@ class IconReplaceDialog:
                                                     and len(target_ch.tracks) > 0
                                                 ):
                                                     first_tr = target_ch.tracks[0]
-                                                    if not getattr(
-                                                        first_tr, "display", False
-                                                    ):
-                                                        first_tr.display = (
-                                                            TrackDisplay()
-                                                        )
-                                                    first_tr.display.icon16x16 = (
-                                                        f"yoto:#{media_id}"
-                                                    )
+                                                    first_tr.set_icon_field(f"yoto:#{media_id}")
                                         except Exception:
                                             pass
                                     else:
                                         target_ch = full.content.chapters[self.ch_i]
                                         target_tr = target_ch.tracks[self.tr_i]
-                                        if not getattr(target_tr, "display", False):
-                                            target_tr.display = TrackDisplay()
-                                        target_tr.display.icon16x16 = (
-                                            f"yoto:#{media_id}"
-                                        )
+                                        target_tr.set_icon_field(f"yoto:#{media_id}")
                                     self.page.update_card(full)
                                     self.show_card_details(full)
                                 except Exception as ex:
@@ -851,9 +818,7 @@ class IconReplaceDialog:
                     full = self.api.get_card(self.card.cardId)
                     if self.kind == "chapter":
                         target_ch = full.content.chapters[self.ch_i]
-                        if not getattr(target_ch, "display", False):
-                            target_ch.display = ChapterDisplay()
-                        target_ch.display.icon16x16 = f"yoto:#{media_id}"
+                        target_ch.set_icon_field(f"yoto:#{media_id}")
                         # Optionally also apply to the first track of this chapter
                         try:
                             if apply_to_first_track and apply_to_first_track.value:
@@ -862,17 +827,13 @@ class IconReplaceDialog:
                                     and len(target_ch.tracks) > 0
                                 ):
                                     first_tr = target_ch.tracks[0]
-                                    if not getattr(first_tr, "display", False):
-                                        first_tr.display = TrackDisplay()
-                                    first_tr.display.icon16x16 = f"yoto:#{media_id}"
+                                    first_tr.set_icon_field(f"yoto:#{media_id}")
                         except Exception:
                             pass
                     else:
                         target_ch = full.content.chapters[self.ch_i]
                         target_tr = target_ch.tracks[self.tr_i]
-                        if not getattr(target_tr, "display", False):
-                            target_tr.display = TrackDisplay()
-                        target_tr.display.icon16x16 = f"yoto:#{media_id}"
+                        target_tr.set_icon_field(f"yoto:#{media_id}")
                     self.page.update_card(full)
                     self.page.show_card_details(full)
                     self.show_snack("Applied marked icon")

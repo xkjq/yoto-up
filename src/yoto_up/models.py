@@ -456,7 +456,7 @@ class Card(BaseModel):
                     # Attempt to render a compact inline icon for the chapter (single-line)
                     chapter_icon_inline = ""
                     if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                        icon_field = getattr(chapter.display, 'icon16x16', None) if hasattr(chapter, 'display') and chapter.display else None
+                        icon_field = chapter.get_icon_field()
                         if icon_field:
                             try:
                                 method = getattr(api, 'get_icon_cache_path', None)
@@ -509,7 +509,7 @@ class Card(BaseModel):
                             # prepare inline track icon
                             track_icon_inline = ""
                             if render_icons and api is not None and hasattr(api, 'get_icon_cache_path'):
-                                t_icon_field = getattr(track.display, 'icon16x16', None) if hasattr(track, 'display') and track.display else None
+                                t_icon_field = track.get_icon_field()
                                 if t_icon_field:
                                     try:
                                         t_method = getattr(api, 'get_icon_cache_path', None)

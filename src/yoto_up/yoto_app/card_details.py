@@ -177,17 +177,10 @@ def make_show_card_details(
                         try:
                             full = api.get_card(card_id)
                             ch = full.content.chapters[ch_i]
-                            if getattr(ch, 'display', None):
-                                try:
-                                    setattr(ch.display, 'icon16x16', None)
-                                except Exception:
-                                    try:
-                                        delattr(ch.display, 'icon16x16')
-                                    except Exception:
-                                        pass
-                            else:
+                            if ch.get_icon_field() is None:
                                 page.show_snack('Chapter has no icon to clear', error=True)
                                 return
+                            ch.set_icon_field(None)
 
                             page.update_card(full)
                             page.show_snack('Chapter icon cleared')
@@ -210,17 +203,10 @@ def make_show_card_details(
                         try:
                             full = api.get_card(card_id)
                             tr = full.content.chapters[ch_i].tracks[tr_i]
-                            if getattr(tr, 'display', None):
-                                try:
-                                    setattr(tr.display, 'icon16x16', None)
-                                except Exception:
-                                    try:
-                                        delattr(tr.display, 'icon16x16')
-                                    except Exception:
-                                        pass
-                            else:
+                            if tr.get_icon_field() is None:
                                 page.show_snack('Track has no icon to clear', error=True)
                                 return
+                            tr.set_icon_field(None)
                             page.update_card(full)
                             show_card_details(full)
                         except Exception as ee:
@@ -244,8 +230,7 @@ def make_show_card_details(
                     tr_url = getattr(tr, "trackUrl", "")
                     tr_key = getattr(tr, "key", "")
                     tr_overlay = getattr(tr, "overlayLabel", "")
-                    display = getattr(tr, "display", None)
-                    tr_icon_field = getattr(display, "icon16x16", None) if display else None
+                    tr_icon_field = tr.get_icon_field()
                     tr_img = None
 
                     def _on_tap_tr(
@@ -649,15 +634,12 @@ def make_show_card_details(
                             try:
                                 full = api.get_card(card_id)
                                 ch = full.content.chapters[ch_i]
-                                chapter_icon = (getattr(ch.display, "icon16x16", None) if getattr(ch, "display", None) else None)
+                                chapter_icon = ch.get_icon_field()
                                 if not chapter_icon:
                                     page.show_snack("Chapter has no icon to copy", error=True)
                                     return
                                 tr = ch.tracks[tr_i]
-                                if not getattr(tr, "display", None):
-                                    tr.display = type(ch.display)() if getattr(ch, "display", None) else None
-                                if tr.display is not None:
-                                    setattr(tr.display, "icon16x16", chapter_icon)
+                                tr.set_icon_field(chapter_icon)
                                 page.update_card(full)
                                 page.show_dialog(dialog)
                                 page.update()
