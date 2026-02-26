@@ -183,7 +183,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
                                 img = ft.Image(src=img_url, width=100, height=100, fit=ft.BoxFit.CONTAIN)
                                 btn = ft.GestureDetector(
                                     content=img,
-                                    on_tap=lambda e, url=img_url: select_image(url),
+                                    on_tap=lambda e, url=img_url: select_image(url, c),
                                     mouse_cursor=ft.MouseCursor.CLICK,
                                 )
                                 img_row.append(btn)
@@ -196,8 +196,8 @@ def add_cover_dialog(page, c: Card, on_close=None):
 
             search_field = ft.TextField(label="Search for cover art", value=default_query, on_submit=do_search_action)
 
-            def select_image(img_url):
-                def do_confirm_upload(_e=None):
+            def select_image(img_url, card: Card):
+                def do_confirm_upload():
                     try:
                         page.update()
                         resp = httpx.get(img_url, timeout=15)
@@ -222,7 +222,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
                         )
                         logger.debug(f"Uploaded cover response (confirm upload): {res}")
                         try:
-                            card_model = _get_latest_card_model().apply_cover_upload_result(
+                            card_model = card.apply_cover_upload_result(
                                 upload_result=res,
                                 fallback_url=img_url,
                             )
@@ -242,7 +242,7 @@ def add_cover_dialog(page, c: Card, on_close=None):
                         logger.error(f"Top-level upload error (confirm upload): {e}")
                         page.update()
 
-                def do_cancel(_e=None):
+                def do_cancel():
                     page.pop_dialog()
                     page.update()
 
@@ -250,8 +250,8 @@ def add_cover_dialog(page, c: Card, on_close=None):
                     title=ft.Text(value="Use this cover image?"),
                     content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
                     actions=[
-                        ft.TextButton(content="Use this image", on_click=do_confirm_upload),
-                        ft.TextButton(content="Cancel", on_click=do_cancel),
+                        ft.TextButton(content="Use this image", on_click=lambda e: do_confirm_upload()),
+                        ft.TextButton(content="Cancel", on_click=lambda e: do_cancel()),
                     ],
                 )
                 page.show_dialog(confirm_dialog)
