@@ -1098,7 +1098,7 @@ class YotoAPI:
 
     def upload_audio_file(self, audio_upload_url: str, audio_bytes: bytes, mime_type: str = "audio/mpeg"):
         headers = {"Content-Type": mime_type}
-        put_resp = httpx.put(audio_upload_url, data=audio_bytes, headers=headers)
+        put_resp = httpx.put(audio_upload_url, content=audio_bytes, headers=headers)
         if not put_resp.is_success:
             logger.error(f"Audio upload failed: {put_resp.text}")
             raise Exception(f"Audio upload failed: {put_resp.text}")
