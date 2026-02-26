@@ -2,7 +2,6 @@ import httpx
 import time
 import base64
 import json
-import os
 from pathlib import Path
 import hashlib
 import io
@@ -13,7 +12,7 @@ from typing import Optional, Callable
 from loguru import logger
 from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn, TaskID
 from rich.table import Table
 from rich import print as rprint
 from PIL import Image
@@ -26,6 +25,32 @@ except (AssertionError, ModuleNotFoundError):
         @staticmethod
         def ratio(a, b):
             return 100 if a == b else 0
+
+from yoto_up.icons import render_icon
+from yoto_up.audio_splitter import split_audio as _split_audio_file
+import asyncio
+
+from datetime import datetime, timezone
+
+# Centralized per-user paths
+import yoto_up.paths as paths
+
+# Helper: recursively detect unexpected (extra) fields in input data against a Pydantic model
+from typing import Any, List, Type, get_origin, get_args
+from pydantic import BaseModel
+
+class _FallbackStopwords:
+    @staticmethod
+    def words(lang: str = 'english'):
+        return [
+            "the", "and", "a", "an", "of", "in", "on", "at", "to", "for", "by", "with",
+            "is", "it", "as", "from", "that", "this", "be", "are", "was", "were", "or",
+            "but", "not", "so", "if", "then", "than", "too", "very", "can", "will", "just",
+            "do", "does", "did", "has", "have", "had", "you", "your", "my", "our", "their",
+            "his", "her", "its", "episode", "chapter"
+        ]
+
+
 # Make NLTK optional: prefer it when available, but provide a tiny fallback
 # for environments (like web builds) where NLTK isn't installed or data
 # downloads are undesirable.
@@ -66,33 +91,15 @@ except (ImportError, ModuleNotFoundError):
     def word_tokenize(text: str):
         return re.findall(r"\w+", text)
 
-    class _FallbackStopwords:
-        @staticmethod
-        def words(lang: str = 'english'):
-            return [
-                "the", "and", "a", "an", "of", "in", "on", "at", "to", "for", "by", "with",
-                "is", "it", "as", "from", "that", "this", "be", "are", "was", "were", "or",
-                "but", "not", "so", "if", "then", "than", "too", "very", "can", "will", "just",
-                "do", "does", "did", "has", "have", "had", "you", "your", "my", "our", "their",
-                "his", "her", "its", "episode", "chapter"
-            ]
 
-    nltk_stopwords = _FallbackStopwords
-from yoto_up.icons import render_icon
-from yoto_up.audio_splitter import split_audio as _split_audio_file
-import asyncio
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-from rich.console import Console
-from rich.progress import track as RichTrack
+def _get_stopwords(lang: str = 'english') -> set[str]:
+    if _HAVE_NLTK:
+        try:
+            return set(nltk_stopwords.words(lang))
+        except Exception:
+            pass
+    return set(_FallbackStopwords.words(lang))
 
-from datetime import datetime, timezone
-
-# Centralized per-user paths
-import yoto_up.paths as paths
-
-# Helper: recursively detect unexpected (extra) fields in input data against a Pydantic model
-from typing import Any, List, Type, get_origin, get_args
-from pydantic import BaseModel
 
 DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
 
@@ -363,13 +370,7 @@ class YotoAPI:
         if card_model is not None:
             return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
         else:
-            # Fallback: post raw payload
-            headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
-            response = httpx.post(self.CONTENT_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            if return_card:
-                return Card.model_validate(response.json().get("card") or response.json())
-            return response.json()
+            logger.error(f"Failed to load version from {path}, cannot restore")
 
     def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
                     silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
@@ -714,9 +715,9 @@ class YotoAPI:
         poll_interval: float = 2,
         max_attempts: int = 60,
         show_progress: bool = True,
-        progress: 'Progress' = None,
-        upload_task_id: int | None = None,
-        transcode_task_id: int | None = None,
+        progress: Optional['Progress'] = None,
+        upload_task_id: TaskID | None = None,
+        transcode_task_id: TaskID | None = None,
         progress_callback: Optional[Callable[[str, float], None]] = None,
     ):
         """
@@ -729,7 +730,7 @@ class YotoAPI:
         def _call_cb(msg: str | None = None):
             try:
                 if callable(progress_callback):
-                    progress_callback(msg or '', None)
+                    progress_callback(msg or '', 0.0)
             except Exception:
                 pass
 
@@ -787,8 +788,8 @@ class YotoAPI:
         poll_interval: float = 2,
         max_attempts: int = 120,
         show_progress: bool = False,
-        progress: 'Progress' = None,
-        transcode_task_id: int | None = None,
+        progress: Optional['Progress'] = None,
+        transcode_task_id: TaskID | None = None,
     ):
         import httpx
         import asyncio
@@ -903,7 +904,7 @@ class YotoAPI:
                         visible_transcode_tasks.add(task_id)
 
             # Patch wrapped_task to make next hidden task visible when one finishes
-            async def wrapped_task(idx=0, upload_task_id=None, transcode_task_id=None):
+            async def wrapped_task(idx: int = 0, upload_task_id: Optional[TaskID] = None, transcode_task_id: Optional[TaskID] = None):
                 result = await sem_task(
                     audio_path=str(media_files[idx]),
                     filename=filename_list[idx] if filename_list else None,
@@ -917,8 +918,10 @@ class YotoAPI:
                 )
                 progress.update(overall_task_id, advance=1)
                 # Hide completed upload/transcode tasks to keep UI clean
-                progress.update(upload_task_id, visible=False)
-                progress.update(transcode_task_id, visible=False)
+                if upload_task_id is not None:
+                    progress.update(upload_task_id, visible=False)
+                if transcode_task_id is not None:
+                    progress.update(transcode_task_id, visible=False)
                 if upload_task_id in visible_upload_tasks:
                     visible_upload_tasks.remove(upload_task_id)
                 if transcode_task_id in visible_transcode_tasks:
@@ -931,48 +934,14 @@ class YotoAPI:
                 return result
             total_tasks = len(media_files)
             overall_task_id = progress.add_task("Overall Progress", total=total_tasks)
-            # Only show up to 8 upload/transcode tasks at a time
-            def add_visible_task(label, total):
-                if len(progress.tasks) < visible_limit:
-                    return progress.add_task(label, total=total)
-                else:
-                    # Add hidden task (not shown in UI)
-                    return progress.add_task(label, total=total, visible=False)
             for idx, media_file in enumerate(media_files):
                 fname = None
                 if filename_list:
                     fname = filename_list[idx]
-                upload_task_id = add_visible_task(f"Upload {fname or media_file}", 100)
-                transcode_task_id = add_visible_task(f"Transcode {fname or media_file}", max_attempts)
+                upload_task_id = add_visible_task(f"Upload {fname or media_file}", 100, "upload", idx)
+                transcode_task_id = add_visible_task(f"Transcode {fname or media_file}", max_attempts, "transcode", idx)
                 upload_task_ids.append(upload_task_id)
                 transcode_task_ids.append(transcode_task_id)
-                async def wrapped_task(idx=idx, upload_task_id=upload_task_id, transcode_task_id=transcode_task_id):
-                    result = await sem_task(
-                        audio_path=str(media_files[idx]),
-                        filename=filename_list[idx] if filename_list else None,
-                        loudnorm=loudnorm,
-                        poll_interval=poll_interval,
-                        max_attempts=max_attempts,
-                        show_progress=show_progress,
-                        progress=progress,
-                        upload_task_id=upload_task_id,
-                        transcode_task_id=transcode_task_id
-                    )
-                    progress.update(overall_task_id, advance=1)
-                    # Hide completed upload/transcode tasks to keep UI clean
-                    progress.update(upload_task_id, visible=False)
-                    progress.update(transcode_task_id, visible=False)
-                    # Remove the finished tasks from the visible sets so slots free up
-                    if upload_task_id in visible_upload_tasks:
-                        visible_upload_tasks.remove(upload_task_id)
-                    if transcode_task_id in visible_transcode_tasks:
-                        visible_transcode_tasks.remove(transcode_task_id)
-                    # Try to make other hidden tasks visible now that slots freed
-                    for tid in upload_task_ids:
-                        make_task_visible(tid, "upload")
-                    for tid in transcode_task_ids:
-                        make_task_visible(tid, "transcode")
-                    return result
                 tasks.append(wrapped_task())
             results = await asyncio.gather(*tasks)
         return results
@@ -1062,11 +1031,9 @@ class YotoAPI:
                 except Exception:
                     track_details = None
                 track = self.get_track_from_transcoded_audio(tr, track_details=track_details)
-                try:
+                if track is not None:
                     track.key = f"{i+1:02}"
-                except Exception:
-                    pass
-                tracks.append(track)
+                    tracks.append(track)
             chapter = Chapter(
                 key="01",
                 title=card_title,
@@ -1087,17 +1054,15 @@ class YotoAPI:
                 except Exception:
                     chapter_details = None
                 ch = self.get_chapter_from_transcoded_audio(tr, chapter_details=chapter_details)
-                try:
+                if ch is not None:
                     ch.key = f"{i+1:02}"
                     if hasattr(ch, 'tracks') and ch.tracks:
                         for j, t in enumerate(ch.tracks):
                             try:
                                 t.key = f"{j+1:02}"
                             except Exception:
-                                pass
-                except Exception:
-                    pass
-                chapters.append(ch)
+                                    pass
+                    chapters.append(ch)
 
         card_content = CardContent(chapters=chapters)
         # Aggregate media metadata if possible
@@ -2062,7 +2027,7 @@ class YotoAPI:
                 # Use nltk for keyword extraction
                 try:
                     tokens = word_tokenize(text.lower())
-                    stop_words = set(STOPWORDS) | set(nltk_stopwords.words('english'))
+                    stop_words = set(STOPWORDS) | _get_stopwords('english')
                     filtered = [w for w in tokens if w.isalpha() and w not in stop_words and len(w) > 2]
                     # Sort by length (longer first), then uniqueness
                     filtered = sorted(set(filtered), key=lambda w: (-len(w), w))
