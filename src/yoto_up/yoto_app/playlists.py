@@ -1,26 +1,17 @@
-from fontTools.mtiLib import build
-from weakref import ref
-from yoto_up.yoto import app
 from yoto_up.yoto_app.api_manager import ensure_api
-from matplotlib.pylab import sort
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import sys
 import threading
-from copy import deepcopy
 import asyncio
 import json
 import traceback
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Literal, cast
 import shutil
 from dataclasses import dataclass
 
 
 import flet as ft
-from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
-from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
-from yoto_up.yoto_app.replace_icons import show_replace_icons_dialog
-from types import SimpleNamespace
 
 try:
     from pynput import keyboard
@@ -30,7 +21,7 @@ except Exception:  # Broad because pyodide etc may raise weird errors
     _PYNPUT_AVAILABLE = False
 
 import httpx
-from yoto_up.models import Card, CardMetadata, ChapterDisplay, TrackDisplay
+from yoto_up.models import Card, CardMetadata
 from yoto_up.yoto_app.auth import delete_tokens_file, start_device_auth
 from yoto_up.yoto_app.config import CLIENT_ID
 from loguru import logger
@@ -50,6 +41,13 @@ _playlists_fetch_cooldown = 2.0  # seconds
 class PlaylistCheckboxData:
     cid: str
     idx: int | None
+
+
+def _get_playlist_checkbox_control(ctrl: object) -> ft.Checkbox | None:
+    data = getattr(ctrl, "data", None)
+    if isinstance(ctrl, ft.Checkbox) and isinstance(data, PlaylistCheckboxData):
+        return ctrl
+    return None
 
 
 def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
@@ -267,12 +265,6 @@ def make_playlist_row(page, card_obj: Card, idx=None):
         logger.error("Error setting checkbox visibility for multi-select mode")
     cb.data = PlaylistCheckboxData(cid=cid or "", idx=idx)
 
-    def _get_playlist_checkbox_control(ctrl: object) -> ft.Checkbox | None:
-        data = getattr(ctrl, "data", None)
-        if isinstance(ctrl, ft.Checkbox) and isinstance(data, PlaylistCheckboxData):
-            return ctrl
-        return None
-
     def _on_checkbox_change(ev):
         try:
             control = getattr(ev, "control", None) or ev
@@ -301,7 +293,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                 for i in range(start, end + 1):
                     try:
                         row_ctrl = page.playlists_list.controls[i]
-                        cb_found = None
+                        cb_found: ft.Checkbox | None = None
                         for child in getattr(row_ctrl, "controls", []):
                             checkbox_ctrl = _get_playlist_checkbox_control(child)
                             if checkbox_ctrl is not None:
@@ -319,7 +311,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                 page.playlist_last_selected_index = this_idx
                 return
             # Normal multi-select toggle
-            cb_found = None
+            cb_found: ft.Checkbox | None = None
             for child in row.controls:
                 checkbox_ctrl = _get_playlist_checkbox_control(child)
                 if checkbox_ctrl is not None:
@@ -342,7 +334,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
             for i in range(start, end + 1):
                 try:
                     row_ctrl = page.playlists_list.controls[i]
-                    cb_found = None
+                    cb_found: ft.Checkbox | None = None
                     for child in getattr(row_ctrl, "controls", []):
                         checkbox_ctrl = _get_playlist_checkbox_control(child)
                         if checkbox_ctrl is not None:
@@ -407,7 +399,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     if tags:
         meta_line.append(f"Tags: {', '.join(tags)}")
     meta_text = (
-        ft.Text(" | ".join(meta_line), size=12, color=ft.Colors.BLACK54)
+        ft.Text(value=" | ".join(meta_line), size=12, color=ft.Colors.BLACK54)
         if meta_line
         else None
     )
@@ -431,7 +423,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     # Subtitle contains preview, description and metadata; card id is shown on the row's right
     subtitle_items = []
     if preview:
-        subtitle_items.append(ft.Text(preview, size=12, color=ft.Colors.BLACK45))
+        subtitle_items.append(ft.Text(value=preview, size=12, color=ft.Colors.BLACK45))
 
     # Add truncated description as a subtitle line (if present)
     try:
@@ -439,7 +431,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     except Exception:
         short_desc = ""
     if short_desc:
-        subtitle_items.append(ft.Text(short_desc, size=12, color=ft.Colors.BLACK45))
+        subtitle_items.append(ft.Text(value=short_desc, size=12, color=ft.Colors.BLACK45))
     if meta_text:
         subtitle_items.append(meta_text)
     subtitle = ft.Column(controls=subtitle_items)
@@ -626,8 +618,8 @@ def build_playlists_panel(
     )
 
     tags_filter = ft.TextField(label="Tags (comma separated)", width=200)
-    filter_btn = ft.Button("Apply Filter")
-    clear_filter_btn = ft.TextButton("Clear")
+    filter_btn = ft.Button(content=ft.Text(value="Apply Filter"))
+    clear_filter_btn = ft.TextButton(content="Clear")
 
     def _get_playlist_filters():
         return {
@@ -642,9 +634,9 @@ def build_playlists_panel(
     # Multi-select state for playlists
     page.playlist_last_selected_index = None
     page.playlist_multi_select_mode = False
-    delete_selected_btn = ft.Button("Delete Selected", disabled=True)
+    delete_selected_btn = ft.Button(content=ft.Text(value="Delete Selected"), disabled=True)
     delete_selected_btn.visible = False
-    export_selected_btn = ft.Button("Export Selected", disabled=True)
+    export_selected_btn = ft.Button(content=ft.Text(value="Export Selected"), disabled=True)
     export_selected_btn.visible = False
     # Import card controls
     _is_linux_desktop = sys.platform.startswith("linux") and not getattr(
@@ -664,17 +656,17 @@ def build_playlists_panel(
         except Exception:
             # page may be a SimpleNamespace in some tests; ignore if services isn't available
             pass
-    import_card_btn = ft.Button("Import Card(s)")
-    restore_versions_btn = ft.Button("Restore Versions")
+    import_card_btn = ft.Button(content=ft.Text(value="Import Card(s)"))
+    restore_versions_btn = ft.Button(content=ft.Text(value="Restore Versions"))
 
     api = ensure_api(page.api_ref)
 
     def _open_versions_dialog(_e=None):
         try:
-            api = ensure_api(api_ref, CLIENT_ID)
+            api = ensure_api(page.api_ref)
         except Exception:
             try:
-                show_snack("API not available for restore", error=True)
+                page.show_snack("API not available for restore", error=True)
             except Exception:
                 pass
             return
@@ -803,7 +795,7 @@ def build_playlists_panel(
 
         if not deleted_entries:
             try:
-                show_snack("No deleted versions available to restore")
+                page.show_snack("No deleted versions available to restore")
             except Exception:
                 pass
             return
@@ -828,7 +820,7 @@ def build_playlists_panel(
                 except Exception:
                     pass
             try:
-                show_snack(f"Restored {restored} versions")
+                page.show_snack(f"Restored {restored} versions")
             except Exception:
                 pass
             dlg.open = False
@@ -838,25 +830,25 @@ def build_playlists_panel(
             ).start()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Restore deleted cards"),
+            title=ft.Text(value="Restore deleted cards"),
             content=lv,
             actions=[
-                ft.TextButton("Restore Selected", on_click=do_restore),
-                ft.TextButton("Cancel", on_click=lambda e: setattr(dlg, "open", False)),
+                ft.TextButton(content="Restore Selected", on_click=do_restore),
+                ft.TextButton(content="Cancel", on_click=lambda e: setattr(dlg, "open", False)),
             ],
         )
         page.show_dialog(dlg)
         page.update()
 
     restore_versions_btn.on_click = _open_versions_dialog
-    multi_select_btn = ft.Button("Select Multiple")
-    add_tags_btn = ft.Button("Add Tags to Selected", disabled=True)
+    multi_select_btn = ft.Button(content=ft.Text(value="Select Multiple"))
+    add_tags_btn = ft.Button(content=ft.Text(value="Add Tags to Selected"), disabled=True)
     add_tags_btn.visible = False
     # Bulk edit category button
-    edit_category_btn = ft.Button("Edit Category for Selected", disabled=True)
+    edit_category_btn = ft.Button(content=ft.Text(value="Edit Category for Selected"), disabled=True)
     edit_category_btn.visible = False
     # Bulk edit author button
-    edit_author_btn = ft.Button("Edit Author for Selected", disabled=True)
+    edit_author_btn = ft.Button(content=ft.Text(value="Edit Author for Selected"), disabled=True)
     edit_author_btn.visible = False
 
     # Sorting control
@@ -906,12 +898,13 @@ def build_playlists_panel(
                 ft.dropdown.Option("alarms"),
             ],
         )
-        status_text = ft.Text("")
+        status_text = ft.Text(value="")
 
         def do_set_category(_e=None):
             new_cat = (cat_dropdown.value or "").strip()
-            client = CLIENT_ID
             updated = 0
+            CategoryType = Literal["", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"]
+            allowed_categories = {"", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"}
             for cid in list(page.selected_playlist_ids):
                 try:
                     card = api.get_card(cid)
@@ -924,7 +917,8 @@ def build_playlists_panel(
                             pass
                     else:
                         try:
-                            meta.category = new_cat
+                            if new_cat in allowed_categories:
+                                meta.category = cast(CategoryType, new_cat)
                         except Exception:
                             pass
                     card.metadata = meta
@@ -966,12 +960,12 @@ def build_playlists_panel(
             page.update()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Edit Category for Selected Playlists"),
-            content=ft.Column([cat_dropdown, status_text]),
+            title=ft.Text(value="Edit Category for Selected Playlists"),
+            content=ft.Column(controls=[cat_dropdown, status_text]),
             actions=[
-                ft.TextButton("Set Category", on_click=do_set_category),
-                ft.TextButton("Remove Category", on_click=do_remove_category),
-                ft.TextButton("Cancel", on_click=close_edit),
+                ft.TextButton(content="Set Category", on_click=do_set_category),
+                ft.TextButton(content="Remove Category", on_click=do_remove_category),
+                ft.TextButton(content="Cancel", on_click=close_edit),
             ],
         )
         try:
@@ -989,7 +983,7 @@ def build_playlists_panel(
         if not page.selected_playlist_ids:
             return
         tags_field = ft.TextField(label="Tags to add (comma separated)", width=400)
-        status_text = ft.Text("")
+        status_text = ft.Text(value="")
 
         def do_add_tags(_e=None):
             tags_val = tags_field.value or ""
@@ -998,7 +992,6 @@ def build_playlists_panel(
                 status_text.value = "No tags entered."
                 page.update()
                 return
-            client = CLIENT_ID
             updated = 0
             failed = 0
             for cid in list(page.selected_playlist_ids):
@@ -1028,11 +1021,11 @@ def build_playlists_panel(
             page.update()
 
         add_tags_dialog = ft.AlertDialog(
-            title=ft.Text("Add Tags to Selected Playlists"),
-            content=ft.Column([tags_field, status_text]),
+            title=ft.Text(value="Add Tags to Selected Playlists"),
+            content=ft.Column(controls=[tags_field, status_text]),
             actions=[
-                ft.TextButton("Add Tags", on_click=do_add_tags),
-                ft.TextButton("Cancel", on_click=close_add_tags),
+                ft.TextButton(content="Add Tags", on_click=do_add_tags),
+                ft.TextButton(content="Cancel", on_click=close_add_tags),
             ],
         )
         page.show_dialog(add_tags_dialog)
@@ -1043,7 +1036,7 @@ def build_playlists_panel(
         if not page.selected_playlist_ids:
             return
         author_field = ft.TextField(label="Author (leave blank to clear)", width=400)
-        status_text = ft.Text("")
+        status_text = ft.Text(value="")
 
         def do_set_author(_e=None):
             new_author = (author_field.value or "").strip()
@@ -1093,12 +1086,12 @@ def build_playlists_panel(
             page.update()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Edit Author for Selected Playlists"),
-            content=ft.Column([author_field, status_text]),
+            title=ft.Text(value="Edit Author for Selected Playlists"),
+            content=ft.Column(controls=[author_field, status_text]),
             actions=[
-                ft.TextButton("Set Author", on_click=do_set_author),
-                ft.TextButton("Remove Author", on_click=do_remove_author),
-                ft.TextButton("Cancel", on_click=close_author),
+                ft.TextButton(content="Set Author", on_click=do_set_author),
+                ft.TextButton(content="Remove Author", on_click=do_remove_author),
+                ft.TextButton(content="Cancel", on_click=close_author),
             ],
         )
         page.show_dialog(dlg)
@@ -1248,13 +1241,13 @@ def build_playlists_panel(
             page.update()
 
         confirm_dialog = ft.AlertDialog(
-            title=ft.Text("Delete selected playlists?"),
-            content=ft.Text(
+            title=ft.Text(value="Delete selected playlists?"),
+            content=ft.Text(value=
                 f"Delete {len(page.selected_playlist_ids)} selected playlists? This cannot be undone."
             ),
             actions=[
-                ft.TextButton("Yes", on_click=confirm_yes),
-                ft.TextButton("No", on_click=confirm_no),
+                ft.TextButton(content="Yes", on_click=confirm_yes),
+                ft.TextButton(content="No", on_click=confirm_no),
             ],
         )
         page.show_dialog(confirm_dialog)
@@ -1270,13 +1263,13 @@ def build_playlists_panel(
             page.update()
 
         confirm_dialog = ft.AlertDialog(
-            title=ft.Text("Export selected playlists?"),
-            content=ft.Text(
+            title=ft.Text(value="Export selected playlists?"),
+            content=ft.Text(value=
                 f"Export {len(page.selected_playlist_ids)} selected playlists to ./cards/?"
             ),
             actions=[
-                ft.TextButton("Yes", on_click=confirm_yes),
-                ft.TextButton("No", on_click=confirm_no),
+                ft.TextButton(content="Yes", on_click=confirm_yes),
+                ft.TextButton(content="No", on_click=confirm_no),
             ],
         )
         page.show_dialog(confirm_dialog)
@@ -1288,7 +1281,7 @@ def build_playlists_panel(
         multi_select_mode = page.playlist_multi_select_mode
 
         multi_select_mode = not multi_select_mode
-        multi_select_btn.content = "Done" if multi_select_mode else "Select"
+        multi_select_btn.content = ft.Text(value="Done" if multi_select_mode else "Select")
         delete_selected_btn.visible = multi_select_mode
         export_selected_btn.visible = multi_select_mode
         add_tags_btn.visible = multi_select_mode
@@ -1297,7 +1290,7 @@ def build_playlists_panel(
         select_all_btn.visible = multi_select_mode
         if not multi_select_mode:
             try:
-                select_all_btn.content = "Select all"
+                select_all_btn.content = ft.Text(value="Select all")
                 select_all_btn.update()
             except Exception:
                 pass
@@ -1307,11 +1300,12 @@ def build_playlists_panel(
         for row in playlists_list.controls:
             try:
                 for child in getattr(row, "controls", []):
-                    if getattr(child, "_is_playlist_checkbox", False):
-                        child.visible = multi_select_mode
+                    checkbox = _get_playlist_checkbox_control(child)
+                    if checkbox is not None:
+                        checkbox.visible = multi_select_mode
                         if not multi_select_mode:
                             try:
-                                child.value = False
+                                checkbox.value = False
                             except Exception:
                                 pass
             except Exception:
@@ -1322,7 +1316,7 @@ def build_playlists_panel(
     multi_select_btn.on_click = toggle_multi_select
 
     # Select All / Deselect All control (visible only in multi-select mode)
-    select_all_btn = ft.Button("Select all", visible=False)
+    select_all_btn = ft.Button(content=ft.Text(value="Select all"), visible=False)
     select_all_selected = False
 
     def _update_multiselect_buttons():
@@ -1372,17 +1366,16 @@ def build_playlists_panel(
         """Set all playlist row checkboxes to value (True=checked, False=unchecked)."""
         for row in playlists_list.controls:
             for child in getattr(row, "controls", []):
-                if getattr(child, "_is_playlist_checkbox", False):
-                        child.value = value
-                        # ensure UI updated
-                        child.update()
-                        # update selection set
+                checkbox = _get_playlist_checkbox_control(child)
+                if checkbox is not None:
+                    checkbox.value = value
+                    checkbox.update()
+                    data = checkbox.data
+                    if isinstance(data, PlaylistCheckboxData):
                         if value:
-                            page.selected_playlist_ids.add(getattr(child, "_cid", None))
+                            page.selected_playlist_ids.add(data.cid)
                         else:
-                            page.selected_playlist_ids.discard(
-                                getattr(child, "_cid", None)
-                            )
+                            page.selected_playlist_ids.discard(data.cid)
 
     page.set_all_playlist_checkboxes = (
         _set_all_checkboxes  # Expose for callbacks in playlist rows
@@ -1393,11 +1386,11 @@ def build_playlists_panel(
         try:
             if not select_all_selected:
                 _set_all_checkboxes(True)
-                select_all_btn.content = "Deselect all"
+                select_all_btn.content = ft.Text(value="Deselect all")
                 select_all_selected = True
             else:
                 _set_all_checkboxes(False)
-                select_all_btn.content = "Select all"
+                select_all_btn.content = ft.Text(value="Select all")
                 select_all_selected = False
             _update_multiselect_buttons()
             try:
@@ -1428,7 +1421,7 @@ def build_playlists_panel(
     clear_filter_btn.on_click = clear_filters
 
     # Header fetch button wired to the synchronous fetch helper
-    fetch_btn = ft.Button("Fetch Playlists", bgcolor="#2196F3", color="white")
+    fetch_btn = ft.Button(content=ft.Text(value="Fetch Playlists"), bgcolor="#2196F3", color="white")
 
     async def fetch_playlists(e=None):
         logger.debug("fetch_playlists: invoked")
@@ -1518,14 +1511,14 @@ def build_playlists_panel(
     # Make filters row expandable using Accordion
     filters_panel = ft.ExpansionTile(
         title=ft.Container(
-            content=ft.Text("Filters", size=12, weight=ft.FontWeight.W_400),
+            content=ft.Text(value="Filters", size=12, weight=ft.FontWeight.W_400),
             padding=0,
             margin=0,
         ),
         controls=[
             ft.Container(
                 content=ft.Row(
-                    [
+                    controls=[
                         title_filter,
                         genre_filter,
                         tags_filter,
@@ -1550,10 +1543,10 @@ def build_playlists_panel(
     page.fetch_playlists_sync = fetch_playlists_sync
 
     playlists_column = ft.Column(
-        [
+        controls=[
             ft.Row(
-                [
-                    ft.Text("Playlists"),
+                controls=[
+                    ft.Text(value="Playlists"),
                     fetch_btn,
                     multi_select_btn,
                     select_all_btn,
