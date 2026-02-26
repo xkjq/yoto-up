@@ -48,10 +48,20 @@ class Track(BaseModel):
             return ""
 
     def get_icon_field(self) -> Optional[str]:
-        try:
-            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
-        except Exception:
-            return None
+        """Return the icon16x16 field from the track's display, automatically
+        creating the display object if needed, and safely handling missing fields."""
+        if self.display is None:
+            self.display = TrackDisplay()
+        
+        return self.display.icon16x16
+    
+    def set_icon_field(self, icon_value: Optional[str]) -> None:
+        """Set the icon16x16 field in the track's display to the given value,
+        automatically creating the display object if needed."""
+        if self.display is None:
+            self.display = TrackDisplay()
+        
+        self.display.icon16x16 = icon_value
 
 class ChapterDisplay(BaseModel):
     icon16x16: Optional[str] = None
@@ -73,18 +83,21 @@ class Chapter(BaseModel):
     ambient: Optional[Ambient] = None
     availableFrom: Optional[str] = None
 
-
-    def get_title(self) -> str:
-        try:
-            return self.title or ""
-        except Exception:
-            return ""
-
     def get_icon_field(self) -> Optional[str]:
-        try:
-            return self.display.icon16x16 if self.display and getattr(self.display, 'icon16x16', None) else None
-        except Exception:
-            return None
+        """Return the icon16x16 field from the chapter's display, automatically 
+        creating the display object if needed, and safely handling missing fields."""
+        if self.display is None:
+            self.display = ChapterDisplay()
+        
+        return self.display.icon16x16
+
+    def set_icon_field(self, icon_value: Optional[str]) -> None:
+        """Set the icon16x16 field in the chapter's display to the given value, 
+        automatically creating the display object if needed."""
+        if self.display is None:
+            self.display = ChapterDisplay()
+        
+        self.display.icon16x16 = icon_value
     
     def get_tracks(self) -> List[Track]:
         try:

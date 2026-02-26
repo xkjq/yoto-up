@@ -123,7 +123,7 @@ def show_edit_card_dialog(
         chapter_fields.clear()
         track_fields.clear()
         for ci, ch in enumerate(chapters_local):
-            ch_title = ch.get_title()
+            ch_title = ch.title
             ch_field = ft.TextField(label=f"Chapter {ci+1} Title", value=ch_title)
             chapter_fields.append(ch_field)
             ch_icon = None
