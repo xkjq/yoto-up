@@ -19,9 +19,10 @@ Notes / limitations:
   `requirements.txt`.
 """
 
-from typing import List, Tuple, Dict, Union
+from typing import Tuple
 import os
 import numpy as np
+from .analysis import AudioPaths, PerWindowCommonPrefixResult
 
 from loguru import logger
 
@@ -50,30 +51,32 @@ def sliding_best_match_position(
 
 
 def per_second_common_prefix(
-    paths: List[str],
+    paths: AudioPaths,
     side: str = 'intro',
     max_seconds: int = 10,
     sr: int = 22050,
     n_mfcc: int = 13,
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
-) -> Dict[str, object]:
+) -> PerWindowCommonPrefixResult:
     # Lazy import to avoid import-time failures when analysis deps are not present
     try:
         from .analysis import per_second_common_prefix as _analysis_per_second_common_prefix
-    except Exception as e:
+    except Exception:
         # Analysis unavailable; return a conservative no-match result
-        return {
-            'seconds_matched': 0.0,
-            'per_second_sim': [],
-            'per_file_per_second': {},
-            'max_seconds': int(max_seconds),
-        }
+        return PerWindowCommonPrefixResult(
+            seconds_matched=0.0,
+            windows_matched=0,
+            per_window_frac=[],
+            per_file_per_window={},
+            max_seconds=float(max_seconds),
+            window_seconds=1.0,
+        )
     return _analysis_per_second_common_prefix(paths=paths, side=side, max_seconds=max_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
 
 
 def per_window_common_prefix(
-    paths: List[str],
+    paths: AudioPaths,
     side: str = 'intro',
     max_seconds: float = 10.0,
     window_seconds: float = 0.1,
@@ -81,20 +84,20 @@ def per_window_common_prefix(
     n_mfcc: int = 13,
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
-) -> Dict[str, object]:
+) -> PerWindowCommonPrefixResult:
     # Lazy import to avoid import-time failures when analysis deps are not present
     try:
         from .analysis import per_window_common_prefix as _analysis_per_window_common_prefix
     except Exception:
         logger.debug("per_window_common_prefix: analysis helpers unavailable")
-        return {
-            'seconds_matched': 0.0,
-            'windows_matched': 0,
-            'per_window_frac': [],
-            'per_file_per_window': {},
-            'max_seconds': float(max_seconds),
-            'window_seconds': float(window_seconds),
-        }
+        return PerWindowCommonPrefixResult(
+            seconds_matched=0.0,
+            windows_matched=0,
+            per_window_frac=[],
+            per_file_per_window={},
+            max_seconds=float(max_seconds),
+            window_seconds=float(window_seconds),
+        )
     return _analysis_per_window_common_prefix(paths=paths, side=side, max_seconds=max_seconds, window_seconds=window_seconds, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
 
 
@@ -167,9 +170,12 @@ if __name__ == "__main__":
     parser.add_argument("--threshold", type=float, default=0.75)
     args = parser.parse_args()
 
-    result = analyze_files(args.files, side=args.side, seconds=args.seconds, similarity_threshold=args.threshold)
-    print("Template:", result.get("template"))
-    print("Matches (path,score):")
-    matches = list(result.get("matches") or [])
-    for m in matches:
-        print(" ", m)
+    result = per_window_common_prefix(
+        paths=args.files,
+        side=args.side,
+        max_seconds=float(args.seconds),
+        similarity_threshold=float(args.threshold),
+    )
+    print("Seconds matched:", result.seconds_matched)
+    print("Windows matched:", result.windows_matched)
+    print("Per-window fraction:", result.per_window_frac)

@@ -3,13 +3,46 @@
 This module exposes per-window (sub-second) and per-second common-prefix
 analysis functions plus lower-level MFCC helpers used by the UI.
 """
-from typing import List, Tuple, Dict, Union
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, TypeAlias, Union
 import numpy as np
 import librosa
 from librosa.feature import mfcc as _librosa_mfcc
 from librosa.feature import delta as _librosa_delta, rms as _librosa_rms, spectral_centroid as _librosa_spectral_centroid
 from pathlib import Path
 import json
+
+
+AudioPath: TypeAlias = str
+AudioPaths: TypeAlias = List[AudioPath]
+WindowScores: TypeAlias = List[float]
+PerFileWindowScores: TypeAlias = Dict[AudioPath, WindowScores]
+SerializedResult: TypeAlias = Dict[str, object]
+
+
+@dataclass
+class PerWindowCommonPrefixResult:
+    seconds_matched: float = 0.0
+    windows_matched: int = 0
+    per_window_frac: WindowScores = field(default_factory=list)
+    per_file_per_window: PerFileWindowScores = field(default_factory=dict)
+    max_seconds: float = 0.0
+    window_seconds: float = 0.0
+    template: str = ""
+
+    def to_dict(self) -> SerializedResult:
+        return {
+            "seconds_matched": float(self.seconds_matched),
+            "windows_matched": int(self.windows_matched),
+            "per_window_frac": [float(v) for v in self.per_window_frac],
+            "per_file_per_window": {
+                str(path): [float(score) for score in scores]
+                for path, scores in self.per_file_per_window.items()
+            },
+            "max_seconds": float(self.max_seconds),
+            "window_seconds": float(self.window_seconds),
+            "template": self.template,
+        }
 
 
 def load_audio_mono(path: str, sr: int = 22050) -> Tuple[np.ndarray, Union[int, float]]:
@@ -125,7 +158,7 @@ def _dtw_prefix_similarity(a_path: str, b_path: str, side: str, max_seconds: flo
 
 
 def per_window_common_prefix(
-    paths: List[str],
+    paths: AudioPaths,
     side: str = 'intro',
     max_seconds: float = 10.0,
     window_seconds: float = 0.25,
@@ -133,15 +166,11 @@ def per_window_common_prefix(
     n_mfcc: int = 13,
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
-) -> Dict[str, object]:
-    results = {
-        'seconds_matched': 0.0,
-        'windows_matched': 0,
-        'per_window_frac': [],
-        'per_file_per_window': {},
-        'max_seconds': float(max_seconds),
-        'window_seconds': float(window_seconds),
-    }
+) -> PerWindowCommonPrefixResult:
+    result = PerWindowCommonPrefixResult(
+        max_seconds=float(max_seconds),
+        window_seconds=float(window_seconds),
+    )
 
     n_windows = max(0, int(np.floor(float(max_seconds) / float(max(1e-6, window_seconds)))))
     per_file_vectors = {}
@@ -185,9 +214,9 @@ def per_window_common_prefix(
         vecs = [per_file_vectors[p][w] for p in paths]
         stacked = np.stack(vecs, axis=0) if vecs else np.zeros((0, n_mfcc))
         if stacked.size == 0:
-            results['per_window_frac'].append(0.0)
+            result.per_window_frac.append(0.0)
             for p in paths:
-                results['per_file_per_window'].setdefault(p, []).append(0.0)
+                result.per_file_per_window.setdefault(p, []).append(0.0)
             break
         tmpl = _norm(np.mean(stacked, axis=0))
         sims = []
@@ -195,12 +224,12 @@ def per_window_common_prefix(
             v = _norm(per_file_vectors[p][w])
             sim = float(np.dot(tmpl, v)) if tmpl.size and v.size else 0.0
             sims.append(sim)
-            results['per_file_per_window'].setdefault(p, []).append(sim)
+            result.per_file_per_window.setdefault(p, []).append(sim)
         frac = float(sum(1 for x in sims if x >= float(similarity_threshold))) / float(len(sims)) if sims else 0.0
-        results['per_window_frac'].append(float(frac))
+        result.per_window_frac.append(float(frac))
         if frac >= float(min_files_fraction):
-            results['windows_matched'] += 1
-            results['seconds_matched'] = results['windows_matched'] * float(window_seconds)
+            result.windows_matched += 1
+            result.seconds_matched = result.windows_matched * float(window_seconds)
             continue
         else:
             break
@@ -209,22 +238,22 @@ def per_window_common_prefix(
         out_dir = Path('.tmp_trim/previews')
         out_dir.mkdir(parents=True, exist_ok=True)
         with open(out_dir / 'per_window_trace.json', 'w') as fh:
-            json.dump(results, fh, indent=2)
+            json.dump(result.to_dict(), fh, indent=2)
     except Exception:
         pass
 
-    return results
+    return result
 
 
 def per_second_common_prefix(
-    paths: List[str],
+    paths: AudioPaths,
     side: str = 'intro',
     max_seconds: int = 10,
     sr: int = 22050,
     n_mfcc: int = 13,
     similarity_threshold: float = 0.95,
     min_files_fraction: float = 0.75,
-) -> Dict[str, object]:
+) -> PerWindowCommonPrefixResult:
     return per_window_common_prefix(paths=paths, side=side, max_seconds=max_seconds, window_seconds=1.0, sr=sr, n_mfcc=n_mfcc, similarity_threshold=similarity_threshold, min_files_fraction=min_files_fraction)
 
 

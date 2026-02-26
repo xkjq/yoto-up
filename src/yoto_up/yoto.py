@@ -1647,12 +1647,11 @@ def intro_outro(
         raise typer.Exit(code=1)
 
     # Print a concise summary similar to GUI, using rich for nicer formatting
-    tpl = result.get("template") or ""
-    windows_matched = int(result.get("windows_matched") or 0)
-    seconds_matched = float(result.get("seconds_matched") or 0)
-    per_window_frac = result.get("per_window_frac", []) or []
-    per_file_per_window = result.get("per_file_per_window", {}) or {}
-
+    tpl = result.template
+    windows_matched = result.windows_matched
+    seconds_matched = result.seconds_matched
+    per_window_frac = result.per_window_frac
+    per_file_per_window = result.per_file_per_window
 
     summary_lines = [
         f"Seconds matched: {seconds_matched}",
@@ -1965,14 +1964,6 @@ def normalize(
         console.print(
             f"Applying fixed gain {gain_db:+.2f} dB to {len(files)} file(s) -> {out_dir}"
         )
-        try:
-            from pydub import AudioSegment
-        except Exception:
-            console.print(
-                "[red]pydub is required for gain adjustment but is not available.[/red]"
-            )
-            raise typer.Exit(code=1)
-
         # Use a progress bar while writing files
         from rich.progress import (
             Progress,
@@ -2198,7 +2189,7 @@ def get_devices():
         rprint(
             Panel.fit(
                 panel_text,
-                title=f"[bold green]Device[/bold green]",
+                title="[bold green]Device[/bold green]",
                 subtitle=f"[bold cyan]{getattr(device, 'deviceId', '')}[/bold cyan]",
             )
         )

@@ -675,10 +675,10 @@ class UploadManager:
             # contiguous matched window count. Use that to compute the common
             # removal seconds and per-file match fractions for UI presentation.
             content_col.controls.clear()
-            windows_matched = int(result.get("windows_matched", 0))
-            seconds_matched = float(result.get("seconds_matched", 0.0))
-            per_window_frac = result.get("per_window_frac", [])
-            per_file_per_window = result.get("per_file_per_window", {})
+            windows_matched = int(result.windows_matched)
+            seconds_matched = float(result.seconds_matched)
+            per_window_frac = list(result.per_window_frac)
+            per_file_per_window = dict(result.per_file_per_window)
 
             if windows_matched <= 0 or seconds_matched <= 0.0:
                 content_col.controls.append(ft.Text("No common intro/outro detected"))
