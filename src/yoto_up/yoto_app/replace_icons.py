@@ -1,3 +1,5 @@
+from yoto_up.yoto_app.playlists import build_playlists_ui
+from fontTools.mtiLib import build
 from yoto_up.yoto_app.api_manager import ensure_api
 import threading
 import asyncio
@@ -11,13 +13,6 @@ def show_replace_icons_dialog(
     page,
     api_ref,
     c,
-    fetch_playlists_sync,
-    ensure_api,
-    CLIENT_ID,
-    show_snack,
-    playlists_list,
-    make_playlist_row,
-    show_card_details,
 ):
     """Show the Replace Default Icons confirmation and run the replacement worker.
 
@@ -99,94 +94,18 @@ Continue?"""
                                 prog_text.value = "Done"
                                 prog.value = 1.0
 
-                                def run_on_ui(fn, *a, **kw):
-                                    try:
-                                        loop = asyncio.get_event_loop()
-                                        loop.call_soon_threadsafe(lambda: fn(*a, **kw))
-                                    except Exception:
-                                        try:
-                                            fn(*a, **kw)
-                                        except Exception:
-                                            pass
-
-                                def refresh_ui(card_model):
-                                    try:
-                                        updated_id = card_model.cardId
-                                    except Exception:
-                                        updated_id = None
-                                    if not updated_id:
-                                        try:
-                                            page.update()
-                                        except Exception:
-                                            pass
-                                        return
-                                    try:
-                                        for i, ctrl in enumerate(
-                                            list(playlists_list.controls)
-                                        ):
-                                            cb = None
-                                            children = (
-                                                getattr(ctrl, "controls", None)
-                                                or getattr(
-                                                    getattr(ctrl, "content", None),
-                                                    "controls",
-                                                    None,
-                                                )
-                                                or []
-                                            )
-                                            for ch in children or []:
-                                                if getattr(
-                                                    ch, "_is_playlist_checkbox", False
-                                                ):
-                                                    cb = ch
-                                                    break
-                                            if not cb:
-                                                continue
-                                            if getattr(cb, "_cid", None) == updated_id:
-                                                try:
-                                                    playlists_list.controls[i] = (
-                                                        make_playlist_row(
-                                                            page, card_model, idx=i
-                                                        )
-                                                    )
-                                                    page.update()
-                                                    try:
-                                                        show_snack(
-                                                            "Playlist icons updated"
-                                                        )
-                                                    except Exception:
-                                                        pass
-                                                except Exception:
-                                                    pass
-                                                return
-                                        threading.Thread(
-                                            target=lambda: fetch_playlists_sync(page),
-                                            daemon=True,
-                                        ).start()
-                                    except Exception:
-                                        pass
-
-                                run_on_ui(refresh_ui, new_card)
+                                build_playlists_ui(page)
                             except Exception as ex:
-                                try:
-                                    show_snack(
+                                page.show_snack(
                                         f"Replace icons failed: {ex}", error=True
                                     )
-                                except Exception:
-                                    pass
                                 logger.exception("replace_icons error")
                             time.sleep(1)
-                            try:
-                                show_card_details(new_card)
-                            except Exception:
-                                pass
+                            page.show_card_details(new_card)
 
                         page.run_task(work)
                     except Exception as ee:
-                        try:
-                            show_snack(f"Failed to start replace: {ee}", error=True)
-                        except Exception:
-                            pass
+                        page.show_snack(f"Failed to start replace: {ee}", error=True)
 
                 # If user selected a value larger than 2, show a confirmation before starting
                 if max_searches > 2:
@@ -227,10 +146,7 @@ Continue?"""
                 else:
                     threading.Thread(target=_start_worker, daemon=True).start()
             except Exception as ee:
-                try:
-                    show_snack(f"Failed to start replace: {ee}", error=True)
-                except Exception:
-                    pass
+                page.show_snack(f"Failed to start replace: {ee}", error=True)
 
         def cancel_confirm(_e=None):
             page.pop_dialog()
@@ -267,10 +183,7 @@ Continue?"""
             except Exception:
                 logger.exception("Unable to show confirmation dialog for replace_icons")
     except Exception as e:
-        try:
-            show_snack(f"Replace icons failed to start: {e}", error=True)
-        except Exception:
-            pass
+        page.show_snack(f"Replace icons failed to start: {e}", error=True)
         logger.exception("replace_icons start error")
 
 
