@@ -210,65 +210,18 @@ def start_replace_icons_background(
 
         # Prefer using page helpers if available (added in gui.py)
         def _set_badge(msg, frac, visible=True):
-            try:
-                if hasattr(page, "set_autoselect_progress"):
-                    page.set_autoselect_progress(msg, frac, visible=visible)
-                else:
-                    # fallback: update simple text
-                    try:
-                        badge_text.value = (
-                            f"{int((frac or 0.0) * 100)}% - {msg}"
-                            if msg
-                            else f"{int((frac or 0.0) * 100)}%"
-                        )
-                        page.update()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            page.set_autoselect_progress(msg, frac, visible=visible)
 
-        def _open_status_dialog():
-            try:
-                if hasattr(page, "open_autoselect_status_dialog"):
-                    page.open_autoselect_status_dialog(cancel_event)
-                else:
-                    # fallback simple dialog
-                    try:
-                        dlg = ft.AlertDialog(
-                            title=ft.Text(value="Autoselect status"),
-                            content=ft.Text(value=badge_text.value),
-                            actions=[
-                                ft.TextButton(content="Cancel",
-                                    on_click=lambda e: (
-                                        cancel_event.set(),
-                                        page.pop_dialog(),
-                                    ),
-                                ),
-                                ft.TextButton(
-                                    content="Close", on_click=lambda e: page.pop_dialog()
-                                ),
-                            ],
-                        )
-                        page.show_dialog(dlg)
-                        page.update()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+        def _open_status_dialog(hide_default=False):
+            page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)
+
+        hide_default = getattr(page, "autoselect_hide_dialog_default", False)
+        _open_status_dialog(hide_default=hide_default)
 
         # Show initial badge state
         _set_badge("Starting", 0.0, visible=True)
 
         # Open the status dialog by default unless the page requests it be hidden
-        try:
-            hide_default = getattr(page, "autoselect_hide_dialog_default", False)
-        except Exception:
-            hide_default = False
-        if not hide_default:
-            try:
-                _open_status_dialog()
-            except Exception:
-                pass
 
         async def work():
             new_card = None
@@ -280,10 +233,7 @@ def start_replace_icons_background(
                 full = api.get_card(card_id)
 
                 def icon_progress(msg, frac):
-                    try:
-                        _set_badge(msg, frac)
-                    except Exception:
-                        pass
+                    _set_badge(msg, frac)
 
                 new_card = api.replace_card_default_icons(
                     full,

@@ -594,7 +594,6 @@ def main(page: "Page"):
     def set_autoselect_progress(
         msg: Optional[str], frac: Optional[float] = None, visible: bool = True
     ):
-        try:
             if not visible:
                 autoselect_badge.visible = False
                 page.update()
@@ -615,63 +614,37 @@ def main(page: "Page"):
                 autoselect_badge_text.value = "Selecting Icons"
 
             # Set the tooltip to the more-detailed message (e.g. which icon is being searched)
-            try:
-                if msg:
-                    autoselect_badge.tooltip = msg
-                else:
-                    autoselect_badge.tooltip = "Selecting icons"
-            except Exception:
-                pass
+            if msg:
+                autoselect_badge.tooltip = msg
+            else:
+                autoselect_badge.tooltip = "Selecting icons"
 
             # Also update the status text control and detail control in the dialog if they're open
-            try:
-                ctrl = getattr(page, "autoselect_status_ctrl", None)
-                if ctrl is not None:
-                    try:
-                        ctrl.value = autoselect_badge_text.value
-                    except Exception:
-                        pass
-                detail = getattr(page, "autoselect_status_detail", None)
-                if detail is not None:
-                    try:
-                        # detail shows the more verbose message about the current icon/search
-                        detail.value = msg or ""
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            ctrl = page.autoselect_status_ctrl
+            ctrl.value = autoselect_badge_text.value
+            detail = page.autoselect_status_detail
+            # detail shows the more verbose message about the current icon/search
+            detail.value = msg
             page.update()
-        except Exception:
-            pass
 
-    def open_autoselect_status_dialog(cancel_event: Optional[threading.Event] = None):
-        try:
+    def open_autoselect_status_dialog(cancel_event: Optional[threading.Event] = None, hide_default: Optional[bool] = None):
             hide_checkbox = ft.Checkbox(
                 label="Hide this dialog by default",
                 value=page.autoselect_hide_dialog_default,
             )
 
             def on_hide_change(e):
-                try:
-                    page.autoselect_hide_dialog_default = bool(hide_checkbox.value)
-                except Exception:
-                    pass
+                page.autoselect_hide_dialog_default = bool(hide_checkbox.value)
 
             hide_checkbox.on_change = on_hide_change
 
             status_txt = ft.Text(value=autoselect_badge_text.value or "Autoselect running...")
             # Keep a reference on the page so the progress updater can refresh this control
-            try:
-                page.autoselect_status_ctrl = status_txt
-            except Exception:
-                pass
+            page.autoselect_status_ctrl = status_txt
 
             # A secondary detail control shows verbose info about the current icon/search
             detail_txt = ft.Text(value="", size=12)
-            try:
-                page.autoselect_status_detail = detail_txt
-            except Exception:
-                pass
+            page.autoselect_status_detail = detail_txt
 
             # Use a fixed width column so the dialog doesn't constantly resize
             content_col = ft.Column(controls=
@@ -694,10 +667,9 @@ def main(page: "Page"):
                     ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()),
                 ],
             )
-            page.show_dialog(dlg)
+            if not hide_default:
+                page.show_dialog(dlg)
             page.update()
-        except Exception:
-            pass
 
     # Expose helpers on page so other modules can control autoselect UI
     page.set_autoselect_progress = set_autoselect_progress
