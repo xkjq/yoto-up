@@ -627,9 +627,9 @@ def make_show_card_details(
                 def _clear_all_track_icons(ev=None):
                     logger.error("Clearing all track icons for card id {c.cardId}")
                     # clear track icons using model helper on Track
-                    for ch in card.get_chapters():
+                    for ch in c.get_chapters():
                         ch.clear_all_track_icons()
-                    new_card = page.update_card(card)
+                    new_card = page.update_card(c)
                     logger.debug(new_card)
                     logger.error("All track icons cleared, refreshing details view")
                     show_card_details(new_card)
@@ -637,16 +637,16 @@ def make_show_card_details(
 
                 def _clear_all_chapter_icons(ev=None):
                     # clear chapter icons using model helper on Chapter
-                    for ch in card.get_chapters():
+                    for ch in c.get_chapters():
                         ch.clear_icon_field()
-                    new_card = page.update_card(card)
+                    new_card = page.update_card(c)
                     show_card_details(new_card)
                     page.show_snack("Cleared all chapter icons")
 
                 def _clear_all_icons(ev=None):
                     # Use Card helper to clear all icons
-                    card.clear_all_icons()
-                    new_card = page.update_card(card)
+                    c.clear_all_icons()
+                    new_card = page.update_card(c)
                     show_card_details(new_card)
                     page.show_snack("Cleared all icons (chapters + tracks)")
 

@@ -1,3 +1,4 @@
+from nltk.lm.vocabulary import _
 from yoto_up.yoto_app.playlists import build_playlists_ui
 from fontTools.mtiLib import build
 from yoto_up.yoto_app.api_manager import ensure_api
@@ -209,8 +210,8 @@ def start_replace_icons_background(
             pass
 
         # Prefer using page helpers if available (added in gui.py)
-        def _set_badge(msg, frac, visible=True):
-            page.set_autoselect_progress(msg, frac, visible=visible)
+        async def _set_badge(msg, frac, visible=True):
+            await page.set_autoselect_progress(msg, frac, visible=visible)
 
         def _open_status_dialog(hide_default=False):
             page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)
@@ -232,12 +233,10 @@ def start_replace_icons_background(
                     raise RuntimeError("Unable to determine card id")
                 full = api.get_card(card_id)
 
-                def icon_progress(msg, frac):
-                    _set_badge(msg, frac)
 
                 new_card = api.replace_card_default_icons(
                     full,
-                    progress_callback=icon_progress,
+                    progress_callback=_set_badge,
                     cancel_event=cancel_event,
                 )
 

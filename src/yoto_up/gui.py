@@ -162,6 +162,7 @@ def main(page: "Page"):
     auth_instructions = ft.Column(controls=[ft.Text(value=AUTHENTICATE_TEXT)])
 
     def show_snack(message: str, error: bool = False, duration: int = 3000):
+        logger.debug(f"Showing snack: {message} (error={error})")
         # print(f"[gui] show_snack: {message}")  # Commented out for performance
         bg = ft.Colors.RED if error else None
         page.snack_bar = ft.SnackBar(
@@ -591,7 +592,7 @@ def main(page: "Page"):
     # Default: dialog opens when autoselect starts unless this flag is set
     page.autoselect_hide_dialog_default = False
 
-    def set_autoselect_progress(
+    async def set_autoselect_progress(
         msg: Optional[str], frac: Optional[float] = None, visible: bool = True
     ):
             if not visible:
@@ -625,6 +626,10 @@ def main(page: "Page"):
             detail = page.autoselect_status_detail
             # detail shows the more verbose message about the current icon/search
             detail.value = msg
+            ctrl.update()
+            detail.update()
+            #await asyncio.sleep(0.1)  # slight delay to ensure UI updates properly
+            page.show_snack(f"Autoselect: {msg}", duration=1000)
             page.update()
 
     def open_autoselect_status_dialog(cancel_event: Optional[threading.Event] = None, hide_default: Optional[bool] = None):
