@@ -10,7 +10,7 @@ import threading
 from typing import Optional, Callable
 
 from loguru import logger
-from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig, TranscodedAudio
+from yoto_up.models import DeviceObject, Track, Chapter, ChapterDisplay, TrackDisplay, CardContent, CardMetadata, CardMedia, Card, Device, DeviceStatus, DeviceConfig, TranscodedAudio, DEFAULT_MEDIA_ID
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn, TaskID
 from rich.table import Table
@@ -101,7 +101,6 @@ def _get_stopwords(lang: str = 'english') -> set[str]:
     return set(_FallbackStopwords.words(lang))
 
 
-DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
 
 def find_extra_fields(model: Type[BaseModel], data: Any, path: str = '', warn_extra=True) -> List[str]:
     """

@@ -3,6 +3,8 @@ from typing import Optional, List, Literal, cast
 from pydantic import BaseModel
 from yoto_up.icons import render_icon
 
+DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
+
 class Ambient(BaseModel):
     defaultTrackDisplay: Optional[str] = None
 
@@ -59,7 +61,7 @@ class Track(BaseModel):
     def clear_icon_field(self):
         if self.display is None:
             self.display = TrackDisplay()
-        self.display.icon16x16 = None
+        self.display.icon16x16 = DEFAULT_MEDIA_ID
 
 
 class ChapterDisplay(BaseModel):
@@ -107,7 +109,7 @@ class Chapter(BaseModel):
         if self.display is None:
             self.display = ChapterDisplay()
         
-        self.display.icon16x16 = None
+        self.display.icon16x16 = DEFAULT_MEDIA_ID
 
     def clear_all_track_icons(self) -> None:
         """Utility method to clear icons from all tracks in this chapter."""

@@ -518,10 +518,7 @@ def build_playlists_ui(page, cards=None):
             reverse = False
         else:
             reverse = sort_key == "title_desc"
-        try:
-            sorted_cards = sorted(cards, key=sort_func, reverse=reverse)
-        except Exception:
-            sorted_cards = cards
+        sorted_cards = sorted(cards, key=sort_func, reverse=reverse)
 
         # Build rows for each card; only append valid ft.Control objects.
         for idx, c in enumerate(sorted_cards):

@@ -26,10 +26,16 @@ def make_show_card_details(
     nested function.
     """
 
-    def show_card_details(card: Card, preview_path: Path | None = None):
+    def show_card_details(card: Card, preview_path: Path | None = None, close_other_dialogs: bool = True):
         logger.debug(f"Showing details for card id {card.cardId} with title '{card.title}'")
 
         assert isinstance(card, Card), f"Expected card to be a Card model instance, got {type(card)}"
+
+        if close_other_dialogs:
+            # There must be a better way to do this, but for now we'll just pop dialogs until there are none left
+            page.pop_dialog()
+            page.pop_dialog()
+            page.pop_dialog()
 
         api: YotoAPI = page.api_ref.get("api")
 
