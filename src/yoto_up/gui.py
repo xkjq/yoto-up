@@ -1,3 +1,4 @@
+import asyncio
 from nltk.lm.vocabulary import _
 from colorlog import log
 from yoto_up.models import Card
@@ -109,7 +110,11 @@ def main(page: "Page"):
                 page.cards.remove(existing)
             page.cards.append(card)
             if refresh_ui:
-                build_playlists_ui(page)
+                # We have to delay the UI update slightly to avoid issues with controls being updated while they're being built in some cases. This is a bit hacky but seems to work reliably.
+                async def _update_ui():
+                    await asyncio.sleep(1)
+                    build_playlists_ui(page)
+                page.run_task(_update_ui)
         except Exception:
             logger.error(f"Failed to update local card cache: {traceback.format_exc()}")
 

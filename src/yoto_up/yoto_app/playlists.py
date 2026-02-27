@@ -868,8 +868,7 @@ def build_playlists_panel(
 
     def on_sort_change(ev):
         page.current_playlist_sort = sort_dropdown.value
-        fetch_playlists_sync(page)
-
+        build_playlists_ui(page)  # Rebuild UI with new sort order
         # save current ui state so it can be restored on restart
         set_state("playlists_ui", "sort_order", sort_dropdown.value)
 
