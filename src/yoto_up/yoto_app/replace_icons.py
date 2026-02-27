@@ -26,7 +26,7 @@ def show_replace_icons_dialog(
     """
     try:
         warn = ft.Text(
-            """Replacing default icons may take a long time. 
+            value="""Replacing default icons may take a long time. 
 The more icons missing, the longer it takes.
 
 Continue?"""
@@ -50,8 +50,8 @@ Continue?"""
                         page.update()
 
                         prog = ft.ProgressBar(width=400)
-                        prog_text = ft.Text("Preparing...")
-                        prog_col = ft.Column([prog_text, prog])
+                        prog_text = ft.Text(value="Preparing...")
+                        prog_col = ft.Column(controls=[prog_text, prog])
                         cancel_event = threading.Event()
 
                         def do_cancel(_e=None):
@@ -60,9 +60,9 @@ Continue?"""
                             page.update()
 
                         replace_dialog = ft.AlertDialog(
-                            title=ft.Text("Replace Default Icons"),
+                            title=ft.Text(value="Replace Default Icons"),
                             content=prog_col,
-                            actions=[ft.TextButton("Cancel", on_click=do_cancel)],
+                            actions=[ft.TextButton(content="Cancel", on_click=do_cancel)],
                         )
                         page.show_dialog(replace_dialog)
 
@@ -192,14 +192,14 @@ Continue?"""
                 if max_searches > 2:
                     try:
                         warn_txt = ft.Text(
-                            "You have chosen a max extra searches value > 2. This may significantly increase runtime and API usage. Continue?"
+                            value="You have chosen a max extra searches value > 2. This may significantly increase runtime and API usage. Continue?"
                         )
                         secondary = ft.AlertDialog(
-                            title=ft.Text("Confirm large search count"),
+                            title=ft.Text(value="Confirm large search count"),
                             content=warn_txt,
                             actions=[
                                 ft.TextButton(
-                                    "Start",
+                                    content="Start",
                                     on_click=lambda e: (
                                         (
                                             setattr(secondary, "open", False)
@@ -213,7 +213,7 @@ Continue?"""
                                     ),
                                 ),
                                 ft.TextButton(
-                                    "Cancel",
+                                    content="Cancel",
                                     on_click=lambda e: (
                                         page.pop_dialog(),
                                         page.update(),
@@ -237,23 +237,24 @@ Continue?"""
             page.update()
 
         confirm_dialog = ft.AlertDialog(
-            title=ft.Text("Confirm replace default icons"),
+            title=ft.Text(value="Confirm replace default icons"),
             content=ft.Column(
-                [
+                controls=[
                     warn,
                     include_yoto,
                     ft.Row(
-                        [
+                        controls=[
+
                             max_searches_field,
-                            ft.Text(" "),
-                            ft.Text("(larger values = more searches, longer runtime)"),
+                            ft.Text(value=" "),
+                            ft.Text(value="(larger values = more searches, longer runtime)"),
                         ]
                     ),
                 ]
             ),
             actions=[
-                ft.TextButton("Start", on_click=start_replace),
-                ft.TextButton("Cancel", on_click=cancel_confirm),
+                ft.TextButton(content="Start", on_click=start_replace),
+                ft.TextButton(content="Cancel", on_click=cancel_confirm),
             ],
         )
 
@@ -281,9 +282,10 @@ def start_replace_icons_background(
 
     The badge shows progress and can be clicked to reopen a small status dialog with Cancel.
     """
+    logger.debug("Starting background replace icons")
     try:
         # Badge UI
-        badge_text = ft.Text("Autoselect: 0%")
+        badge_text = ft.Text(value="Autoselect: 0%")
 
         # Cancellation event for the worker
         cancel_event = threading.Event()
@@ -320,18 +322,17 @@ def start_replace_icons_background(
                     # fallback simple dialog
                     try:
                         dlg = ft.AlertDialog(
-                            title=ft.Text("Autoselect status"),
-                            content=ft.Text(badge_text.value),
+                            title=ft.Text(value="Autoselect status"),
+                            content=ft.Text(value=badge_text.value),
                             actions=[
-                                ft.TextButton(
-                                    "Cancel",
+                                ft.TextButton(content="Cancel",
                                     on_click=lambda e: (
                                         cancel_event.set(),
                                         page.pop_dialog(),
                                     ),
                                 ),
                                 ft.TextButton(
-                                    "Close", on_click=lambda e: page.pop_dialog()
+                                    content="Close", on_click=lambda e: page.pop_dialog()
                                 ),
                             ],
                         )
