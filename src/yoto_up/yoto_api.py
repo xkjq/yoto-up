@@ -2418,9 +2418,46 @@ class YotoAPI:
                 _cb('Cancelled', completed / total if total else 1.0)
                 return card
             try:
+                # Helper to decide whether a label is suitable for searching
+                def _suitable_label(label: str) -> bool:
+                    if not label:
+                        return False
+                    s = str(label).strip().lower()
+                    # Reject very generic names like 'track 1', 'chapter 2', 'untitled', 'unknown'
+                    if re.match(r'^(track|chapter|part)\s*\d+$', s):
+                        return False
+                    if s in ('untitled', 'unknown', 'no title', ''):
+                        return False
+                    # Extract keywords after removing stopwords
+                    try:
+                        tokens = word_tokenize(s)
+                    except Exception:
+                        tokens = re.findall(r"\w+", s)
+                    stop = _get_stopwords('english')
+                    filtered = [t for t in (tok.lower() for tok in tokens) if t.isalpha() and t not in stop and len(t) > 2]
+                    return len(filtered) > 0
+
+                # Helper to pick the best query from candidates (track, chapter, card)
+                def _choose_query(track_title: str | None, chapter_title: str | None, card_title: str | None) -> str:
+                    # Prefer track if suitable, else chapter, else card title
+                    for candidate in (track_title, chapter_title, card_title):
+                        if candidate and _suitable_label(candidate):
+                            # prefer cleaned keyword sequence for better results
+                            try:
+                                toks = word_tokenize(candidate.lower())
+                            except Exception:
+                                toks = re.findall(r"\w+", str(candidate).lower())
+                            stop = _get_stopwords('english')
+                            filtered = [t for t in (tok for tok in toks) if isinstance(t, str) and t.isalpha() and t not in stop and len(t) > 2]
+                            if filtered:
+                                return " ".join(filtered)
+                            return str(candidate)
+                    # As a last resort, return card title or empty
+                    return str(card_title or "")
+
                 if kind == 'chapter':
                     chapter = chapters[ch_idx]
-                    query = getattr(chapter, 'title', '')
+                    query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
                     _cb(f"Finding icon for chapter '{query}'", completed / total)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches)
                     if best_icons:
@@ -2439,7 +2476,7 @@ class YotoAPI:
                 else:
                     chapter = chapters[ch_idx]
                     track = chapter.tracks[tr_idx]
-                    query = getattr(track, 'title', getattr(chapter, 'title', ''))
+                    query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
                     _cb(f"Finding icon for track '{query}'", completed / total)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches)
                     if best_icons:
