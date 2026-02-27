@@ -219,8 +219,8 @@ def start_replace_icons_background(
         hide_default = getattr(page, "autoselect_hide_dialog_default", False)
         _open_status_dialog(hide_default=hide_default)
 
-        # Show initial badge state
-        _set_badge("Starting", 0.0, visible=True)
+        # Show initial badge state (schedule async updater)
+        asyncio.create_task(_set_badge("Starting", 0.0, visible=True))
 
         # Open the status dialog by default unless the page requests it be hidden
 
@@ -242,6 +242,8 @@ def start_replace_icons_background(
 
                 page.update_card(new_card)
                 page.pop_dialog()  # close the status dialog if it's still open
+                page.pop_dialog()  # close the status dialog if it's still open
+                page.pop_dialog()  # close the status dialog if it's still open
                 page.show_card_details(new_card)
 
             except Exception as ex:
@@ -249,15 +251,8 @@ def start_replace_icons_background(
                 logger.exception("replace_icons error")
             finally:
                 # remove badge after short delay
-                try:
-                    time.sleep(1)
-                except Exception:
-                    pass
-                try:
-                    if hasattr(page, "set_autoselect_progress"):
-                        page.set_autoselect_progress("", 0.0, visible=False)
-                except Exception:
-                    pass
+                time.sleep(0.1)
+                await page.set_autoselect_progress("", 0.0, visible=False)
 
         page.run_task(work)
     except Exception as e:
