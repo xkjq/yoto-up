@@ -211,8 +211,7 @@ class Card(BaseModel):
     def clear_all_icons(self):
         """Utility method to remove all icon references from the card's chapters and tracks."""
         for ch in self.get_chapters():
-            for t in ch.get_tracks():
-                t.clear_icon_field()
+            ch.clear_all_track_icons()
             ch.clear_icon_field()
 
     def get_metadata(self) -> CardMetadata:
