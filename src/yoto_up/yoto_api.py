@@ -2501,72 +2501,57 @@ class YotoAPI:
                     # As a last resort, return card title or empty
                     return str(card_title or "")
 
-                if kind == 'chapter':
+                # Consolidated helper to find/select/upload/apply an icon for a chapter or track
+                def _process_target(kind: str, ch_idx: int, tr_idx: int, frac: float) -> bool:
                     chapter = chapters[ch_idx]
-                    query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
-                    _cb(f"Finding icon for chapter '{query}'", completed / total)
+                    track = None
+                    if kind == 'chapter':
+                        query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
+                        target_label = f"chapter '{query}'"
+                    else:
+                        track = chapter.tracks[tr_idx]
+                        query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
+                        target_label = f"track '{query}'"
+
+                    _cb(f"Finding icon for {target_label}", frac)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, top_n=total, max_searches=max_searches, exclude_media_ids=used_media_ids)
+                    chosen_media = None
                     if best_icons:
-                        chosen_media = None
-                        # Iterate candidates until we find one with an unused mediaId
                         for candidate in best_icons:
-                            # report examining candidate
-                            _cb(f"Examining candidate icon for chapter '{query}'", completed / total)
+                            _cb(f"Examining candidate icon for {target_label}", frac)
                             media_id = candidate.get('mediaId')
-                            # If no mediaId but it's a yotoicons candidate, try uploading to get a mediaId
                             if not media_id and 'id' in candidate:
-                                _cb(f"Uploading candidate icon for chapter '{query}'", completed / total)
+                                _cb(f"Uploading candidate icon for {target_label}", frac)
                                 if cancel_event and cancel_event.is_set():
-                                    _cb('Cancelled', completed / total)
-                                    return card
+                                    _cb('Cancelled', frac)
+                                    return False
                                 uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
                                 media_id = uploaded_icon.get('mediaId')
-                                _cb(f"Uploaded candidate icon for chapter '{query}'", completed / total)
+                                _cb(f"Uploaded candidate icon for {target_label}", frac)
                             if not media_id:
-                                _cb(f"Candidate had no mediaId, skipping", completed / total)
+                                _cb(f"Candidate had no mediaId, skipping", frac)
                                 continue
                             if str(media_id) in used_media_ids:
-                                _cb(f"Candidate mediaId {media_id} already used, skipping", completed / total)
+                                _cb(f"Candidate mediaId {media_id} already used, skipping", frac)
                                 continue
                             chosen_media = str(media_id)
-                            _cb(f"Selected mediaId {chosen_media} for chapter '{query}'", completed / total)
+                            _cb(f"Selected mediaId {chosen_media} for {target_label}", frac)
                             break
-                        if chosen_media:
+
+                    if chosen_media:
+                        if kind == 'chapter':
                             chapter.set_icon_field(f"yoto:#{chosen_media}")
-                            used_media_ids.add(chosen_media)
                             logger.info(f"Replaced chapter '{chapter.title}' icon with mediaId: {chosen_media}")
-                else:
-                    chapter = chapters[ch_idx]
-                    track = chapter.tracks[tr_idx]
-                    query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
-                    _cb(f"Finding icon for track '{query}'", completed / total)
-                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, top_n=total, max_searches=max_searches, exclude_media_ids=used_media_ids)
-                    if best_icons:
-                        chosen_media = None
-                        for candidate in best_icons:
-                            _cb(f"Examining candidate icon for track '{query}'", completed / total)
-                            media_id = candidate.get('mediaId')
-                            if not media_id and 'id' in candidate:
-                                _cb(f"Uploading candidate icon for track '{query}'", completed / total)
-                                if cancel_event and cancel_event.is_set():
-                                    _cb('Cancelled', completed / total)
-                                    return card
-                                uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
-                                media_id = uploaded_icon.get('mediaId')
-                                _cb(f"Uploaded candidate icon for track '{query}'", completed / total)
-                            if not media_id:
-                                _cb(f"Candidate had no mediaId, skipping", completed / total)
-                                continue
-                            if str(media_id) in used_media_ids:
-                                _cb(f"Candidate mediaId {media_id} already used, skipping", completed / total)
-                                continue
-                            chosen_media = str(media_id)
-                            _cb(f"Selected mediaId {chosen_media} for track '{query}'", completed / total)
-                            break
-                        if chosen_media:
+                        else:
                             track.set_icon_field(f"yoto:#{chosen_media}")
-                            used_media_ids.add(chosen_media)
                             logger.info(f"Replaced track '{track.title}' icon with mediaId: {chosen_media}")
+                        used_media_ids.add(chosen_media)
+                    return True
+
+                # Run processor for this target
+                ok = _process_target(kind, ch_idx, tr_idx, completed / total)
+                if not ok:
+                    return card
             except Exception as e:
                 logger.error(f"Error replacing icon for {kind} at {ch_idx}/{tr_idx}: {e}")
             finally:
