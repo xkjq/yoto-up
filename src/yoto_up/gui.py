@@ -17,7 +17,7 @@ from yoto_up.yoto_app.icon_replace_dialog import IconReplaceDialog
 
 import traceback
 import threading
-from typing import Optional
+from typing import Optional, Any, TYPE_CHECKING, Callable, Dict, Set
 
 import flet as ft
 
@@ -53,7 +53,42 @@ To authenticate with your Yoto account:
 """
 
 
-def main(page: ft.Page):
+if TYPE_CHECKING:
+    import flet as _ft  # only for type checking
+
+    class Page(_ft.Page):
+        cards: list[Card]
+        api_ref: Dict[str, Any]
+        get_api: Callable[[], Any]
+        update_local_card_cache: Callable[[Card, bool], None]
+        update_card: Callable[[Card], None]
+        fetch_playlists_sync: Optional[Callable[..., Any]]
+        fetch_playlists: Optional[Callable[..., Any]]
+        selected_playlist_ids: Set[str]
+        status: _ft.Text
+        show_snack: Callable[..., None]
+        auth_instructions: _ft.Column
+        snack_bar: Any
+        auth_complete: Callable[[], None]
+        upload_manager: Any
+        pixel_editor: Any
+        set_autoselect_progress: Callable[..., None]
+        open_autoselect_status_dialog: Callable[..., None]
+        autoselect_hide_dialog_default: bool
+        autoselect_status_ctrl: Optional[_ft.Control]
+        autoselect_status_detail: Optional[_ft.Control]
+        autoselect_cancel_event: Optional[threading.Event]
+        icon_cache_refreshed_callbacks: Optional[list]
+        set_icon_refreshing: Callable[..., None]
+        get_cached_cover: Callable[[str], Optional[str]]
+        switch_to_auth_tab: Callable[[], None]
+        invalidate_authentication: Callable[[], None]
+        show_card_details: Callable[..., Any]
+else:
+    Page = ft.Page
+
+
+def main(page: "Page"):
     logger.add(
         sys.stderr,
         level="DEBUG",
@@ -361,10 +396,7 @@ def main(page: ft.Page):
 
     def clear_all_user_data_gui(e=None):
         """Show confirmation and clear local user data (tokens, ui state, caches, icon caches, versions)."""
-        try:
-            import yoto_up.paths as paths_mod
-        except Exception:
-            paths_mod = None
+        import yoto_up.paths as paths_mod
 
         dlg = ft.AlertDialog(
             title=ft.Text(value="Confirm Clear All User Data"),
@@ -621,7 +653,7 @@ def main(page: ft.Page):
                 except Exception:
                     pass
 
-            hide_checkbox.on_select = on_hide_change
+            hide_checkbox.on_change = on_hide_change
 
             status_txt = ft.Text(value=autoselect_badge_text.value or "Autoselect running...")
             # Keep a reference on the page so the progress updater can refresh this control
@@ -649,14 +681,13 @@ def main(page: ft.Page):
                 content=content_col,
                 actions=[
                     ft.TextButton(
-                        content=
-                        "Cancel",
+                        content=ft.Text(value="Cancel"),
                         on_click=lambda e: (
                             cancel_event.set() if cancel_event else None,
                             page.pop_dialog(),
                         ),
                     ),
-                    ft.TextButton(content="Close", on_click=lambda e: page.pop_dialog()),
+                    ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()),
                 ],
             )
             page.show_dialog(dlg)
@@ -835,11 +866,32 @@ def main(page: ft.Page):
         content=ft.Column(
             expand=True,
             controls=[
-                ft.TabBar(tabs=all_tab_labels),
+                tab_bar := ft.TabBar(tabs=all_tab_labels),
                 ft.TabBarView(expand=True, controls=all_tab_content),
             ],
         ),
     )
+
+    def enable_tab_by_label(label: str):
+            for tab in getattr(tab_bar, "tabs", []):
+                logger.debug(f"Checking tab: {getattr(tab, 'label', None)} against {label}")
+                if getattr(tab, "label", None) == label:
+                    tab.disabled = False
+                    page.update()
+                    return True
+            return False
+
+
+    def disable_tab_by_label(label: str):
+            logger.debug(f"Disabling tab with label: {label}")
+            for tab in getattr(tab_bar, "tabs", []):
+                logger.debug(f"Checking tab: {getattr(tab, 'label', None)} against {label}")
+                if getattr(tab, "label", None) == label:
+                    logger.debug(f"Disabling tab: {label}")
+                    tab.disabled = True
+                    page.update()
+                    return True
+            return False
 
     # Place About button above tabs
     page.add(
@@ -854,12 +906,10 @@ def main(page: ft.Page):
     )
     logger.debug("Tabs control created and header added")
     page.add(tabs_control)
-    logger.debug("Tabs control added to page")
 
     def auth_complete():
         logger.debug("Auth complete")
         # Enable all tabs - access TabBar from tabs_control.content.controls[0]
-        tab_bar = tabs_control.content.controls[0]  # First control in Column is TabBar
         for i in range(1, len(tab_bar.tabs)):
             tab_bar.tabs[i].disabled = False
 
@@ -989,6 +1039,7 @@ def main(page: ft.Page):
             ]
         )
         auth_complete()
+        disable_tab_by_label("Playlists")
         page.update()
 
 
