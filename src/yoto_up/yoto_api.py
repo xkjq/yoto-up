@@ -2370,6 +2370,13 @@ class YotoAPI:
         """
         Replace default placeholder icons on a Card's chapters and tracks.
         Optionally accepts a progress_callback(msg, frac) for UI updates.
+
+        If the trackname is does not have suitable keywords (e.g. it's just "Track 1") then the search
+        will fallback to using the chapter name as the query.
+
+        If the chapter name is also not suitable we fallback to the card title.
+
+        We will not use the same icon for multiple tracks/chapters
         """
 
         def _cb(msg: str | None = None, frac: float | None = None):
