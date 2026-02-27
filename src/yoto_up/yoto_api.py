@@ -2391,13 +2391,13 @@ class YotoAPI:
         for ch_idx, chapter in enumerate(chapters):
                 # chapter icon
                 icon_field = chapter.get_icon_field()
-                if icon_field and icon_field.endswith(DEFAULT_MEDIA_ID):
+                if icon_field is None or (icon_field and icon_field.endswith(DEFAULT_MEDIA_ID)):
                     targets.append(("chapter", ch_idx, None))
                 # track icons
                 if hasattr(chapter, "tracks") and chapter.tracks:
                     for tr_idx, track in enumerate(chapter.tracks):
                         ticon = track.get_icon_field()
-                        if ticon and ticon.endswith(DEFAULT_MEDIA_ID):
+                        if ticon is None or (ticon and ticon.endswith(DEFAULT_MEDIA_ID)):
                             targets.append(("track", ch_idx, tr_idx))
 
         total = len(targets)
