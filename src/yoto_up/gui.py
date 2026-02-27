@@ -103,7 +103,7 @@ def main(page: "Page"):
 
     page.cards: list[Card] = []
 
-    def update_local_card_cache(card: Card, refresh_ui: bool = True):
+    def update_local_card_cache(card: Card, refresh_ui: bool = False):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
         existing = next((c for c in page.cards if c.cardId == card.cardId), None)
         if existing:

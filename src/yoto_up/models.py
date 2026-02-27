@@ -326,13 +326,12 @@ class Card(BaseModel):
             return ""
 
     def get_chapters(self) -> List[Chapter]:
-        """Return the list of chapters in the card, or an empty list if not available."""
-        try:
-            if self.content and self.content.chapters:
-                return self.content.chapters
-        except Exception:
-            logger.warning(f"Failed to get chapters for card {self.cardId}")
-        return []
+        """Return the list of chapters in the card, initializing content and chapters if needed."""
+        if self.content is None:
+            self.content = CardContent()
+        if self.content.chapters is None:
+            self.content.chapters = []
+        return self.content.chapters
 
     def get_track_list(self) -> List[Track]:
         """Return the list of tracks in the card, or an empty list if not available."""

@@ -242,6 +242,8 @@ def start_replace_icons_background(
                 )
 
                 page.update_card(new_card)
+                page.pop_dialog()  # close the status dialog if it's still open
+                page.show_card_details(new_card)
 
             except Exception as ex:
                 page.show_snack(f"Replace icons failed: {ex}", error=True)

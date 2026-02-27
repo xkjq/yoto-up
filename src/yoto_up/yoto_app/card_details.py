@@ -625,10 +625,13 @@ def make_show_card_details(
                 
                 # Buttons to remove icons from all chapters/tracks
                 def _clear_all_track_icons(ev=None):
+                    logger.error("Clearing all track icons for card id {c.cardId}")
                     # clear track icons using model helper on Track
                     for ch in card.get_chapters():
                         ch.clear_all_track_icons()
                     new_card = page.update_card(card)
+                    logger.debug(new_card)
+                    logger.error("All track icons cleared, refreshing details view")
                     show_card_details(new_card)
                     page.show_snack("Cleared all track icons")
 
