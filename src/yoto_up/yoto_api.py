@@ -2412,6 +2412,8 @@ class YotoAPI:
             return card
 
         completed = 0
+        # Track mediaIds we've already assigned so we don't reuse the same icon
+        used_media_ids: set[str] = set()
         for kind, ch_idx, tr_idx in targets:
             # Check for cancellation before each item
             if cancel_event and cancel_event.is_set():
@@ -2461,18 +2463,28 @@ class YotoAPI:
                     _cb(f"Finding icon for chapter '{query}'", completed / total)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches)
                     if best_icons:
-                        best_icon = best_icons[0]
-                        media_id = best_icon.get('mediaId')
-                        if media_id is None and 'id' in best_icon:
-                            _cb(f"Uploading candidate icon for chapter '{query}'", completed / total)
-                            if cancel_event and cancel_event.is_set():
-                                _cb('Cancelled', completed / total)
-                                return card
-                            uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(best_icon)
-                            media_id = uploaded_icon.get('mediaId')
-                        if media_id:
-                            chapter.set_icon_field(f"yoto:#{media_id}")
-                            logger.info(f"Replaced chapter '{chapter.title}' icon with mediaId: {media_id}")
+                        chosen_media = None
+                        # Iterate candidates until we find one with an unused mediaId
+                        for candidate in best_icons:
+                            media_id = candidate.get('mediaId')
+                            # If no mediaId but it's a yotoicons candidate, try uploading to get a mediaId
+                            if not media_id and 'id' in candidate:
+                                _cb(f"Uploading candidate icon for chapter '{query}'", completed / total)
+                                if cancel_event and cancel_event.is_set():
+                                    _cb('Cancelled', completed / total)
+                                    return card
+                                uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
+                                media_id = uploaded_icon.get('mediaId')
+                            if not media_id:
+                                continue
+                            if str(media_id) in used_media_ids:
+                                continue
+                            chosen_media = str(media_id)
+                            break
+                        if chosen_media:
+                            chapter.set_icon_field(f"yoto:#{chosen_media}")
+                            used_media_ids.add(chosen_media)
+                            logger.info(f"Replaced chapter '{chapter.title}' icon with mediaId: {chosen_media}")
                 else:
                     chapter = chapters[ch_idx]
                     track = chapter.tracks[tr_idx]
@@ -2480,18 +2492,26 @@ class YotoAPI:
                     _cb(f"Finding icon for track '{query}'", completed / total)
                     best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches)
                     if best_icons:
-                        best_icon = best_icons[0]
-                        media_id = best_icon.get('mediaId')
-                        if media_id is None and 'id' in best_icon:
-                            _cb(f"Uploading candidate icon for track '{query}'", completed / total)
-                            if cancel_event and cancel_event.is_set():
-                                _cb('Cancelled', completed / total)
-                                return card
-                            uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(best_icon)
-                            media_id = uploaded_icon.get('mediaId')
-                        if media_id:
-                            track.set_icon_field(f"yoto:#{media_id}")
-                            logger.info(f"Replaced track '{track.title}' icon with mediaId: {media_id}")
+                        chosen_media = None
+                        for candidate in best_icons:
+                            media_id = candidate.get('mediaId')
+                            if not media_id and 'id' in candidate:
+                                _cb(f"Uploading candidate icon for track '{query}'", completed / total)
+                                if cancel_event and cancel_event.is_set():
+                                    _cb('Cancelled', completed / total)
+                                    return card
+                                uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
+                                media_id = uploaded_icon.get('mediaId')
+                            if not media_id:
+                                continue
+                            if str(media_id) in used_media_ids:
+                                continue
+                            chosen_media = str(media_id)
+                            break
+                        if chosen_media:
+                            track.set_icon_field(f"yoto:#{chosen_media}")
+                            used_media_ids.add(chosen_media)
+                            logger.info(f"Replaced track '{track.title}' icon with mediaId: {chosen_media}")
             except Exception as e:
                 logger.error(f"Error replacing icon for {kind} at {ch_idx}/{tr_idx}: {e}")
             finally:
