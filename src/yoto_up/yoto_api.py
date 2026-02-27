@@ -2061,18 +2061,43 @@ class YotoAPI:
         # Filter out zero-score matches
         best_icons = [icon for score, icon in scored_icons if score > 0]
         # If caller provided mediaIds to exclude, filter out icons that map to those mediaIds
+        # Also consult the upload cache so YotoIcons entries that were previously uploaded
+        # (and therefore map to an official mediaId) are correctly excluded.
         if exclude_media_ids:
             try:
+                upload_cache = self._load_icon_upload_cache()
+                # build mapping from yotoicons id -> mediaId for uploaded icons
+                yid_to_mid = {}
+                for _, v in (upload_cache or {}).items():
+                    try:
+                        yid = v.get('yotoicons_id')
+                        mid = v.get('mediaId')
+                        if yid and mid:
+                            yid_to_mid[str(yid)] = str(mid)
+                        # also map by uploaded result URL if available
+                        url = v.get('url')
+                        if url and mid:
+                            yid_to_mid[str(url)] = str(mid)
+                    except Exception:
+                        continue
+
                 filtered = []
+                exclude_set = {str(x) for x in exclude_media_ids}
                 for icon in best_icons:
                     mid = icon.get('mediaId')
                     if mid is None:
                         # attempt to treat numeric ids or string ids consistently
                         mid = icon.get('displayIconId') or icon.get('id')
+                    # If icon is a YotoIcons entry that was previously uploaded, map its id or url to mediaId
+                    if mid is None and icon.get('id') and str(icon.get('id')) in yid_to_mid:
+                        mid = yid_to_mid.get(str(icon.get('id')))
+                    if mid is None and icon.get('img_url') and str(icon.get('img_url')) in yid_to_mid:
+                        mid = yid_to_mid.get(str(icon.get('img_url')))
+
                     if mid is None:
                         filtered.append(icon)
                         continue
-                    if str(mid) in {str(x) for x in exclude_media_ids}:
+                    if str(mid) in exclude_set:
                         continue
                     filtered.append(icon)
                 best_icons = filtered
@@ -2480,7 +2505,7 @@ class YotoAPI:
                     chapter = chapters[ch_idx]
                     query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
                     _cb(f"Finding icon for chapter '{query}'", completed / total)
-                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches, exclude_media_ids=used_media_ids)
+                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, top_n=total, max_searches=max_searches, exclude_media_ids=used_media_ids)
                     if best_icons:
                         chosen_media = None
                         # Iterate candidates until we find one with an unused mediaId
@@ -2515,7 +2540,7 @@ class YotoAPI:
                     track = chapter.tracks[tr_idx]
                     query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
                     _cb(f"Finding icon for track '{query}'", completed / total)
-                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, max_searches=max_searches, exclude_media_ids=used_media_ids)
+                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, top_n=total, max_searches=max_searches, exclude_media_ids=used_media_ids)
                     if best_icons:
                         chosen_media = None
                         for candidate in best_icons:
