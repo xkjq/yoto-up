@@ -918,7 +918,7 @@ def build_playlists_panel(
                         except Exception:
                             pass
                     card.metadata = meta
-                    page.update_card(card, refresh_ui=False)
+                    page.update_card(card)
                     updated += 1
                 except Exception as ex:
                     logger.error(f"Failed to update category for {cid}: {ex}")
@@ -939,7 +939,7 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    page.update_card(card, refresh_ui=False)
+                    page.update_card(card)
                     removed += 1
                 except Exception as ex:
                     logger.error(f"Failed to remove category for {cid}: {ex}")
@@ -1004,7 +1004,7 @@ def build_playlists_panel(
                 print(f"Updating tags for {cid}: {new_tags}")
                 meta.tags = new_tags
                 card.metadata = meta
-                page.update_card(card, refresh_ui=False)
+                page.update_card(card)
                 updated += 1
             status_text.value = f"Tags added to {updated} playlists. {'Failed: ' + str(failed) if failed else ''}"
             page.show_snack(status_text.value)
@@ -1046,7 +1046,7 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    page.update_card(card, refresh_ui=False)
+                    page.update_card(card)
                     updated += 1
                 except Exception as ex:
                     logger.error(f"Failed to update author for {cid}: {ex}")
@@ -1067,7 +1067,7 @@ def build_playlists_panel(
                     except Exception:
                         pass
                     card.metadata = meta
-                    page.update_card(card, refresh_ui=False)
+                    page.update_card(card)
                     removed += 1
                 except Exception as ex:
                     logger.error(f"Failed to remove author for {cid}: {ex}")
