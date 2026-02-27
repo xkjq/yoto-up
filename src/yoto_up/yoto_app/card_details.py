@@ -614,7 +614,44 @@ def make_show_card_details(
                 chapters_rv = ft.ReorderableListView(controls=chapter_items, on_reorder=make_chapter_on_reorder)
                 controls.append(chapters_rv)
 
+                # Buttons at the bottom of the dialog content
                 controls.append(ft.Row(controls=[ft.TextButton(content="Save Order", on_click=save_order_click)]))
+                
+                # Buttons to remove icons from all chapters/tracks
+                def _clear_all_track_icons(ev=None):
+                    # clear track icons using model helper on Track
+                    for ch in card.get_chapters():
+                        ch.clear_all_track_icons()
+                    page.update_card(card)
+                    show_card_details(card)
+                    page.show_snack("Cleared all track icons")
+
+                def _clear_all_chapter_icons(ev=None):
+                    # clear chapter icons using model helper on Chapter
+                    for ch in card.get_chapters():
+                        ch.clear_icon_field()
+                    page.update_card(card)
+                    show_card_details(card)
+                    page.show_snack("Cleared all chapter icons")
+
+                def _clear_all_icons(ev=None):
+                    # Use Card helper to clear all icons
+                    card.clear_all_icons()
+                    page.update_card(card)
+                    show_card_details(card)
+                    page.show_snack("Cleared all icons (chapters + tracks)")
+
+                controls.append(
+                    ft.Row(
+                        controls=[
+                            ft.TextButton(content="Clear all track icons", on_click=_clear_all_track_icons),
+                            ft.TextButton(content="Clear all chapter icons", on_click=_clear_all_chapter_icons),
+                            ft.TextButton(content="Clear all icons", on_click=_clear_all_icons),
+                        ],
+                        spacing=8,
+                    )
+                )
+
 
                 # Build a chapters_view from the controls appended after the header
                 try:

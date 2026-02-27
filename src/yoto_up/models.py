@@ -108,6 +108,12 @@ class Chapter(BaseModel):
             self.display = ChapterDisplay()
         
         self.display.icon16x16 = None
+
+    def clear_all_track_icons(self) -> None:
+        """Utility method to clear icons from all tracks in this chapter."""
+        if self.tracks:
+            for track in self.tracks:
+                track.clear_icon_field()
     
     def get_tracks(self) -> List[Track]:
         try:

@@ -134,7 +134,6 @@ def main(page: "Page"):
             api = get_api()
             updated = api.update_card(card, return_card_model=True)
             update_local_card_cache(updated)
-            build_playlists_ui(page)
         except Exception as ex:
             logger.error(f"Failed to update card: {ex}")
             page.show_snack(f"Failed to update card: {ex}", error=True)
