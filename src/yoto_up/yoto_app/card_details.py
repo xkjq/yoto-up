@@ -628,23 +628,23 @@ def make_show_card_details(
                     # clear track icons using model helper on Track
                     for ch in card.get_chapters():
                         ch.clear_all_track_icons()
-                    page.update_card(card)
-                    show_card_details(card)
+                    new_card = page.update_card(card)
+                    show_card_details(new_card)
                     page.show_snack("Cleared all track icons")
 
                 def _clear_all_chapter_icons(ev=None):
                     # clear chapter icons using model helper on Chapter
                     for ch in card.get_chapters():
                         ch.clear_icon_field()
-                    page.update_card(card)
-                    show_card_details(card)
+                    new_card = page.update_card(card)
+                    show_card_details(new_card)
                     page.show_snack("Cleared all chapter icons")
 
                 def _clear_all_icons(ev=None):
                     # Use Card helper to clear all icons
                     card.clear_all_icons()
-                    page.update_card(card)
-                    show_card_details(card)
+                    new_card = page.update_card(card)
+                    show_card_details(new_card)
                     page.show_snack("Cleared all icons (chapters + tracks)")
 
                 controls.append(

@@ -4,6 +4,7 @@ from colorlog import log
 from yoto_up.models import Card
 from pathlib import Path
 import sys
+import time
 
 from yoto_up.paths import (
     TOKENS_FILE,
@@ -104,19 +105,16 @@ def main(page: "Page"):
 
     def update_local_card_cache(card: Card, refresh_ui: bool = True):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
-        try:
-            existing = next((c for c in page.cards if c.cardId == card.cardId), None)
-            if existing:
-                page.cards.remove(existing)
-            page.cards.append(card)
-            if refresh_ui:
-                # We have to delay the UI update slightly to avoid issues with controls being updated while they're being built in some cases. This is a bit hacky but seems to work reliably.
-                async def _update_ui():
-                    await asyncio.sleep(1)
-                    build_playlists_ui(page)
-                page.run_task(_update_ui)
-        except Exception:
-            logger.error(f"Failed to update local card cache: {traceback.format_exc()}")
+        existing = next((c for c in page.cards if c.cardId == card.cardId), None)
+        if existing:
+            page.cards.remove(existing)
+        page.cards.append(card)
+        if refresh_ui:
+            # We have to delay the UI update slightly to avoid issues with controls being updated while they're being built in some cases. This is a bit hacky but seems to work reliably.
+            async def _update_ui():
+                await asyncio.sleep(1)
+                build_playlists_ui(page)
+            page.run_task(_update_ui)
 
     page.update_local_card_cache = (
         update_local_card_cache  # expose on page for easy access from helpers
@@ -131,7 +129,7 @@ def main(page: "Page"):
 
     page.get_api = get_api
 
-    def update_card(card: Card) -> None:
+    def update_card(card: Card) -> Card | None:
         """
         Generic helper to perform an API update of a card and refresh the local cache and UI. This is used by various helpers after making changes to a card to persist those changes and update the UI.
         """
@@ -139,6 +137,8 @@ def main(page: "Page"):
             api = get_api()
             updated = api.update_card(card, return_card_model=True)
             update_local_card_cache(updated)
+            time.sleep(0.5)  # delay to allow cache update to propagate before UI updates; this is a bit hacky but seems to help with some UI update issues
+            return updated
         except Exception as ex:
             logger.error(f"Failed to update card: {ex}")
             page.show_snack(f"Failed to update card: {ex}", error=True)

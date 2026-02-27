@@ -3,7 +3,7 @@ from typing import Optional, List, Literal, cast
 from pydantic import BaseModel
 from yoto_up.icons import render_icon
 
-DEFAULT_MEDIA_ID = "aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
+DEFAULT_MEDIA_ID = "yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
 
 class Ambient(BaseModel):
     defaultTrackDisplay: Optional[str] = None

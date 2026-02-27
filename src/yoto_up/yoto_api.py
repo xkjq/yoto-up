@@ -1040,7 +1040,7 @@ class YotoAPI:
                 title=card_title,
                 overlayLabel="1",
                 tracks=tracks,
-                display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+                display=ChapterDisplay(icon16x16=DEFAULT_MEDIA_ID),
             )
             chapters = [chapter]
         else:
@@ -1176,7 +1176,7 @@ class YotoAPI:
             format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel="1",
-            display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if track_details:
             merged = {**track.model_dump(exclude_none=True), **track_details}
@@ -1198,7 +1198,7 @@ class YotoAPI:
             fileSize=media_info.fileSize if media_info else None,
             channels=media_info.channels if media_info else None,
             overlayLabel="1",
-            display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if track_details:
             track = Track.model_validate({**track.model_dump(exclude_none=True), **track_details})
@@ -1208,7 +1208,7 @@ class YotoAPI:
             title=chapter_title,
             overlayLabel="1",
             tracks=[track],
-            display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=ChapterDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if chapter_details:
             chapter = Chapter.model_validate({**chapter.model_dump(exclude_none=True), **chapter_details})
@@ -1228,7 +1228,7 @@ class YotoAPI:
             fileSize=media_info.fileSize if media_info else None,
             channels=media_info.channels if media_info else None,
             overlayLabel="1",
-            display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if track_details:
             track = Track.model_validate({**track.model_dump(exclude_none=True), **track_details})
@@ -1238,7 +1238,7 @@ class YotoAPI:
             title=chapter_title,
             overlayLabel="1",
             tracks=[track],
-            display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=ChapterDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if chapter_details:
             chapter = Chapter.model_validate({**chapter.model_dump(exclude_none=True), **chapter_details})
@@ -1341,7 +1341,7 @@ class YotoAPI:
             format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel=str(next_chapter_number),
-            display=TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
         if track_details:
             new_track = Track.model_validate({**new_track.model_dump(exclude_none=True), **track_details})
@@ -1351,7 +1351,7 @@ class YotoAPI:
             title=new_track.title,
             overlayLabel=str(next_chapter_number),
             tracks=[new_track],
-            display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            display=ChapterDisplay(icon16x16=DEFAULT_MEDIA_ID),
             duration=media_info.duration if media_info else None,
             fileSize=media_info.fileSize if media_info else None,
         )
