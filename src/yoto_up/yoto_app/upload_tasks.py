@@ -209,7 +209,7 @@ class FileUploadRow:
         silence_thresh = ft.TextField(label="Silence thresh (dB)", value="-40", width=120)
         min_silence_ms = ft.TextField(label="Min silence ms", value="800", width=120)
         output_dir = ft.TextField(label="Output directory (optional)", value="", width=400)
-        name_tmpl = ft.TextField(label="Output name template (optional)", value="", width=400)
+        name_tmpl = ft.TextField(label="Output name template (optional)", value="Track {index}", width=400)
 
         def start_split(e=None):
             async def _do_split():
@@ -244,10 +244,75 @@ class FileUploadRow:
                 except Exception as exc:
                     # Ensure progress dialog is closed and show error to user without crashing
                     tb = _tb.format_exc()
+                    # Friendly suggestions for the user
+                    suggestion_lines = [
+                        ft.Text(value="Split failed: " + str(exc), color=ft.Colors.RED),
+                        ft.Text(value="Traceback (for debugging):"),
+                        ft.Text(value=tb),
+                        ft.Text(value="Suggestions:") ,
+                        ft.Text(value="- Try reducing the silence threshold magnitude (e.g. -30 -> -20)"),
+                        ft.Text(value="- Decrease the min track length, or increase it if too many tiny segments are detected."),
+                        ft.Text(value="- Use 'Try even splits' to force evenly-sized segments as a fallback."),
+                    ]
+
+                    def _try_even(ev=None):
+                        # Close error dlg then start an even-split run with conservative params
+                        page.pop_dialog()
+
+                        async def _even_run():
+                            run_dlg2 = ft.AlertDialog(title=ft.Text("Splitting (even)..."), content=ft.Column([ft.ProgressRing(), ft.Text(value="Working...")]), modal=True)
+                            page.show_dialog(run_dlg2)
+                            page.update()
+                            try:
+                                # Use extreme silence threshold to force fallback to even splits
+                                even_results = await asyncio.to_thread(
+                                    api.split_audio,
+                                    self.filepath,
+                                    target_tracks=t_tracks,
+                                    min_track_length_sec=min_l,
+                                    silence_thresh_db=-1000,
+                                    min_silence_len_ms=min_s_ms,
+                                    output_dir=out_dir_val,
+                                    show_progress=False,
+                                    output_name_template=tmpl,
+                                )
+                            except Exception as e2:
+                                page.pop_dialog()
+                                err2 = ft.AlertDialog(title=ft.Text("Even split failed"), content=ft.Text(value=str(e2)), actions=[ft.TextButton(content=ft.Text("Close"), on_click=lambda e: page.pop_dialog())])
+                                page.show_dialog(err2)
+                                page.update()
+                                return
+                            finally:
+                                page.pop_dialog()
+
+                            # Replace original row with even_results
+                            if even_results:
+                                col = page.file_rows_column
+                                try:
+                                    idx = col.controls.index(self.row)
+                                except ValueError:
+                                    idx = len(col.controls)
+                                try:
+                                    if idx < len(col.controls) and col.controls[idx] is self.row:
+                                        col.controls.pop(idx)
+                                except Exception:
+                                    pass
+                                for p in even_results:
+                                    pstr = str(p)
+                                    file_row = FileUploadRow(pstr, page)
+                                    col.controls.insert(idx, file_row.row)
+                                    idx += 1
+                                page.update()
+
+                        page.run_task(_even_run)
+
                     err_dlg = ft.AlertDialog(
                         title=ft.Text("Split failed"),
-                        content=ft.Column(controls=[ft.Text(value=str(exc)), ft.Text(value=tb)], scroll=ft.ScrollMode.AUTO, width=600),
-                        actions=[ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog())],
+                        content=ft.Column(controls=suggestion_lines, scroll=ft.ScrollMode.AUTO, width=600),
+                        actions=[
+                            ft.TextButton(content=ft.Text(value="Try even splits"), on_click=_try_even),
+                            ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()),
+                        ],
                         scrollable=True,
                     )
                     page.show_dialog(err_dlg)
