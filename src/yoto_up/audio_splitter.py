@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import re
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
@@ -170,6 +170,7 @@ def split_audio(
     show_progress: bool = True,
     console: Optional[Console] = None,
     output_name_template: Optional[str] = None,
+    progress_callback: Optional[Callable[[str, float], None]] = None,
 ) -> List[Path]:
     """Split `input_path` into up to `target_tracks` pieces.
 
@@ -197,6 +198,11 @@ def split_audio(
             raw = _run_ffmpeg_silencedetect(p, silence_thresh_db, min_silence_len_s)
     else:
         raw = _run_ffmpeg_silencedetect(p, silence_thresh_db, min_silence_len_s)
+    if callable(progress_callback):
+        try:
+            progress_callback("silence_detected", 0.0)
+        except Exception:
+            pass
     silence_ranges = _parse_silencedetect_output(raw)
 
     candidates = []
@@ -314,6 +320,11 @@ def split_audio(
             task = progress.add_task("Extracting segments", total=total)
             for idx, (start, end) in enumerate(segments):
                 out_path = _format_output_name(p, idx, total, out_dir, template=output_name_template)
+                if callable(progress_callback):
+                    try:
+                        progress_callback(f"Extracting {idx+1}/{total}", idx / total)
+                    except Exception:
+                        pass
                 progress.update(task, description=f"Segment {idx+1}/{total} — {end-start:.1f}s")
                 # use ffmpeg to extract
                 cmd = [
@@ -359,10 +370,20 @@ def split_audio(
                             f"ffmpeg failed to create segment {idx + 1}: {proc2.stderr}\n{proc.stderr}"
                         )
                 outputs.append(out_path)
+                if callable(progress_callback):
+                    try:
+                        progress_callback(f"Completed {idx+1}/{total}", (idx + 1) / total)
+                    except Exception:
+                        pass
                 progress.advance(task)
     else:
         for idx, (start, end) in enumerate(segments):
-            out_path = _format_output_name(p, idx, total, out_dir)
+            out_path = _format_output_name(p, idx, total, out_dir, template=output_name_template)
+            if callable(progress_callback):
+                try:
+                    progress_callback(f"Extracting {idx+1}/{total}", idx / total)
+                except Exception:
+                    pass
             # use ffmpeg to extract
             cmd = [
                 "ffmpeg",
@@ -411,6 +432,11 @@ def split_audio(
                         f"ffmpeg failed to create segment {idx + 1}: {proc2.stderr}\n{proc.stderr}"
                     )
             outputs.append(out_path)
+            if callable(progress_callback):
+                try:
+                    progress_callback(f"Completed {idx+1}/{total}", (idx + 1) / total)
+                except Exception:
+                    pass
 
     if show_progress:
         # Print a summary table of created files

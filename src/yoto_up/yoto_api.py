@@ -1,3 +1,4 @@
+from nltk.lm.vocabulary import _
 import httpx
 import time
 import base64
@@ -374,20 +375,24 @@ class YotoAPI:
     def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
                     silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
                     show_progress: bool = True, console: Optional[Console] = None,
-                    output_name_template: Optional[str] = None) -> list:
+                    output_name_template: Optional[str] = None,
+                    progress_callback: Optional[Callable[[str, float], None]] = None) -> list:
         """Thin wrapper that splits an audio file into multiple tracks.
 
         Returns a list of output file Paths. Requires `ffmpeg` to be installed.
         """
-        return _split_audio_file(input_path,
-                     target_tracks=target_tracks,
-                     min_track_length_sec=min_track_length_sec,
-                     silence_thresh_db=silence_thresh_db,
-                     min_silence_len_ms=min_silence_len_ms,
-                     output_dir=output_dir,
-                     show_progress=show_progress,
-                     console=console,
-                     output_name_template=output_name_template)
+        return _split_audio_file(
+            input_path,
+            target_tracks=target_tracks,
+            min_track_length_sec=min_track_length_sec,
+            silence_thresh_db=silence_thresh_db,
+            min_silence_len_ms=min_silence_len_ms,
+            output_dir=output_dir,
+            show_progress=show_progress,
+            console=console,
+            output_name_template=output_name_template,
+            progress_callback=progress_callback,
+        )
 
     def _make_cache_key(self, method, url, params=None, data=None, json_data=None):
         key = {
