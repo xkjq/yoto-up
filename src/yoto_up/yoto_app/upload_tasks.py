@@ -1,3 +1,4 @@
+from yoto_up.yoto_app.api_manager import ensure_api
 import asyncio
 import os
 from pathlib import Path
@@ -5,7 +6,6 @@ import traceback
 import tempfile
 import shutil
 import subprocess
-from pathlib import Path
 from typing import Any
 from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
@@ -65,7 +65,7 @@ class FileUploadRow:
                 ft.TextButton(content=ft.Text(value="Remove"), on_click=self.on_remove),
             ]
         )
-        self.row = ft.Container(content=self.inner_row, bgcolor=None, padding=0)
+        self.row = ft.Container(content=self.inner_row, padding=0)
         setattr(self.row, "filename", filepath)
         setattr(self.row, "_fileuploadrow", self)
         self.maybe_page = maybe_page
@@ -85,16 +85,8 @@ class FileUploadRow:
         logger.debug(f"[FileUploadRow] on_upload_complete called for {self.name}")
         self.uploaded = True
         # Change the row background color for visual indication
-        self.row.bgcolor = "#71fb91"  # light green
+        self.name_text.color = ft.Colors.GREEN_100
         # Force UI update by removing and re-adding the row in the parent column
-        if self.maybe_column:
-            try:
-                idx = self.maybe_column.controls.index(self.row)
-                self.maybe_column.controls.pop(idx)
-                self.maybe_column.controls.insert(idx, self.row)
-                self.maybe_column.update()
-            except Exception as e:
-                logger.error(f"[FileUploadRow] Failed to refresh row color: {e}")
         if self.maybe_page:
             self.maybe_page.update()
 
@@ -205,21 +197,10 @@ class FileUploadRow:
         if not col:
             print("[FileUploadRow] No column available to remove row")
             return
-        try:
-            col.controls.remove(self)
-        except Exception:
-            for existing in list(col.controls):
-                if getattr(existing, "filename", None) == self.filepath:
-                    try:
-                        col.controls.remove(existing)
-                    except Exception:
-                        pass
-        try:
-            page = self.maybe_page
-            if page:
-                page.update()
-        except Exception:
-            pass
+        col.controls.remove(self)
+        page = self.maybe_page
+        if page:
+            page.update()
 
     def update_file(self, new_filepath):
         """
@@ -1485,7 +1466,7 @@ class UploadManager:
 
             target_card_sel = getattr(self.existing_card_dropdown, "value", None)
             card_id = self.existing_card_map.get(target_card_sel) if target_card_sel else None
-            run_coro_in_thread(
+            page.run_task(
                 start_uploads,
                 e,
                 api_ref,
@@ -1498,8 +1479,13 @@ class UploadManager:
                 ctx=ctx,
             )
 
+        def _stop_click(e):
+            page.run_task(stop_uploads, e, page)
+
         start_btn.on_click = _start_click
-        stop_btn.on_click = lambda e: run_coro_in_thread(stop_uploads, e, page)
+        stop_btn.on_click = _stop_click
+        self.start_btn = start_btn
+        self.stop_btn = stop_btn
 
         # Upload page (appears after Playlists)
         # Add a dropdown to select upload mode: Chapters or Tracks
@@ -1577,10 +1563,7 @@ class UploadManager:
             controls=[_local_norm_inner],
         )
         # Ensure collapsed by default (set attribute after construction to avoid constructor arg mismatch)
-        try:
-            setattr(local_norm_expander, "open", False)
-        except Exception:
-            pass
+        local_norm_expander.open = False
 
         # Wrap in a container to preserve top/bottom margins
         _local_norm_container = ft.Container(
@@ -1621,7 +1604,7 @@ class UploadManager:
                 overall_bar,
                 ft.Divider(),
                 ft.Text(value="Files:"),
-                ft.Container(content=file_rows_column, padding=10, bgcolor=ft.Colors.WHITE),
+                ft.Container(content=file_rows_column, padding=10),
                 ft.Divider(),
                 ft.Row(controls=[page.status]),
                 ft.Divider(),
@@ -2066,16 +2049,9 @@ async def start_uploads(
 
     status.value = "Initializing API..."
     logger.debug("[start_uploads] Initializing YotoAPI")
+    api: YotoAPI = ensure_api(page.api_ref)
+    logger.debug("[start_uploads] YotoAPI initialized successfully")
     page.update()
-    try:
-        api: YotoAPI = api_ref.api
-        logger.debug("[start_uploads] YotoAPI initialized successfully")
-    except Exception as ex:
-        status.value = f"API init failed: {ex}"
-        show_snack(f"API init failed: {ex}", error=True)
-        logger.error(f"[start_uploads] API init failed: {ex}")
-        page.update()
-        return
 
     maxc = int(getattr(concurrency, "value", 2))
     sem = asyncio.Semaphore(maxc)
