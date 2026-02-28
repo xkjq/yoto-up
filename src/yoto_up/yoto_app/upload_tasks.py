@@ -351,6 +351,9 @@ class FileUploadRow:
                         file_row = FileUploadRow(pstr, page)
                         col.controls.insert(idx, file_row.row)
                         idx += 1
+                    page.pop_dialog() 
+                    page.pop_dialog() 
+                    page.show_snack("Original file replaced with split segments.")
                     page.update()
 
                 res_dlg = ft.AlertDialog(
