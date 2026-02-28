@@ -453,11 +453,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
 
             # show a larger preview above the smaller one for better inspection
             try:
-                try:
-                    pp = Path(src)
-                    abs_path = str(pp) if pp.is_absolute() else str(pp.resolve())
-                except Exception:
-                    abs_path = src
+                pp = Path(src)
+                abs_path = str(pp) if pp.is_absolute() else str(pp.resolve())
             except Exception:
                 abs_path = src
             # try to scale the large preview while preserving aspect ratio (upscale if small, downscale if huge)
@@ -551,17 +548,6 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         except Exception:
             logger.error("show_icon_details: failed to load details")
             details_panel.controls.append(ft.Text(value="Failed to load details"))
-        ## also open a dialog with the preview so the user definitely sees details
-        #try:
-        #    dlg_content = ft.Column([
-        #        ft.Image(src=os.path.abspath(path), width=240, height=240),
-        #        ft.Text(f"Name: {os.path.basename(path)}"),
-        #        ft.Text(f"Source: {'Official cache' if path.startswith('.yoto_icon_cache') else ('YotoIcons' if path.startswith('.yotoicons_cache') else 'Local')}"),
-        #    ], scroll=ft.ScrollMode.AUTO)
-        #    dlg = ft.AlertDialog(title=ft.Text(os.path.basename(path)), content=dlg_content, actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())], scrollable=True)
-        #    page.show_dialog(dlg)
-        #except Exception:
-        #    pass
         page.update()
 
     selected_icon_path = [None]  # mutable container for selected icon path
@@ -637,18 +623,19 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     def render_icons(icons):
         logger.debug(f"render_icons: rendering {len(icons)} icons")
         icons_container.controls.clear()
+
+        def _on_click(p):
+            # small debug feedback
+            logger.debug(f"Icon clicked: {p}")
+            show_icon_details(p)
+
         for path in icons:
-            # Load b64 thumbnail image data for each icon
             try:
 
                 thumb = get_thumbnail_path(path, size=64)
                 img = ft.Image(src=thumb, width=64, height=64, tooltip=path.name, border_radius=5)
                 # attach on_click in the constructor so Flet will register the handler
-                def _on_click(e, p=path):
-                    # small debug feedback
-                    logger.debug(f"Icon clicked: {p}")
-                    show_icon_details(p)
-                btn = ft.Container(content=img, border_radius=6, padding=1, ink=True, on_click=_on_click, border=ft.border.all(1, "#ADACAC"))
+                btn = ft.Container(content=img, border_radius=6, padding=1, ink=True, on_click=lambda e, path=path: _on_click(path), border=ft.border.all(1, "#ADACAC"))
                 icons_container.controls.append(btn)
             except Exception as ex:
                 logger.exception(f"Failed to load icon {path}: {ex}")
