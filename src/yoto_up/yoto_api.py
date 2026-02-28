@@ -718,10 +718,10 @@ class YotoAPI:
         upload_task_id: TaskID | None = None,
         transcode_task_id: TaskID | None = None,
         progress_callback: Optional[Callable[[str, float], None]] = None,
-    ):
+    ) -> TranscodedAudio:
         """
         Async version: Handles hashing, upload URL, upload, and transcoding for an audio file.
-        Returns transcoded audio info dict.
+        Returns a TranscodedAudio instance.
         Supports rich progress for upload and transcode phases.
         Accepts an optional progress_callback(msg, frac) for external UI updates.
         """
@@ -789,7 +789,7 @@ class YotoAPI:
         show_progress: bool = False,
         progress: Optional['Progress'] = None,
         transcode_task_id: TaskID | None = None,
-    ):
+    ) -> TranscodedAudio:
         import httpx
         import asyncio
         transcode_url = f"https://api.yotoplay.com/media/upload/{upload_id}/transcoded?loudnorm={'true' if loudnorm else 'false'}"
@@ -820,7 +820,13 @@ class YotoAPI:
             if progress and transcode_task_id is not None:
                 progress.update(transcode_task_id, completed=max_attempts, description="Transcode timed out")
             raise Exception("Transcoding timed out.")
-        return transcoded_audio
+
+        # Convert the raw transcode dict into a TranscodedAudio model instance
+        try:
+            return TranscodedAudio.model_validate(transcoded_audio)
+        except Exception:
+            logger.error("Failed to validate transcoded audio into TranscodedAudio model")
+            raise
 
     async def upload_and_transcode_many_async(
         self,
@@ -1114,7 +1120,7 @@ class YotoAPI:
         poll_interval: float = 2,
         max_attempts: int = 120,
         show_progress: bool = False,
-    ):
+    ) -> TranscodedAudio:
         transcode_url = f"https://api.yotoplay.com/media/upload/{upload_id}/transcoded?loudnorm={'true' if loudnorm else 'false'}"
         attempts = 0
         transcoded_audio = None
@@ -1162,7 +1168,12 @@ class YotoAPI:
                 logger.info(data)
                 logger.error("Transcoding timed out.")
                 raise Exception("Transcoding timed out.")
-        return transcoded_audio
+        # Convert raw transcode dict to TranscodedAudio model before returning
+        try:
+            return TranscodedAudio.model_validate(transcoded_audio)
+        except Exception:
+            logger.error("Failed to validate transcoded audio into TranscodedAudio model")
+            raise
 
     def get_track_from_transcoded_audio(self, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None) -> Optional[Track]:
         media_info = transcoded_audio.transcodedInfo
@@ -1215,6 +1226,8 @@ class YotoAPI:
         return chapter
 
     def create_card_from_transcoded_audio(self, card_title: str, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None, chapter_details: Optional[dict] = None):
+        if isinstance(transcoded_audio, dict):
+            raise TypeError("create_card_from_transcoded_audio expects a TranscodedAudio model instance, not a dict")
         media_info = transcoded_audio.transcodedInfo
         chapter_title = (media_info.metadata.title if media_info and media_info.metadata and media_info.metadata.title else None) or card_title
 

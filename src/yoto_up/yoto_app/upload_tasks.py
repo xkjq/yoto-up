@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import subprocess
 from typing import Any
-from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
+from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata, TranscodedAudio
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.normalization import AudioNormalizer
 import re
@@ -1776,7 +1776,8 @@ def build_chapters_from_transcodes(
                 if filename_list and i < len(filename_list)
                 else None
             )
-            track = api.get_track_from_transcoded_audio(tr, track_details=td)
+            tr_model = tr
+            track = api.get_track_from_transcoded_audio(tr_model, track_details=td)
             track.key = f"{i + 1:02}"
             track.overlayLabel = str(i + 1)
             tracks.append(track)
@@ -1799,7 +1800,8 @@ def build_chapters_from_transcodes(
                 if filename_list and i < len(filename_list)
                 else None
             )
-            new_ch = api.get_chapter_from_transcoded_audio(tr, chapter_details=cd)
+            tr_model = tr
+            new_ch = api.get_chapter_from_transcoded_audio(tr_model, chapter_details=cd)
             try:
                 new_ch.key = f"{i + 1 + existing_chapters:02}"
                 new_ch.overlayLabel = str(i + 1 + existing_chapters)
