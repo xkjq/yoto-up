@@ -2153,8 +2153,8 @@ async def start_uploads(
             cid = created.cardId
             status.value = f"Created card: {cid}" if cid else "Card created"
             show_snack(status.value)
+            page.update_card(created)
             show_card_info(page, created)
-            fetch_playlists_sync(page)
         except Exception as e:
             logger.error(f"start_uploads: create card error: {e}")
             traceback.print_exc()
@@ -2244,6 +2244,7 @@ async def start_uploads(
 
                     created = api.create_or_update_content(card, return_card=True)
                     status.value = "Chapters appended"
+                    page.update_card(created)
                     show_card_info(page, created)
                     return True, None
                 except Exception as ex:
