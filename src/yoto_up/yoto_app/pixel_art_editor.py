@@ -158,7 +158,7 @@ class PixelArtEditor:
             "#2F4F4F",
         ]
         self.palette = ft.Row(
-            [
+            controls=[
                 ft.Container(
                     width=24,
                     height=24,
@@ -178,7 +178,7 @@ class PixelArtEditor:
                 ft.Container(
                     width=24,
                     height=24,
-                    content=ft.Text("T", size=10),
+                    content=ft.Text(value="T", size=10),
                     border_radius=4,
                     border=ft.border.all(1, "#888888"),
                     on_click=self.make_palette_click_handler(None),
@@ -187,11 +187,11 @@ class PixelArtEditor:
             )
         except Exception:
             pass
-        self.clear_btn = ft.Button("Clear", on_click=self.on_clear)
+        self.clear_btn = ft.Button(content="Clear", on_click=self.on_clear)
         # self.export_btn = ft.Button("Export", on_click=self.on_export)
         # self.import_btn = ft.Button("Import", on_click=self.on_import)
         self.import_icon_btn = ft.Button(
-            "Import Icon from Cache", on_click=self.on_import_icon
+            content="Import Icon from Cache", on_click=self.on_import_icon
         )
         self.sampler_mode = False
         self.sampler_checkbox = ft.Checkbox(
@@ -203,13 +203,13 @@ class PixelArtEditor:
             label="Fill mode (bucket)", value=False, on_change=self.on_fill_toggle
         )
         # Save / Load created icons
-        self.save_btn = ft.Button("Save Icon", on_click=self.on_save_png)
-        self.load_btn = ft.Button("Load Icon", on_click=self.on_load_png)
+        self.save_btn = ft.Button(content="Save Icon", on_click=self.on_save_png)
+        self.load_btn = ft.Button(content="Load Icon", on_click=self.on_load_png)
         # Text generation (pixel letters/numbers)
-        self.text_btn = ft.Button("Stamp text", on_click=self._open_text_dialog)
+        self.text_btn = ft.Button(content="Stamp text", on_click=self._open_text_dialog)
         # Stamp small images/pictures onto the grid
         self.stamp_image_btn = ft.Button(
-            "Stamp image", on_click=lambda e: open_image_stamp_dialog(self, e)
+            content="Stamp image", on_click=lambda e: open_image_stamp_dialog(self, e)
         )
         # Persistent metadata fields (visible/editable while creating icon)
         self.meta_title_field = ft.TextField(label="Title", value="", width=300)
@@ -227,7 +227,7 @@ class PixelArtEditor:
         grid_height = self.size * self.pixel_size
         # Light placeholder container; real grid will be injected by ensure_grid()
         self.grid_container = ft.Container(
-            content=ft.Container(content=ft.Text("(grid loading)")),
+            content=ft.Container(content=ft.Text(value="(grid loading)"))),
             border_radius=4,
             border=ft.border.all(2, "#888888"),
             padding=2,
@@ -854,25 +854,25 @@ class PixelArtEditor:
 
         # Now that target/repl fields exist, build the fill controls and expander
         fill_controls = ft.Column(
-            [
+            controls=[
                 ft.Row(
-                    [
+                    controls=[
                         ft.Column(
-                            [
-                                ft.Text("Target"),
+                            controls=[
+                                ft.Text(value="Target"),
                                 ft.Row(
-                                    [
+                                    controls=[
                                         self.target_field,
-                                        ft.Column([self.target_preview]),
+                                        ft.Column(controls=[self.target_preview]),
                                     ]
                                 ),
                             ]
                         ),
                         ft.Column(
-                            [
-                                ft.Text("Replacement"),
+                            controls=[
+                                ft.Text(value="Replacement"),
                                 ft.Row(
-                                    [self.repl_field, ft.Column([self.repl_preview])]
+                                    controls=[self.repl_field, ft.Column(controls=[self.repl_preview])]
                                 ),
                             ]
                         ),
@@ -880,10 +880,10 @@ class PixelArtEditor:
                     spacing=12,
                 ),
                 ft.Row(
-                    [
-                        ft.Text("Tolerance (use slider at right)"),
-                        ft.TextButton("Sample target", on_click=_sample_target_inline),
-                        ft.Button("Fill", on_click=_do_fill_inline),
+                    controls=[
+                        ft.Text(value="Tolerance (use slider at right)"),
+                        ft.TextButton(content="Sample target", on_click=_sample_target_inline),
+                        ft.Button(content="Fill", on_click=_do_fill_inline),
                     ]
                 ),
                 self._fill_similar_status,
@@ -892,14 +892,14 @@ class PixelArtEditor:
         )
 
         self.fill_similar_expander = ft.ExpansionTile(
-            title=ft.Text("Fill Similar", size=12, weight=ft.FontWeight.W_400),
+            title=ft.Text(value="Fill Similar", size=12, weight=ft.FontWeight.W_400),
             controls=[fill_controls],
         )
 
         # include metadata panel on the right so user can view/edit while creating
         meta_panel = ft.Column(
-            [
-                ft.Text("Icon metadata", size=12, weight=ft.FontWeight.W_600),
+            controls=[
+                ft.Text(value="Icon metadata", size=12, weight=ft.FontWeight.W_600),
                 self.meta_title_field,
                 self.meta_author_field,
                 self.meta_tags_field,
@@ -908,19 +908,19 @@ class PixelArtEditor:
             spacing=6,
         )
         self.right_column = ft.Column(
-            [
+            controls=[
                 meta_panel,
                 image_adjustments_tile,
                 ft.Row(
-                    [
-                        ft.Text("Fill tolerance"),
+                    controls=[
+                        ft.Text(value="Fill tolerance"),
                         self.fill_tolerance_slider,
                         self.fill_tolerance_label,
                     ],
                     spacing=8,
                 ),
                 ft.Row(
-                    [
+                    controls=[
                         self.sampler_checkbox,
                         self.fill_checkbox,
                         self.fill_similar_expander,
@@ -937,9 +937,9 @@ class PixelArtEditor:
 
         # main container is scrollable and expands to available space
         self.container = ft.Column(
-            [
+            controls=[
                 ft.Row(
-                    [
+                    controls=[
                         self.color_field,
                         self.color_preview,
                         self.advanced_picker_btn,
@@ -957,13 +957,13 @@ class PixelArtEditor:
                 # self.export_text,
                 ft.Divider(),
                 ft.Row(
-                    [
+                    controls=[
                         # Left: keep grid area fixed/non-scrolling so it remains visible
                         ft.Column(
-                            [
-                                ft.Row([self.undo_btn, self.redo_btn], spacing=10),
+                            controls=[
+                                ft.Row(controls=[self.undo_btn, self.redo_btn], spacing=10),
                                 ft.Row(
-                                    [self.text_btn, self.stamp_image_btn], spacing=10
+                                    controls=[self.text_btn, self.stamp_image_btn], spacing=10
                                 ),
                                 self.grid_container,
                             ],
@@ -972,7 +972,7 @@ class PixelArtEditor:
                         # Right: controls get their own scroll area
                         ft.Container(
                             ft.Column(
-                                [self.right_column],
+                                controls=[self.right_column],
                                 height=600,
                                 expand=True,
                                 scroll=ft.ScrollMode.AUTO,
@@ -1011,7 +1011,7 @@ class PixelArtEditor:
         # Add these buttons to the right-side column (scrollable) and allow wrapping
         self.right_column.controls.append(
             ft.Row(
-                [
+                controls=[
                     self.flip_horizontal_btn,
                     self.flip_vertical_btn,
                     self.rotate_left_btn,
@@ -1026,36 +1026,36 @@ class PixelArtEditor:
 
         # Add buttons for new color manipulation features
         self.invert_colors_btn = ft.Button(
-            "Invert Colors", on_click=self.on_invert_colors
+            content="Invert Colors", on_click=self.on_invert_colors
         )
         self.grayscale_btn = ft.Button(
-            "Convert to Grayscale", on_click=self.on_convert_to_grayscale
+            content="Convert to Grayscale", on_click=self.on_convert_to_grayscale
         )
         self.hue_adjust_btn = ft.Button(
-            "Adjust Hue", on_click=lambda e: self.on_adjust_hue(e, 30)
+            content="Adjust Hue", on_click=lambda e: self.on_adjust_hue(e, 30)
         )
         self.color_replace_btn = ft.Button(
-            "Replace Color",
+            content="Replace Color",
             on_click=lambda e: self.on_replace_color(e, "#FF0000", "#00FF00"),
         )
         self.gradient_overlay_btn = ft.Button(
-            "Apply Gradient Overlay",
+            content="Apply Gradient Overlay",
             on_click=lambda e: self.on_apply_gradient_overlay(e, "#FF0000"),
         )
         self.opacity_adjust_btn = ft.Button(
-            "Adjust Opacity", on_click=lambda e: self.on_adjust_opacity(e, 0.5)
+            content="Adjust Opacity", on_click=lambda e: self.on_adjust_opacity(e, 0.5)
         )
         self.sepia_tone_btn = ft.Button(
-            "Apply Sepia Tone", on_click=self.on_apply_sepia_tone
+            content="Apply Sepia Tone", on_click=self.on_apply_sepia_tone
         )
         self.pixelate_btn = ft.Button(
-            "Pixelate", on_click=lambda e: self.on_pixelate(e, 5)
+            content="Pixelate", on_click=lambda e: self.on_pixelate(e, 5)
         )
         self.quantize_colors_btn = ft.Button(
-            "Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16)
+            content="Quantize Colors", on_click=lambda e: self.on_quantize_colors(e, 16)
         )
         self.brightness_contrast_region_btn = ft.Button(
-            "Adjust Brightness/Contrast (Region)",
+            content="Adjust Brightness/Contrast (Region)",
             on_click=lambda e: self.on_adjust_brightness_contrast_region(
                 e, (0, 0, 8, 8), 1.5, 1.2
             ),
@@ -1063,7 +1063,7 @@ class PixelArtEditor:
 
         # Group advanced controls into an ExpansionTile so they can be collapsed
         self.advanced_controls_row = ft.Row(
-            [
+            controls=[
                 self.invert_colors_btn,
                 self.grayscale_btn,
                 self.hue_adjust_btn,
@@ -1734,12 +1734,12 @@ class PixelArtEditor:
                     page.update()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Import Icon from Cache"),
-            content=ft.Column([dropdown, preview, status], width=350),
+            title=ft.Text(value="Import Icon from Cache"),
+            content=ft.Column(controls=[dropdown, preview, status], width=350),
             actions=[
-                ft.TextButton("Import", on_click=do_import),
+                ft.TextButton(content="Import", on_click=do_import),
                 ft.TextButton(
-                    "Cancel", on_click=lambda ev: self._close_dialog(dlg, page)
+                    content="Cancel", on_click=lambda ev: self._close_dialog(dlg, page)
                 ),
             ],
         )
@@ -2004,14 +2004,14 @@ class PixelArtEditor:
         repl_preview = ft.Container(
             width=24, height=24, border=ft.border.all(1, "#888888")
         )
-        status = ft.Text("")
+        status = ft.Text(value="")
 
         def update_previews(ev=None):
             # target
             try:
                 t = (target_field.value or "").strip() or self.current_color
                 if not t:
-                    target_preview.content = ft.Text(" ", size=1)
+                    target_preview.content = ft.Text(value=" ", size=1)
                     target_preview.bgcolor = None
                 else:
                     # composite semi-alpha for preview
@@ -2115,18 +2115,18 @@ class PixelArtEditor:
 
         # dialog content with previews and sample button
         content = ft.Column(
-            [
+            controls=[
                 ft.Row(
                     [
                         ft.Column(
                             [
-                                ft.Text("Target"),
+                                ft.Text(value="Target"),
                                 ft.Row([target_field, ft.Column([target_preview])]),
                             ]
                         ),
                         ft.Column(
                             [
-                                ft.Text("Replacement"),
+                                ft.Text(value="Replacement"),
                                 ft.Row([repl_field, ft.Column([repl_preview])]),
                             ]
                         ),
@@ -2134,7 +2134,7 @@ class PixelArtEditor:
                     spacing=12,
                 ),
                 ft.Row(
-                    [tol_field, ft.TextButton("Sample target", on_click=sample_target)]
+                    [tol_field, ft.TextButton(content="Sample target", on_click=sample_target)]
                 ),
                 status,
             ],
@@ -2143,8 +2143,8 @@ class PixelArtEditor:
         )
         dlg = self._SmallDialog("Fill Similar Colors", content, page=page)
         dlg.dialog.actions = [
-            ft.TextButton("Fill", on_click=do_fill),
-            ft.TextButton("Cancel", on_click=lambda ev: dlg.close()),
+            ft.TextButton(content="Fill", on_click=do_fill),
+            ft.TextButton(content="Cancel", on_click=lambda ev: dlg.close()),
         ]
         if page:
             dlg.open()
