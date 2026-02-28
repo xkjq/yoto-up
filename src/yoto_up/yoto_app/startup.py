@@ -31,7 +31,7 @@ if os.getenv("FLET_APP_STORAGE_DATA") is None:
 
 # Ensure matplotlib will use a writable config/cache dir when the app is frozen by PyInstaller.
 try:
-    mpl_cfg = os.path.join(os.getenv("FLET_APP_STORAGE_TEMP"), "yoto_up_matplotlib")
+    mpl_cfg = os.path.join(os.environ.get("FLET_APP_STORAGE_DATA", tempfile.gettempdir()), "yoto_up_matplotlib")
     os.environ.setdefault("MPLCONFIGDIR", mpl_cfg)
     os.makedirs(mpl_cfg, exist_ok=True)
 except Exception:

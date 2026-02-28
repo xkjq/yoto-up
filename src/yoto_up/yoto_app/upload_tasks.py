@@ -711,6 +711,26 @@ class UploadManager:
         async def _open_folder_picker(_e=None):
             if not _require_file_picker() or browse is None:
                 return
+            if sys.platform == 'darwin':
+                def _run_osascript():
+                    try:
+                        cmd = ['osascript', '-e', 'posix path of (choose folder with prompt "Select Folder")']
+                        res = subprocess.run(cmd, capture_output=True, text=True)
+                        if res.returncode == 0 and res.stdout.strip():
+                            folder.value = res.stdout.strip()
+                            try:
+                                if folder.value:
+                                    populate_file_rows(folder.value)
+                            except Exception:
+                                logger.error("_open_folder_picker: populate_file_rows failed", None)
+                            update_show_waveforms_btn()
+                            if page:
+                                page.update()
+                    except Exception as err:
+                        logger.error(f"Mac folder picker error: {err}")
+                threading.Thread(target=_run_osascript, daemon=True).start()
+                return
+            
             selected_dir = await browse.get_directory_path()
             if selected_dir:
                 folder.value = selected_dir
@@ -721,9 +741,38 @@ class UploadManager:
                 update_show_waveforms_btn()
                 page.update()
 
+        class MockFile:
+            def __init__(self, p):
+                self.path = p
+                self.name = os.path.basename(p)
+
         async def _open_files_picker(_e=None):
             if not _require_file_picker() or browse_files is None:
                 return
+            
+            if sys.platform == 'darwin':
+                def _run_osascript():
+                    try:
+                        script = '''
+                        set theFiles to choose file with prompt "Select Files" with multiple selections allowed
+                        set outStr to ""
+                        repeat with aFile in theFiles
+                            set outStr to outStr & POSIX path of aFile & string id 10
+                        end repeat
+                        return outStr
+                        '''
+                        cmd = ['osascript', '-e', script]
+                        res = subprocess.run(cmd, capture_output=True, text=True)
+                        if res.returncode == 0 and res.stdout.strip():
+                            paths = [p for p in res.stdout.strip().split('\n') if p]
+                            if paths:
+                                files = [MockFile(p) for p in paths]
+                                page.run_task(_handle_picked_files, files)
+                    except Exception as err:
+                        logger.error(f"Mac files picker error: {err}")
+                threading.Thread(target=_run_osascript, daemon=True).start()
+                return
+
             files = await browse_files.pick_files(allow_multiple=True)
             await _handle_picked_files(files)
 
