@@ -24,6 +24,7 @@ from .icon_import_helpers import (
     path_is_yotoicons,
     source_label_for_path,
     get_base64_from_path,
+    get_thumbnail_path,
 )
 
 
@@ -476,11 +477,14 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         new_w, new_h = (min(160, 160), min(160, 160))
                 else:
                     new_w, new_h = (min(160, 160), min(160, 160))
-                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=new_w, height=new_h, fit=ft.BoxFit.CONTAIN)
+                large_src = get_thumbnail_path(Path(abs_path))
+                large_preview = ft.Image(src=large_src, width=new_w, height=new_h, fit=ft.BoxFit.CONTAIN)
             except Exception:
                 # final fallback
-                large_preview = ft.Image(src=get_base64_from_path(Path(abs_path)), width=160, height=160, fit=ft.BoxFit.CONTAIN)
-            small_preview = ft.Image(src=get_base64_from_path(Path(src)), width=16, height=16)
+                large_src = get_thumbnail_path(Path(abs_path), size=160)
+                large_preview = ft.Image(src=large_src, width=160, height=160, fit=ft.BoxFit.CONTAIN)
+            small_src = get_thumbnail_path(Path(src), size=16)
+            small_preview = ft.Image(src=small_src, width=16, height=16)
             details_panel.controls.append(large_preview)
             details_panel.controls.append(small_preview)
             # show human-friendly title if available
@@ -637,7 +641,8 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             # Load b64 thumbnail image data for each icon
             try:
 
-                img = ft.Image(src=get_base64_from_path(path), width=64, height=64, tooltip=path.name, border_radius=5)
+                thumb = get_thumbnail_path(path, size=64)
+                img = ft.Image(src=thumb, width=64, height=64, tooltip=path.name, border_radius=5)
                 # attach on_click in the constructor so Flet will register the handler
                 def _on_click(e, p=path):
                     # small debug feedback

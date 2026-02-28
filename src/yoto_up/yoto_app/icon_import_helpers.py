@@ -2,8 +2,21 @@
 import os
 from pathlib import Path
 import base64
+import hashlib
 import json
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
+from pathlib import Path
+from loguru import logger
+from PIL import Image as PILImage
+import io
+import base64
+
+# Directory for generated thumbnails (kept inside the official cache dir)
+THUMBNAIL_DIR = OFFICIAL_ICON_CACHE_DIR / "thumbnails"
+try:
+    THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 YOTO_ICON_CACHE_DIR = OFFICIAL_ICON_CACHE_DIR
 YOTOICONS_CACHE_DIR = YOTOICONS_CACHE_DIR
@@ -37,6 +50,80 @@ def get_base64_from_path(path: Path) -> str:
         data = f.read()
         img_data = base64.b64encode(data).decode('utf-8')
     return img_data
+
+
+def get_thumbnail_path(path: Path, size: int = 64) -> str:
+    """Return a filesystem path to a thumbnail PNG for `path`.
+
+    If thumbnail doesn't exist, generate it. Returns a string suitable for
+    `ft.Image(src=...)`. On failure returns a data URL containing base64 image
+    data as a fallback.
+    """
+    try:
+        p = Path(path)
+    except Exception:
+        return str(path)
+
+    # create deterministic filename for thumbnail
+    try:
+        key = hashlib.sha256(str(p).encode()).hexdigest()[:12]
+        thumb_name = f"{key}_{size}.png"
+        thumb_path = THUMBNAIL_DIR / thumb_name
+    except Exception:
+        thumb_path = THUMBNAIL_DIR / (p.stem + f"_{size}.png")
+
+    if thumb_path.exists():
+        return str(thumb_path.resolve())
+
+    # generate thumbnail
+    try:
+        if p.suffix.lower() == ".json":
+            # try to extract embedded png_base64 or pixels
+            try:
+                data = json.loads(p.read_text(encoding="utf-8") or "{}")
+                b64 = None
+                if "png_base64" in data:
+                    b64 = data["png_base64"]
+                elif "pixels" in data:
+                    # pixels -> construct an image
+                    # fallback: cannot handle here
+                    b64 = None
+                if b64:
+                    raw = base64.b64decode(b64)
+                    img = PILImage.open(io.BytesIO(raw)).convert("RGBA")
+                else:
+                    # fallback to reading via get_base64_from_path
+                    b64str = get_base64_from_path(p)
+                    raw = base64.b64decode(b64str)
+                    img = PILImage.open(io.BytesIO(raw)).convert("RGBA")
+            except Exception:
+                # give up
+                raise
+        else:
+            img = PILImage.open(p).convert("RGBA")
+            # If the source image is already small enough, just use it directly
+            try:
+                w, h = img.size
+                if max(w, h) <= size:
+                    return str(p.resolve())
+            except Exception:
+                pass
+
+        # resize preserving aspect ratio
+        try:
+            resample = PILImage.Resampling.LANCZOS
+        except Exception:
+            resample = PILImage.LANCZOS
+        img.thumbnail((size, size), resample)
+        img.save(thumb_path, format="PNG")
+        return str(thumb_path.resolve())
+    except Exception as e:
+        logger.debug(f"Failed to create thumbnail for {path}: {e}")
+        try:
+            b64 = get_base64_from_path(p)
+            return f"data:image/png;base64,{b64}"
+        except Exception:
+            return str(path)
 
 def load_cached_icons() -> list[Path]:
     icons = []
