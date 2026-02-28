@@ -41,7 +41,7 @@ from yoto_up.yoto_app.about_dialog import show_about_dialog
 import shutil
 
 INTRO_OUTRO_DIALOG = None
-ENABLE_ICON_BROWSER = False
+ENABLE_ICON_BROWSER = True
 
 # ft.context.disable_auto_update()
 
@@ -86,6 +86,7 @@ if TYPE_CHECKING:
         switch_to_auth_tab: Callable[[], None]
         invalidate_authentication: Callable[[], None]
         show_card_details: Callable[..., Any]
+        pixel_editor: PixelArtEditor
 else:
     Page = ft.Page
 

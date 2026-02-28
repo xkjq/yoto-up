@@ -38,20 +38,20 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     """
     logger.debug("Building Icon Browser panel")
     # top-level panel: header + row with left (scrollable icons) and right (fixed details)
-    panel_header = ft.Row([ft.Text("Icon Browser", size=20, weight=ft.FontWeight.BOLD),
-                           ft.Button("Refresh Index", on_click=lambda e: build_index())])
+    panel_header = ft.Row(controls=[ft.Text(value="Icon Browser", size=20, weight=ft.FontWeight.BOLD),
+                           ft.Button(content="Refresh Index", on_click=lambda e: build_index())])
 
     search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(label="Search cached icons", width=400, on_submit=lambda e: do_filter(), on_change=lambda e: schedule_filter())
-    online_search_btn = ft.Button("Search YotoIcons online", on_click=lambda e: do_online_search())
+    online_search_btn = ft.Button(content="Search YotoIcons online", on_click=lambda e: do_online_search())
     # keep the main search field and the online search button in the top row; the Filter button
     # will be visually grouped with the fuzzy controls below for clarity.
     # Group fuzzy controls + filter button into a bordered container so it's clear they belong together.
-    search_btn = ft.TextButton("Filter", on_click=lambda e: do_filter())
+    search_btn = ft.TextButton(content="Filter", on_click=lambda e: do_filter())
     cb_fuzzy = ft.Checkbox(label="Fuzzy match", value=False, on_change=lambda e: do_filter())
     threshold_field = ft.TextField(label="Threshold", value="0.6", width=80, tooltip="Match threshold 0..1 (higher = stricter)")
     fuzzy_group = ft.Container(
-        content=ft.Row([cb_fuzzy, threshold_field, search_btn], spacing=8),
+        content=ft.Row(controls=[cb_fuzzy, threshold_field, search_btn], spacing=8),
         padding=8,
         border=ft.border.all(1, "#E0E0E0"),
         border_radius=6,
@@ -63,22 +63,22 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
     cb_yotoicons = ft.Checkbox(label="YotoIcons", value=True, on_change=lambda e: do_filter())
     cb_local = ft.Checkbox(label="Local", value=True, on_change=lambda e: do_filter())
     # small text controls to display counts for each source
-    official_count_text = ft.Text("0", size=12, color="#333333")
-    yotoicons_count_text = ft.Text("0", size=12, color="#333333")
-    local_count_text = ft.Text("0", size=12, color="#333333")
-    filter_row = ft.Row([
-        ft.Row([cb_official, official_count_text], alignment=ft.MainAxisAlignment.START),
-        ft.Row([cb_yotoicons, yotoicons_count_text], alignment=ft.MainAxisAlignment.START),
-        ft.Row([cb_local, local_count_text], alignment=ft.MainAxisAlignment.START),
+    official_count_text = ft.Text(value="0", size=12, color="#333333")
+    yotoicons_count_text = ft.Text(value="0", size=12, color="#333333")
+    local_count_text = ft.Text(value="0", size=12, color="#333333")
+    filter_row = ft.Row(controls=[
+        ft.Row(controls=[cb_official, official_count_text], alignment=ft.MainAxisAlignment.START),
+        ft.Row(controls=[cb_yotoicons, yotoicons_count_text], alignment=ft.MainAxisAlignment.START),
+        ft.Row(controls=[cb_local, local_count_text], alignment=ft.MainAxisAlignment.START),
     ], spacing=18)
 
-    icons_container = ft.GridView(expand=True, max_extent=80, child_aspect_ratio=1)
+    icons_container = ft.GridView(width=600, height=400, max_extent=80, child_aspect_ratio=1)
 
     # Details panel on the right (fixed column)
-    details_panel = ft.Column([ft.Text("Select an icon to see details", size=14)], spacing=8)
+    details_panel = ft.Column(controls=[ft.Text(value="Select an icon to see details", size=14)], spacing=8)
 
     # status indicator shown under filters when long operations run
-    status_text = ft.Text("", size=12, color="#1E90FF")
+    status_text = ft.Text(value="", size=12, color="#1E90FF")
 
     # in-memory caches to avoid expensive repeated JSON reads and metadata parsing
     _meta_map = {}        # path -> metadata dict or None
@@ -485,16 +485,16 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             details_panel.controls.append(small_preview)
             # show human-friendly title if available
             if meta and meta.get('title'):
-                details_panel.controls.append(ft.Text(f"Title: {meta.get('title')}", weight=ft.FontWeight.BOLD))
+                details_panel.controls.append(ft.Text(value=f"Title: {meta.get('title')}", weight=ft.FontWeight.BOLD))
             else:
-                details_panel.controls.append(ft.Text(f"Name: {name}"))
+                details_panel.controls.append(ft.Text(value=f"Name: {name}"))
             # source label: prefer metadata source if present
             final_src_label = meta_source or src_label
-            details_panel.controls.append(ft.Text(f"Source: {final_src_label}"))
+            details_panel.controls.append(ft.Text(value=f"Source: {final_src_label}"))
             # additional metadata fields
             if meta:
                 if meta.get('author'):
-                    details_panel.controls.append(ft.Text(f"Author: {meta.get('author')}"))
+                    details_panel.controls.append(ft.Text(value=f"Author: {meta.get('author')}"))
                 # some yoto metadata uses 'publicTags' or 'tags'
                 tags = meta.get('publicTags') or meta.get('tags')
                 if tags:
@@ -502,18 +502,18 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                         tags_str = ", ".join([str(t) for t in tags if t])
                     else:
                         tags_str = str(tags)
-                    details_panel.controls.append(ft.Text(f"Tags: {tags_str}"))
+                    details_panel.controls.append(ft.Text(value=f"Tags: {tags_str}"))
                 # IDs
                 if meta.get('displayIconId'):
-                    details_panel.controls.append(ft.Text(f"DisplayIconId: {meta.get('displayIconId')}"))
+                    details_panel.controls.append(ft.Text(value=f"DisplayIconId: {meta.get('displayIconId')}"))
                 if meta.get('id'):
-                    details_panel.controls.append(ft.Text(f"ID: {meta.get('id')}"))
+                    details_panel.controls.append(ft.Text(value=f"ID: {meta.get('id')}"))
                 if meta.get('category'):
-                    details_panel.controls.append(ft.Text(f"Category: {meta.get('category')}"))
+                    details_panel.controls.append(ft.Text(value=f"Category: {meta.get('category')}"))
                 # short description if present
                 desc = meta.get('description') or meta.get('info')
                 if desc:
-                    details_panel.controls.append(ft.Text(f"{str(desc)[:300]}"))
+                    details_panel.controls.append(ft.Text(value=f"{str(desc)[:300]}"))
             # Action buttons
             def set_selected(e, p=path):
                 logger.debug(f"set_selected: {p}")
@@ -538,15 +538,15 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                 except Exception:
                     show_snack('Unable to open folder', True)
 
-            btn_row = ft.Row([
-                ft.Button("Use this icon", on_click=set_selected),
-                ft.TextButton("Open folder", on_click=open_in_explorer),
-                ft.Button("Edit Icon", on_click=lambda e: open_icon_editor())
+            btn_row = ft.Row(controls=[
+                ft.Button(content="Use this icon", on_click=set_selected),
+                ft.TextButton(content="Open folder", on_click=open_in_explorer),
+                ft.Button(content="Edit Icon", on_click=lambda e: open_icon_editor())
             ])
             details_panel.controls.append(btn_row)
         except Exception:
             logger.error("show_icon_details: failed to load details")
-            details_panel.controls.append(ft.Text("Failed to load details"))
+            details_panel.controls.append(ft.Text(value="Failed to load details"))
         ## also open a dialog with the preview so the user definitely sees details
         #try:
         #    dlg_content = ft.Column([
