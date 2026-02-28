@@ -583,7 +583,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             editor = getattr(page, "pixel_editor", None)
             if editor is None:
                 editor = PixelArtEditor(page=page)
-                page.pixel_editor = editor
+                setattr(page, "pixel_editor", editor)
 
             # Try to find a Tabs control on the page to host the editor tab
             tabs_control = None
@@ -610,7 +610,7 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
             else:
                 # No Tabs control found — fallback to opening editor in a dialog
                 try:
-                    dlg = ft.AlertDialog(title=ft.Text("Icon Editor"), content=editor.container, open=True)
+                    dlg = ft.AlertDialog(title=ft.Text(value="Icon Editor"), content=editor.container, open=True)
                     page.dialog = dlg
                     page.show_dialog(dlg)
                     page.update()
@@ -715,36 +715,24 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         def _worker():
             try:
                 api = ensure_api(api_ref)
-                if not api:
-                    show_snack("API not available; authenticate first", error=True)
-                    return
                 # indicate search started
-                try:
-                    status_text.value = "Searching YotoIcons... (0 downloaded)"
-                    page.update()
-                except Exception:
-                    pass
+                status_text.value = "Searching YotoIcons... (0 downloaded)"
+                page.update()
                 # start a small monitor thread to report progress while the search runs
                 monitor_stop = threading.Event()
                 def _monitor():
                     prev = 0
                     while not monitor_stop.wait(0.7):
-                        try:
-                            yc = YOTOICONS_CACHE_DIR
-                            cnt = 0
-                            if yc.exists():
-                                for f in yc.iterdir():
-                                    if f.is_file():
-                                        cnt += 1
-                            if cnt != prev:
-                                prev = cnt
-                                try:
-                                    status_text.value = f"Searching YotoIcons... ({cnt} files)"
-                                    page.update()
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
+                        yc = YOTOICONS_CACHE_DIR
+                        cnt = 0
+                        if yc.exists():
+                            for f in yc.iterdir():
+                                if f.is_file():
+                                    cnt += 1
+                        if cnt != prev:
+                            prev = cnt
+                            status_text.value = f"Searching YotoIcons... ({cnt} files)"
+                            page.update()
                 monitor_thread = threading.Thread(target=_monitor, daemon=True)
                 monitor_thread.start()
                 # use api.search_yotoicons to refresh cache and then list cached results
@@ -765,17 +753,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                 url = m.get('img_url') or m.get('imgUrl') or m.get('url')
                                 # register in filename/hash maps regardless
                                 if cp:
-                                    try:
-                                        fname = Path(cp).name
-                                        _meta_by_filename[fname] = m
-                                    except Exception:
-                                        pass
+                                    fname = Path(cp).name
+                                    _meta_by_filename[fname] = m
                                 if url:
-                                    try:
-                                        h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
-                                        _meta_by_hash[h] = m
-                                    except Exception:
-                                        pass
+                                    h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
+                                    _meta_by_hash[h] = m
 
                                 # try to resolve the actual cached image path
                                 pth = None
@@ -784,19 +766,15 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                     if not cand_path.is_absolute():
                                         cand_path = Path('.').joinpath(cp)
                                     # if the path is like '.yotoicons_cache/xxx.png' normalize to local path
-                                    try:
-                                        if not cand_path.exists():
-                                            # try under configured YOTOICONS_CACHE_DIR with just the filename
-                                            cand_path2 = YOTOICONS_CACHE_DIR / Path(cp).name
-                                            if cand_path2.exists():
-                                                cand_path = cand_path2
-                                    except Exception:
-                                        pass
+                                    if not cand_path.exists():
+                                        # try under configured YOTOICONS_CACHE_DIR with just the filename
+                                        cand_path2 = YOTOICONS_CACHE_DIR / Path(cp).name
+                                        if cand_path2.exists():
+                                            cand_path = cand_path2
                                     if cand_path.exists():
                                         pth = cand_path
                                 # fallback: if we have a url hash, find any file in .yotoicons_cache starting with that hash
                                 if not pth and url:
-                                    try:
                                         h = hashlib.sha256(str(url).encode()).hexdigest()[:16]
                                         yc = YOTOICONS_CACHE_DIR
                                         if yc.exists():
@@ -804,8 +782,6 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                                                 if f.stem.startswith(h):
                                                     pth = f
                                                     break
-                                    except Exception:
-                                        pass
                                 if pth and pth.exists():
                                     discovered += 1
                                     # Normalize to Path object (match load_cached_icons)
@@ -849,51 +825,40 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
                     if discovered:
                         _meta_loaded = False
                 except Exception:
-                    pass
+                    logger.error(f"do_online_search: failed to integrate new icons metadata: {e}")
                 # render and notify (best-effort from background thread)
-                try:
-                    # rebuild index since search may have added new metadata/cache files
-                    _index_built = False
-                    # ensure metadata maps are reloaded from disk if needed
-                    _meta_loaded = False
-                    build_index()
-                    # apply the current filter so the UI respects the user's active search/settings
-                    try:
-                        do_filter()
-                    except Exception:
-                        # fallback: render all cached icons if filtering fails
-                        render_icons(icons)
-                except Exception:
-                    pass
+                # rebuild index since search may have added new metadata/cache files
+                _index_built = False
+                # ensure metadata maps are reloaded from disk if needed
+                _meta_loaded = False
+                build_index()
+                # apply the current filter so the UI respects the user's active search/settings
+                do_filter()
+                    # fallback: render all cached icons if filtering fails
+                render_icons(icons)
                 # stop the monitor thread and clear status
-                try:
-                    monitor_stop.set()
-                except Exception:
-                    pass
-                try:
-                    status_text.value = ""
-                    page.update()
-                except Exception:
-                    pass
+                monitor_stop.set()
+                status_text.value = ""
+                page.update()
             except Exception:
                 show_snack("YotoIcons search failed", True)
 
         threading.Thread(target=_worker, daemon=True).start()
 
     # build left panel (search + source filters + icons) and make it scrollable independently
-    left_panel = ft.Column([search_row, filter_row, status_text, ft.Divider(), icons_container], scroll=ft.ScrollMode.AUTO, expand=True)
+    left_panel = ft.Column(controls=[search_row, filter_row, status_text, ft.Divider(), icons_container], scroll=ft.ScrollMode.AUTO, expand=True)
 
     # container for the right details column (fixed width)
     detail_container = ft.Container(content=details_panel, width=320)
 
     # main row: left is scrollable list, right is fixed details
-    main_row = ft.Row([
+    main_row = ft.Row(controls=[
         ft.Container(content=left_panel, expand=True),
         ft.VerticalDivider(),
         detail_container,
     ], expand=True)
 
-    panel = ft.Column([panel_header, main_row], expand=True)
+    panel = ft.Column(controls=[panel_header, main_row], expand=True)
     # do initial load
     render_icons(load_cached_icons())
 
@@ -905,17 +870,11 @@ def build_icon_browser_panel(page: ft.Page, api_ref: dict, ensure_api: Callable,
         def _on_cache_refreshed():
             logger.debug("Icon cache refreshed callback triggered")
             nonlocal _meta_loaded, _index_built
-            try:
-                _meta_loaded = False
-                _index_built = False
-                # rebuild index from disk and re-apply current filter
-                build_index()
-                try:
-                    do_filter()
-                except Exception:
-                    render_icons(load_cached_icons())
-            except Exception:
-                pass
+            _meta_loaded = False
+            _index_built = False
+            # rebuild index from disk and re-apply current filter
+            build_index()
+            do_filter()
         # support multiple listeners
         if not hasattr(page, 'icon_cache_refreshed_callbacks'):
             page.icon_cache_refreshed_callbacks = []
