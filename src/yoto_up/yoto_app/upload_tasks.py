@@ -59,6 +59,7 @@ class FileUploadRow:
             controls=[
                 self.name_text,
                 ft.TextButton(content=ft.Text(value="Preview"), on_click=self.on_preview),
+                ft.TextButton(content=ft.Text(value="Split"), on_click=self.on_split),
                 self.progress,
                 self.status_text,
                 ft.TextButton(content=ft.Text(value="View details"), on_click=self.on_view_details),
@@ -199,6 +200,111 @@ class FileUploadRow:
         page = self.page
         page.update()
 
+    def on_split(self, ev=None):
+        """Open split dialog and run YotoAPI.split_audio in background, then offer to add outputs to queue."""
+        page = self.page
+
+        target_tracks = ft.TextField(label="Target tracks", value="10", width=120)
+        min_len = ft.TextField(label="Min track length (s)", value="30", width=120)
+        silence_thresh = ft.TextField(label="Silence thresh (dB)", value="-40", width=120)
+        min_silence_ms = ft.TextField(label="Min silence ms", value="800", width=120)
+        output_dir = ft.TextField(label="Output directory (optional)", value="", width=400)
+        name_tmpl = ft.TextField(label="Output name template (optional)", value="", width=400)
+
+        def start_split(e=None):
+            async def _do_split():
+                run_dlg = ft.AlertDialog(title=ft.Text("Splitting..."), content=ft.Column([ft.ProgressRing(), ft.Text(value="Working...")]), modal=True)
+                page.show_dialog(run_dlg)
+                page.update()
+                api = ensure_api(page.api_ref)
+                try:
+                    t_tracks = int(target_tracks.value)
+                    min_l = int(min_len.value)
+                    s_thresh = int(silence_thresh.value)
+                    min_s_ms = int(min_silence_ms.value)
+                    base_um = getattr(page, "upload_manager", None)
+                    out_dir_val = (
+                        output_dir.value
+                        if output_dir.value
+                        else (base_um.tmp_dir if base_um and getattr(base_um, "tmp_dir", None) else None)
+                    )
+                    tmpl = name_tmpl.value or None
+                    results = await asyncio.to_thread(
+                        api.split_audio,
+                        self.filepath,
+                        target_tracks=t_tracks,
+                        min_track_length_sec=min_l,
+                        silence_thresh_db=s_thresh,
+                        min_silence_len_ms=min_s_ms,
+                        output_dir=out_dir_val,
+                        show_progress=False,
+                        output_name_template=tmpl,
+                    )
+                finally:
+                    try:
+                        page.pop_dialog()
+                    except Exception:
+                        pass
+
+                lines = []
+                if not results:
+                    lines.append(ft.Text(value="No segments were created.", color=ft.Colors.RED))
+                else:
+                    for p in results:
+                        lines.append(ft.Text(value=str(p)))
+
+                def replace_with_results(ev=None):
+                    col = page.file_rows_column
+                    try:
+                        idx = col.controls.index(self.row)
+                    except ValueError:
+                        idx = len(col.controls)
+                    # remove the original row if present
+                    try:
+                        # pop at idx (if equal to len this will raise)
+                        if idx < len(col.controls) and col.controls[idx] is self.row:
+                            col.controls.pop(idx)
+                    except Exception:
+                        pass
+                    # insert new rows at the same index
+                    for p in results:
+                        pstr = str(p)
+                        file_row = FileUploadRow(pstr, page)
+                        col.controls.insert(idx, file_row.row)
+                        idx += 1
+                    page.update()
+
+                res_dlg = ft.AlertDialog(
+                    title=ft.Text("Split result"),
+                    content=ft.Column(controls=lines, scroll=ft.ScrollMode.AUTO, width=600),
+                    actions=[
+                        ft.TextButton(content=ft.Text(value="Replace file"), on_click=replace_with_results),
+                        ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()),
+                    ],
+                    scrollable=True,
+                )
+                page.show_dialog(res_dlg)
+                page.update()
+
+            page.run_task(_do_split)
+
+        dlg = ft.AlertDialog(
+            title=ft.Text(value=f"Split: {self.name}"),
+            content=ft.Column(controls=[
+                ft.Row(controls=[target_tracks, min_len]),
+                ft.Row(controls=[silence_thresh, min_silence_ms]),
+                output_dir,
+                name_tmpl,
+            ], scroll=ft.ScrollMode.AUTO, width=600),
+            actions=[
+                ft.TextButton(content=ft.Text(value="Start Split"), on_click=start_split),
+                ft.TextButton(content=ft.Text(value="Cancel"), on_click=lambda e: page.pop_dialog()),
+            ],
+            modal=True,
+        )
+        page.show_dialog(dlg)
+        page.update()
+
     def update_file(self, new_filepath):
         """
         Update the row to reference a new file path and update displayed name.
@@ -245,6 +351,13 @@ class UploadManager:
 
         gain_adjusted_files = {}  # {filepath: {'gain': float, 'temp_path': str or None}}
         waveform_cache = {}
+        # Persistent temporary workspace for this upload manager (shared across operations)
+        self.tmp_dir = tempfile.mkdtemp(prefix="yoto_up_")
+        # Also attach to the page for code paths that reference page.upload_manager after construction
+        try:
+            page.upload_manager_tmp_dir = self.tmp_dir
+        except Exception:
+            pass
 
         # File picker and folder controls.
         # On Linux desktop, FilePicker depends on "zenity". If it's missing,
@@ -2006,7 +2119,12 @@ async def start_uploads(
         try:
             status.value = "Normalizing audio..."
             page.update()
-            temp_norm_dir = tempfile.mkdtemp(prefix="yoto_norm_")
+            base_um = getattr(page, "upload_manager", None)
+            if base_um and getattr(base_um, "tmp_dir", None):
+                temp_norm_dir = os.path.join(base_um.tmp_dir, "norm")
+                os.makedirs(temp_norm_dir, exist_ok=True)
+            else:
+                temp_norm_dir = tempfile.mkdtemp(prefix="yoto_norm_")
             logger.info(
                 f"Normalizing {len(files)} files to {temp_norm_dir} (Target: {local_norm_target}LUFS, Batch: {local_norm_batch})"
             )
