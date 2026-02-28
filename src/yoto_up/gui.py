@@ -34,7 +34,7 @@ from yoto_up.yoto_app.upload_tasks import (
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 import hashlib
 
-from yoto_up.yoto_app.icon_browser import build_icon_browser_panel
+build_icon_browser_panel = None
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
 from yoto_up.yoto_app.about_dialog import show_about_dialog
@@ -778,16 +778,20 @@ def main(page: "Page"):
     page.get_cached_cover = get_cached_cover
 
     if ENABLE_ICON_BROWSER:
-        logger.debug("Building icon browser panel")
-        # Create tabs and keep a reference so we can enable/disable them
-        # Build icon browser panel and add as a tab
-        icon_browser_ui = build_icon_browser_panel(
-            page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack
+        logger.debug("Deferring icon browser build until requested")
+        # Lightweight placeholder panel so the app stays responsive. The real
+        # icon browser will be imported and built on demand via
+        # `page.load_icon_browser` (set after tabs are created).
+        icon_panel = ft.Column(
+            controls=[
+                ft.Text(value="Icon browser not loaded.", size=14),
+                ft.ElevatedButton(
+                    content="Load Icon Browser",
+                    on_click=lambda e: getattr(page, "load_icon_browser", lambda ev: None)(e),
+                ),
+            ],
+            expand=True,
         )
-        icon_panel = (
-            icon_browser_ui.get("panel") if isinstance(icon_browser_ui, dict) else None
-        )
-        logger.debug("Icon browser panel built")
 
     # Build covers panel
     # logger.debug("Building covers panel")
@@ -888,6 +892,45 @@ def main(page: "Page"):
     )
     logger.debug("Tabs control created and header added")
     page.add(tabs_control)
+
+    # Lazy-loader: attach a function to the page that will import and build
+    # the icon browser only when requested by the user (keeps startup fast).
+    def _load_icon_browser(ev=None):
+        from yoto_up.yoto_app.icon_browser import build_icon_browser_panel as _builder
+
+        ui = _builder(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
+        panel = ui.get("panel") if isinstance(ui, dict) else ui
+        if not panel:
+            page.show_snack("Icon browser returned no panel", error=True)
+            return
+
+        # Find the index of the Icons tab and replace the placeholder control
+        idx = None
+        for i, tab in enumerate(getattr(tab_bar, "tabs", [])):
+            if getattr(tab, "label", None) == "Icons":
+                idx = i
+                break
+        if idx is None:
+            # Fallback: just add the panel to the end
+            try:
+                tabs_control.content.controls[1].controls.append(panel)
+            except Exception:
+                pass
+        else:
+            try:
+                tabs_control.content.controls[1].controls[idx] = panel
+            except Exception:
+                pass
+
+        # Keep reference and refresh UI
+        page.icon_panel = panel
+        try:
+            page.update()
+        except Exception:
+            pass
+        logger.debug("Icon browser panel loaded on demand")
+
+    page.load_icon_browser = _load_icon_browser
 
     def auth_complete():
         logger.debug("Auth complete")
