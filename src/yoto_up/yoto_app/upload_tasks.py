@@ -45,7 +45,7 @@ INTRO_OUTRO_DIALOG = None
 
 # --- Robust FileUploadRow class ---
 class FileUploadRow:
-    def __init__(self, filepath, maybe_page=None, maybe_column=None):
+    def __init__(self, filepath, page):
 
         # use ft.* controls
 
@@ -68,8 +68,9 @@ class FileUploadRow:
         self.row = ft.Container(content=self.inner_row, padding=0)
         setattr(self.row, "filename", filepath)
         setattr(self.row, "_fileuploadrow", self)
-        self.maybe_page = maybe_page
-        self.maybe_column = maybe_column
+        # page is required; derive column from page attribute `file_rows_column`
+        self.page = page
+        self.column = page.file_rows_column
         self.uploaded = False  # Track if this file has been uploaded
 
     def set_status(self, value):
@@ -78,8 +79,8 @@ class FileUploadRow:
     def set_progress(self, frac):
         self.progress.visible = True
         self.progress.value = frac
-        if self.maybe_page:
-            self.maybe_page.update()
+        # page is required; propagate errors if update fails
+        self.page.update()
 
     def on_upload_complete(self):
         logger.debug(f"[FileUploadRow] on_upload_complete called for {self.name}")
@@ -87,15 +88,15 @@ class FileUploadRow:
         # Change the row background color for visual indication
         self.name_text.color = ft.Colors.GREEN_100
         # Force UI update by removing and re-adding the row in the parent column
-        if self.maybe_page:
-            self.maybe_page.update()
+        #idx = self.column.controls.index(self.row)
+        #self.column.controls.pop(idx)
+        #self.column.controls.insert(idx, self.row)
+        #self.column.update()
+        self.page.update()
 
     def on_view_details(self, ev=None):
         try:
-            page = self.maybe_page
-            if not page:
-                print("[FileUploadRow] No page available to show dialog")
-                return
+            page = self.page
             tags = {}
             try:
                 from mutagen import File as MutagenFile
@@ -193,14 +194,10 @@ class FileUploadRow:
             print(f"[Preview] Failed to open {url}: {ex}")
 
     def on_remove(self, ev=None):
-        col = self.maybe_column
-        if not col:
-            print("[FileUploadRow] No column available to remove row")
-            return
+        col = self.column
         col.controls.remove(self)
-        page = self.maybe_page
-        if page:
-            page.update()
+        page = self.page
+        page.update()
 
     def update_file(self, new_filepath):
         """
@@ -217,8 +214,8 @@ class FileUploadRow:
         self.set_status("Queued")
         self.set_progress(0.0)
         self.uploaded = False
-        if self.maybe_page:
-            self.maybe_page.update()
+        # page is required; let update errors surface
+        self.page.update()
 
 
 # --- End FileUploadRow class ---
@@ -240,6 +237,8 @@ class UploadManager:
         overall_bar = ft.ProgressBar(width=400, visible=False)
         overall_text = ft.Text(value="")
         file_rows_column = ft.Column(controls=[])
+        # Attach the column to the page for easy referencing by FileUploadRow
+        page.file_rows_column = file_rows_column
         # Counters for overall progress
         total_files = 0
         completed_count = 0
@@ -438,9 +437,7 @@ class UploadManager:
                 for f in files:
                     if f not in existing:
                         try:
-                            file_row = FileUploadRow(
-                                f, maybe_page=page, maybe_column=file_rows_column
-                            )
+                            file_row = FileUploadRow(f, page)
                             file_rows_column.controls.append(file_row.row)
                         except Exception as e:
                             raise RuntimeError(
@@ -483,9 +480,7 @@ class UploadManager:
                         getattr(row, "filename", None) == path
                         for row in file_rows_column.controls
                     ):
-                        file_row = FileUploadRow(
-                            path, maybe_page=page, maybe_column=file_rows_column
-                        )
+                        file_row = FileUploadRow(path, page)
                         file_rows_column.controls.append(file_row.row)
             update_show_waveforms_btn()
             page.update()
@@ -498,9 +493,7 @@ class UploadManager:
                 temp_path = f"assets/uploads/queue/{e.file_name}"
 
                 try:
-                    file_row = FileUploadRow(
-                        temp_path, maybe_page=page, maybe_column=file_rows_column
-                    )
+                    file_row = FileUploadRow(temp_path, page)
                     file_rows_column.controls.append(file_row.row)
                 except Exception as _:
                     raise RuntimeError(
