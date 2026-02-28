@@ -101,6 +101,7 @@ def main(page: "Page"):
     )
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
+    page._icon_browser_loaded = False
 
     page.cards: list[Card] = []
 
@@ -857,6 +858,23 @@ def main(page: "Page"):
             ],
         ),
     )
+
+    # Load icon browser automatically when the Icons tab is selected.
+    def _on_tab_change(e=None):
+        if page._icon_browser_loaded or not ENABLE_ICON_BROWSER:
+            return
+        # Prefer Tabs.selected_index, fallback to TabBar.selected_index
+        idx = getattr(tabs_control, "selected_index", None)
+        if idx is None:
+            idx = getattr(tab_bar, "selected_index", None)
+        if idx is None:
+            return
+        lbl = getattr(tab_bar.tabs[idx], "label", None)
+        if lbl == "Icons" and not getattr(page, "_icon_browser_loaded", False):
+            page._icon_browser_loaded = True
+            page.load_icon_browser()
+
+    tabs_control.on_change = _on_tab_change
 
     def enable_tab_by_label(label: str):
             for tab in getattr(tab_bar, "tabs", []):
