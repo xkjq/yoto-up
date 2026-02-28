@@ -19,6 +19,7 @@ from typing import Optional
 import sys
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import threading
+import queue
 from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
 from pydub import AudioSegment
@@ -226,11 +227,45 @@ class FileUploadRow:
 
         def start_split(e=None):
             async def _do_split():
-                run_dlg = ft.AlertDialog(title=ft.Text("Splitting..."), content=ft.Column([ft.ProgressRing(), ft.Text(value="Working...")]), modal=True)
+                progress_text = ft.Text(value="Initializing split...\nAnalysing audio for silence.", size=14)
+                progress_bar = ft.ProgressBar(width=300, value=0)
+                run_dlg = ft.AlertDialog(title=ft.Text("Splitting..."), content=ft.Column([progress_text, progress_bar]), modal=True)
                 page.show_dialog(run_dlg)
                 page.update()
+
                 api = ensure_api(page.api_ref)
                 results = []
+
+                # TODO: work out if this is actually required!
+                # thread->ui communication queue
+                q: "queue.Queue[tuple[str, float]]" = queue.Queue()
+                done = False
+
+                def progress_cb(msg: str | None, frac: float | None):
+                    try:
+                        q.put((msg or "", float(frac or 0.0)))
+                    except Exception:
+                        pass
+
+                async def _pump_progress():
+                    nonlocal done
+                    while True:
+                        try:
+                            m, f = q.get_nowait()
+                        except queue.Empty:
+                            if done:
+                                break
+                            await asyncio.sleep(0.1)
+                            continue
+                        try:
+                            progress_text.value = m
+                            progress_bar.value = f
+                            page.update()
+                        except Exception:
+                            pass
+
+                pump_task = asyncio.create_task(_pump_progress())
+
                 try:
                     t_tracks = int(target_tracks.value)
                     min_l = int(min_len.value)
@@ -252,11 +287,12 @@ class FileUploadRow:
                         min_silence_len_ms=min_s_ms,
                         output_dir=out_dir_val,
                         show_progress=False,
+                        progress_callback=progress_cb,
                         output_name_template=tmpl,
                     )
                 except Exception as exc:
                     # Ensure progress dialog is closed and show error to user without crashing
-                    tb = _tb.format_exc()
+                    tb = traceback.format_exc()
                     # Friendly suggestions for the user
                     suggestion_lines = [
                         ft.Text(value="Split failed: " + str(exc), color=ft.Colors.RED),
@@ -278,6 +314,13 @@ class FileUploadRow:
                             page.update()
                             try:
                                 # Use extreme silence threshold to force fallback to even splits
+                                # reuse progress queue to pump small updates
+                                def even_cb(msg, frac):
+                                    try:
+                                        q.put((msg or "", float(frac or 0.0)))
+                                    except Exception:
+                                        pass
+
                                 even_results = await asyncio.to_thread(
                                     api.split_audio,
                                     self.filepath,
@@ -288,6 +331,7 @@ class FileUploadRow:
                                     output_dir=out_dir_val,
                                     show_progress=False,
                                     output_name_template=tmpl,
+                                    progress_callback=even_cb,
                                 )
                             except Exception as e2:
                                 page.pop_dialog()
@@ -332,6 +376,12 @@ class FileUploadRow:
                     page.update()
                     return
                 finally:
+                    # signal pump to stop and wait for it
+                    done = True
+                    try:
+                        await pump_task
+                    except Exception:
+                        pass
                     # Close the running progress dialog if still open
                     try:
                         page.pop_dialog()
