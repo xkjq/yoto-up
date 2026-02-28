@@ -229,7 +229,7 @@ class FileUploadRow:
             async def _do_split():
                 progress_text = ft.Text(value="Initializing split...\nAnalysing audio for silence.", size=14)
                 progress_bar = ft.ProgressBar(width=300, value=0)
-                run_dlg = ft.AlertDialog(title=ft.Text("Splitting..."), content=ft.Column([progress_text, progress_bar]), modal=True)
+                run_dlg = ft.AlertDialog(title=ft.Text(value="Splitting..."), content=ft.Column([progress_text, progress_bar]), modal=True)
                 page.show_dialog(run_dlg)
                 page.update()
 
@@ -335,7 +335,7 @@ class FileUploadRow:
                                 )
                             except Exception as e2:
                                 page.pop_dialog()
-                                err2 = ft.AlertDialog(title=ft.Text("Even split failed"), content=ft.Text(value=str(e2)), actions=[ft.TextButton(content=ft.Text("Close"), on_click=lambda e: page.pop_dialog())])
+                                err2 = ft.AlertDialog(title=ft.Text(value="Even split failed"), content=ft.Text(value=str(e2)), actions=[ft.TextButton(content=ft.Text("Close"), on_click=lambda e: page.pop_dialog())])
                                 page.show_dialog(err2)
                                 page.update()
                                 return
@@ -364,7 +364,7 @@ class FileUploadRow:
                         page.run_task(_even_run)
 
                     err_dlg = ft.AlertDialog(
-                        title=ft.Text("Split failed"),
+                        title=ft.Text(value="Split failed"),
                         content=ft.Column(controls=suggestion_lines, scroll=ft.ScrollMode.AUTO, width=600),
                         actions=[
                             ft.TextButton(content=ft.Text(value="Try even splits"), on_click=_try_even),
@@ -420,7 +420,7 @@ class FileUploadRow:
                     page.update()
 
                 res_dlg = ft.AlertDialog(
-                    title=ft.Text("Split result"),
+                    title=ft.Text(value="Split result"),
                     content=ft.Column(controls=lines, scroll=ft.ScrollMode.AUTO, width=600),
                     actions=[
                         ft.TextButton(content=ft.Text(value="Replace file"), on_click=replace_with_results),
