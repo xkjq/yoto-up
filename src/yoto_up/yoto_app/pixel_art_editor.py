@@ -126,7 +126,7 @@ class PixelArtEditor:
         )
         # Advanced color picker dialog
         self.advanced_picker_btn = ft.Button(
-            "Advanced Color Picker", on_click=self.open_color_picker
+            content="Advanced Color Picker", on_click=self.open_color_picker
         )
         self.color_picker_dialog = None
         self.rgb_sliders = None
@@ -3430,7 +3430,7 @@ class PixelArtEditor:
                 return None
 
     def attach_to_tabview(
-        self, tabview: ft.Tabs, select: bool = True, page: ft.Page = None
+        self, tabview: ft.Tabs, select: bool = True, page: ft.Page | None = None
     ):
         """Attach the editor as a new tab to an existing ft.Tabs (tabview).
         If select=True the new tab will be selected. Pass page to trigger update.

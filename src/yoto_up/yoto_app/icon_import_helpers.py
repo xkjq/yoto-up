@@ -1,15 +1,12 @@
 
-import os
 from pathlib import Path
 import base64
 import hashlib
 import json
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
-from pathlib import Path
 from loguru import logger
 from PIL import Image as PILImage
 import io
-import base64
 
 # Directory for generated thumbnails (kept inside the official cache dir)
 THUMBNAIL_DIR = OFFICIAL_ICON_CACHE_DIR / "thumbnails"
@@ -110,10 +107,7 @@ def get_thumbnail_path(path: Path, size: int = 64) -> str:
                 pass
 
         # resize preserving aspect ratio
-        try:
-            resample = PILImage.Resampling.LANCZOS
-        except Exception:
-            resample = PILImage.LANCZOS
+        resample = PILImage.Resampling.LANCZOS
         img.thumbnail((size, size), resample)
         img.save(thumb_path, format="PNG")
         return str(thumb_path.resolve())
@@ -144,10 +138,7 @@ def load_cached_icons() -> list[Path]:
 def load_icon_as_pixels(path, size=16):
     from PIL import Image
     img = Image.open(path).convert('RGBA')
-    try:
-        resample = Image.Resampling.NEAREST
-    except AttributeError:
-        resample = Image.NEAREST
+    resample = Image.Resampling.NEAREST
     img = img.resize((size, size), resample)
     pixels = []
     for y in range(size):
