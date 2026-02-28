@@ -1678,7 +1678,7 @@ def show_card_popup(page, card):
     lines.append(
                 ft.TextButton(
             content=ft.Text(value="View card"),
-            on_click=lambda e: getattr(page, "show_card_details", lambda _e, _c: None)(e, card),
+            on_click=lambda: page.show_card_details(card),
             style=ft.ButtonStyle(color=ft.Colors.BLUE),
         )
     )

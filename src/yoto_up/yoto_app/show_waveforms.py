@@ -1,6 +1,9 @@
 import flet as ft
 from loguru import logger
 import numpy as np
+import matplotlib
+# Use non-GUI backend to avoid Tk/Tcl dependency when running headless
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import io
 import base64
