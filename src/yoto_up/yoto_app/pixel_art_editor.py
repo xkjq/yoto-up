@@ -227,7 +227,7 @@ class PixelArtEditor:
         grid_height = self.size * self.pixel_size
         # Light placeholder container; real grid will be injected by ensure_grid()
         self.grid_container = ft.Container(
-            content=ft.Container(content=ft.Text(value="(grid loading)"))),
+            content=ft.Container(content=ft.Text(value="(grid loading)")),
             border_radius=4,
             border=ft.border.all(2, "#888888"),
             padding=2,
