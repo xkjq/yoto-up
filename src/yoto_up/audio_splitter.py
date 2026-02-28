@@ -246,28 +246,66 @@ def split_audio(
             chosen_cuts.append(t)
         chosen_cuts = sorted(chosen_cuts)
 
-    # Build segment boundaries
+    # Build and normalize segment boundaries, ensuring full coverage of the input
     boundaries = [0.0] + chosen_cuts + [total_dur]
+    # ensure sorted unique boundaries, and ensure first/last cover whole file
+    boundaries = sorted(list(dict.fromkeys(boundaries)))
+    if boundaries[0] > 0:
+        boundaries.insert(0, 0.0)
+    if boundaries[-1] < total_dur:
+        boundaries.append(total_dur)
+
+    # Merge cuts that produce segments shorter than min_track_length_sec.
+    b = boundaries[:]  # mutable copy
     segments: List[Tuple[float, float]] = []
-    for i in range(len(boundaries) - 1):
-        start = boundaries[i]
-        end = boundaries[i + 1]
-        if (end - start) < min_track_length_sec:
-            # If too short, try to expand into next segment (simple merge)
-            if i + 2 < len(boundaries):
-                # merge with next
-                boundaries[i + 1] = boundaries[i + 2]
-                # recompute later by restarting algorithm; simple approach: skip adding
-                continue
-            else:
-                # last segment short — extend to end
-                end = boundaries[-1]
+    i = 0
+    while i < len(b) - 1:
+        start = b[i]
+        end = b[i + 1]
+        length = end - start
+        if length < min_track_length_sec and (i + 2) < len(b):
+            # merge this cut into the next segment by removing the cut point
+            b.pop(i + 1)
+            # do not advance i; re-evaluate with new end
+            continue
+        # ensure end within bounds
+        if end > total_dur:
+            end = total_dur
+        if start < 0:
+            start = 0.0
+        # skip negligible segments
+        if end - start < 0.001:
+            i += 1
+            continue
         segments.append((start, end))
+        i += 1
+
+    # As a final guarantee, ensure segments collectively cover entire duration
+    if not segments:
+        segments = [(0.0, total_dur)]
+    else:
+        # Fix start of first segment
+        if segments[0][0] > 0.0:
+            first = (0.0, segments[0][1])
+            segments[0] = first
+        # Fix end of last segment
+        if segments[-1][1] < total_dur:
+            last = (segments[-1][0], total_dur)
+            segments[-1] = last
 
     # If segments count > target_tracks, merge last extras
     while len(segments) > target_tracks:
         a = segments.pop()
         segments[-1] = (segments[-1][0], a[1])
+
+    # Verify total coverage matches input duration (within a small tolerance).
+    covered = sum((end - start) for start, end in segments)
+    tol = max(0.5, 0.001 * total_dur)  # tolerance: 0.5s or 0.1% of duration
+    if abs(covered - total_dur) > tol:
+        # Do not auto-adjust — signal error so caller/GUI can handle it.
+        raise RuntimeError(
+            f"Segment coverage mismatch: covered={covered:.3f}s total={total_dur:.3f}s; this indicates a splitting error"
+        )
 
     outputs: List[Path] = []
     total = len(segments)

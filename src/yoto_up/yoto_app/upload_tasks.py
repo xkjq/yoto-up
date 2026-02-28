@@ -217,6 +217,7 @@ class FileUploadRow:
                 page.show_dialog(run_dlg)
                 page.update()
                 api = ensure_api(page.api_ref)
+                results = []
                 try:
                     t_tracks = int(target_tracks.value)
                     min_l = int(min_len.value)
@@ -240,7 +241,20 @@ class FileUploadRow:
                         show_progress=False,
                         output_name_template=tmpl,
                     )
+                except Exception as exc:
+                    # Ensure progress dialog is closed and show error to user without crashing
+                    tb = _tb.format_exc()
+                    err_dlg = ft.AlertDialog(
+                        title=ft.Text("Split failed"),
+                        content=ft.Column(controls=[ft.Text(value=str(exc)), ft.Text(value=tb)], scroll=ft.ScrollMode.AUTO, width=600),
+                        actions=[ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog())],
+                        scrollable=True,
+                    )
+                    page.show_dialog(err_dlg)
+                    page.update()
+                    return
                 finally:
+                    # Close the running progress dialog if still open
                     try:
                         page.pop_dialog()
                     except Exception:
