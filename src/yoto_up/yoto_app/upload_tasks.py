@@ -42,6 +42,18 @@ _LAST_PAGE = None
 # module-level placeholder for the intro/outro analysis dialog (set when opened)
 INTRO_OUTRO_DIALOG = None
 
+def _human_duration(s):
+    try:
+        total = int(round(float(s)))
+    except Exception:
+        return f"{s} sec"
+    h, rem = divmod(total, 3600)
+    m, sec = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{sec:02d}"
+    else:
+        return f"{m}:{sec:02d}"
+
 
 # --- Robust FileUploadRow class ---
 class FileUploadRow:
@@ -120,7 +132,8 @@ class FileUploadRow:
                     if hasattr(mf, "info"):
                         info = mf.info
                         if hasattr(info, "length"):
-                            tags["duration"] = f"{info.length:.2f} sec"
+                            # Human-readable duration: H:MM:SS or M:SS
+                            tags["duration"] = _human_duration(getattr(info, "length"))
                         if hasattr(info, "bitrate"):
                             tags["bitrate"] = (
                                 f"{getattr(info, 'bitrate', 0) // 1000} kbps"
