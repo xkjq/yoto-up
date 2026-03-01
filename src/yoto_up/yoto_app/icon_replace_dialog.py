@@ -253,7 +253,7 @@ class IconReplaceDialog:
                                     self.page.update_card(full)
                                     self.show_card_details(full)
 
-                                threading.Thread(target=use_worker, daemon=True).start()
+                                self.page.run_thread(use_worker)
 
                             row_children = []
                             if url_src is not None:
