@@ -181,14 +181,31 @@ Continue?"""
                                         except Exception:
                                             pass
 
-                                def icon_progress(msg, frac):
-                                    if msg:
-                                        prog_text.value = msg
-                                    if frac is not None:
-                                        prog.value = frac
-                                    page.update()
+                                # Ensure replacement runs off the event loop so UI can update.
+                                loop = asyncio.get_running_loop()
 
-                                new_card = api.replace_card_default_icons(
+                                def _ui_update(msg, frac):
+                                    try:
+                                        if msg:
+                                            prog_text.value = msg
+                                        if frac is not None:
+                                            prog.value = frac
+                                        page.update()
+                                    except Exception:
+                                        pass
+
+                                def icon_progress(msg, frac):
+                                    # This may be called from a worker thread; schedule UI update on loop
+                                    try:
+                                        loop.call_soon_threadsafe(_ui_update, msg or "", float(frac) if frac is not None else None)
+                                    except Exception:
+                                        try:
+                                            _ui_update(msg, frac)
+                                        except Exception:
+                                            pass
+
+                                new_card = await asyncio.to_thread(
+                                    api.replace_card_default_icons,
                                     card_for_replace,
                                     progress_callback=icon_progress,
                                     cancel_event=cancel_event,
