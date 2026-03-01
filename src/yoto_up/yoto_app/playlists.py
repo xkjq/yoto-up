@@ -721,6 +721,9 @@ def build_playlists_panel(
                 try:
                     card = api.restore_version(p, return_card=True)
                     restored += 1
+                    page.show_snack(f"Restored {restored} versions")
+                    page.pop_dialog()
+                    page.update_card(card)
                 except httpx.HTTPError as e:
                     logger.error(f"HTTP error restoring {p}: {e}")
                     page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
@@ -728,9 +731,6 @@ def build_playlists_panel(
                     logger.error(f"Filesystem error restoring {p}: {e}")
                     page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
 
-            page.show_snack(f"Restored {restored} versions")
-            page.pop_dialog()
-            page.update_card(card)
 
         dlg = ft.AlertDialog(
             title=ft.Text(value="Restore deleted cards"),
