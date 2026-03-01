@@ -704,6 +704,17 @@ def build_playlists_panel(
             page.show_snack("No deleted versions available to restore")
             return
 
+        # Inform the user that restored cards will be created as new cards
+        # (new IDs) rather than re-using the deleted ID.
+        info_text = ft.Text(
+            value=(
+                "Selected versions will be re-created as new cards. "
+                "The original card ID cannot be reused by the API, so the card ID will change."
+            ),
+            size=12,
+            color=ft.Colors.BLACK54,
+        )
+
         lv = ft.ListView(expand=True)
         for card_id, title, path in deleted_entries:
             label = f"{title or '<untitled>'} ({card_id})"
@@ -718,23 +729,30 @@ def build_playlists_panel(
                 if not path:
                     continue
                 p = Path(path)
+
+                # Delegate all loading/validation/ID handling to the API.
                 try:
-                    card = api.restore_version(p, return_card=True)
-                    restored += 1
-                    page.show_snack(f"Restored {restored} versions")
-                    page.pop_dialog()
-                    page.update_card(card)
+                    new_card = api.restore_version(p, return_card=True)
                 except httpx.HTTPError as e:
                     logger.error(f"HTTP error restoring {p}: {e}")
                     page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
-                except OSError as e:
-                    logger.error(f"Filesystem error restoring {p}: {e}")
-                    page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
+                    continue
 
+                if new_card is None:
+                    page.show_snack(f"Failed to restore {p.stem}", error=True)
+                    continue
+
+                restored += 1
+                page.show_snack(f"Restored {restored} cards (new id: {getattr(new_card, 'cardId', 'unknown')})")
+                page.update_card(new_card)
+
+            # Close dialog after attempts and refresh playlists
+            page.pop_dialog()
+            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
 
         dlg = ft.AlertDialog(
-            title=ft.Text(value="Restore deleted cards"),
-            content=lv,
+            title=ft.Text(value="Restore deleted cards (IDs will change)"),
+            content=ft.Column(controls=[info_text, lv]),
             actions=[
                 ft.TextButton(content="Restore Selected", on_click=do_restore),
                 ft.TextButton(content="Cancel", on_click=lambda e: setattr(dlg, "open", False)),

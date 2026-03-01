@@ -376,10 +376,37 @@ class YotoAPI:
         Returns the created/updated card (model) if return_card True.
         """
         card_model = self.load_version(path, as_model=True)
-        if card_model is not None:
-            return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
-        else:
+        if card_model is None:
             logger.error(f"Failed to load version from {path}, cannot restore")
+            return None
+
+        # Try to restore by posting the saved payload. If the server rejects
+        # reinstating a deleted card (400 Bad Request with message
+        # "Deleted card cannot be restored"), create a new card instead
+        # (unset the cardId) so the content is preserved under a new id.
+        try:
+            return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
+        except httpx.HTTPStatusError as e:
+            resp = getattr(e, "response", None)
+            if resp is not None and resp.status_code == 400:
+                # Attempt to read error details from response body
+                try:
+                    body = resp.json()
+                    err = body.get("error", {})
+                    msg = err.get("message", "") if isinstance(err, dict) else str(err)
+                except Exception:
+                    msg = resp.text or ""
+
+                if "Deleted card cannot be restored" in str(msg) or (isinstance(err, dict) and err.get("code") == "bad-request"):
+                    # Create a new card instead
+                    try:
+                        if hasattr(card_model, "cardId"):
+                            setattr(card_model, "cardId", None)
+                    except Exception:
+                        pass
+                    return self.create_or_update_content(card_model, return_card=return_card, create_version=False)
+            # Re-raise unexpected HTTP errors
+            raise
 
     def split_audio(self, input_path: str | Path, *, target_tracks: int = 10, min_track_length_sec: int = 30,
                     silence_thresh_db: int = -40, min_silence_len_ms: int = 800, output_dir: Optional[str | Path] = None,
