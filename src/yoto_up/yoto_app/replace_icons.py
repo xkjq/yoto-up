@@ -212,13 +212,21 @@ def start_replace_icons_background(
 
         # Prefer using page helpers if available (added in gui.py)
         # create a synchronous callback that schedules the async page updater
+        last_badge_update = 0.0
+
         def _set_badge(msg, frac, visible=True):
+            nonlocal last_badge_update
+            # debounce frequent updates to avoid flooding the event loop
+            now = time.time()
+            if (now - last_badge_update) < 0.05 and visible:
+                return
+            last_badge_update = now
+            # schedule the async progress updater on the event loop
             try:
-                # schedule the async progress updater on the event loop
                 asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
             except Exception:
+                # best-effort fallback without raising
                 try:
-                    # fallback: call without awaiting (best-effort)
                     page.set_autoselect_progress(msg, frac, visible=visible)
                 except Exception:
                     pass
@@ -252,10 +260,12 @@ def start_replace_icons_background(
                 )
                 logger.debug("Icon replacement complete, updating card")
 
+                # update the card on the page and yield briefly so UI can process
                 page.update_card(new_card)
-                page.pop_dialog()  # close the status dialog if it's still open
-                page.pop_dialog()  # close the status dialog if it's still open
-                page.pop_dialog()  # close the status dialog if it's still open
+
+                page.pop_dialog()
+
+                # show the updated card details
                 page.show_card_details(new_card)
 
             except Exception as ex:
