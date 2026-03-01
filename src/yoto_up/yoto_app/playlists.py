@@ -1,3 +1,4 @@
+from nltk import TYPE
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import sys
@@ -6,7 +7,7 @@ import asyncio
 import json
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Literal, cast
+from typing import Any, Dict, Literal, cast, TYPE_CHECKING
 import shutil
 from dataclasses import dataclass
 
@@ -35,6 +36,9 @@ from yoto_up.paths import save_playlists, VERSIONS_DIR
 _playlists_fetch_lock = threading.Lock()
 _playlists_last_fetch = 0.0
 _playlists_fetch_cooldown = 2.0  # seconds
+
+if TYPE_CHECKING:
+    from yoto_up.gui import Page
 
 
 @dataclass
@@ -104,48 +108,11 @@ def _extract_cover_source(card_item: Card, api_instance):
         return None
     return v
 
-def delete_playlist(ev, page, card: Card, row_container=None):
+def delete_playlist(ev, page: "Page", card: Card, row_container=None):
     def do_delete(_ev=None):
-        try:
-            client = CLIENT_ID
-            api = ensure_api(page.api_ref, client)
-            content_id = card.cardId
-            if not content_id:
-                logger.error("Unable to determine card id for deletion")
-                return
-            # save a local version snapshot before deleting so it can be restored
-            api.delete_content(content_id)
-
-            try:
-                # Only remove if row_container looks like a real control and is present
-                if (
-                    row_container is not None
-                    and isinstance(row_container, ft.Control)
-                    and row_container in page.playlists_list.controls
-                ):
-                    page.playlists_list.controls.remove(row_container)
-                else:
-                    # defensive fallback: remove any None entries, otherwise clear to avoid invalid payloads
-                    try:
-                        cleaned = [
-                            c
-                            for c in page.playlists_list.controls
-                            if c is not None and isinstance(c, ft.Control)
-                        ]
-                        page.playlists_list.controls[:] = cleaned
-                    except Exception:
-                        try:
-                            page.playlists_list.controls.clear()
-                        except Exception:
-                            pass
-            except Exception:
-                page.playlists_list.controls.clear()
-            page.show_snack("Playlist deleted")
-            page.update()
-        except Exception as ex:
-            logger.error(f"Error deleting playlist: {ex}")
-            page.show_snack(f"Delete failed: {ex}", error=True)
-            page.update()
+        page.delete_card(card)
+        page.show_snack("Playlist dele ted")
+        page.update()
 
     def confirm_yes(_e):
         page.pop_dialog()
