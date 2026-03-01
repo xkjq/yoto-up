@@ -222,14 +222,7 @@ def start_replace_icons_background(
                 return
             last_badge_update = now
             # schedule the async progress updater on the event loop
-            try:
-                asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
-            except Exception:
-                # best-effort fallback without raising
-                try:
-                    page.set_autoselect_progress(msg, frac, visible=visible)
-                except Exception:
-                    pass
+            asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
 
         def _open_status_dialog(hide_default=False):
             page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)

@@ -11,6 +11,7 @@ from typing import Any
 from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.normalization import AudioNormalizer
+from yoto_up.yoto_app.replace_icons import start_replace_icons_background
 import re
 from loguru import logger
 import webbrowser
@@ -545,6 +546,22 @@ class UploadManager:
                 "gui", "strip_leading", strip_leading_checkbox.value
             ),
         )
+        autoselect_checkbox = ft.Checkbox(
+            label="Autoselect default icons after upload",
+            value=get_state("gui", "autoselect_after_upload", False),
+            tooltip="Automatically run default icon replacement after a successful upload/create",
+        )
+        try:
+            ctx["autoselect_default_icons_after_upload"] = bool(autoselect_checkbox.value)
+        except Exception:
+            pass
+        def _on_autoselect_change(e=None):
+            try:
+                set_state("gui", "autoselect_after_upload", autoselect_checkbox.value)
+                ctx["autoselect_default_icons_after_upload"] = bool(autoselect_checkbox.value)
+            except Exception:
+                pass
+        autoselect_checkbox.on_change = _on_autoselect_change
         intro_outro_side = ft.Dropdown(
             label="Side",
             value=get_state("gui", "intro_outro_side", "intro"),
@@ -1814,7 +1831,7 @@ class UploadManager:
         self.column = ft.Column(
             controls=[
                 ft.Row(controls=[upload_target_dropdown, new_card_title, self.existing_card_dropdown]),
-                ft.Row(controls=[concurrency, strip_leading_checkbox, upload_mode_dropdown]),
+                ft.Row(controls=[concurrency, strip_leading_checkbox, autoselect_checkbox, upload_mode_dropdown]),
                 _local_norm_container,
                 ft.Row(
                     controls=[
@@ -2415,6 +2432,16 @@ async def start_uploads(
             status.value = f"Created card: {cid}" if cid else "Card created"
             show_snack(status.value)
             page.update_card(created)
+            # Optionally run autoselect (replace default icons) after upload/create
+            try:
+                if bool(ctx.get("autoselect_default_icons_after_upload", False)):
+                    # run in background, function will schedule its own task
+                    try:
+                        start_replace_icons_background(page, created)
+                    except Exception:
+                        logger.exception("Failed to start autoselect after create")
+            except Exception:
+                pass
             show_card_info(page, created)
         except Exception as e:
             logger.error(f"start_uploads: create card error: {e}")
@@ -2506,6 +2533,15 @@ async def start_uploads(
                     created = api.create_or_update_content(card, return_card=True)
                     status.value = "Chapters appended"
                     page.update_card(created)
+                    # Optionally run autoselect (replace default icons) after append
+                    try:
+                        if bool(ctx.get("autoselect_default_icons_after_upload", False)):
+                            try:
+                                start_replace_icons_background(page, created)
+                            except Exception:
+                                logger.exception("Failed to start autoselect after append")
+                    except Exception:
+                        pass
                     show_card_info(page, created)
                     return True, None
                 except Exception as ex:
