@@ -1666,17 +1666,6 @@ class UploadManager:
             show_waveforms_btn.disabled = not has_files
             page.update()
 
-        def run_coro_in_thread(coro, *args, **kwargs):
-            """Run an async coroutine in a fresh event loop inside a daemon thread."""
-
-            def _runner():
-                try:
-                    asyncio.run(coro(*args, **kwargs))
-                except Exception as exc:
-                    print("Background task error:", exc)
-
-            threading.Thread(target=_runner, daemon=True).start()
-
         def _start_click(e):
             nonlocal ctx
             # update ctx with the current checkbox value
@@ -1722,7 +1711,7 @@ class UploadManager:
                 start_uploads,
                 page,
                 gain_adjusted_files,
-                concurrency=concurrency.value,
+                concurrency=int(concurrency.value),
                 target=target,
                 new_card_title=new_card_title.value,
                 existing_card_id=card_id,

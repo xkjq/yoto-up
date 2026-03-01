@@ -116,7 +116,6 @@ class IconReplaceDialog:
 
         # Use model helper to choose the best search label (falls back to card title)
         default_text = self.card.choose_icon_search_label(self.kind, ch_idx, tr_idx)
-        logger.error(f"Default search text for icon replace: '{default_text}'")
 
         search_field = ft.TextField(
             label="Search text for icons", value=default_text, width=400
