@@ -157,34 +157,13 @@ class IconReplaceDialog:
             visible=True,
         )
 
-        def _schedule_page_update():
-            """Schedule a page update on the Flet event loop (safe from background threads)."""
-            try:
-                # prefer async update routed through the page event loop
-                try:
-                    self.page.run_async(self.page.update_async())
-                    return
-                except Exception:
-                    pass
-                # last-resort synchronous update (may raise if called from wrong thread)
-                try:
-                    self.page.update()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
         def do_search(_ev=None):
             def search_worker():
                 try:
                     # show progress indicator and status
                     search_progress.visible = True
                     search_status.value = "Searching..."
-                    try:
-                        search_btn.disabled = True
-                    except Exception:
-                        pass
-                    _schedule_page_update()
+                    search_btn.disabled = True
 
                     q = (search_field.value or "").strip()
                     try:
@@ -197,7 +176,7 @@ class IconReplaceDialog:
                         topn = 5
                     inc = bool(include_yoto.value)
                     results_list.controls.clear()
-                    _schedule_page_update()
+                    self.page.update()
                     icons = self.api.find_best_icons_for_text(
                         q or default_text or " ",
                         include_yotoicons=inc,
@@ -342,10 +321,8 @@ class IconReplaceDialog:
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                 )
                             )
-                    _schedule_page_update()
                 except Exception as e:
                     results_list.controls.append(ft.Text(value=f"Search failed: {e}"))
-                    _schedule_page_update()
                 finally:
                     # hide progress indicator and re-enable button regardless of outcome
                     try:
@@ -354,9 +331,10 @@ class IconReplaceDialog:
                         search_btn.disabled = False
                     except Exception:
                         pass
-                    _schedule_page_update()
+                    self.page.update()
 
-            threading.Thread(target=search_worker, daemon=True).start()
+            #threading.Thread(target=search_worker, daemon=True).start()
+            self.page.run_thread(search_worker)
 
         # create a button variable so the worker thread can disable/enable it
         search_btn = ft.TextButton(content="Search", on_click=do_search)
