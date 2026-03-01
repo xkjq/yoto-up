@@ -635,23 +635,21 @@ class UploadManager:
         remove_uploaded_btn = ft.TextButton(content=ft.Text(value="Remove Uploaded"), on_click=remove_uploaded_files)
 
         def update_overall():
-            # update overall progress bar when a file completes
-            nonlocal completed_count
-            # compute total dynamically from the UI rows to avoid relying on a separate counter
+            # Recompute completed count from row states to avoid stale counters
             try:
-                total = len(
-                    [
-                        r
-                        for r in getattr(file_rows_column, "controls", [])
-                        if getattr(r, "filename", None)
-                    ]
-                )
+                rows = [r for r in getattr(file_rows_column, "controls", []) if getattr(r, "filename", None)]
+                total = len(rows)
+                completed = 0
+                for r in rows:
+                    fur = getattr(r, "_fileuploadrow", None)
+                    if fur is not None and getattr(fur, "uploaded", False):
+                        completed += 1
             except Exception:
                 total = 0
-            completed_count += 1
+                completed = 0
             # guard against divide-by-zero
-            overall_bar.value = (completed_count / total) if total else 0
-            overall_text.value = f"{completed_count}/{total} completed"
+            overall_bar.value = (completed / total) if total else 0
+            overall_text.value = f"{completed}/{total} completed"
             page.update()
 
         # expose commonly-used internals for external helpers/tests
@@ -2232,6 +2230,17 @@ async def start_uploads(
                 orig_files.append(orig_path)
             seen.add(path)
     logger.debug(f"[start_uploads] Files to upload (from UI): {files}")
+    # Reset per-row uploaded state when starting a new upload run so counts start fresh
+    try:
+        for fur in fileuploadrows:
+            try:
+                fur.uploaded = False
+                fur.set_progress(0.0)
+                fur.set_status("Queued")
+            except Exception:
+                pass
+    except Exception:
+        pass
     if not files:
         status.value = "No files selected for upload."
         show_snack(status.value)
