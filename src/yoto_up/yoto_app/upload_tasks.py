@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import subprocess
 from typing import Any
-from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata, TranscodedAudio
+from yoto_up.models import Chapter, ChapterDisplay, Card, CardContent, CardMetadata
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.normalization import AudioNormalizer
 import re
@@ -229,7 +229,7 @@ class FileUploadRow:
             async def _do_split():
                 progress_text = ft.Text(value="Initializing split...\nAnalysing audio for silence.", size=14)
                 progress_bar = ft.ProgressBar(width=300, value=0)
-                run_dlg = ft.AlertDialog(title=ft.Text(value="Splitting..."), content=ft.Column([progress_text, progress_bar]), modal=True)
+                run_dlg = ft.AlertDialog(title=ft.Text(value="Splitting..."), content=ft.Column(controls=[progress_text, progress_bar]), modal=True)
                 page.show_dialog(run_dlg)
                 page.update()
 
@@ -309,7 +309,7 @@ class FileUploadRow:
                         page.pop_dialog()
 
                         async def _even_run():
-                            run_dlg2 = ft.AlertDialog(title=ft.Text("Splitting (even)..."), content=ft.Column([ft.ProgressRing(), ft.Text(value="Working...")]), modal=True)
+                            run_dlg2 = ft.AlertDialog(title=ft.Text(value="Splitting (even)..."), content=ft.Column(controls=[ft.ProgressRing(), ft.Text(value="Working...")]), modal=True)
                             page.show_dialog(run_dlg2)
                             page.update()
                             try:
@@ -335,7 +335,7 @@ class FileUploadRow:
                                 )
                             except Exception as e2:
                                 page.pop_dialog()
-                                err2 = ft.AlertDialog(title=ft.Text(value="Even split failed"), content=ft.Text(value=str(e2)), actions=[ft.TextButton(content=ft.Text("Close"), on_click=lambda e: page.pop_dialog())])
+                                err2 = ft.AlertDialog(title=ft.Text(value="Even split failed"), content=ft.Text(value=str(e2)), actions=[ft.TextButton(content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog())])
                                 page.show_dialog(err2)
                                 page.update()
                                 return
@@ -2101,7 +2101,6 @@ async def start_uploads(
     status = page.upload_manager.status
     show_snack = page.upload_manager.show_snack
     update_overall = page.upload_manager.update_overall
-    fetch_playlists_sync = page.fetch_playlists_sync
 
     logger.debug("[start_uploads] Starting upload process")
     status.value = "Starting..."
