@@ -386,7 +386,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     return row
 
 
-def build_playlists_ui(page, cards=None):
+def build_playlists_ui(page: "Page", cards=None):
     logger.debug("Building playlists UI")
     if cards is None:
         cards = page.cards
@@ -518,7 +518,7 @@ def fetch_playlists_sync(page):
 
 
 def build_playlists_panel(
-    page,
+    page: "Page",
 ) -> Dict[str, Any]:
     """Build full playlists UI including rows, selection, dialogs and fetch helpers.
 
@@ -599,132 +599,115 @@ def build_playlists_panel(
             return
 
         versions_root = getattr(api, "VERSIONS_DIR", None)
-        # Build a mapping of card_id -> latest version file path. We'll show
-        # only entries where the current server does NOT have the card (i.e.
-        # deleted) so this dialog functions as "Restore Deleted".
-        deleted_entries = []
-        try:
-            # Candidate roots: prefer API-configured VERSIONS_DIR, then the
-            # central paths.VERSIONS_DIR fallback. This covers cases where
-            # versions were written by a different API instance or earlier
-            # during execution.
-            candidate_roots = []
-            if versions_root:
-                try:
-                    candidate_roots.append(Path(versions_root))
-                except Exception:
-                    pass
+
+        # Build a list of candidate roots to scan. Only catch errors related
+        # to invalid configuration values; file system errors are handled
+        # locally where they occur.
+        candidate_roots: list[Path] = []
+        if versions_root:
             try:
-                candidate_roots.append(Path(VERSIONS_DIR))
-            except Exception:
-                pass
-
-            seen_roots = set()
-            for root in candidate_roots:
-                try:
-                    r = Path(root)
-                except Exception:
-                    continue
-                try:
-                    resolved = str(r.resolve())
-                except Exception:
-                    resolved = str(r)
-                if resolved in seen_roots:
-                    continue
-                seen_roots.add(resolved)
-                if not r.exists():
-                    continue
-
-                # Support both the per-card subdirectory layout (/<root>/<card_id>/*.json)
-                # and a flat layout where json files may live directly under the root.
-                for child in sorted(r.iterdir()):
-                    try:
-                        if child.is_dir():
-                            card_dir = child
-                            json_files = sorted(
-                                [p for p in card_dir.iterdir() if p.suffix == ".json"],
-                                reverse=True,
-                            )
-                            if not json_files:
-                                continue
-                            latest = json_files[0]
-                            title = None
-                            card_id = card_dir.name
-                            try:
-                                with latest.open("r", encoding="utf-8") as fh:
-                                    payload = json.load(fh)
-                                    parsed = Card.model_validate(payload)
-                                    title = parsed.get_title()
-                                    card_id = parsed.cardId or card_dir.name
-                            except Exception:
-                                title = None
-                            # Check whether the card currently exists on the server; if it does not,
-                            # treat it as deleted and offer restore.
-                            try:
-                                try:
-                                    api.get_card(card_id)
-                                    exists = True
-                                except Exception:
-                                    exists = False
-                            except Exception:
-                                exists = False
-                            if not exists:
-                                deleted_entries.append((card_id, title or "", latest))
-                        elif child.is_file() and child.suffix == ".json":
-                            # Flat file directly under versions root
-                            latest = child
-                            title = None
-                            card_id = latest.stem
-                            try:
-                                with latest.open("r", encoding="utf-8") as fh:
-                                    payload = json.load(fh)
-                                    parsed = Card.model_validate(payload)
-                                    title = parsed.get_title()
-                                    card_id = parsed.cardId or latest.stem
-                            except Exception:
-                                title = None
-                            try:
-                                try:
-                                    api.get_card(card_id)
-                                    exists = True
-                                except Exception:
-                                    exists = False
-                            except Exception:
-                                exists = False
-                            if not exists:
-                                deleted_entries.append((card_id, title or "", latest))
-                    except Exception:
-                        # Ignore child-specific errors; continue scanning other entries
-                        pass
-        except Exception:
-            deleted_entries = []
-
-        # Dedupe by card id, keeping the newest version file (by mtime)
+                candidate_roots.append(Path(versions_root))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Invalid API VERSIONS_DIR '{versions_root}': {e}")
         try:
-            dedup = {}
-            for cid, title, path in deleted_entries:
-                try:
-                    mtime = path.stat().st_mtime if path and path.exists() else 0
-                except Exception:
-                    mtime = 0
-                if cid not in dedup:
-                    dedup[cid] = (title, path, mtime)
-                else:
+            candidate_roots.append(Path(VERSIONS_DIR))
+        except (TypeError, ValueError) as e:
+            logger.debug(f"Invalid VERSIONS_DIR constant: {e}")
+
+        deleted_entries: list[tuple[str, str, Path]] = []
+        seen_roots: set[str] = set()
+
+        for root in candidate_roots:
+            r = Path(root)
+            try:
+                resolved = str(r.resolve())
+            except OSError:
+                resolved = str(r)
+            if resolved in seen_roots:
+                continue
+            seen_roots.add(resolved)
+            if not r.exists():
+                continue
+
+            try:
+                children = sorted(r.iterdir())
+            except OSError as e:
+                logger.warning(f"Unable to list versions directory {r}: {e}")
+                continue
+
+            for child in children:
+                # Per-card directory layout
+                if child.is_dir():
                     try:
-                        _, _, prev_mtime = dedup[cid]
-                    except Exception:
-                        prev_mtime = 0
-                    if mtime > (prev_mtime or 0):
-                        dedup[cid] = (title, path, mtime)
-            deleted_entries = [(cid, t, p) for cid, (t, p, _) in dedup.items()]
-        except Exception:
-            pass
+                        json_files = sorted([p for p in child.iterdir() if p.suffix == ".json"], reverse=True)
+                    except OSError as e:
+                        logger.debug(f"Unable to read card dir {child}: {e}")
+                        continue
+                    if not json_files:
+                        continue
+                    latest = json_files[0]
+                    card_id = child.name
+                    title = None
+                    try:
+                        with latest.open("r", encoding="utf-8") as fh:
+                            payload = json.load(fh)
+                        parsed = Card.model_validate(payload)
+                        title = parsed.get_title()
+                        card_id = parsed.cardId or card_id
+                    except (json.JSONDecodeError, OSError, TypeError, ValueError) as e:
+                        logger.debug(f"Skipping invalid version file {latest}: {e}")
+
+                    # Check whether the card exists on the server. Network/HTTP
+                    # errors are considered external and translated into "not
+                    # existing" for the purpose of this dialog. Unexpected
+                    # exceptions from API calls should surface.
+                    try:
+                        api.get_card(card_id)
+                        exists = True
+                    except httpx.HTTPError:
+                        exists = False
+
+                    if not exists:
+                        deleted_entries.append((card_id, title or "", latest))
+
+                # Flat JSON file layout
+                elif child.is_file() and child.suffix == ".json":
+                    latest = child
+                    card_id = latest.stem
+                    title = None
+                    try:
+                        with latest.open("r", encoding="utf-8") as fh:
+                            payload = json.load(fh)
+                        parsed = Card.model_validate(payload)
+                        title = parsed.get_title()
+                        card_id = parsed.cardId or card_id
+                    except (json.JSONDecodeError, OSError, TypeError, ValueError) as e:
+                        logger.debug(f"Skipping invalid version file {latest}: {e}")
+                        continue
+
+                    try:
+                        api.get_card(card_id)
+                        exists = True
+                    except httpx.HTTPError:
+                        exists = False
+
+                    if not exists:
+                        deleted_entries.append((card_id, title or "", latest))
+
+        # Dedupe by card id, keeping the newest version file by mtime.
+        dedup: dict[str, tuple[str, Path, float]] = {}
+        for cid, title, path in deleted_entries:
+            try:
+                mtime = path.stat().st_mtime if path.exists() else 0
+            except OSError:
+                mtime = 0
+            prev = dedup.get(cid)
+            if prev is None or mtime > prev[2]:
+                dedup[cid] = (title, path, mtime)
+        deleted_entries = [(cid, t, p) for cid, (t, p, _) in dedup.items()]
 
         if not deleted_entries:
-            try:
-                page.show_snack("No deleted versions available to restore")
-            except Exception:
-                pass
+            page.show_snack("No deleted versions available to restore")
             return
 
         lv = ft.ListView(expand=True)
@@ -735,26 +718,25 @@ def build_playlists_panel(
         def do_restore(_ev=None):
             restored = 0
             for cb in lv.controls:
+                if not getattr(cb, "value", False):
+                    continue
+                path = getattr(cb, "data", None)
+                if not path:
+                    continue
+                p = Path(path)
                 try:
-                    if getattr(cb, "value", False):
-                        path = getattr(cb, "data", None)
-                        if path:
-                            try:
-                                api.restore_version(Path(path), return_card=True)
-                                restored += 1
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-            try:
-                page.show_snack(f"Restored {restored} versions")
-            except Exception:
-                pass
-            dlg.open = False
-            page.update()
-            threading.Thread(
-                target=lambda: fetch_playlists_sync(page), daemon=True
-            ).start()
+                    card = api.restore_version(p, return_card=True)
+                    restored += 1
+                except httpx.HTTPError as e:
+                    logger.error(f"HTTP error restoring {p}: {e}")
+                    page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
+                except OSError as e:
+                    logger.error(f"Filesystem error restoring {p}: {e}")
+                    page.show_snack(f"Failed to restore {p.stem}: {e}", error=True)
+
+            page.show_snack(f"Restored {restored} versions")
+            page.pop_dialog()
+            page.update_card(card)
 
         dlg = ft.AlertDialog(
             title=ft.Text(value="Restore deleted cards"),

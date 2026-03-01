@@ -120,6 +120,7 @@ def main(page: "Page"):
                 await asyncio.sleep(1)
                 build_playlists_ui(page)
             page.run_task(_update_ui)
+            page.update()
 
     page.update_local_card_cache = (
         update_local_card_cache  # expose on page for easy access from helpers
