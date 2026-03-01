@@ -750,10 +750,31 @@ def build_playlists_panel(
             page.pop_dialog()
             threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
 
+        def do_preview(_ev=None):
+            # Preview the first selected version (if any). Loading/parsing
+            # is delegated to the API's `load_version` which returns a Card
+            # model when successful.
+            selected = None
+            for cb in lv.controls:
+                if getattr(cb, "value", False):
+                    selected = getattr(cb, "data", None)
+                    break
+            if not selected:
+                page.show_snack("No version selected for preview", error=True)
+                return
+            p = Path(selected)
+            card_model = api.load_version(p, as_model=True)
+            if not card_model:
+                page.show_snack(f"Unable to load preview for {p.name}", error=True)
+                return
+            # Show card details in preview mode (do not close calling dialog)
+            page.show_card_details(card_model, preview_path=p, close_other_dialogs=False)
+
         dlg = ft.AlertDialog(
             title=ft.Text(value="Restore deleted cards (IDs will change)"),
             content=ft.Column(controls=[info_text, lv]),
             actions=[
+                ft.TextButton(content="Preview Selected", on_click=do_preview),
                 ft.TextButton(content="Restore Selected", on_click=do_restore),
                 ft.TextButton(content="Cancel", on_click=lambda e: setattr(dlg, "open", False)),
             ],

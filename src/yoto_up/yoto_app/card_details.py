@@ -859,13 +859,9 @@ def make_show_card_details(
                             label = p.name
                         def make_preview(pp=p):
                             def _preview(ev2=None):
-                                try:
-                                    card = api.load_version(pp, as_model=True)
-                                    # show the full card details for the saved version
-                                    show_card_details(card, preview_path=pp)
-                                except Exception as ex:
-                                    logger.error(f"Failed to load version for preview: {ex}")
-                                    page.show_snack(f"Failed to load version: {ex}", error=True)
+                                card = api.load_version(pp, as_model=True)
+                                # show the full card details for the saved version
+                                show_card_details(card, preview_path=pp, close_other_dialogs=False)
                             return _preview
 
                         def make_restore(pp=p):
@@ -1348,10 +1344,15 @@ Renumbering keys will assign sequential keys to all tracks.
         # If preview_path is provided, we're showing a saved version preview and
         # expose a Restore button in the dialog actions.
         # Place the JSON and Versions buttons in the dialog title (top-right)
-        dialog_actions = [
-            ft.TextButton(content="Save Order", on_click=save_order_click),
-            ft.TextButton(content="Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
-        ]
+        # Default dialog actions for non-preview mode
+        if preview_path is None:
+            dialog_actions = [
+                ft.TextButton(content="Save Order", on_click=save_order_click),
+                ft.TextButton(content="Tracks/Chapter Management", on_click=lambda ev: show_tracks_popup(ev)),
+            ]
+        else:
+            # Preview mode: no editing actions
+            dialog_actions = []
 
         # Title row with buttons on the top-right
         title_row = ft.Row(
@@ -1369,53 +1370,49 @@ Renumbering keys will assign sequential keys to all tracks.
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
-        # Add Edit/Add/Replace/Export/Close actions later; include restore if preview
+        # If previewing a saved version, provide only preview-specific
+        # actions: Restore and Close. Otherwise provide full editing actions.
         if preview_path is not None:
             def make_restore_from_preview(ppath=preview_path):
                 def _restore(ev2=None):
-                    try:
-                        # close this dialog
-                        page.pop_dialog()
+                    # close this preview dialog and perform restore in background
+                    page.pop_dialog()
+                    async def worker():
+                        updated = api.restore_version(ppath, return_card=True)
+                        page.show_snack("Version restored")
+                        show_card_details(updated)
                         page.update()
-
-                        async def worker():
-                            try:
-                                updated = api.restore_version(ppath, return_card=True)
-                                page.show_snack("Version restored")
-                                show_card_details(updated)
-                                page.update()
-                            except Exception as ex:
-                                page.show_snack(f"Failed to restore version: {ex}", error=True)
-
-                        page.run_task(worker)
-                    except Exception:
-                        page.show_snack("Failed to start restore", error=True)
-
+                    page.run_task(worker)
                 return _restore
 
-            dialog_actions.append(ft.TextButton(content="Restore this version", on_click=make_restore_from_preview()))
-
-        dialog = ft.AlertDialog(
-            title=title_row,
-            content=dialog_content,
-            actions=dialog_actions + [
-                ft.TextButton(
-                    content="Edit",
-                    on_click=lambda ev: (
-                        page.pop_dialog(),
-                        page.update(),
-                        show_edit_card_dialog(
-                            c,
-                            page,
+            preview_restore_btn = ft.TextButton(content="Restore this version", on_click=make_restore_from_preview())
+            dialog = ft.AlertDialog(
+                title=title_row,
+                content=dialog_content,
+                actions=dialog_actions + [preview_restore_btn, ft.TextButton(content="Close", on_click=close_dialog)],
+            )
+        else:
+            dialog = ft.AlertDialog(
+                title=title_row,
+                content=dialog_content,
+                actions=dialog_actions + [
+                    ft.TextButton(
+                        content="Edit",
+                        on_click=lambda ev: (
+                            page.pop_dialog(),
+                            page.update(),
+                            show_edit_card_dialog(
+                                c,
+                                page,
+                            ),
                         ),
                     ),
-                ),
-                ft.TextButton(content="Cover", on_click=lambda ev: show_add_cover(ev)),
-                ft.TextButton(content="Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
-                ft.TextButton(content="Export", on_click=export_card),
-                ft.TextButton(content="Close", on_click=close_dialog),
-            ],
-        )
+                    ft.TextButton(content="Cover", on_click=lambda ev: show_add_cover(ev)),
+                    ft.TextButton(content="Replace Default Icons", on_click=lambda ev: replace_icons(ev)),
+                    ft.TextButton(content="Export", on_click=export_card),
+                    ft.TextButton(content="Close", on_click=close_dialog),
+                ],
+            )
         page.show_dialog(dialog)
         page.update()
 
