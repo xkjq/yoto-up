@@ -2,6 +2,7 @@ from nltk.lm.vocabulary import _
 from yoto_up.yoto_app.playlists import build_playlists_ui
 from fontTools.mtiLib import build
 from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.config import CLIENT_ID
 import threading
 import asyncio
 import time
@@ -210,8 +211,17 @@ def start_replace_icons_background(
             pass
 
         # Prefer using page helpers if available (added in gui.py)
-        async def _set_badge(msg, frac, visible=True):
-            await page.set_autoselect_progress(msg, frac, visible=visible)
+        # create a synchronous callback that schedules the async page updater
+        def _set_badge(msg, frac, visible=True):
+            try:
+                # schedule the async progress updater on the event loop
+                asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
+            except Exception:
+                try:
+                    # fallback: call without awaiting (best-effort)
+                    page.set_autoselect_progress(msg, frac, visible=visible)
+                except Exception:
+                    pass
 
         def _open_status_dialog(hide_default=False):
             page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)
@@ -219,8 +229,8 @@ def start_replace_icons_background(
         hide_default = getattr(page, "autoselect_hide_dialog_default", False)
         _open_status_dialog(hide_default=hide_default)
 
-        # Show initial badge state (schedule async updater)
-        asyncio.create_task(_set_badge("Starting", 0.0, visible=True))
+        # Show initial badge state
+        _set_badge("Starting", 0.0, visible=True)
 
         # Open the status dialog by default unless the page requests it be hidden
 
@@ -234,11 +244,13 @@ def start_replace_icons_background(
                 full = api.get_card(card_id)
 
 
+                logger.debug("Fetched card, starting icon replacement")
                 new_card = api.replace_card_default_icons(
                     full,
                     progress_callback=_set_badge,
                     cancel_event=cancel_event,
                 )
+                logger.debug("Icon replacement complete, updating card")
 
                 page.update_card(new_card)
                 page.pop_dialog()  # close the status dialog if it's still open
@@ -251,8 +263,8 @@ def start_replace_icons_background(
                 logger.exception("replace_icons error")
             finally:
                 # remove badge after short delay
-                time.sleep(0.1)
-                await page.set_autoselect_progress("", 0.0, visible=False)
+                #await asyncio.sleep(0.1)
+                _set_badge("", 0.0, visible=False)
 
         page.run_task(work)
     except Exception as e:

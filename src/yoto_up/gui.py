@@ -661,8 +661,8 @@ def main(page: "Page"):
             detail.value = msg
             ctrl.update()
             detail.update()
-            await asyncio.sleep(0.1)  # slight delay to ensure UI updates properly
-            page.show_snack(f"Autoselect: {msg}", duration=1000)
+            #await asyncio.sleep(0.1)  # slight delay to ensure UI updates properly
+            #page.show_snack(f"Autoselect: {msg}", duration=1000)
             page.update()
 
     def open_autoselect_status_dialog(cancel_event: Optional[threading.Event] = None, hide_default: Optional[bool] = None):
