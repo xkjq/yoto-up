@@ -333,6 +333,31 @@ class Card(BaseModel):
             self.content.chapters = []
         return self.content.chapters
 
+    def get_icon_field_for(self, kind: str, ch_i: int, tr_i: int | None = None) -> Optional[str]:
+        """Return the icon field string for a chapter or track using model helpers.
+
+        kind: 'chapter' or 'track'
+        ch_i: chapter index
+        tr_i: track index (required for 'track')
+        """
+        try:
+            chapters = self.get_chapters()
+            if ch_i is None or ch_i < 0 or ch_i >= len(chapters):
+                return None
+            ch = chapters[ch_i]
+            if kind == "chapter":
+                return ch.get_icon_field()
+            if kind == "track":
+                if tr_i is None:
+                    return None
+                tracks = ch.get_tracks()
+                if tr_i < 0 or tr_i >= len(tracks):
+                    return None
+                return tracks[tr_i].get_icon_field()
+        except Exception:
+            return None
+        return None
+
     def get_track_list(self) -> List[Track]:
         """Return the list of tracks in the card, or an empty list if not available."""
         try:

@@ -10,6 +10,7 @@ import base64
 from yoto_up.paths import USER_ICONS_DIR
 from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
+from yoto_up.models import Card
 from PIL import (
     Image as PILImage,
 )
@@ -18,7 +19,7 @@ import base64 as _b64
 
 
 class IconReplaceDialog:
-    def __init__(self, api, card, page, kind="chapter", ch_i=None, tr_i=None):
+    def __init__(self, api, card: Card, page, kind="chapter", ch_i=None, tr_i=None):
         self.api = api
         self.card = card
         self.page = page
@@ -108,19 +109,26 @@ class IconReplaceDialog:
 
     def open(self):
         default_text = ""
+        chapters = []
+        try:
+            chapters = self.card.get_chapters()
+        except Exception:
+            chapters = []
+
+        ch_idx = 0 if self.ch_i is None else int(self.ch_i)
+        tr_idx = None if self.tr_i is None else int(self.tr_i)
+
         if self.kind == "chapter":
-            try:
-                ch = self.card.get("content", {}).get("chapters", [])[self.ch_i]
-                default_text = ch.get("title", "") if isinstance(ch, dict) else str(ch)
-            except Exception:
-                default_text = ""
+            if 0 <= ch_idx < len(chapters):
+                ch = chapters[ch_idx]
+                default_text = ch.get_title() or getattr(ch, "title", "") or ""
         else:
-            try:
-                ch = self.card.get("content", {}).get("chapters", [])[self.ch_i]
-                tr = ch.get("tracks", [])[self.tr_i]
-                default_text = tr.get("title", "") if isinstance(tr, dict) else ""
-            except Exception:
-                default_text = ""
+            if 0 <= ch_idx < len(chapters):
+                ch = chapters[ch_idx]
+                tracks = ch.get_tracks() if hasattr(ch, "get_tracks") else getattr(ch, "tracks", []) or []
+                if tr_idx is not None and 0 <= tr_idx < len(tracks):
+                    tr = tracks[tr_idx]
+                    default_text = tr.get_title() or getattr(tr, "title", "") or ""
 
         search_field = ft.TextField(
             label="Search text for icons", value=default_text, width=400
@@ -153,6 +161,20 @@ class IconReplaceDialog:
         # pack preview into a small column
         preview_column = ft.Column(
             controls=[preview_label, preview_image, preview_name],
+            alignment=ft.MainAxisAlignment.CENTER,
+            visible=True,
+        )
+
+        # Current-icon preview (shows the icon currently set on the chapter/track)
+        current_label = ft.Text(
+            value="Current icon", size=12, weight=ft.FontWeight.BOLD, visible=False
+        )
+        current_image = ft.Image(
+            src="", width=32, height=32, visible=False, fit=ft.BoxFit.CONTAIN
+        )
+        current_name = ft.Text(value="", size=12, visible=False)
+        current_column = ft.Column(
+            controls=[current_label, current_image, current_name],
             alignment=ft.MainAxisAlignment.CENTER,
             visible=True,
         )
@@ -252,6 +274,8 @@ class IconReplaceDialog:
                                         target_tr.set_icon_field(f"yoto:#{media_id}")
                                     self.page.update_card(full)
                                     self.show_card_details(full)
+                                    # update current preview in dialog
+                                    update_current_preview(f"yoto:#{media_id}")
 
                                 self.page.run_thread(use_worker)
 
@@ -551,6 +575,7 @@ class IconReplaceDialog:
                                         target_tr.set_icon_field(f"yoto:#{media_id}")
                                     self.page.update_card(full)
                                     self.show_card_details(full)
+                                    update_current_preview(f"yoto:#{media_id}")
                                 except Exception as ex:
                                     self.show_snack(
                                         f"Failed to use saved icon: {ex}", True
@@ -696,6 +721,76 @@ class IconReplaceDialog:
                 except Exception:
                     pass
 
+        def update_current_preview(icon_field):
+            """Update the current-icon preview based on an icon field (media id, url or local path)."""
+            try:
+                if not icon_field:
+                    current_label.visible = False
+                    current_image.visible = False
+                    current_image.src = ""
+                    current_name.visible = False
+                    current_name.value = ""
+                    try:
+                        self.page.update()
+                    except Exception:
+                        pass
+                    return
+
+                show_it = False
+                # If icon_field looks like a file/url, try to use directly
+                try:
+                    # First try api cache lookup
+                    p = None
+                    try:
+                        p = self.api.get_icon_cache_path(icon_field)
+                    except Exception:
+                        p = None
+                    if p and Path(p).exists():
+                        current_image.src = f"data:image/png;base64,{get_base64_from_path(p)}"
+                        show_it = True
+                    else:
+                        # try API helper to get raw b64 data
+                        try:
+                            b64 = self.api.get_icon_b64_data(icon_field)
+                        except Exception:
+                            b64 = None
+                        if b64:
+                            current_image.src = f"data:image/png;base64,{b64}"
+                            show_it = True
+                        else:
+                            # last resort: if it is a URL
+                            s = str(icon_field)
+                            if s.startswith("http://") or s.startswith("https://"):
+                                current_image.src = s
+                                show_it = True
+                            elif s.startswith("file://"):
+                                try:
+                                    fp = s[len("file://"):]
+                                    if os.path.exists(fp):
+                                        current_image.src = f"data:image/png;base64,{get_base64_from_path(Path(fp))}"
+                                        show_it = True
+                                except Exception:
+                                    show_it = False
+                except Exception:
+                    current_image.src = ""
+                    show_it = False
+
+                current_label.visible = show_it
+                current_image.visible = show_it
+                current_name.value = (
+                    icon_field if icon_field and not isinstance(icon_field, str) else str(icon_field or "")
+                )
+                current_name.visible = show_it and bool(current_name.value)
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+
         def use_selected_icon(ev=None):
             """Apply the icon path set on page.replace_icon_path (if any)."""
 
@@ -814,6 +909,7 @@ class IconReplaceDialog:
                         target_tr.set_icon_field(f"yoto:#{media_id}")
                     self.page.update_card(full)
                     self.page.show_card_details(full)
+                    update_current_preview(f"yoto:#{media_id}")
                     self.show_snack("Applied marked icon")
                 except Exception as ex:
                     logger.exception("use_selected_icon failed")
@@ -894,9 +990,10 @@ class IconReplaceDialog:
         self.dialog = ft.AlertDialog(
             title=ft.Text(value="Replace icon"),
             content=ft.Column(controls=content_children, width=920),
-            # place preview next to the selected-icon action so they are adjacent
+            # place current and selected previews next to the selected-icon action so they are adjacent
             actions=[
                 use_selected_btn,
+                current_column,
                 preview_column,
                 ft.TextButton(content="Close", on_click=close_replace),
             ],
@@ -904,13 +1001,11 @@ class IconReplaceDialog:
 
         self.page.show_dialog(self.dialog)
         # initialize preview to current page.replace_icon_path (if any)
-        try:
-            marked_now = getattr(self.page, "replace_icon_path", None)
-            update_preview(marked_now)
-        except Exception:
-            logger.exception(
-                "Failed to initialize preview with current replace_icon_path"
-            )
+        marked_now = getattr(self.page, "replace_icon_path", None)
+        update_preview(marked_now)
+        # initialize current-icon preview from the card's existing icon field (use model helper)
+        current_field = self.card.get_icon_field_for(self.kind, ch_idx, tr_idx)
+        update_current_preview(current_field)
         # kick off the initial search and refresh saved icons
         do_search(None)
         refresh_saved_icons()
