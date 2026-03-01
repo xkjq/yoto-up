@@ -23,10 +23,6 @@ def show_edit_card_dialog(
     Args:
         c: The card dict/model to edit (will be mutated in-place)
         page: The Flet page
-        ensure_api: Function to get API instance
-        CLIENT_ID: Client ID string
-        fetch_playlists_sync: Function to refresh playlists
-        previous_dialog_ref: Optional dict to store the previous dialog instance for external closing
     """
 
     api = ensure_api(page.api_ref)
@@ -248,14 +244,6 @@ def show_edit_card_dialog(
                     current_ch.tracks.append(cast(Track, entry["tr"]))
         chapters_local.clear()
         chapters_local.extend(new_chapters)
-        # After reorder, rebuild dialog so labels are correct
-        #show_edit_card_dialog(
-        #    c,
-        #    page,
-        #    ensure_api,
-        #    CLIENT_ID,
-        #    fetch_playlists_sync,
-        #)
 
     dnd_controls = []
     chapter_counter = 0

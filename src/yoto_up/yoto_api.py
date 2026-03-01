@@ -326,6 +326,14 @@ class YotoAPI:
         dir_path.mkdir(parents=True, exist_ok=True)
         return dir_path
 
+    def save_card_version(self, card: Card) -> Optional[Path]:
+        """Convenience wrapper to save a version of a Card model instance."""
+        try:
+            payload = card.model_dump(exclude_none=True)
+            return self.save_version(payload)
+        except Exception:
+            logger.exception("Failed to save card version")
+
     def save_version(self, payload: dict) -> Optional[Path]:
         """Save a local version (JSON file) for the provided payload and return the path."""
         try:
@@ -338,6 +346,7 @@ class YotoAPI:
                 json.dump(payload, f, indent=2, ensure_ascii=False)
             return p
         except Exception:
+            logger.exception("Failed to save version")
             return None
 
     def list_versions(self, card_id: str) -> List[Path]:
@@ -1386,6 +1395,13 @@ class YotoAPI:
         logger.debug(card.model_dump_json(exclude_none=True))
         logger.info(f"Updating card {card_id} with new chapter.")
         return self.create_or_update_content(card)
+
+    def delete_card(self, card_id: str):
+        """
+        Delete a card by cardId.
+        Returns the API response (status or error).
+        """
+        return self.delete_content(card_id)
 
     def delete_content(self, content_id: str):
         """

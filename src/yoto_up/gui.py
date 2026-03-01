@@ -63,7 +63,8 @@ if TYPE_CHECKING:
         api_ref: Dict[str, Any]
         get_api: Callable[[], Any]
         update_local_card_cache: Callable[[Card, bool], None]
-        update_card: Callable[[Card], None]
+        update_card: Callable[[Card], Card | None]
+        delete_card: Callable[[Card], bool]
         fetch_playlists_sync: Optional[Callable[..., Any]]
         fetch_playlists: Optional[Callable[..., Any]]
         selected_playlist_ids: Set[str]
@@ -87,6 +88,8 @@ if TYPE_CHECKING:
         invalidate_authentication: Callable[[], None]
         show_card_details: Callable[..., Any]
         pixel_editor: PixelArtEditor
+        _icon_browser_loaded: bool
+        _load_icon_browser: Optional[Callable[..., Any]]
 else:
     Page = ft.Page
 
@@ -145,8 +148,35 @@ def main(page: "Page"):
             logger.error(f"Failed to update card: {ex}")
             page.show_snack(f"Failed to update card: {ex}", error=True)
             return None
+        
+    def delete_card(card: Card, save_version: bool = True, refresh_ui: bool = True) -> bool:
+        """
+        Generic helper to delete a card via the API and refresh the local cache and UI. This is used by various helpers to delete cards and update the UI.
+        """
+        try:
+            api = get_api()
+
+            if save_version:
+                api.save_card_version(card)
+
+            api.delete_card(card.cardId)
+            # Remove from local cache
+            existing = next((c for c in page.cards if c.cardId == card.cardId), None)
+            if existing:
+                page.cards.remove(existing)
+                # Refresh playlists UI to reflect removed card
+                if refresh_ui:
+                    build_playlists_ui(page)
+            else:
+                logger.warning(f"Card deleted but not found in local cache: {card.cardId}")
+            return True
+        except Exception as ex:
+            logger.error(f"Failed to delete card: {ex}")
+            page.show_snack(f"Failed to delete card: {ex}", error=True)
+            return False
 
     page.update_card = update_card  # expose on page for easy access from helpers
+    page.delete_card = delete_card  # expose on page for easy access from helpers
 
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
@@ -912,8 +942,10 @@ def main(page: "Page"):
     page.add(tabs_control)
 
     # Lazy-loader: attach a function to the page that will import and build
-    # the icon browser only when requested by the user (keeps startup fast).
-    def _load_icon_browser(ev=None):
+    # the icon browser only when requested by the user.
+    # This is only here because the upgrade to flet 0.80 caused a significant slowdown in initial load time
+    # It may well be unnecssary with future flet upgrades
+    def _load_icon_browser(ev=None) -> None:
         from yoto_up.yoto_app.icon_browser import build_icon_browser_panel as _builder
 
         ui = _builder(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
@@ -928,17 +960,7 @@ def main(page: "Page"):
             if getattr(tab, "label", None) == "Icons":
                 idx = i
                 break
-        if idx is None:
-            # Fallback: just add the panel to the end
-            try:
-                tabs_control.content.controls[1].controls.append(panel)
-            except Exception:
-                pass
-        else:
-            try:
-                tabs_control.content.controls[1].controls[idx] = panel
-            except Exception:
-                pass
+        tabs_control.content.controls[1].controls[idx] = panel
 
         # Keep reference and refresh UI
         page.icon_panel = panel

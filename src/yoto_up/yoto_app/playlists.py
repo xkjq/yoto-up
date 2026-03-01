@@ -114,17 +114,8 @@ def delete_playlist(ev, page, card: Card, row_container=None):
                 logger.error("Unable to determine card id for deletion")
                 return
             # save a local version snapshot before deleting so it can be restored
-            payload: dict[str, Any] | None
-            try:
-                payload = card.model_dump(exclude_none=True)
-            except Exception:
-                payload = None
-            if payload is not None:
-                try:
-                    api.save_version(payload)
-                except Exception:
-                    logger.error("Error saving version snapshot before deletion")
             api.delete_content(content_id)
+
             try:
                 # Only remove if row_container looks like a real control and is present
                 if (
@@ -226,30 +217,6 @@ def make_playlist_row(page, card_obj: Card, idx=None):
                 img_ctrl = ft.Image(src=str(cover_src), width=64, height=64)
         else:
             logger.debug(f"No cover source found for card {cid}")
-            if api:
-
-                def _resolve_in_bg(card=card_obj, ctl=img_ctrl):
-                    src = card.get_cover_url()
-                    if src:
-                        try:
-                            _ = ft.Image(src=src, width=64, height=64)
-                            page.playlists_list.controls.clear()
-                            try:
-                                threading.Thread(
-                                    target=lambda: fetch_playlists_sync(page),
-                                    daemon=True,
-                                ).start()
-                            except Exception:
-                                logger.error(
-                                    "Error starting background thread for fetching playlists"
-                                )
-                        except Exception:
-                            logger.error(
-                                "Error creating image control in background thread"
-                            )
-
-                page.run_task(_resolve_in_bg, card_obj, img_ctrl)
-                # threading.Thread(target=_resolve_in_bg, daemon=True).start()
 
     except Exception as e:
         logger.error(f"Error extracting cover for card {cid}")
