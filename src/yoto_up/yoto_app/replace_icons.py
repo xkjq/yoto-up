@@ -3,12 +3,14 @@ from yoto_up.yoto_app.playlists import build_playlists_ui
 from fontTools.mtiLib import build
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.config import CLIENT_ID
+from yoto_up.models import DEFAULT_MEDIA_ID
 import threading
 import asyncio
 import time
 import json
 import flet as ft
 from loguru import logger
+import copy
 
 
 def show_replace_icons_dialog(
@@ -63,7 +65,7 @@ Continue?"""
                         )
                         page.show_dialog(replace_dialog)
 
-                        def work():
+                        async def work():
                             new_card = None
                             try:
                                 prog_text.value = "Fetching card..."
@@ -77,6 +79,108 @@ Continue?"""
                                 prog_text.value = "Analyzing icons..."
                                 page.update()
 
+                                # Build targets that need replacement and suggested search labels
+                                targets = []
+                                chapters = full.content.chapters if full.content and full.content.chapters else []
+                                for ch_idx, chapter in enumerate(chapters):
+                                    icon_field = chapter.get_icon_field()
+                                    if icon_field is None or (icon_field and icon_field.endswith(DEFAULT_MEDIA_ID)):
+                                        targets.append(("chapter", ch_idx, None))
+                                    if hasattr(chapter, "tracks") and chapter.tracks:
+                                        for tr_idx, track in enumerate(chapter.tracks):
+                                            ticon = track.get_icon_field()
+                                            if ticon is None or (ticon and ticon.endswith(DEFAULT_MEDIA_ID)):
+                                                targets.append(("track", ch_idx, tr_idx))
+
+                                total = len(targets)
+                                if total == 0:
+                                    prog_text.value = "No default icons to replace"
+                                    page.update()
+                                    await asyncio.sleep(1)
+                                    return
+
+                                # Prepare default labels using model helper
+                                default_labels = []
+                                need_edit = False
+                                for kind, ch_idx, tr_idx in targets:
+                                    label = full.choose_icon_search_label(kind, ch_idx, tr_idx)
+                                    default_labels.append(label)
+                                    # if label falls back to card title or is blank, offer edit
+                                    if not label or label == full.get_title():
+                                        need_edit = True
+
+                                # If user wants to edit search terms, show dialog
+                                user_labels = list(default_labels)
+                                if need_edit:
+                                    # Group targets by identical default label so edits apply to all
+                                    groups: dict[str, list[tuple[int, str, int | None, int | None]]] = {}
+                                    for i, (kind, ch_idx, tr_idx) in enumerate(targets):
+                                        key = default_labels[i] or ""
+                                        groups.setdefault(key, []).append((i, kind, ch_idx, tr_idx))
+
+                                    edit_rows = []
+                                    for key, members in groups.items():
+                                        # Build a descriptive label that lists affected targets
+                                        parts = []
+                                        for (_idx, kind, ch_idx, tr_idx) in members:
+                                            if kind == 'chapter':
+                                                parts.append(f"Ch{ch_idx+1}")
+                                            else:
+                                                parts.append(f"T{ch_idx+1}.{tr_idx+1}")
+                                        title = ", ".join(parts)
+                                        initial = key
+                                        tf = ft.TextField(label=title, value=initial, width=400)
+                                        # store all target indices this control should update
+                                        setattr(tf, "_target_indices", [m[0] for m in members])
+                                        edit_rows.append(tf)
+
+                                    edit_col = ft.Column(controls=edit_rows, scroll=ft.ScrollMode.AUTO)
+                                    dlg = ft.AlertDialog(
+                                        title=ft.Text(value="Edit search terms for icon replacement"),
+                                        content=ft.Column(controls=[ft.Text(value=f"Preparing to replace {total} icons. Edit grouped search terms below if needed."), edit_col]),
+                                        actions=[
+                                            ft.TextButton(content=ft.Text(value="Start"), on_click=lambda e: (setattr(dlg, "open", False) if hasattr(dlg, "open") else None, page.update())),
+                                            ft.TextButton(content=ft.Text(value="Cancel"), on_click=lambda e: (setattr(dlg, "open", False) if hasattr(dlg, "open") else None, setattr(dlg, "_cancelled", True) if hasattr(dlg, "_cancelled") else None, page.update())),
+                                        ],
+                                        scrollable=True,
+                                    )
+                                    # show dialog and wait until closed by user
+                                    dlg._cancelled = False
+                                    page.show_dialog(dlg)
+                                    page.update()
+
+                                    # Busy-wait for dialog close (runs in the event loop thread)
+                                    while getattr(dlg, "open", False):
+                                        await asyncio.sleep(0.1)
+
+                                    if getattr(dlg, "_cancelled", False):
+                                        prog_text.value = "Cancelled"
+                                        page.update()
+                                        return
+
+                                    # Collect edited labels and apply to all grouped indices
+                                    for ctrl in edit_rows:
+                                        indices = getattr(ctrl, "_target_indices", None) or []
+                                        for idx in indices:
+                                            user_labels[idx] = ctrl.value or ""
+
+                                # Use a deep copy of the card to avoid mutating original
+                                card_for_replace = copy.deepcopy(full)
+                                for i, (kind, ch_idx, tr_idx) in enumerate(targets):
+                                    val = user_labels[i] if i < len(user_labels) else default_labels[i]
+                                    if not val:
+                                        continue
+                                    if kind == 'chapter':
+                                        try:
+                                            card_for_replace.content.chapters[ch_idx].title = val
+                                        except Exception:
+                                            pass
+                                    else:
+                                        try:
+                                            card_for_replace.content.chapters[ch_idx].tracks[tr_idx].title = val
+                                        except Exception:
+                                            pass
+
                                 def icon_progress(msg, frac):
                                     if msg:
                                         prog_text.value = msg
@@ -85,7 +189,7 @@ Continue?"""
                                     page.update()
 
                                 new_card = api.replace_card_default_icons(
-                                    full,
+                                    card_for_replace,
                                     progress_callback=icon_progress,
                                     cancel_event=cancel_event,
                                     include_yotoicons=include_yotoicons,
@@ -102,7 +206,7 @@ Continue?"""
                                         f"Replace icons failed: {ex}", error=True
                                     )
                                 logger.exception("replace_icons error")
-                            time.sleep(1)
+                            await asyncio.sleep(1)
                             page.show_card_details(new_card)
 
                         page.run_task(work)
@@ -192,12 +296,24 @@ Continue?"""
 def start_replace_icons_background(
     page,
     c,
+    confirm: bool = True,
 ):
     """Start replace default icons in background and show a persistent badge on the page.
 
     The badge shows progress and can be clicked to reopen a small status dialog with Cancel.
     """
     logger.debug("Starting background replace icons")
+    # If caller requests interactive confirmation, delegate to dialog flow
+    try:
+        if confirm:
+            # Reuse interactive dialog which supports editing search terms
+            try:
+                return show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
+            except Exception:
+                # fallback to non-interactive mode
+                pass
+    except Exception:
+        pass
     try:
         # Badge UI
         badge_text = ft.Text(value="Autoselect: 0%")

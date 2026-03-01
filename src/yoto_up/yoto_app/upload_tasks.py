@@ -2435,9 +2435,9 @@ async def start_uploads(
             # Optionally run autoselect (replace default icons) after upload/create
             try:
                 if bool(ctx.get("autoselect_default_icons_after_upload", False)):
-                    # run in background, function will schedule its own task
+                    # run in background without interactive confirmation
                     try:
-                        start_replace_icons_background(page, created)
+                        start_replace_icons_background(page, created, confirm=False)
                     except Exception:
                         logger.exception("Failed to start autoselect after create")
             except Exception:
@@ -2537,7 +2537,7 @@ async def start_uploads(
                     try:
                         if bool(ctx.get("autoselect_default_icons_after_upload", False)):
                             try:
-                                start_replace_icons_background(page, created)
+                                start_replace_icons_background(page, created, confirm=False)
                             except Exception:
                                 logger.exception("Failed to start autoselect after append")
                     except Exception:
