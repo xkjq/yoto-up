@@ -592,10 +592,7 @@ def build_playlists_panel(
         try:
             api = ensure_api(page.api_ref)
         except Exception:
-            try:
-                page.show_snack("API not available for restore", error=True)
-            except Exception:
-                pass
+            page.show_snack("API not available for restore", error=True)
             return
 
         versions_root = getattr(api, "VERSIONS_DIR", None)
