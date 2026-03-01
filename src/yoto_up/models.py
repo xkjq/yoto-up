@@ -188,56 +188,7 @@ class CardMetadata(BaseModel):
             self.cover = CardCover()
         return self.cover
 
-    def _label_is_suitable(self, label: str) -> bool:
-        """Return True if label is likely to be a distinguishing search label.
 
-        Heuristics: reject generic names like 'track 1', 'chapter 2', 'untitled',
-        and require at least one alphabetic token longer than 2 characters.
-        """
-        try:
-            if not label:
-                return False
-            s = str(label).strip().lower()
-            if re.match(r'^(track|chapter|part)\s*\d+$', s):
-                return False
-            if s in ('untitled', 'unknown', 'no title', ''):
-                return False
-            tokens = re.findall(r"\w+", s)
-            filtered = [t for t in tokens if t.isalpha() and len(t) > 2]
-            return len(filtered) > 0
-        except Exception:
-            return False
-
-    def choose_icon_search_label(self, kind: str, ch_i: int, tr_i: int | None = None) -> str:
-        """Return a suitable search label for finding icons for a chapter or track.
-
-        Prefers track title (if kind=='track'), then chapter title, then card title.
-        Uses simple heuristics to avoid generic labels.
-        """
-        try:
-            card_title = getattr(self, 'title', '') or ""
-            chapters = []
-            if hasattr(self, 'get_chapters'):
-                chapters = getattr(self, 'get_chapters')() or []
-            if ch_i is None or ch_i < 0 or ch_i >= len(chapters):
-                return card_title or ""
-            ch = chapters[ch_i]
-            if kind == 'track':
-                if tr_i is not None:
-                    tracks = ch.get_tracks() or []
-                    if 0 <= tr_i < len(tracks):
-                        tr = tracks[tr_i]
-                        tlabel = tr.get_title() if hasattr(tr, 'get_title') else getattr(tr, 'title', '')
-                        if self._label_is_suitable(tlabel):
-                            return tlabel
-                # fallthrough to chapter label
-            # for chapter or fallback from track
-            clabel = ch.get_title() if hasattr(ch, 'get_title') else getattr(ch, 'title', '')
-            if self._label_is_suitable(clabel):
-                return clabel
-            return card_title or ""
-        except Exception:
-            return ""
 
 class CardContent(BaseModel):
     activity: Optional[str] = None
@@ -299,11 +250,8 @@ class Card(BaseModel):
             return None
 
     def get_category(self) -> Optional[str]:
-        try:
-            meta = self.get_metadata()
-            return getattr(meta, "category", None) or ""
-        except Exception:
-            return ""
+        meta = self.get_metadata()
+        return getattr(meta, "category", None) or ""
 
     def get_genres(self) -> list[str]:
         """Return a list of genres for the card (robust to string or list forms)."""
@@ -648,6 +596,52 @@ class Card(BaseModel):
                             #chapters_section += f"{track_icon_inline} [cyan]Track {t_idx}:[/] {track_title} [blue]Duration:[/] {getattr(track, 'duration', '')}\n"
             panel_text += chapters_section
         return panel_text
+
+    def choose_icon_search_label(self, kind: str, ch_i: int, tr_i: int | None = None) -> str:
+        """Return a suitable search label for finding icons for a chapter or track.
+
+        Prefers track title (if kind=='track'), then chapter title, then card title.
+        Uses simple heuristics to avoid generic labels.
+        """
+        card_title = self.get_title()
+        chapters = self.get_chapters()
+        if ch_i is None or ch_i < 0 or ch_i >= len(chapters):
+            return card_title or ""
+        ch = chapters[ch_i]
+        if kind == 'track':
+            if tr_i is not None:
+                tracks = ch.get_tracks() or []
+                if 0 <= tr_i < len(tracks):
+                    tr = tracks[tr_i]
+                    tlabel = tr.get_title() if hasattr(tr, 'get_title') else getattr(tr, 'title', '')
+                    if self._label_is_suitable(tlabel):
+                        return tlabel
+            # fallthrough to chapter label
+        # for chapter or fallback from track
+        clabel = ch.get_title() if hasattr(ch, 'get_title') else getattr(ch, 'title', '')
+        if self._label_is_suitable(clabel):
+            return clabel
+        return card_title or ""
+
+    def _label_is_suitable(self, label: str) -> bool:
+        """Return True if label is likely to be a distinguishing search label.
+
+        Heuristics: reject generic names like 'track 1', 'chapter 2', 'untitled',
+        and require at least one alphabetic token longer than 2 characters.
+        """
+        try:
+            if not label:
+                return False
+            s = str(label).strip().lower()
+            if re.match(r'^(track|chapter|part)\s*\d+$', s):
+                return False
+            if s in ('untitled', 'unknown', 'no title', ''):
+                return False
+            tokens = re.findall(r"\w+", s)
+            filtered = [t for t in tokens if t.isalpha() and len(t) > 2]
+            return len(filtered) > 0
+        except Exception:
+            return False
 
 class Device(BaseModel):
     deviceId: str

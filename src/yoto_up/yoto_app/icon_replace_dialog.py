@@ -21,7 +21,7 @@ import base64 as _b64
 class IconReplaceDialog:
     def __init__(self, api, card: Card, page, kind="chapter", ch_i=None, tr_i=None):
         self.api = api
-        self.card = card
+        self.card  = card
         self.page = page
         self.show_snack = page.show_snack
         self.show_card_details = page.show_card_details
@@ -115,7 +115,8 @@ class IconReplaceDialog:
         tr_idx = None if self.tr_i is None else int(self.tr_i)
 
         # Use model helper to choose the best search label (falls back to card title)
-        default_text = getattr(self.card, 'choose_icon_search_label', lambda *_: "")(self.kind, ch_idx, tr_idx)
+        default_text = self.card.choose_icon_search_label(self.kind, ch_idx, tr_idx)
+        logger.error(f"Default search text for icon replace: '{default_text}'")
 
         search_field = ft.TextField(
             label="Search text for icons", value=default_text, width=400
