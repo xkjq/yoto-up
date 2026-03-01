@@ -109,26 +109,13 @@ class IconReplaceDialog:
 
     def open(self):
         default_text = ""
-        chapters = []
-        try:
-            chapters = self.card.get_chapters()
-        except Exception:
-            chapters = []
+        # chapters will be resolved inside model helper; no local use required
 
         ch_idx = 0 if self.ch_i is None else int(self.ch_i)
         tr_idx = None if self.tr_i is None else int(self.tr_i)
 
-        if self.kind == "chapter":
-            if 0 <= ch_idx < len(chapters):
-                ch = chapters[ch_idx]
-                default_text = ch.get_title() or getattr(ch, "title", "") or ""
-        else:
-            if 0 <= ch_idx < len(chapters):
-                ch = chapters[ch_idx]
-                tracks = ch.get_tracks() if hasattr(ch, "get_tracks") else getattr(ch, "tracks", []) or []
-                if tr_idx is not None and 0 <= tr_idx < len(tracks):
-                    tr = tracks[tr_idx]
-                    default_text = tr.get_title() or getattr(tr, "title", "") or ""
+        # Use model helper to choose the best search label (falls back to card title)
+        default_text = getattr(self.card, 'choose_icon_search_label', lambda *_: "")(self.kind, ch_idx, tr_idx)
 
         search_field = ft.TextField(
             label="Search text for icons", value=default_text, width=400
