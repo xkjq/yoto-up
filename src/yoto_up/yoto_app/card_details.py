@@ -875,6 +875,7 @@ def make_show_card_details(
                                             try:
                                                 updated = api.restore_version(pp, return_card=True)
                                                 page.show_snack("Version restored")
+                                                page.update_card(updated)
                                                 show_card_details(updated)
                                                 page.update()
                                             except Exception as ex:
@@ -1373,19 +1374,18 @@ Renumbering keys will assign sequential keys to all tracks.
         # If previewing a saved version, provide only preview-specific
         # actions: Restore and Close. Otherwise provide full editing actions.
         if preview_path is not None:
-            def make_restore_from_preview(ppath=preview_path):
-                def _restore(ev2=None):
-                    # close this preview dialog and perform restore in background
-                    page.pop_dialog()
-                    async def worker():
-                        updated = api.restore_version(ppath, return_card=True)
-                        page.show_snack("Version restored")
-                        show_card_details(updated)
-                        page.update()
-                    page.run_task(worker)
-                return _restore
+            def restore_card_from_preview(preview_path):
+                # close this preview dialog and perform restore in background
+                page.pop_dialog()
+                async def worker():
+                    updated = api.restore_version(preview_path, return_card=True)
+                    page.show_snack("Version restored")
+                    page.update_card(updated)
+                    show_card_details(updated)
+                    page.update()
+                page.run_task(worker)
 
-            preview_restore_btn = ft.TextButton(content="Restore this version", on_click=make_restore_from_preview())
+            preview_restore_btn = ft.TextButton(content="Restore this version", on_click=lambda ev: restore_card_from_preview(preview_path))
             dialog = ft.AlertDialog(
                 title=title_row,
                 content=dialog_content,

@@ -746,9 +746,7 @@ def build_playlists_panel(
                 page.show_snack(f"Restored {restored} cards (new id: {getattr(new_card, 'cardId', 'unknown')})")
                 page.update_card(new_card)
 
-            # Close dialog after attempts and refresh playlists
             page.pop_dialog()
-            threading.Thread(target=lambda: fetch_playlists_sync(page), daemon=True).start()
 
         def do_preview(_ev=None):
             # Preview the first selected version (if any). Loading/parsing
