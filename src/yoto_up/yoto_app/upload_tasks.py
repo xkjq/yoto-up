@@ -1,3 +1,4 @@
+from PIL.Image import new
 from yoto_up.yoto_app.api_manager import ensure_api
 import asyncio
 import os
@@ -1719,8 +1720,6 @@ class UploadManager:
             card_id = self.existing_card_map.get(target_card_sel) if target_card_sel else None
             page.run_task(
                 start_uploads,
-                e,
-                api_ref,
                 page,
                 gain_adjusted_files,
                 concurrency=concurrency.value,
@@ -2075,15 +2074,13 @@ def build_chapters_from_transcodes(
 
 @logger.catch
 async def start_uploads(
-    event,
-    api_ref,
     page,
     gain_adjusted_files: dict[str, dict[str, Any]] | None = None,
-    concurrency=4,
-    target="Create new card",
-    new_card_title=None,
-    existing_card_id=None,
-    ctx=None,
+    concurrency: int =4,
+    target: str = "Create new card",
+    new_card_title: str | None = None,
+    existing_card_id: str | None = None,
+    ctx: dict | None = None,
 ):
     """Start uploads migrated from gui; ctx is the UI/context dict."""
     if gain_adjusted_files is None:
@@ -2310,7 +2307,7 @@ async def start_uploads(
     logger.debug("[start_uploads] YotoAPI initialized successfully")
     page.update()
 
-    maxc = int(getattr(concurrency, "value", 2))
+    maxc = concurrency
     sem = asyncio.Semaphore(maxc)
 
     total_files = len(files)
@@ -2359,7 +2356,9 @@ async def start_uploads(
                 f"Gain adjusted by {gain:+.2f} dB on 2025-09-13 for: {os.path.basename(orig_files[i])}"
             )
     if target == "Create new card":
-        title = (getattr(new_card_title, "value", "") or "").strip() or "New Yoto Card"
+        if new_card_title is None or not new_card_title.strip():
+            new_card_title = "New Yoto Card"
+        title = new_card_title
         # Map from upload file path to gain adjustment (if any)
 
         # Use shared scheduler to upload all files in parallel (bounded by semaphore)
