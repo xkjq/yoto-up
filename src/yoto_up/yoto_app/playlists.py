@@ -582,11 +582,7 @@ def build_playlists_panel(
     import_picker = ft.FilePicker() if _file_picker_supported else None
     # FilePicker is a service in Flet 0.80+; register it with page.services.
     if import_picker is not None:
-        try:
-            page.services.append(import_picker)
-        except Exception:
-            # page may be a SimpleNamespace in some tests; ignore if services isn't available
-            pass
+        page.services.append(import_picker)
     import_card_btn = ft.Button(content=ft.Text(value="Import Card(s)"))
     restore_versions_btn = ft.Button(content=ft.Text(value="Restore Versions"))
 
