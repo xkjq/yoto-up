@@ -333,7 +333,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     if tags:
         meta_line.append(f"Tags: {', '.join(tags)}")
     meta_text = (
-        ft.Text(value=" | ".join(meta_line), size=12, color=ft.Colors.BLACK54)
+        ft.Text(value=" | ".join(meta_line), size=12)
         if meta_line
         else None
     )
@@ -357,7 +357,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     # Subtitle contains preview, description and metadata; card id is shown on the row's right
     subtitle_items = []
     if preview:
-        subtitle_items.append(ft.Text(value=preview, size=12, color=ft.Colors.BLACK45))
+        subtitle_items.append(ft.Text(value=preview, size=12))
 
     # Add truncated description as a subtitle line (if present)
     try:
@@ -365,14 +365,14 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     except Exception:
         short_desc = ""
     if short_desc:
-        subtitle_items.append(ft.Text(value=short_desc, size=12, color=ft.Colors.BLACK45))
+        subtitle_items.append(ft.Text(value=short_desc, size=12))
     if meta_text:
         subtitle_items.append(meta_text)
     subtitle = ft.Column(controls=subtitle_items)
     tile = ft.ListTile(title=ft.Text(value=title), subtitle=subtitle, on_click=_on_tile_click)
 
     # Card ID placed to the right of the row (muted)
-    id_text = ft.Text(value=str(cid), size=11, color=ft.Colors.BLACK45)
+    id_text = ft.Text(value=str(cid), size=11)
 
     row = ft.Row(
         controls=[cb, img_ctrl, ft.Container(content=tile, expand=True), id_text, delete_btn],
@@ -712,7 +712,6 @@ def build_playlists_panel(
                 "The original card ID cannot be reused by the API, so the card ID will change."
             ),
             size=12,
-            color=ft.Colors.BLACK54,
         )
 
         lv = ft.ListView(expand=True)

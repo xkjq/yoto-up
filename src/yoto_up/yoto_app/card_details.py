@@ -329,7 +329,6 @@ def make_show_card_details(
                                         value=
                                         f"{tr_format}  • {tr_duration}  • size={tr_size}",
                                         size=11,
-                                        color=ft.Colors.BLACK45,
                                     ),
                                 ],
                                 alignment=ft.MainAxisAlignment.START,
@@ -341,7 +340,6 @@ def make_show_card_details(
                                         value=
                                         f"key={tr_key}  overlay={tr_overlay}",
                                         size=11,
-                                        color=ft.Colors.BLACK45,
                                     ),
                                 ],
                                 alignment=ft.MainAxisAlignment.START,
@@ -569,7 +567,7 @@ def make_show_card_details(
                                             weight=ft.FontWeight.BOLD,
                                         ),
                                         ft.Text(
-                                            value=meta_line, size=12, color=ft.Colors.BLACK45
+                                            value=meta_line, size=12
                                         ),
                                     ]
                                 ),
@@ -764,7 +762,7 @@ def make_show_card_details(
                     space_width = 8
                     spacer = ft.Container(width=leading * space_width)
                     if stripped in ('{', '}', '[', ']', '},', '],'):
-                        text = ft.Text(value=stripped, style=ft.TextStyle(color=ft.Colors.BLACK, font_family='monospace'), selectable=True)
+                        text = ft.Text(value=stripped, style=ft.TextStyle(font_family='monospace'), selectable=True)
                         row = ft.Row(controls=[spacer, text], spacing=0, vertical_alignment=ft.CrossAxisAlignment.START)
                         json_lines.append(row)
                     else:
@@ -1205,7 +1203,6 @@ Renumbering overlayLabels will assign sequential overlay labels to tracks.
 Renumbering keys will assign sequential keys to all tracks.
                         """,
                         size=12,
-                        color=ft.Colors.BLACK54,
                         italic=True,
                     )
                 )
