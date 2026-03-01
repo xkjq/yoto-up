@@ -603,6 +603,15 @@ class YotoAPI:
         return card
 
     def get_myo_content(self):
+        """Get the user's MYO content and return a list of Card models.
+
+        This returns the MYO cards belonging to the authenticated user.
+
+        The card objects do not include the chapters property.
+        To access all the card details including the chapters, you will need to query the /content/{cardId} endpoint.
+
+        """
+        
         headers = {"Authorization": f"Bearer {self.access_token}"}
         logger.debug(f"GET {self.MYO_URL}")
         response = self._cached_request("GET", self.MYO_URL, headers=headers)
