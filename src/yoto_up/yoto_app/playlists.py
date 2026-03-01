@@ -611,7 +611,7 @@ def build_playlists_panel(
         except (TypeError, ValueError) as e:
             logger.debug(f"Invalid VERSIONS_DIR constant: {e}")
 
-        deleted_entries: list[tuple[str, str, Path]] = []
+        found_entries: list[tuple[str, str, Path]] = []
         seen_roots: set[str] = set()
 
         for root in candidate_roots:
@@ -653,19 +653,9 @@ def build_playlists_panel(
                         card_id = parsed.cardId or card_id
                     except (json.JSONDecodeError, OSError, TypeError, ValueError) as e:
                         logger.debug(f"Skipping invalid version file {latest}: {e}")
+                        continue
 
-                    # Check whether the card exists on the server. Network/HTTP
-                    # errors are considered external and translated into "not
-                    # existing" for the purpose of this dialog. Unexpected
-                    # exceptions from API calls should surface.
-                    try:
-                        api.get_card(card_id)
-                        exists = True
-                    except httpx.HTTPError:
-                        exists = False
-
-                    if not exists:
-                        deleted_entries.append((card_id, title or "", latest))
+                    found_entries.append((card_id, title or "", latest))
 
                 # Flat JSON file layout
                 elif child.is_file() and child.suffix == ".json":
@@ -682,18 +672,11 @@ def build_playlists_panel(
                         logger.debug(f"Skipping invalid version file {latest}: {e}")
                         continue
 
-                    try:
-                        api.get_card(card_id)
-                        exists = True
-                    except httpx.HTTPError:
-                        exists = False
-
-                    if not exists:
-                        deleted_entries.append((card_id, title or "", latest))
+                    found_entries.append((card_id, title or "", latest))
 
         # Dedupe by card id, keeping the newest version file by mtime.
         dedup: dict[str, tuple[str, Path, float]] = {}
-        for cid, title, path in deleted_entries:
+        for cid, title, path in found_entries:
             try:
                 mtime = path.stat().st_mtime if path.exists() else 0
             except OSError:
@@ -701,7 +684,21 @@ def build_playlists_panel(
             prev = dedup.get(cid)
             if prev is None or mtime > prev[2]:
                 dedup[cid] = (title, path, mtime)
-        deleted_entries = [(cid, t, p) for cid, (t, p, _) in dedup.items()]
+        # Now fetch existing cards once and filter out entries that exist
+        # on the server. Treat HTTP errors as external failures and inform
+        # the user.
+        try:
+            current_cards = api.get_myo_content()
+            existing_ids = {getattr(c, "cardId", None) for c in (current_cards or [])}
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to fetch current cards for existence check: {e}")
+            try:
+                page.show_snack("Unable to verify existing cards (network error)", error=True)
+            except Exception:
+                pass
+            return
+
+        deleted_entries = [(cid, t, p) for cid, (t, p, _) in dedup.items() if cid not in existing_ids]
 
         if not deleted_entries:
             page.show_snack("No deleted versions available to restore")
