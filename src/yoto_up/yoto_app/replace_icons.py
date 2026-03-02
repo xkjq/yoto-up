@@ -223,7 +223,9 @@ Continue?"""
                                         f"Replace icons failed: {ex}", error=True
                                     )
                                 logger.exception("replace_icons error")
-                            await asyncio.sleep(1)
+                            #await asyncio.sleep(1)
+                            page.pop_dialog()
+                            page.update_card(new_card)
                             page.show_card_details(new_card)
 
                         page.run_task(work)
@@ -379,7 +381,9 @@ def start_replace_icons_background(
 
 
                 logger.debug("Fetched card, starting icon replacement")
-                new_card = api.replace_card_default_icons(
+                # Run replacement in a thread so we don't block the event loop
+                new_card = await asyncio.to_thread(
+                    api.replace_card_default_icons,
                     full,
                     progress_callback=_set_badge,
                     cancel_event=cancel_event,
@@ -388,10 +392,7 @@ def start_replace_icons_background(
 
                 # update the card on the page and yield briefly so UI can process
                 page.update_card(new_card)
-
                 page.pop_dialog()
-
-                # show the updated card details
                 page.show_card_details(new_card)
 
             except Exception as ex:
