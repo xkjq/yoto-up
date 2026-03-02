@@ -1,4 +1,4 @@
-from PIL.Image import new
+from yoto_up.yoto_app.playlists import build_playlists_ui
 from yoto_up.yoto_app.api_manager import ensure_api
 import asyncio
 import os
@@ -1911,8 +1911,9 @@ class UploadManager:
         except Exception:
             logger.exception("refresh_existing_card_options failed")
 
-def show_card_popup(page, card):
+def show_card_popup(page, cardId):
     # Show a dialog with full card details
+    card = page.get_local_card(cardId)  # ensure we have the latest details in the cache
     lines = []
     lines.append(
         ft.Text(
@@ -1986,7 +1987,7 @@ def show_card_info(page, card):
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
-            on_click=lambda e: show_card_popup(page, card),
+            on_click=lambda e: show_card_popup(page, card.cardId),
             bgcolor=ft.Colors.BLUE_50,
             padding=10,
             border_radius=8,
@@ -2630,6 +2631,7 @@ async def start_uploads(
         # clear module page reference
         _LAST_PAGE = None
         page.update()
+        build_playlists_ui(page)  # trigger playlist UI refresh to show new content
 
 
 async def stop_uploads(event, page):

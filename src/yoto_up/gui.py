@@ -1,3 +1,4 @@
+from arrow import get
 import asyncio
 from nltk.lm.vocabulary import _
 from colorlog import log
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
         update_local_card_cache: Callable[[Card, bool], None]
         update_card: Callable[[Card], Card | None]
         delete_card: Callable[[Card], bool]
+        get_local_card: Callable[[str], Optional[Card]]
         fetch_playlists_sync: Optional[Callable[..., Any]]
         fetch_playlists: Optional[Callable[..., Any]]
         selected_playlist_ids: Set[str]
@@ -175,9 +177,13 @@ def main(page: "Page"):
             logger.error(f"Failed to delete card: {ex}")
             page.show_snack(f"Failed to delete card: {ex}", error=True)
             return False
+    
+    def get_local_card(card_id: str) -> Optional[Card]:
+        return next((c for c in page.cards if c.cardId == card_id), None)
 
     page.update_card = update_card  # expose on page for easy access from helpers
     page.delete_card = delete_card  # expose on page for easy access from helpers
+    page.get_local_card = get_local_card  # expose on page for easy access from helpers
 
     page.fetch_playlists_sync = None  # will be set by playlists builder; exposed here for auth flow to trigger a refresh after login
     page.fetch_playlists = None  # async version; exposed here for auth flow to trigger a refresh after login
