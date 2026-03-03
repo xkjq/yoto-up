@@ -122,18 +122,9 @@ def show_replace_icons_dialog(
                                 for idx in indices:
                                     user_labels[idx] = ctrl.value or ""
 
-                            card_for_replace = copy.deepcopy(full)
-                            for i, (kind, ch_idx, tr_idx) in enumerate(targets):
-                                val = user_labels[i] if i < len(user_labels) else default_labels[i]
-                                if not val:
-                                    continue
-                                try:
-                                    if kind == 'chapter':
-                                        card_for_replace.content.chapters[ch_idx].title = val
-                                    else:
-                                        card_for_replace.content.chapters[ch_idx].tracks[tr_idx].title = val
-                                except Exception:
-                                    pass
+                            # Do NOT change the actual card titles here. The edits are
+                            # only used as search overrides for icon lookup.
+                            label_overrides = list(user_labels)
 
                             # close dialog and start background work
                             page.pop_dialog()
@@ -147,7 +138,7 @@ def show_replace_icons_dialog(
                                     include_yotoicons=include_yotoicons,
                                     max_searches=max_searches,
                                     api_ref=api_ref,
-                                    card_for_replace=card_for_replace,
+                                    label_overrides=label_overrides,
                                 )
                             except Exception:
                                 try:
@@ -159,7 +150,7 @@ def show_replace_icons_dialog(
                                             include_yotoicons=include_yotoicons,
                                             max_searches=max_searches,
                                             api_ref=api_ref,
-                                            card_for_replace=card_for_replace,
+                                            label_overrides=label_overrides,
                                         ),
                                         daemon=True,
                                     ).start()
@@ -191,18 +182,8 @@ def show_replace_icons_dialog(
                     return
 
                 # Build card_for_replace and delegate to non-interactive starter
-                card_for_replace = copy.deepcopy(full)
-                for i, (kind, ch_idx, tr_idx) in enumerate(targets):
-                    val = user_labels[i] if i < len(user_labels) else default_labels[i]
-                    if not val:
-                        continue
-                    try:
-                        if kind == 'chapter':
-                            card_for_replace.content.chapters[ch_idx].title = val
-                        else:
-                            card_for_replace.content.chapters[ch_idx].tracks[tr_idx].title = val
-                    except Exception:
-                        pass
+                # Only pass the label overrides (do not mutate the card titles)
+                label_overrides = list(user_labels)
 
                 try:
                     start_replace_icons_background(
@@ -212,7 +193,7 @@ def show_replace_icons_dialog(
                         include_yotoicons=include_yotoicons,
                         max_searches=max_searches,
                         api_ref=api_ref,
-                        card_for_replace=card_for_replace,
+                        label_overrides=label_overrides,
                     )
                 except Exception:
                     try:
@@ -261,7 +242,7 @@ def start_replace_icons_background(
     include_yotoicons: bool | None = None,
     max_searches: int | None = None,
     api_ref=None,
-    card_for_replace=None,
+    label_overrides: list | None = None,
 ):
     """Start replace default icons in background and show a persistent badge on the page.
 

@@ -2469,7 +2469,7 @@ class YotoAPI:
             raise FileNotFoundError(f"Cached icon image not found for icon: {icon}")
         return self.upload_custom_icon(str(cache_path), auto_convert=auto_convert, yotoicons_id=icon.get("id"))
 
-    def replace_card_default_icons(self, card: Card, replace_existing=False, progress_callback: Optional[Callable[[str, float], None]] = None, cancel_event: Optional[threading.Event] = None, include_yotoicons: bool = True, max_searches: int = 3, parallel_workers: int | None = None) -> Card:
+    def replace_card_default_icons(self, card: Card, replace_existing=False, progress_callback: Optional[Callable[[str, float], None]] = None, cancel_event: Optional[threading.Event] = None, include_yotoicons: bool = True, max_searches: int = 3, parallel_workers: int | None = None, label_overrides: list | None = None) -> Card:
         """
         Replace default placeholder icons on a Card's chapters and tracks.
         Optionally accepts a progress_callback(msg, frac) for UI updates.
@@ -2544,11 +2544,11 @@ class YotoAPI:
                 import concurrent.futures
                 futures = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
-                    for kind2, ch_idx2, tr_idx2 in targets:
+                    for idx2, (kind2, ch_idx2, tr_idx2) in enumerate(targets):
                         if cancel_event and cancel_event.is_set():
                             _cb('Cancelled', completed / total if total else 1.0)
                             return card
-                        futures.append(ex.submit(_process_target, kind2, ch_idx2, tr_idx2, 0.0))
+                        futures.append(ex.submit(_process_target, kind2, ch_idx2, tr_idx2, 0.0, idx2))
 
                     for fut in concurrent.futures.as_completed(futures):
                         if cancel_event and cancel_event.is_set():
@@ -2568,7 +2568,8 @@ class YotoAPI:
                 logger.exception("Parallel icon replacement failed, falling back to serial")
 
         # Fallback to serial processing when not parallel
-        for kind, ch_idx, tr_idx in targets:
+        # Fallback to serial processing when not parallel
+        for idx, (kind, ch_idx, tr_idx) in enumerate(targets):
             # Check for cancellation before each item
             if cancel_event and cancel_event.is_set():
                 _cb('Cancelled', completed / total if total else 1.0)
@@ -2612,15 +2613,26 @@ class YotoAPI:
                     return str(card_title or "")
 
                 # Consolidated helper to find/select/upload/apply an icon for a chapter or track
-                def _process_target(kind: str, ch_idx: int, tr_idx: int, frac: float) -> bool:
+                def _process_target(kind: str, ch_idx: int, tr_idx: int, frac: float, idx: int) -> bool:
                     chapter = chapters[ch_idx]
                     track = None
+                    # If a label_override is provided for this target index, use it for the search only
+                    override_label = None
+                    if label_overrides and isinstance(label_overrides, (list, tuple)) and idx < len(label_overrides):
+                        override_label = label_overrides[idx] or None
+
                     if kind == 'chapter':
-                        query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
+                        if override_label:
+                            query = override_label
+                        else:
+                            query = _choose_query(None, getattr(chapter, 'title', None), getattr(card, 'title', None))
                         target_label = f"chapter '{query}'"
                     else:
                         track = chapter.tracks[tr_idx]
-                        query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
+                        if override_label:
+                            query = override_label
+                        else:
+                            query = _choose_query(getattr(track, 'title', None), getattr(chapter, 'title', None), getattr(card, 'title', None))
                         target_label = f"track '{query}'"
 
                     _cb(f"Finding icon for {target_label}", frac)
