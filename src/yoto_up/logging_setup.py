@@ -30,7 +30,7 @@ def setup_logging(
     log_file: Optional[str] = None,
     rotation: str = "10 MB",
     retention: str = "7 days",
-    intercept_stdlib: bool = True,
+    intercept_stdlib: bool = False,
 ):
     """Configure loguru global logger.
 

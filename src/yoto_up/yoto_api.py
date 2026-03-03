@@ -620,7 +620,7 @@ class YotoAPI:
         headers = {"Authorization": f"Bearer {self.access_token}"}
         logger.debug(f"GET {self.MYO_URL}")
         response = self._cached_request("GET", self.MYO_URL, headers=headers)
-        logger.debug(f"Content response: {response.status_code} {response.text}")
+        logger.trace(f"Content response: {response.status_code} {response.text}")
         response.raise_for_status()
         data = response.json()
         if isinstance(data, dict) and "cards" in data:
@@ -638,7 +638,7 @@ class YotoAPI:
         else:
             logger.debug(f"GET {self.CONTENT_URL}/{card_id}")
             response = self._cached_request("GET", f"{self.CONTENT_URL}/{card_id}", headers=headers)
-        logger.debug(f"Content response: {response.status_code} {response.text}")
+        logger.trace(f"Content response: {response.status_code} {response.text}")
         response.raise_for_status()
         self.response_history.append(response)
         data = response.json()["card"]
