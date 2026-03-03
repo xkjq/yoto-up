@@ -142,18 +142,21 @@ def show_replace_icons_dialog(
                                 )
                             except Exception:
                                 try:
-                                    threading.Thread(
-                                        target=lambda: start_replace_icons_background(
-                                            page,
-                                            c,
-                                            confirm=False,
-                                            include_yotoicons=include_yotoicons,
-                                            max_searches=max_searches,
-                                            api_ref=api_ref,
-                                            label_overrides=label_overrides,
-                                        ),
-                                        daemon=True,
-                                    ).start()
+                                    async def _start_bg():
+                                        try:
+                                            start_replace_icons_background(
+                                                page,
+                                                c,
+                                                confirm=False,
+                                                include_yotoicons=include_yotoicons,
+                                                max_searches=max_searches,
+                                                api_ref=api_ref,
+                                                label_overrides=label_overrides,
+                                            )
+                                        except Exception:
+                                            pass
+
+                                    page.run_task(_start_bg)
                                 except Exception:
                                     page.show_snack("Failed to start replace", error=True)
                         except Exception as ex:
@@ -197,18 +200,21 @@ def show_replace_icons_dialog(
                     )
                 except Exception:
                     try:
-                        threading.Thread(
-                            target=lambda: start_replace_icons_background(
-                                page,
-                                c,
-                                confirm=False,
-                                include_yotoicons=include_yotoicons,
-                                max_searches=max_searches,
-                                api_ref=api_ref,
-                                card_for_replace=card_for_replace,
-                            ),
-                            daemon=True,
-                        ).start()
+                        async def _start_bg():
+                            try:
+                                start_replace_icons_background(
+                                    page,
+                                    c,
+                                    confirm=False,
+                                    include_yotoicons=include_yotoicons,
+                                    max_searches=max_searches,
+                                    api_ref=api_ref,
+                                    label_overrides=label_overrides,
+                                )
+                            except Exception:
+                                pass
+
+                        page.run_task(_start_bg)
                     except Exception:
                         page.show_snack("Failed to start replace", error=True)
             except Exception as ee:
@@ -346,9 +352,19 @@ def start_replace_icons_background(
                     max_searches=eff_max_searches,
                 )
                 logger.debug("replace_card_default_icons returned")
-                page.update_card(new_card)
-                page.pop_dialog()
-                page.show_card_details(new_card)
+                try:
+                    await asyncio.to_thread(page.update_card, new_card)
+                except Exception:
+                    # If persisting the card blocks or fails, log and continue to update UI
+                    logger.exception("Failed to persist updated card in background")
+                try:
+                    page.pop_dialog()
+                except Exception:
+                    pass
+                try:
+                    page.show_card_details(new_card)
+                except Exception:
+                    pass
 
             except Exception as ex:
                 page.show_snack(f"Replace icons failed: {ex}", error=True)
