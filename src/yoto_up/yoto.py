@@ -4,6 +4,7 @@ import typer
 from yoto_up.models import Card, CardContent, CardMetadata, Chapter
 from yoto_up.tui import EditCardApp
 from yoto_up.yoto_api import YotoAPI
+from yoto_up.logging_setup import setup_logging
 from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
@@ -165,6 +166,8 @@ def main(
         0, "--cache-max-age-seconds", "-a", help="Max cache age in seconds"
     ),
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
+    verbose: int = typer.Option(0, "-v", "--verbose", help="Increase verbosity; repeat for more (e.g. -vv)", count=True),
+    quiet: int = typer.Option(0, "-q", "--quiet", help="Reduce logging output (repeat to silence)", count=True),
 ):
     global api_options
     api_options = dict(
@@ -173,6 +176,28 @@ def main(
         cache_max_age_seconds=cache_max_age_seconds,
         debug=debug,
     )
+    # Configure logging early based on CLI options/env
+    try:
+        if quiet >= 2:
+            # fully disable logging
+            setup_logging(enable=False)
+        else:
+            if debug:
+                level = "DEBUG"
+            else:
+                if verbose >= 2:
+                    level = "TRACE"
+                elif verbose == 1:
+                    level = "DEBUG"
+                else:
+                    level = "INFO"
+            if quiet == 1:
+                level = "WARNING"
+            # allow overriding file via env var
+            log_file = os.environ.get("YOTO_LOG_FILE")
+            setup_logging(level=level, log_file=log_file)
+    except Exception:
+        pass
 
 
 @app.command()

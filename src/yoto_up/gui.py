@@ -97,13 +97,6 @@ else:
 
 
 def main(page: "Page"):
-    logger.add(
-        sys.stderr,
-        level="DEBUG",
-        format="{time} {level} {message}",
-        enqueue=True,
-        catch=True,
-    )
     logger.debug("Starting Yoto Up GUI")
     page.title = "Yoto Up"
     page._icon_browser_loaded = False
