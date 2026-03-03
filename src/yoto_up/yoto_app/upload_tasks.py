@@ -69,12 +69,14 @@ class FileUploadRow:
         self.name = os.path.basename(filepath)
         self.status_text = ft.Text(value="Queued")
         self.progress = ft.ProgressBar(width=300, visible=False)
-        self.name_text = ft.Text(value=self.name, width=300)
+        self.ring = ft.ProgressRing(width=300, height=20, visible=False)
+        self.name_text = ft.Text(value=self.name, width=300, selectable=True)
         self.inner_row = ft.Row(
             controls=[
                 self.name_text,
                 ft.TextButton(content=ft.Text(value="Preview"), on_click=self.on_preview),
                 ft.TextButton(content=ft.Text(value="Split"), on_click=self.on_split),
+                self.ring,
                 self.progress,
                 self.status_text,
                 ft.TextButton(content=ft.Text(value="View details"), on_click=self.on_view_details),
@@ -91,8 +93,25 @@ class FileUploadRow:
 
     def set_status(self, value):
         self.status_text.value = value
+        sval = (value or "").lower()
+        # Show a spinner during the upload stage, hide it when transcode begins
+        if "upload" in sval:
+            self.ring.visible = True
+            self.progress.visible = False
+        elif "transcod" in sval or "transc" in sval:
+            # transcode stage: remove ring and show progress bar for numeric updates
+            self.ring.visible = False
+            # keep progress visibility controlled by set_progress
+        else:
+            # default: hide ring
+            self.ring.visible = False
 
     def set_progress(self, frac):
+        # If ring is visible (upload stage), keep showing the ring until transcode.
+        if getattr(self, 'ring', None) and self.ring.visible:
+            # still update internal value but don't show the bar
+            self.progress.value = frac
+            return
         self.progress.visible = True
         self.progress.value = frac
         # page is required; propagate errors if update fails
