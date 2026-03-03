@@ -2160,7 +2160,7 @@ async def start_uploads(
                 loudnorm=loudnorm,
                 show_progress=bool(show_progress),
                 poll_interval=2,
-                max_attempts=60,
+                max_attempts=200,
                 progress_callback=progress_cb,
             )
 

@@ -693,7 +693,7 @@ class YotoAPI:
         }
         #payload = {"card": card.model_dump(exclude_none=True)}
         payload = card.model_dump(exclude_none=True)
-        logger.debug(f"POST {self.CONTENT_URL} payload: {payload}")
+        logger.trace(f"POST {self.CONTENT_URL} payload: {payload}")
         response = self._cached_request("POST", self.CONTENT_URL, headers=headers, json_data=payload)
         logger.trace(f"Create/Update response: {response.status_code} {response.text}")
         response.raise_for_status()
@@ -803,7 +803,7 @@ class YotoAPI:
         _call_cb("Transcoding...")
         transcoded_audio = await self.poll_for_transcoding_async(
             upload_id, loudnorm, poll_interval, max_attempts, show_progress,
-            progress=progress, transcode_task_id=transcode_task_id
+            progress=progress, transcode_task_id=transcode_task_id, progress_callback=progress_callback
         )
         logger.debug(f"Transcoded audio info: {transcoded_audio}")
         _call_cb("Transcode complete")
@@ -818,9 +818,14 @@ class YotoAPI:
         show_progress: bool = False,
         progress: Optional['Progress'] = None,
         transcode_task_id: TaskID | None = None,
+        progress_callback: Optional[Callable[[str, float], None]] = None,
     ) -> TranscodedAudio:
-        import httpx
-        import asyncio
+        def _call_cb(msg: str | None = None, frac: float | None = None):
+            try:
+                if callable(progress_callback):
+                    progress_callback(msg or '', frac or 0.0)
+            except Exception:
+                pass
         transcode_url = f"https://api.yotoplay.com/media/upload/{upload_id}/transcoded?loudnorm={'true' if loudnorm else 'false'}"
         attempts = 0
         transcoded_audio = None
@@ -839,6 +844,9 @@ class YotoAPI:
                         if progress and transcode_task_id is not None:
                             progress.update(transcode_task_id, completed=max_attempts, description="Transcode complete")
                         break
+                elif poll_resp.status_code >= 202:
+                    percent = poll_resp.json()["transcode"]["progress"]["percent"]
+                    _call_cb("Transcoding...", percent / 100)
                 await asyncio.sleep(poll_interval)
                 attempts += 1
                 if progress and transcode_task_id is not None:
@@ -848,6 +856,8 @@ class YotoAPI:
             logger.error("Transcoding timed out.")
             if progress and transcode_task_id is not None:
                 progress.update(transcode_task_id, completed=max_attempts, description="Transcode timed out")
+            if progress_callback:
+                progress_callback("Transcode timed out", 1.0)
             raise Exception("Transcoding timed out.")
 
         # Convert the raw transcode dict into a TranscodedAudio model instance
@@ -1003,7 +1013,6 @@ class YotoAPI:
         progress_callback: optional callable(message, frac) where frac is 0..1 overall progress.
         Returns the created card (model) if return_card True, otherwise the raw API response.
         """
-        import asyncio
 
         total = len(media_files)
         if filename_list and len(filename_list) != total:
