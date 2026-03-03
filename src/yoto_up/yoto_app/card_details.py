@@ -1161,12 +1161,10 @@ Merging will result in:
                 page.show_snack("Failed to start expand operation", error=True)
 
         def replace_icons(ev):
-            # Start background replace with persistent badge
-            from yoto_up.yoto_app.replace_icons import start_replace_icons_background
-            start_replace_icons_background(
-                page,
-                c,
-            )
+            # Show interactive replace dialog which delegates to the
+            # centralized background flow.
+            from yoto_up.yoto_app.replace_icons import show_replace_icons_dialog
+            show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
 
         # popup dialog for track-related actions (shows title + cover image)
         tracks_dialog = None
