@@ -323,20 +323,14 @@ def start_replace_icons_background(
     """
     logger.debug("Starting background replace icons")
     # If caller requests interactive confirmation, delegate to dialog flow
-    try:
-        if confirm:
-            # Reuse interactive dialog which supports editing search terms
-            try:
-                return show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
-            except Exception:
-                # fallback to non-interactive mode
-                pass
-    except Exception:
-        pass
+    if confirm:
+        # Reuse interactive dialog which supports editing search terms
+        return show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
     try:
         # Badge UI
         badge_text = ft.Text(value="Autoselect: 0%")
 
+        logger.debug("Setting cancel event and exposing on page for badge click")
         # Cancellation event for the worker
         cancel_event = threading.Event()
         # Expose cancel_event on page so UI helpers (badge click) can access it
@@ -349,6 +343,7 @@ def start_replace_icons_background(
         # create a synchronous callback that schedules the async page updater
         last_badge_update = 0.0
 
+        logger.debug("Initializing badge update function")
         def _set_badge(msg, frac, visible=True):
             nonlocal last_badge_update
             # debounce frequent updates to avoid flooding the event loop
@@ -359,6 +354,7 @@ def start_replace_icons_background(
             # schedule the async progress updater on the event loop
             asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
 
+        logger.debug("Defining function to open status dialog on badge click")
         def _open_status_dialog(hide_default=False):
             page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)
 
