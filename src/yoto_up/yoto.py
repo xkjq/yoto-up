@@ -2172,6 +2172,20 @@ def search_yotoicons(
         typer.echo(f"[bold red]No icons found for tag '{tag}'.[/bold red]")
         raise typer.Exit(code=1)
 
+@app.command()
+def replace_default_icons(card_id: str, replace_existing: bool = False):
+    API = get_api()
+    card = API.get_card(card_id)
+    if not card:
+        typer.echo(f"[bold red]Card not found: {card_id}[/bold red]")
+    new_card = API.replace_card_default_icons(card, replace_existing=replace_existing)
+    if not new_card:
+        typer.echo(f"[bold red]Failed to replace default icons.[/bold red]")
+        raise typer.Exit(code=1)
+    # Update the card on the server
+    updated_card = API.create_or_update_content(new_card, return_card=True)
+    typer.echo(f"[bold green]Default icons replaced successfully.[/bold green]")
+
 
 @app.command()
 def find_best_icons(

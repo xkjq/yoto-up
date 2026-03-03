@@ -1,4 +1,5 @@
 from nltk.lm.vocabulary import _
+import os
 import httpx
 import time
 import base64
@@ -2458,7 +2459,7 @@ class YotoAPI:
             raise FileNotFoundError(f"Cached icon image not found for icon: {icon}")
         return self.upload_custom_icon(str(cache_path), auto_convert=auto_convert, yotoicons_id=icon.get("id"))
 
-    def replace_card_default_icons(self, card: Card, progress_callback: Optional[Callable[[str, float], None]] = None, cancel_event: Optional[threading.Event] = None, include_yotoicons: bool = True, max_searches: int = 3) -> Card:
+    def replace_card_default_icons(self, card: Card, replace_existing=False, progress_callback: Optional[Callable[[str, float], None]] = None, cancel_event: Optional[threading.Event] = None, include_yotoicons: bool = True, max_searches: int = 3, parallel_workers: int | None = None) -> Card:
         """
         Replace default placeholder icons on a Card's chapters and tracks.
         Optionally accepts a progress_callback(msg, frac) for UI updates.
@@ -2483,9 +2484,13 @@ class YotoAPI:
             _cb('Cancelled', 1.0)
             return card
 
+        if replace_existing:
+            _cb('Replacing existing icons...', 0.0)
+            card.clear_all_icons()
+
         # First, scan how many replacements we need to do so we can report progress
         targets = []
-        chapters = card.content.chapters if card.content and card.content.chapters else []
+        chapters = card.get_chapters()
         for ch_idx, chapter in enumerate(chapters):
                 # chapter icon
                 icon_field = chapter.get_icon_field()
@@ -2506,6 +2511,21 @@ class YotoAPI:
         completed = 0
         # Track mediaIds we've already assigned so we don't reuse the same icon
         used_media_ids: set[str] = set()
+        # Lock to protect used_media_ids when running in parallel
+        used_lock = threading.Lock()
+
+        # Decide whether to run in parallel
+        try:
+            if parallel_workers is None:
+                max_workers = min(4, (os.cpu_count() or 1))
+            else:
+                max_workers = max(1, int(parallel_workers))
+        except Exception:
+            max_workers = 1
+
+        
+
+        # Fallback to serial processing when not parallel
         for kind, ch_idx, tr_idx in targets:
             # Check for cancellation before each item
             if cancel_event and cancel_event.is_set():
@@ -2593,8 +2613,42 @@ class YotoAPI:
                         else:
                             track.set_icon_field(f"yoto:#{chosen_media}")
                             logger.info(f"Replaced track '{track.title}' icon with mediaId: {chosen_media}")
-                        used_media_ids.add(chosen_media)
+                        # mark used media id under lock when parallel
+                        try:
+                            with used_lock:
+                                used_media_ids.add(chosen_media)
+                        except Exception:
+                            used_media_ids.add(chosen_media)
                     return True
+
+                # If configured to run in parallel, dispatch tasks to a thread pool
+                if max_workers and max_workers > 1:
+                    try:
+                        import concurrent.futures
+                        futures = []
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+                            for kind2, ch_idx2, tr_idx2 in targets:
+                                if cancel_event and cancel_event.is_set():
+                                    _cb('Cancelled', completed / total if total else 1.0)
+                                    return card
+                                futures.append(ex.submit(_process_target, kind2, ch_idx2, tr_idx2, 0.0))
+
+                            for fut in concurrent.futures.as_completed(futures):
+                                if cancel_event and cancel_event.is_set():
+                                    _cb('Cancelled', completed / total if total else 1.0)
+                                    return card
+                                try:
+                                    ok = fut.result()
+                                except Exception:
+                                    ok = False
+                                completed += 1
+                                _cb(None, completed / total if total else 1.0)
+
+                        _cb('Icon replacement complete', 1.0)
+                        return card
+                    except Exception:
+                        # if parallel execution fails, fall back to serial
+                        logger.exception("Parallel icon replacement failed, falling back to serial")
 
                 # Run processor for this target
                 ok = _process_target(kind, ch_idx, tr_idx, completed / total)

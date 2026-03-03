@@ -299,14 +299,8 @@ Continue?"""
             ],
         )
 
-        try:
-            page.show_dialog(confirm_dialog)
-        except Exception:
-            try:
-                page.dialog = confirm_dialog
-                page.update()
-            except Exception:
-                logger.exception("Unable to show confirmation dialog for replace_icons")
+        logger.debug("Showing replace icons confirmation dialog")
+        page.show_dialog(confirm_dialog)
     except Exception as e:
         page.show_snack(f"Replace icons failed to start: {e}", error=True)
         logger.exception("replace_icons start error")
@@ -322,10 +316,23 @@ def start_replace_icons_background(
     The badge shows progress and can be clicked to reopen a small status dialog with Cancel.
     """
     logger.debug("Starting background replace icons")
-    # If caller requests interactive confirmation, delegate to dialog flow
+    # If caller requests interactive confirmation, schedule the dialog flow
     if confirm:
         # Reuse interactive dialog which supports editing search terms
-        return show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
+        logger.debug("User confirmation requested, scheduling dialog")
+        try:
+            page.run_task(lambda: show_replace_icons_dialog(page, getattr(page, "api_ref", None), c))
+            logger.debug("Scheduled interactive replace icons dialog via page.run_task")
+            return
+        except Exception:
+            try:
+                threading.Thread(target=lambda: show_replace_icons_dialog(page, getattr(page, "api_ref", None), c), daemon=True).start()
+                logger.debug("Scheduled interactive replace icons dialog via thread")
+                return
+            except Exception:
+                logger.exception("Failed to schedule interactive replace icons dialog; falling back to inline call")
+                # fallback to inline call
+                return show_replace_icons_dialog(page, getattr(page, "api_ref", None), c)
     try:
         # Badge UI
         badge_text = ft.Text(value="Autoselect: 0%")
