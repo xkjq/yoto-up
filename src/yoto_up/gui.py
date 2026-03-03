@@ -651,13 +651,26 @@ def main(page: "Page"):
                 autoselect_badge.tooltip = "Selecting icons"
 
             # Also update the status text control and detail control in the dialog if they're open
-            ctrl = page.autoselect_status_ctrl
-            ctrl.value = autoselect_badge_text.value
-            detail = page.autoselect_status_detail
-            # detail shows the more verbose message about the current icon/search
-            detail.value = msg
-            ctrl.update()
-            detail.update()
+            ctrl = getattr(page, "autoselect_status_ctrl", None)
+            if ctrl is not None:
+                try:
+                    ctrl.value = autoselect_badge_text.value
+                    detail = getattr(page, "autoselect_status_detail", None)
+                    # detail shows the more verbose message about the current icon/search
+                    if detail is not None:
+                        detail.value = msg
+                    try:
+                        ctrl.update()
+                    except Exception:
+                        pass
+                    if detail is not None:
+                        try:
+                            detail.update()
+                        except Exception:
+                            pass
+                except Exception:
+                    # Defensive: if any update fails, continue without raising
+                    pass
             #await asyncio.sleep(0.1)  # slight delay to ensure UI updates properly
             #page.show_snack(f"Autoselect: {msg}", duration=1000)
             page.update()

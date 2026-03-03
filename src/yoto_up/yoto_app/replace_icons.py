@@ -113,30 +113,82 @@ def show_replace_icons_dialog(
                         edit_rows.append(tf)
 
                     edit_col = ft.Column(controls=edit_rows, scroll=ft.ScrollMode.AUTO)
+
+                    def _dlg_start(e=None):
+                        # Collect edits, build card_for_replace and start background run
+                        try:
+                            for ctrl in edit_rows:
+                                indices = getattr(ctrl, "_target_indices", None) or []
+                                for idx in indices:
+                                    user_labels[idx] = ctrl.value or ""
+
+                            card_for_replace = copy.deepcopy(full)
+                            for i, (kind, ch_idx, tr_idx) in enumerate(targets):
+                                val = user_labels[i] if i < len(user_labels) else default_labels[i]
+                                if not val:
+                                    continue
+                                try:
+                                    if kind == 'chapter':
+                                        card_for_replace.content.chapters[ch_idx].title = val
+                                    else:
+                                        card_for_replace.content.chapters[ch_idx].tracks[tr_idx].title = val
+                                except Exception:
+                                    pass
+
+                            # close dialog and start background work
+                            page.pop_dialog()
+                            page.update()
+
+                            try:
+                                start_replace_icons_background(
+                                    page,
+                                    c,
+                                    confirm=False,
+                                    include_yotoicons=include_yotoicons,
+                                    max_searches=max_searches,
+                                    api_ref=api_ref,
+                                    card_for_replace=card_for_replace,
+                                )
+                            except Exception:
+                                try:
+                                    threading.Thread(
+                                        target=lambda: start_replace_icons_background(
+                                            page,
+                                            c,
+                                            confirm=False,
+                                            include_yotoicons=include_yotoicons,
+                                            max_searches=max_searches,
+                                            api_ref=api_ref,
+                                            card_for_replace=card_for_replace,
+                                        ),
+                                        daemon=True,
+                                    ).start()
+                                except Exception:
+                                    page.show_snack("Failed to start replace", error=True)
+                        except Exception as ex:
+                            page.show_snack(f"Failed to start replace: {ex}", error=True)
+
+                    def _dlg_cancel(e=None):
+                        try:
+                            setattr(dlg, "_cancelled", True)
+                        except Exception:
+                            pass
+                        page.pop_dialog()
+                        page.update()
+
                     dlg = ft.AlertDialog(
                         title=ft.Text(value="Edit search terms for icon replacement"),
                         content=ft.Column(controls=[ft.Text(value=f"Preparing to replace {total} icons. Edit grouped search terms below if needed."), edit_col]),
                         actions=[
-                            ft.TextButton(content=ft.Text(value="Start"), on_click=lambda e: (setattr(dlg, "open", False) if hasattr(dlg, "open") else None, page.update())),
-                            ft.TextButton(content=ft.Text(value="Cancel"), on_click=lambda e: (setattr(dlg, "open", False) if hasattr(dlg, "open") else None, setattr(dlg, "_cancelled", True) if hasattr(dlg, "_cancelled") else None, page.update())),
+                            ft.TextButton(content=ft.Text(value="Start"), on_click=_dlg_start),
+                            ft.TextButton(content=ft.Text(value="Cancel"), on_click=_dlg_cancel),
                         ],
                         scrollable=True,
                     )
                     dlg._cancelled = False
                     page.show_dialog(dlg)
                     page.update()
-
-                    while getattr(dlg, "open", False):
-                        asyncio.run(asyncio.sleep(0.1))
-
-                    if getattr(dlg, "_cancelled", False):
-                        page.show_snack("Cancelled")
-                        return
-
-                    for ctrl in edit_rows:
-                        indices = getattr(ctrl, "_target_indices", None) or []
-                        for idx in indices:
-                            user_labels[idx] = ctrl.value or ""
+                    return
 
                 # Build card_for_replace and delegate to non-interactive starter
                 card_for_replace = copy.deepcopy(full)
@@ -234,17 +286,39 @@ def start_replace_icons_background(
         # Prefer using page helpers if available (added in gui.py)
         # create a synchronous callback that schedules the async page updater
         last_badge_update = 0.0
+        last_badge_msg = None
+        last_badge_frac = None
 
         logger.debug("Initializing badge update function")
         def _set_badge(msg, frac, visible=True):
-            nonlocal last_badge_update
-            # debounce frequent updates to avoid flooding the event loop
+            nonlocal last_badge_update, last_badge_msg, last_badge_frac
+            # debounce frequent updates to avoid flooding the event loop.
+            # Also avoid updating when the visible label and fraction haven't meaningfully changed.
             now = time.time()
-            if (now - last_badge_update) < 0.05 and visible:
-                return
+            if visible:
+                if last_badge_msg == msg and last_badge_frac == frac and (now - last_badge_update) < 0.15:
+                    return
+                if (now - last_badge_update) < 0.06 and last_badge_msg == msg:
+                    return
             last_badge_update = now
-            # schedule the async progress updater on the event loop
-            asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
+            last_badge_msg = msg
+            last_badge_frac = frac
+
+            async def _do_update():
+                try:
+                    await page.set_autoselect_progress(msg, frac, visible=visible)
+                except Exception:
+                    # If the page/session is gone, swallow exceptions to avoid noisy logs
+                    pass
+
+            try:
+                page.run_task(_do_update)
+            except Exception:
+                # Fallback to creating a task directly on the loop if run_task isn't available
+                try:
+                    asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
+                except Exception:
+                    pass
 
         logger.debug("Defining function to open status dialog on badge click")
         def _open_status_dialog(hide_default=False):
@@ -279,9 +353,11 @@ def start_replace_icons_background(
 
                 # If a prepared card_for_replace was passed (from the dialog),
                 # use it; otherwise, default to using `full` and let the API
-                # decide search labels.
-                if card_for_replace is None:
-                    card_for_replace = full
+                # decide search labels. Use a local variable to avoid accidentally
+                # shadowing the outer-scope parameter inside this nested function
+                # (which would make Python treat it as local and cause
+                # UnboundLocalError when referenced before assignment).
+                card_to_use = card_for_replace if card_for_replace is not None else full
 
                 eff_include = include_yotoicons if include_yotoicons is not None else True
                 eff_max_searches = max_searches if max_searches is not None else 3
@@ -289,7 +365,7 @@ def start_replace_icons_background(
                 logger.debug("Calling replace_card_default_icons in thread")
                 new_card = await asyncio.to_thread(
                     api.replace_card_default_icons,
-                    card_for_replace,
+                    card_to_use,
                     progress_callback=_set_badge,
                     cancel_event=cancel_event,
                     include_yotoicons=eff_include,

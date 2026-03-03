@@ -2153,8 +2153,8 @@ class YotoAPI:
             except Exception:
                 logger.error("Error filtering icons by mediaId")
         best_icons = best_icons[:top_n]
-        logger.info(f"Found {len(best_icons)} matching icons")
-        logger.debug(f"Best icons: {best_icons}")
+        logger.debug(f"Found {len(best_icons)} matching icons")
+        logger.trace(f"Best icons: {best_icons}")
         if show_in_console:
             if best_icons:
                 for icon in best_icons:
