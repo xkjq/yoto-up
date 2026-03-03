@@ -363,8 +363,15 @@ def start_replace_icons_background(
             page.open_autoselect_status_dialog(cancel_event, hide_default=hide_default)
 
         hide_default = getattr(page, "autoselect_hide_dialog_default", False)
-        _open_status_dialog(hide_default=hide_default)
+        # Schedule opening the status dialog on the page event loop so it
+        # doesn't block if another dialog is currently open.
+        async def _open_status_async():
+            _open_status_dialog(hide_default=hide_default)
 
+        logger.debug("Scheduled status dialog to open on event loop")
+        page.run_task(_open_status_async)
+
+        logger.debug("Set initial badge state")
         # Show initial badge state
         _set_badge("Starting", 0.0, visible=True)
 
@@ -373,21 +380,25 @@ def start_replace_icons_background(
         async def work():
             new_card = None
             try:
+                logger.debug("replace_icons background work: obtaining api and card id")
                 api = ensure_api(page.api_ref)
                 card_id = c.cardId
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
+                logger.debug(f"About to GET card {card_id}")
                 full = api.get_card(card_id)
-
+                logger.debug("GET card returned")
 
                 logger.debug("Fetched card, starting icon replacement")
                 # Run replacement in a thread so we don't block the event loop
+                logger.debug("Calling replace_card_default_icons in thread")
                 new_card = await asyncio.to_thread(
                     api.replace_card_default_icons,
                     full,
                     progress_callback=_set_badge,
                     cancel_event=cancel_event,
                 )
+                logger.debug("replace_card_default_icons returned")
                 logger.debug("Icon replacement complete, updating card")
 
                 # update the card on the page and yield briefly so UI can process
@@ -403,6 +414,7 @@ def start_replace_icons_background(
                 #await asyncio.sleep(0.1)
                 _set_badge("", 0.0, visible=False)
 
+        logger.debug("Scheduling background replace icons work on event loop")
         page.run_task(work)
     except Exception as e:
         page.show_snack(f"Failed to start background replace: {e}", error=True)

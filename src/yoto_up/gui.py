@@ -1,10 +1,7 @@
-from arrow import get
 import asyncio
 from nltk.lm.vocabulary import _
-from colorlog import log
 from yoto_up.models import Card
 from pathlib import Path
-import sys
 import time
 
 from yoto_up.paths import (
@@ -34,13 +31,14 @@ from yoto_up.yoto_app.upload_tasks import (
 )
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 import hashlib
+import httpx
 
-build_icon_browser_panel = None
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.covers import build_covers_panel
 from yoto_up.yoto_app.about_dialog import show_about_dialog
 import shutil
 
+build_icon_browser_panel = None
 INTRO_OUTRO_DIALOG = None
 ENABLE_ICON_BROWSER = True
 
@@ -767,22 +765,14 @@ def main(page: "Page"):
                 try:
                     # Use Python's urllib to avoid adding httpx dependency at import
                     try:
-                        import urllib.request
-
-                        urllib.request.urlretrieve(s, tf.name)
+                        resp = httpx.get(s)
+                        resp.raise_for_status()
+                        tf.close()
+                        with open(tf.name, "wb") as fh:
+                            fh.write(resp.content)
                     except Exception:
-                        # fallback to requests via httpx if available
-                        try:
-                            import httpx
-
-                            resp = httpx.get(s)
-                            resp.raise_for_status()
-                            tf.close()
-                            with open(tf.name, "wb") as fh:
-                                fh.write(resp.content)
-                        except Exception:
-                            tf.close()
-                            return s
+                        tf.close()
+                        return s
                     tf.close()
                     try:
                         shutil.move(tf.name, cache_path)
