@@ -13,13 +13,20 @@ from pathlib import Path
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, YOTOICONS_CACHE_DIR
 import hashlib
 import logging
+import os
+from yoto_up.logging_setup import setup_logging
 import tempfile
 import urllib.request
 from yoto_up.models import Card, CardContent
 from yoto_up.icons import render_icon
 
-logging.basicConfig(handlers=[TextualHandler()], level=logging.INFO)
-logging.debug("TEST")
+httpx_env = os.environ.get("YOTO_ENABLE_HTTPX_LOGGING", None)
+if httpx_env is None:
+    enable_httpx = False
+else:
+    enable_httpx = str(httpx_env).lower() in ("1", "true", "yes", "y", "on")
+# Use centralized logging setup for consistent behavior across entrypoints.
+setup_logging(level="INFO", intercept_stdlib=True, enable_httpx=enable_httpx)
 
 
 class ChapterIconWidget(Static):
