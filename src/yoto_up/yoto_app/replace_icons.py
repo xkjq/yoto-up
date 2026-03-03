@@ -330,16 +330,8 @@ def start_replace_icons_background(
                 if not card_id:
                     raise RuntimeError("Unable to determine card id")
                 logger.debug(f"About to GET card {card_id}")
-                full = api.get_card(card_id)
+                card_to_use = api.get_card(card_id)
                 logger.debug("GET card returned")
-
-                # If a prepared card_for_replace was passed (from the dialog),
-                # use it; otherwise, default to using `full` and let the API
-                # decide search labels. Use a local variable to avoid accidentally
-                # shadowing the outer-scope parameter inside this nested function
-                # (which would make Python treat it as local and cause
-                # UnboundLocalError when referenced before assignment).
-                card_to_use = card_for_replace if card_for_replace is not None else full
 
                 eff_include = include_yotoicons if include_yotoicons is not None else True
                 eff_max_searches = max_searches if max_searches is not None else 3
