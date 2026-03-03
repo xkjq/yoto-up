@@ -232,6 +232,7 @@ def show_replace_icons_dialog(
                         page.show_snack("Failed to start replace", error=True)
             except Exception as ee:
                 page.show_snack(f"Failed to start replace: {ee}", error=True)
+            page.pop_dialog()
 
         def cancel_confirm(_e=None):
             page.pop_dialog()
