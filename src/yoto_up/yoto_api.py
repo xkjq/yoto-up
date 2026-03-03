@@ -695,7 +695,7 @@ class YotoAPI:
         payload = card.model_dump(exclude_none=True)
         logger.debug(f"POST {self.CONTENT_URL} payload: {payload}")
         response = self._cached_request("POST", self.CONTENT_URL, headers=headers, json_data=payload)
-        logger.debug(f"Create/Update response: {response.status_code} {response.text}")
+        logger.trace(f"Create/Update response: {response.status_code} {response.text}")
         response.raise_for_status()
         # Persist a local version of the resulting card JSON (if present).
         if create_version:
@@ -814,7 +814,7 @@ class YotoAPI:
         upload_id: str,
         loudnorm: bool = False, # This doesn't actually do anything here
         poll_interval: float = 2,
-        max_attempts: int = 120,
+        max_attempts: int = 320,
         show_progress: bool = False,
         progress: Optional['Progress'] = None,
         transcode_task_id: TaskID | None = None,
@@ -2511,7 +2511,11 @@ class YotoAPI:
         completed = 0
         # Track mediaIds we've already assigned so we don't reuse the same icon
         used_media_ids: set[str] = set()
-        # Lock to protect used_media_ids when running in parallel
+        # candidate_claims maps a candidate key -> mediaId or None while being processed
+        # Keys are chosen from candidate['mediaId'] (if present), or the candidate's
+        # img_url/id/cache_path as a best-effort unique identifier.
+        candidate_claims: dict[str, str | None] = {}
+        # Lock to protect shared state when running in parallel
         used_lock = threading.Lock()
 
         # Decide whether to run in parallel
@@ -2610,27 +2614,94 @@ class YotoAPI:
                         target_label = f"track '{query}'"
 
                     _cb(f"Finding icon for {target_label}", frac)
-                    best_icons = self.find_best_icons_for_text(query, include_yotoicons=include_yotoicons, top_n=total, max_searches=max_searches, exclude_media_ids=used_media_ids)
+                    # Exclude any mediaIds we've already reserved/used or fully claimed
+                    with used_lock:
+                        excluded = set(used_media_ids) | {v for v in candidate_claims.values() if v}
+                    best_icons = self.find_best_icons_for_text(
+                        query,
+                        include_yotoicons=include_yotoicons,
+                        top_n=total,
+                        max_searches=max_searches,
+                        exclude_media_ids=excluded,
+                    )
+
                     chosen_media = None
                     if best_icons:
                         for candidate in best_icons:
                             _cb(f"Examining candidate icon for {target_label}", frac)
+                            # Build a stable candidate key to avoid duplicate processing
+                            key = None
+                            if candidate.get('mediaId'):
+                                key = str(candidate.get('mediaId'))
+                            elif candidate.get('img_url'):
+                                key = str(candidate.get('img_url'))
+                            elif candidate.get('cache_path'):
+                                key = str(candidate.get('cache_path'))
+                            elif candidate.get('id'):
+                                key = f"yotoicons:{candidate.get('id')}"
+                            else:
+                                key = repr(candidate)
+
+                            # Attempt to claim the candidate atomically. If another worker
+                            # already claimed it or is processing it, skip it.
+                            with used_lock:
+                                existing = candidate_claims.get(key, '__not_present__')
+                                if existing is None:
+                                    # Another thread is processing this candidate.
+                                    _cb(f"Candidate {key} is being processed by another worker, skipping", frac)
+                                    continue
+                                if existing and str(existing) in used_media_ids:
+                                    # Already used
+                                    _cb(f"Candidate mediaId {existing} already used, skipping", frac)
+                                    continue
+                                if existing not in ('__not_present__', None):
+                                    # Candidate already resolved to a mediaId not yet in used_media_ids
+                                    media_id = str(existing)
+                                    chosen_media = media_id
+                                    used_media_ids.add(media_id)
+                                    _cb(f"Using previously resolved mediaId {media_id} for {target_label}", frac)
+                                    break
+                                # claim it (mark as in-progress with None)
+                                candidate_claims[key] = None
+
+                            # If cancelled after claiming, cleanup and stop
+                            if cancel_event and cancel_event.is_set():
+                                with used_lock:
+                                    candidate_claims.pop(key, None)
+                                _cb('Cancelled', frac)
+                                return False
+
+                            # If candidate already has a mediaId, use it; otherwise upload it once
                             media_id = candidate.get('mediaId')
                             if not media_id and 'id' in candidate:
                                 _cb(f"Uploading candidate icon for {target_label}", frac)
-                                if cancel_event and cancel_event.is_set():
-                                    _cb('Cancelled', frac)
-                                    return False
-                                uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
-                                media_id = uploaded_icon.get('mediaId')
-                                _cb(f"Uploaded candidate icon for {target_label}", frac)
+                                try:
+                                    uploaded_icon = self.upload_yotoicons_icon_to_yoto_api(candidate)
+                                    media_id = uploaded_icon.get('mediaId')
+                                    _cb(f"Uploaded candidate icon for {target_label}", frac)
+                                except Exception as ex:
+                                    # Upload failed: release claim and continue
+                                    with used_lock:
+                                        candidate_claims.pop(key, None)
+                                    _cb(f"Upload failed for candidate {key}: {ex}", frac)
+                                    continue
+
                             if not media_id:
+                                with used_lock:
+                                    candidate_claims.pop(key, None)
                                 _cb(f"Candidate had no mediaId, skipping", frac)
                                 continue
-                            if str(media_id) in used_media_ids:
-                                _cb(f"Candidate mediaId {media_id} already used, skipping", frac)
-                                continue
-                            chosen_media = str(media_id)
+
+                            media_id = str(media_id)
+                            # Finalize claim: store resolved mediaId and mark as used
+                            with used_lock:
+                                candidate_claims[key] = media_id
+                                if media_id in used_media_ids:
+                                    # Someone else raced and used it; skip
+                                    _cb(f"MediaId {media_id} was just used by another worker, skipping", frac)
+                                    continue
+                                used_media_ids.add(media_id)
+                            chosen_media = media_id
                             _cb(f"Selected mediaId {chosen_media} for {target_label}", frac)
                             break
 

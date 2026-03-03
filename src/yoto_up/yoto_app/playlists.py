@@ -390,7 +390,7 @@ def build_playlists_ui(page: "Page", cards=None):
     logger.debug("Building playlists UI")
     if cards is None:
         cards = page.cards
-    logger.debug(page.cards)
+    logger.trace(page.cards)
     page.playlists_list.controls.clear()
 
     filters = page.get_playlist_filters()
