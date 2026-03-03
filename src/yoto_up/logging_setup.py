@@ -68,6 +68,7 @@ def setup_logging(
         "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
     logger.add(sys.stderr, level=level, format=fmt_color, enqueue=True, colorize=True)
+    logger.debug(f"Logging initialized with level {level} and intercept_stdlib={intercept_stdlib}")
 
     if log_file:
         try:

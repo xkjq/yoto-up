@@ -570,7 +570,7 @@ class YotoAPI:
             return None, None
         with self.TOKEN_FILE.open("r") as f:
             data = json.load(f)
-            logger.debug(f"Loaded tokens from file: {data}")
+            logger.trace(f"Loaded tokens from file: {data}")
             return data.get("access_token"), data.get("refresh_token")
 
     def authenticate(self):

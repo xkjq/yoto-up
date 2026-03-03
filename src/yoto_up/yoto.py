@@ -23,6 +23,7 @@ import math
 import sys
 import pydantic
 from yoto_up.models import CardMedia
+from loguru import logger
 
 app = typer.Typer()
 console = Console()
@@ -196,6 +197,7 @@ def main(
             # allow overriding file via env var
             log_file = os.environ.get("YOTO_LOG_FILE")
             setup_logging(level=level, log_file=log_file)
+        logger.debug(f"Verbose level: {verbose}")
     except Exception:
         pass
 
