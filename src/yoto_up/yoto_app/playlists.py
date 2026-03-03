@@ -144,14 +144,14 @@ def delete_playlist(ev, page: "Page", card: Card, row_container=None):
 
 
 def make_playlist_row(page, card_obj: Card, idx=None):
-    logger.debug(f"Building row for card: {card_obj.cardId}")
+    logger.trace(f"Building row for card: {card_obj.cardId}")
     try:
         title = card_obj.get_title() or str(card_obj)
     except Exception:
         title = str(card_obj)
     cid = card_obj.cardId
-    logger.debug(f"Card ID for row: {cid}")
-
+    logger.trace(f"Card ID for row: {cid}")
+    
     delete_btn = ft.TextButton(
         content="Delete",
         on_click=lambda ev, page=page, card=card_obj, row_container=None: (
@@ -163,9 +163,9 @@ def make_playlist_row(page, card_obj: Card, idx=None):
     api: YotoAPI = page.api_ref.get("api")
     try:
         cover_src = _extract_cover_source(card_obj, api_instance=api)
-        logger.debug(f"Extracted cover source for card {cid}: {cover_src}")
+        logger.trace(f"Extracted cover source for card {cid}: {cover_src}")
         if cover_src is not None:
-            logger.debug(f"Creating image control for cover {cover_src} of card {cid}")
+            logger.trace(f"Creating image control for cover {cover_src} of card {cid}")
             try:
                 # Prefer cached local path from page helper if available
                 cache_fn = getattr(page, "get_cached_cover", None)
@@ -189,7 +189,7 @@ def make_playlist_row(page, card_obj: Card, idx=None):
         logger.error(f"Error extracting cover for card {cid}")
         logger.debug(f"Exception details: {e}")
 
-    logger.debug(
+    logger.trace(
         f"Creating checkbox for card {cid} with multi-select mode {page.playlist_multi_select_mode}"
     )
     cb = ft.Checkbox(value=False)
