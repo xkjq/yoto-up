@@ -2524,6 +2524,34 @@ class YotoAPI:
             max_workers = 1
 
         
+        # If configured to run in parallel, dispatch tasks to a thread pool
+        if max_workers and max_workers > 1:
+            try:
+                import concurrent.futures
+                futures = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    for kind2, ch_idx2, tr_idx2 in targets:
+                        if cancel_event and cancel_event.is_set():
+                            _cb('Cancelled', completed / total if total else 1.0)
+                            return card
+                        futures.append(ex.submit(_process_target, kind2, ch_idx2, tr_idx2, 0.0))
+
+                    for fut in concurrent.futures.as_completed(futures):
+                        if cancel_event and cancel_event.is_set():
+                            _cb('Cancelled', completed / total if total else 1.0)
+                            return card
+                        try:
+                            ok = fut.result()
+                        except Exception:
+                            ok = False
+                        completed += 1
+                        _cb(None, completed / total if total else 1.0)
+
+                _cb('Icon replacement complete', 1.0)
+                return card
+            except Exception:
+                # if parallel execution fails, fall back to serial
+                logger.exception("Parallel icon replacement failed, falling back to serial")
 
         # Fallback to serial processing when not parallel
         for kind, ch_idx, tr_idx in targets:
@@ -2620,35 +2648,6 @@ class YotoAPI:
                         except Exception:
                             used_media_ids.add(chosen_media)
                     return True
-
-                # If configured to run in parallel, dispatch tasks to a thread pool
-                if max_workers and max_workers > 1:
-                    try:
-                        import concurrent.futures
-                        futures = []
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
-                            for kind2, ch_idx2, tr_idx2 in targets:
-                                if cancel_event and cancel_event.is_set():
-                                    _cb('Cancelled', completed / total if total else 1.0)
-                                    return card
-                                futures.append(ex.submit(_process_target, kind2, ch_idx2, tr_idx2, 0.0))
-
-                            for fut in concurrent.futures.as_completed(futures):
-                                if cancel_event and cancel_event.is_set():
-                                    _cb('Cancelled', completed / total if total else 1.0)
-                                    return card
-                                try:
-                                    ok = fut.result()
-                                except Exception:
-                                    ok = False
-                                completed += 1
-                                _cb(None, completed / total if total else 1.0)
-
-                        _cb('Icon replacement complete', 1.0)
-                        return card
-                    except Exception:
-                        # if parallel execution fails, fall back to serial
-                        logger.exception("Parallel icon replacement failed, falling back to serial")
 
                 # Run processor for this target
                 ok = _process_target(kind, ch_idx, tr_idx, completed / total)

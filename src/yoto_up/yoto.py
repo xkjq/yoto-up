@@ -196,7 +196,13 @@ def main(
                 level = "WARNING"
             # allow overriding file via env var
             log_file = os.environ.get("YOTO_LOG_FILE")
-            setup_logging(level=level, log_file=log_file)
+            # Control httpx logging via env var YOTO_ENABLE_HTTPX_LOGGING (1/true/on to enable)
+            httpx_env = os.environ.get("YOTO_ENABLE_HTTPX_LOGGING", None)
+            if httpx_env is None:
+                enable_httpx = False
+            else:
+                enable_httpx = str(httpx_env).lower() in ("1", "true", "yes", "y", "on")
+            setup_logging(level=level, log_file=log_file, enable_httpx=enable_httpx)
         logger.debug(f"Verbose level: {verbose}")
     except Exception:
         pass

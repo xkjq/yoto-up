@@ -31,6 +31,7 @@ def setup_logging(
     rotation: str = "10 MB",
     retention: str = "7 days",
     intercept_stdlib: bool = False,
+    enable_httpx: bool = False,
 ):
     """Configure loguru global logger.
 
@@ -86,6 +87,8 @@ def setup_logging(
             lvl = logging.INFO
         logging.root.setLevel(lvl)
         logging.captureWarnings(True)
+
+    logger.disable("httpx") if not enable_httpx else logger.debug("HTTPX logging enabled")
 
 
 def get_logger(name: Optional[str] = None):
