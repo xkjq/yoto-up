@@ -845,8 +845,9 @@ class YotoAPI:
                             progress.update(transcode_task_id, completed=max_attempts, description="Transcode complete")
                         break
                 elif poll_resp.status_code >= 202:
-                    percent = poll_resp.json()["transcode"]["progress"]["percent"]
-                    _call_cb("Transcoding...", percent / 100)
+                    if "progress" in poll_resp.json()["transcode"]:
+                        percent = poll_resp.json()["transcode"]["progress"]["percent"]
+                        _call_cb("Transcoding...", percent / 100)
                 await asyncio.sleep(poll_interval)
                 attempts += 1
                 if progress and transcode_task_id is not None:
