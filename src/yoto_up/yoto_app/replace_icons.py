@@ -188,35 +188,20 @@ def show_replace_icons_dialog(
                 # Only pass the label overrides (do not mutate the card titles)
                 label_overrides = list(user_labels)
 
-                try:
-                    start_replace_icons_background(
-                        page,
-                        c,
-                        confirm=False,
-                        include_yotoicons=include_yotoicons,
-                        max_searches=max_searches,
-                        api_ref=api_ref,
-                        label_overrides=label_overrides,
-                    )
-                except Exception:
+                async def _start_bg():
                     try:
-                        async def _start_bg():
-                            try:
-                                start_replace_icons_background(
-                                    page,
-                                    c,
-                                    confirm=False,
-                                    include_yotoicons=include_yotoicons,
-                                    max_searches=max_searches,
-                                    api_ref=api_ref,
-                                    label_overrides=label_overrides,
-                                )
-                            except Exception:
-                                pass
-
-                        page.run_task(_start_bg)
+                        start_replace_icons_background(
+                            page,
+                            c,
+                            include_yotoicons=include_yotoicons,
+                            max_searches=max_searches,
+                            api_ref=api_ref,
+                            label_overrides=label_overrides,
+                        )
                     except Exception:
-                        page.show_snack("Failed to start replace", error=True)
+                        pass
+
+                page.run_task(_start_bg)
             except Exception as ee:
                 page.show_snack(f"Failed to start replace: {ee}", error=True)
             page.pop_dialog()
@@ -243,12 +228,12 @@ def show_replace_icons_dialog(
 def start_replace_icons_background(
     page,
     c,
-    confirm: bool = True,
     *,
     include_yotoicons: bool | None = None,
     max_searches: int | None = None,
     api_ref=None,
     label_overrides: list | None = None,
+    parallel_workers: int | None = None,
 ):
     """Start replace default icons in background and show a persistent badge on the page.
 
@@ -334,6 +319,8 @@ def start_replace_icons_background(
                     cancel_event=cancel_event,
                     include_yotoicons=eff_include,
                     max_searches=eff_max_searches,
+                    parallel_workers=parallel_workers,
+                    label_overrides=label_overrides,
                 )
                 logger.debug("replace_card_default_icons returned")
                 try:
