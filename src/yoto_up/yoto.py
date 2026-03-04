@@ -35,7 +35,12 @@ def get_api():
     return YotoAPI(**api_options)
 
 
-def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0, strategy: str = 'auto', target_peak: float = 0.9):
+def analyze_gain_requirements(
+    paths: List[str],
+    target_lufs: float = -16.0,
+    strategy: str = "auto",
+    target_peak: float = 0.9,
+):
     """Perform a pre-adjustment analysis for the given audio files.
 
     Returns a dict mapping filepath -> {lufs, max_amp, avg_amp, recommended_gain_db}.
@@ -55,7 +60,7 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0, stra
     for audio, max_amp, avg_amp, lufs, ext, filepath in stats:
         rec_gain = None
         # Strategy: 'auto' prefers LUFS when available, 'lufs' requires LUFS, 'peak' uses peak
-        if strategy == 'auto':
+        if strategy == "auto":
             if lufs is not None:
                 rec_gain = float(target_lufs) - float(lufs)
             else:
@@ -67,12 +72,12 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0, stra
                     rec_gain = 20.0 * math.log10(target_peak / float(peak))
                 else:
                     rec_gain = None
-        elif strategy == 'lufs':
+        elif strategy == "lufs":
             if lufs is not None:
                 rec_gain = float(target_lufs) - float(lufs)
             else:
                 rec_gain = None
-        elif strategy == 'peak':
+        elif strategy == "peak":
             try:
                 peak = float(max_amp) if max_amp is not None else None
             except Exception:
@@ -95,11 +100,11 @@ def analyze_gain_requirements(paths: List[str], target_lufs: float = -16.0, stra
                 else:
                     rec_gain = None
         plan[filepath] = {
-            'lufs': (float(lufs) if lufs is not None else None),
-            'max_amp': (float(max_amp) if max_amp is not None else None),
-            'avg_amp': (float(avg_amp) if avg_amp is not None else None),
-            'recommended_gain_db': (float(rec_gain) if rec_gain is not None else None),
-            'ext': ext,
+            "lufs": (float(lufs) if lufs is not None else None),
+            "max_amp": (float(max_amp) if max_amp is not None else None),
+            "avg_amp": (float(avg_amp) if avg_amp is not None else None),
+            "recommended_gain_db": (float(rec_gain) if rec_gain is not None else None),
+            "ext": ext,
         }
     return plan
 
@@ -167,8 +172,16 @@ def main(
         0, "--cache-max-age-seconds", "-a", help="Max cache age in seconds"
     ),
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
-    verbose: int = typer.Option(0, "-v", "--verbose", help="Increase verbosity; repeat for more (e.g. -vv)", count=True),
-    quiet: int = typer.Option(0, "-q", "--quiet", help="Reduce logging output (repeat to silence)", count=True),
+    verbose: int = typer.Option(
+        0,
+        "-v",
+        "--verbose",
+        help="Increase verbosity; repeat for more (e.g. -vv)",
+        count=True,
+    ),
+    quiet: int = typer.Option(
+        0, "-q", "--quiet", help="Reduce logging output (repeat to silence)", count=True
+    ),
 ):
     global api_options
     api_options = dict(
@@ -357,9 +370,7 @@ def list_cards(
         None, help="Comma-separated list of tags to filter by (card must include all)"
     ),
     category: Optional[str] = typer.Option(None, help="Filter by metadata.category"),
-    truncate: int = typer.Option(
-        50, help="Truncate fields to this many characters"
-    ),
+    truncate: int = typer.Option(50, help="Truncate fields to this many characters"),
     table: bool = typer.Option(False, help="Display cards in a table format"),
     include_chapters: bool = typer.Option(
         False, help="Include chapters and tracks in display"
@@ -482,7 +493,9 @@ def get_card(
         "--schema",
         help="Show the Card schema (paths, types) and values for this card",
     ),
-    playable: bool = typer.Option(False, help="Fetch playable content (if available) for this card"),
+    playable: bool = typer.Option(
+        False, help="Fetch playable content (if available) for this card"
+    ),
 ):
     """Get details of a Yoto card by its ID."""
     API = get_api()
@@ -1445,7 +1458,8 @@ def create_card_from_folder(
     poll_interval: float = typer.Option(2, help="Transcoding poll interval (seconds)"),
     max_attempts: int = typer.Option(120, help="Max transcoding poll attempts"),
     files_as_tracks: bool = typer.Option(
-        False, help="Treat each file as a separate track in a single chapter (instead of separate chapters)"
+        False,
+        help="Treat each file as a separate track in a single chapter (instead of separate chapters)",
     ),
     add_to_card: str = typer.Option(None, help="Add tracks to an existing card"),
     strip_track_numbers: bool = typer.Option(
@@ -2178,19 +2192,32 @@ def search_yotoicons(
         typer.echo(f"[bold red]No icons found for tag '{tag}'.[/bold red]")
         raise typer.Exit(code=1)
 
+
 @app.command()
-def replace_default_icons(card_id: str, replace_existing: bool = False):
+def replace_default_icons(
+    card_id: str,
+    replace_existing: bool = False,
+    parallel: bool = True,
+    workers: int = 4,
+    searches=3
+) -> Card | None:
     API = get_api()
     card = API.get_card(card_id)
     if not card:
         typer.echo(f"[bold red]Card not found: {card_id}[/bold red]")
-    new_card = API.replace_card_default_icons(card, replace_existing=replace_existing)
+    new_card = API.replace_card_default_icons(
+        card,
+        replace_existing=replace_existing,
+        parallel_workers=workers if parallel else None,
+        max_searches=searches
+    )
     if not new_card:
         typer.echo(f"[bold red]Failed to replace default icons.[/bold red]")
         raise typer.Exit(code=1)
     # Update the card on the server
     updated_card = API.create_or_update_content(new_card, return_card=True)
     typer.echo(f"[bold green]Default icons replaced successfully.[/bold green]")
+    return updated_card
 
 
 @app.command()
@@ -2434,7 +2461,11 @@ def create_card_from_file(
         # Upload and transcode the split files
         media_files = [Path(f) for f in files]
         transcoded_audios = await API.upload_and_transcode_many_async(
-            media_files, loudnorm=False, poll_interval=2, max_attempts=120, show_progress=True
+            media_files,
+            loudnorm=False,
+            poll_interval=2,
+            max_attempts=120,
+            show_progress=True,
         )
 
         # Build tracks from transcoded responses
@@ -2445,7 +2476,8 @@ def create_card_from_file(
             # strip leading numbers like '01 - '
             track_title = re.sub(r"^\d+\s*[-_.\s]*", "", track_title)
             track = API.get_track_from_transcoded_audio(
-                transcoded_audio, track_details={"title": track_title, "key": f"{idx:02d}"}
+                transcoded_audio,
+                track_details={"title": track_title, "key": f"{idx:02d}"},
             )
             tracks.append(track)
 
@@ -2458,7 +2490,9 @@ def create_card_from_file(
             total_size = None
         card_media = CardMedia(duration=total_dur, fileSize=total_size)
         card_metadata = CardMetadata(media=card_media)
-        card = Card(title=title or Path(path).stem, content=card_content, metadata=card_metadata)
+        card = Card(
+            title=title or Path(path).stem, content=card_content, metadata=card_metadata
+        )
 
         if not create_card:
             rprint(Panel.fit("Card payload (not created):"))
@@ -2467,12 +2501,15 @@ def create_card_from_file(
 
         try:
             created = API.create_or_update_content(card, return_card=True)
-            rprint(Panel.fit(created.display_card(render_icons=True), title="Created Card"))
+            rprint(
+                Panel.fit(created.display_card(render_icons=True), title="Created Card")
+            )
         except Exception as e:
             rprint(f"Failed to create card: {e}")
             raise typer.Exit(code=1)
 
     asyncio.run(async_main())
+
 
 @app.command()
 def gui():

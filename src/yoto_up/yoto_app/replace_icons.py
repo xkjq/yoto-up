@@ -228,7 +228,6 @@ def show_replace_icons_dialog(
 def start_replace_icons_background(
     page,
     c,
-    *,
     include_yotoicons: bool | None = None,
     max_searches: int | None = None,
     api_ref=None,
