@@ -259,17 +259,12 @@ def start_replace_icons_background(
     # Callers that need an interactive flow should call
     # `show_replace_icons_dialog` which gathers options and delegates here.
     try:
-        # Badge UI
-        badge_text = ft.Text(value="Autoselect: 0%")
 
         logger.debug("Setting cancel event and exposing on page for badge click")
         # Cancellation event for the worker
         cancel_event = threading.Event()
         # Expose cancel_event on page so UI helpers (badge click) can access it
-        try:
-            setattr(page, "autoselect_cancel_event", cancel_event)
-        except Exception:
-            pass
+        setattr(page, "autoselect_cancel_event", cancel_event)
 
         # Prefer using page helpers if available (added in gui.py)
         # create a synchronous callback that schedules the async page updater
@@ -293,20 +288,9 @@ def start_replace_icons_background(
             last_badge_frac = frac
 
             async def _do_update():
-                try:
-                    await page.set_autoselect_progress(msg, frac, visible=visible)
-                except Exception:
-                    # If the page/session is gone, swallow exceptions to avoid noisy logs
-                    pass
+                await page.set_autoselect_progress(msg, frac, visible=visible)
 
-            try:
-                page.run_task(_do_update)
-            except Exception:
-                # Fallback to creating a task directly on the loop if run_task isn't available
-                try:
-                    asyncio.create_task(page.set_autoselect_progress(msg, frac, visible=visible))
-                except Exception:
-                    pass
+            page.run_task(_do_update)
 
         logger.debug("Defining function to open status dialog on badge click")
         def _open_status_dialog(hide_default=False):
