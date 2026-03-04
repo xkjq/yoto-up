@@ -2199,7 +2199,7 @@ def replace_default_icons(
     replace_existing: bool = False,
     parallel: bool = True,
     workers: int = 4,
-    searches=3
+    searches: int =3
 ) -> Card | None:
     API = get_api()
     card = API.get_card(card_id)
