@@ -331,26 +331,25 @@ def start_replace_icons_background(
                 # resolve images immediately. This is a bounded, non-blocking wait
                 # that queries the synchronous `get_icon_cache_path` via `to_thread`.
                 def _collect_media_ids(card_obj):
+                    """Collect mediaIds from the card using model helpers only.
+
+                    This function assumes the `Card` model exposes `get_chapters()`
+                    and `get_track_list()` helpers; no fallback branches.
+                    """
                     mids = set()
-                    try:
-                        if card_obj and getattr(card_obj, "content", None) and getattr(card_obj.content, "chapters", None):
-                            for ch in card_obj.content.chapters:
-                                try:
-                                    f = ch.get_icon_field()
-                                except Exception:
-                                    f = None
-                                if f and not str(f).endswith(DEFAULT_MEDIA_ID):
-                                    mids.add(str(f).split("#")[-1] if "#" in str(f) else str(f))
-                                if getattr(ch, "tracks", None):
-                                    for tr in ch.tracks:
-                                        try:
-                                            tf = tr.get_icon_field()
-                                        except Exception:
-                                            tf = None
-                                        if tf and not str(tf).endswith(DEFAULT_MEDIA_ID):
-                                            mids.add(str(tf).split("#")[-1] if "#" in str(tf) else str(tf))
-                    except Exception:
-                        pass
+                    if not card_obj:
+                        return mids
+                    chapters = card_obj.get_chapters()
+                    for ch in chapters:
+                        f = ch.get_icon_field()
+                        if f and not str(f).endswith(DEFAULT_MEDIA_ID):
+                            mids.add(str(f).split("#")[-1] if "#" in str(f) else str(f))
+
+                    tracks = card_obj.get_track_list()
+                    for tr in tracks:
+                        tf = tr.get_icon_field()
+                        if tf and not str(tf).endswith(DEFAULT_MEDIA_ID):
+                            mids.add(str(tf).split("#")[-1] if "#" in str(tf) else str(tf))
                     return mids
 
                 def _missing_media_ids_sync(media_ids):
