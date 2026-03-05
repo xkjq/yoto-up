@@ -3030,12 +3030,46 @@ class YotoAPI:
         We will not use the same icon for multiple tracks/chapters
         """
 
-        def _cb(msg: str | None = None, frac: float | None = None):
-            try:
-                if callable(progress_callback):
+        # Thread-safe debounced progress emitter. Workers call `_cb` frequently;
+        # this coalesces calls into a single debounced `progress_callback` invocation
+        # to avoid flooding the UI/event loop from many parallel threads.
+        if callable(progress_callback):
+            _progress_lock = threading.Lock()
+            _pending_msg: str | None = None
+            _pending_frac: float | None = None
+            _pending_timer: threading.Timer | None = None
+
+            def _call_now() -> None:
+                nonlocal _pending_msg, _pending_frac, _pending_timer
+                with _progress_lock:
+                    msg, frac = _pending_msg, _pending_frac
+                    _pending_msg = None
+                    _pending_frac = None
+                    _pending_timer = None
+                try:
                     progress_callback(msg or "", frac if frac is not None else 0.0)
-            except Exception:
-                pass
+                except Exception:
+                    pass
+
+            def _cb(msg: str | None = None, frac: float | None = None):
+                nonlocal _pending_msg, _pending_frac, _pending_timer
+                with _progress_lock:
+                    _pending_msg = msg
+                    _pending_frac = frac
+                    # reset debounce timer
+                    if _pending_timer:
+                        try:
+                            _pending_timer.cancel()
+                        except Exception:
+                            pass
+                    t = threading.Timer(0.12, _call_now)
+                    t.daemon = True
+                    _pending_timer = t
+                    t.start()
+        else:
+            def _cb(msg: str | None = None, frac: float | None = None):
+                # No-op when no progress_callback provided
+                return
 
         # Early cancellation check
         if cancel_event and cancel_event.is_set():
