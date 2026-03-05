@@ -290,6 +290,8 @@ class YotoAPI:
         self.cache_requests = cache_requests
         self.cache_max_age_seconds = cache_max_age_seconds
         self._cache_lock = threading.Lock()
+        # Lock protecting writes to the upload icon cache JSON file
+        self._upload_icon_cache_lock = threading.Lock()
 
         if app_path is not None:
             logger.debug(f"Using app_path: {app_path}")
@@ -371,8 +373,18 @@ class YotoAPI:
 
     def _save_icon_upload_cache(self, cache):
         cache_path = Path(self.UPLOAD_ICON_CACHE_FILE)
-        with cache_path.open("w") as f:
-            json.dump(cache, f, indent=2)
+        # Ensure concurrent writers don't clobber the upload cache
+        with self._upload_icon_cache_lock:
+            # Write atomically by writing to a temp file then renaming
+            tmp = cache_path.with_suffix(".tmp")
+            with tmp.open("w") as f:
+                json.dump(cache, f, indent=2)
+            try:
+                tmp.replace(cache_path)
+            except Exception:
+                # Best-effort fallback
+                with cache_path.open("w") as f:
+                    json.dump(cache, f, indent=2)
 
     def _load_cache(self):
         if not self.cache_requests:
@@ -2803,14 +2815,23 @@ class YotoAPI:
         if yotoicons_id:
             result["yotoicons_id"] = yotoicons_id
         cache[sha256] = result
-        self._save_icon_upload_cache(cache)
 
+        # Save image bytes into the official cache before updating the
+        # upload metadata file. This ensures callers that consult the
+        # metadata won't observe a record pointing at a missing file
+        # (race where metadata is written before the png is persisted).
         if result.get("url"):
-            self.save_icon_image_to_yoto_icon_cache(
-                icon_path,
-                icon_bytes,
-                hashlib.sha256(result.get("url").encode()).hexdigest(),
-            )
+            try:
+                self.save_icon_image_to_yoto_icon_cache(
+                    icon_path,
+                    icon_bytes,
+                    hashlib.sha256(result.get("url").encode()).hexdigest(),
+                )
+            except Exception:
+                logger.exception("Failed to save uploaded icon image to cache")
+
+        # Persist upload cache atomically after image write
+        self._save_icon_upload_cache(cache)
 
         # Save the icon file into yoto_icon_cache for local reference
         logger.debug(f"Icon uploaded and cached with mediaId: {result.get('mediaId')}")
@@ -2928,7 +2949,13 @@ class YotoAPI:
     ):
         icons_cache_dir = self.OFFICIAL_ICON_CACHE_DIR
         ext = Path(icon_path).suffix or ".png"
-        cache_file_path = icons_cache_dir / f"{sha256}{ext}"
+        # Use a 16-character prefix of the hash for the filename so it
+        # matches the shortened hash used elsewhere when resolving cache
+        # paths (e.g. get_icon_cache_path uses the first 16 chars).
+        short_hash = sha256[:16] if sha256 and len(sha256) >= 16 else (
+            hashlib.sha256(icon_bytes).hexdigest()[:16]
+        )
+        cache_file_path = icons_cache_dir / f"{short_hash}{ext}"
         if not cache_file_path.exists():
             cache_file_path.write_bytes(icon_bytes)
 
