@@ -2269,7 +2269,11 @@ def replace_default_icons(
         if result_holder.get("card") is not None:
             new_card = result_holder.get("card")
         elif result_holder.get("exc") is not None:
-            raise result_holder.get("exc")
+            exc = result_holder.get("exc")
+            if isinstance(exc, BaseException):
+                raise exc
+            else:
+                raise RuntimeError(str(exc))
     if not new_card:
         console.print(f"[bold red]Failed to replace default icons.[/bold red]")
         raise typer.Exit(code=1)

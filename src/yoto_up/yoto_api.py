@@ -3195,7 +3195,7 @@ class YotoAPI:
                     query = card.choose_icon_search_label(kind, ch_idx, tr_idx)
                 target_label = f"chapter '{query}'"
             else:
-                track = chapter.tracks[tr_idx]
+                track = chapter.tracks[tr_idx] if chapter.tracks and tr_idx < len(chapter.tracks) else None
                 if override_label:
                     query = override_label
                 else:
@@ -3316,11 +3316,13 @@ class YotoAPI:
                     logger.debug(
                         f"Replaced chapter '{chapter.title}' icon with mediaId: {chosen_media}"
                     )
-                else:
+                elif track is not None:
                     track.set_icon_field(f"yoto:#{chosen_media}")
                     logger.debug(
                         f"Replaced track '{track.title}' icon with mediaId: {chosen_media}"
                     )
+                else:
+                    raise ValueError(f"Invalid track index {tr_idx} for chapter {ch_idx}")
                 # mark used media id under lock when parallel
                 try:
                     with used_lock:
