@@ -89,6 +89,7 @@ app.module = "yoto_up.gui"
 [tool.uv]
 dev-dependencies = [
     "flet[all]>=0.80.5",
+    "pytest",
 ]
 
 [tool.setuptools]
