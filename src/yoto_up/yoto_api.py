@@ -2288,15 +2288,54 @@ class YotoAPI:
         if icons is None:
             base_url = "https://www.yotoicons.com/icons?category=&tag="
             url = f"{base_url}{tag}"
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TimeElapsedColumn(),
-                transient=True,
-                console=console,
-            ) as progress:
-                scrape_task = progress.add_task("Scraping icons...", total=limit)
+            if show_in_console:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TimeElapsedColumn(),
+                    transient=True,
+                    console=console,
+                ) as progress:
+                    scrape_task = progress.add_task("Scraping icons...", total=limit)
+                    resp = httpx.get(url)
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Failed to fetch yotoicons: {resp.status_code}")
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    icons = []
+                    for div in soup.select("section#search_results div.icon"):
+                        onclick_attr = div.get("onclick")
+                        onclick = onclick_attr if isinstance(onclick_attr, str) else ""
+                        m = re.search(
+                            r"populate_icon_modal\('(\d+)',\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*'(\d+)'\)",
+                            onclick,
+                        )
+                        if not m:
+                            continue
+                        icon_id, category, tag1, tag2, author, downloads = m.groups()
+                        img_tag = div.select_one(".icon_background img")
+                        src_attr = img_tag.get("src") if img_tag else None
+                        src = src_attr if isinstance(src_attr, str) else None
+                        if src and src.startswith("http"):
+                            img_url = src
+                        elif src:
+                            img_url = f"https://www.yotoicons.com{src}"
+                        else:
+                            img_url = None
+                        icons.append(
+                            {
+                                "id": icon_id,
+                                "category": category,
+                                "tags": [tag1, tag2],
+                                "author": author,
+                                "downloads": downloads,
+                                "img_url": img_url,
+                            }
+                        )
+                        progress.update(scrape_task, advance=1)
+                        if len(icons) >= limit:
+                            break
+            else:
                 resp = httpx.get(url)
                 if resp.status_code != 200:
                     raise RuntimeError(f"Failed to fetch yotoicons: {resp.status_code}")
@@ -2331,7 +2370,6 @@ class YotoAPI:
                             "img_url": img_url,
                         }
                     )
-                    progress.update(scrape_task, advance=1)
                     if len(icons) >= limit:
                         break
                 # Save per-tag cache
@@ -2352,21 +2390,47 @@ class YotoAPI:
                 # Save updated global cache
                 with global_metadata_path.open("w") as f:
                     json.dump(icons, f, indent=2)
-        # Download/cache images with progress
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TimeElapsedColumn(),
-            transient=True,
-            console=console,
-        ) as progress:
-            download_task = progress.add_task(
-                "Downloading & caching images...", total=len(icons)
-            )
+        # Download/cache images (show progress only when requested)
+        if show_in_console:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TimeElapsedColumn(),
+                transient=True,
+                console=console,
+            ) as progress:
+                download_task = progress.add_task(
+                    "Downloading & caching images...", total=len(icons)
+                )
+                for icon in icons:
+                    if not icon.get("img_url"):
+                        progress.update(download_task, advance=1)
+                        continue
+                    url_hash = hashlib.sha256(icon["img_url"].encode()).hexdigest()[:16]
+                    ext = Path(icon["img_url"]).suffix or ".png"
+                    cache_path = cache_dir / f"{url_hash}{ext}"
+                    icon["cache_path"] = str(cache_path)
+                    if refresh_cache or not cache_path.exists():
+                        try:
+                            img_resp = httpx.get(icon["img_url"])
+                            img_resp.raise_for_status()
+                            img_bytes = img_resp.content
+                            # Resize to 16x16 if needed
+                            try:
+                                img = Image.open(io.BytesIO(img_bytes))
+                                if img.size != (16, 16):
+                                    img = img.resize((16, 16), Image.Resampling.NEAREST)
+                                img.save(cache_path)
+                            except Exception:
+                                # If Pillow fails, just save the raw bytes
+                                cache_path.write_bytes(img_bytes)
+                        except Exception as e:
+                            icon["cache_error"] = str(e)
+                    progress.update(download_task, advance=1)
+        else:
             for icon in icons:
                 if not icon.get("img_url"):
-                    progress.update(download_task, advance=1)
                     continue
                 url_hash = hashlib.sha256(icon["img_url"].encode()).hexdigest()[:16]
                 ext = Path(icon["img_url"]).suffix or ".png"
@@ -2377,18 +2441,15 @@ class YotoAPI:
                         img_resp = httpx.get(icon["img_url"])
                         img_resp.raise_for_status()
                         img_bytes = img_resp.content
-                        # Resize to 16x16 if needed
                         try:
                             img = Image.open(io.BytesIO(img_bytes))
                             if img.size != (16, 16):
                                 img = img.resize((16, 16), Image.Resampling.NEAREST)
                             img.save(cache_path)
                         except Exception:
-                            # If Pillow fails, just save the raw bytes
                             cache_path.write_bytes(img_bytes)
                     except Exception as e:
                         icon["cache_error"] = str(e)
-                progress.update(download_task, advance=1)
         if show_in_console:
             table = Table(title=f"YotoIcons Results for '{tag}'", show_lines=True)
             table.add_column("ID", style="cyan")

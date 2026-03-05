@@ -24,6 +24,9 @@ import sys
 import pydantic
 from yoto_up.models import CardMedia
 from loguru import logger
+import queue
+import threading
+from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
 
 app = typer.Typer()
 console = Console()
@@ -2013,14 +2016,6 @@ def normalize(
             f"Applying fixed gain {gain_db:+.2f} dB to {len(files)} file(s) -> {out_dir}"
         )
         # Use a progress bar while writing files
-        from rich.progress import (
-            Progress,
-            SpinnerColumn,
-            BarColumn,
-            TextColumn,
-            TimeElapsedColumn,
-        )
-
         written = []
         total = len(files)
         if dry_run:
@@ -2110,14 +2105,6 @@ def normalize(
                 created_temp2 = True
             # Use a progress bar for applying the plan
             try:
-                from rich.progress import (
-                    Progress,
-                    SpinnerColumn,
-                    BarColumn,
-                    TextColumn,
-                    TimeElapsedColumn,
-                )
-
                 total = len(plan)
                 with Progress(
                     SpinnerColumn(),
@@ -2205,12 +2192,84 @@ def replace_default_icons(
     card = API.get_card(card_id)
     if not card:
         console.print(f"[bold red]Card not found: {card_id}[/bold red]")
-    new_card = API.replace_card_default_icons(
-        card,
-        replace_existing=replace_existing,
-        parallel_workers=workers if parallel else None,
-        max_searches=searches
-    )
+    # Use a thread-safe queue to receive progress updates from the API (which may
+    # call the callback from worker threads). Run the replace operation in a
+    # background thread while the main thread displays a Rich progress bar.
+    def PercentageColumn():
+        return TextColumn("{task.percentage:>3.0f}%")
+
+    q: "queue.Queue[tuple[str | None, float | None]]" = queue.Queue()
+
+    def _progress_cb(msg: str | None = None, frac: float | None = None):
+        try:
+            q.put((msg, frac))
+        except Exception:
+            pass
+
+    result_holder = {"card": None, "exc": None}
+
+    def _worker():
+        try:
+            res = API.replace_card_default_icons(
+                card,
+                replace_existing=replace_existing,
+                parallel_workers=workers if parallel else None,
+                max_searches=searches,
+                progress_callback=_progress_cb,
+            )
+            result_holder["card"] = res
+        except Exception as e:
+            result_holder["exc"] = e
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    # Display progress while worker runs
+    new_card = None
+    with Progress(
+        TextColumn("{task.fields[msg]}", justify="left"),
+        BarColumn(),
+        PercentageColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("replace", total=100, msg="Starting...")
+        # Drain queue and update UI until worker finishes
+        while t.is_alive() or not q.empty():
+            try:
+                msg, frac = q.get(timeout=0.12)
+            except Exception:
+                # no update; continue loop
+                continue
+            # update task message and percentage
+            try:
+                progress.update(task, advance=0, msg=msg or "")
+                if frac is not None:
+                    try:
+                        pct = max(0.0, min(1.0, float(frac))) * 100.0
+                        progress.update(task, completed=pct)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # ensure we processed any remaining events
+        while not q.empty():
+            try:
+                msg, frac = q.get_nowait()
+            except Exception:
+                break
+            try:
+                progress.update(task, advance=0, msg=msg or "")
+                if frac is not None:
+                    pct = max(0.0, min(1.0, float(frac))) * 100.0
+                    progress.update(task, completed=pct)
+            except Exception:
+                pass
+        # finalize
+        if result_holder.get("card") is not None:
+            new_card = result_holder.get("card")
+        elif result_holder.get("exc") is not None:
+            raise result_holder.get("exc")
     if not new_card:
         console.print(f"[bold red]Failed to replace default icons.[/bold red]")
         raise typer.Exit(code=1)
