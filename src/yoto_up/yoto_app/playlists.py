@@ -1470,7 +1470,6 @@ def build_playlists_panel(
                 ),
                 padding=ft.padding.symmetric(horizontal=4, vertical=2),
                 margin=ft.margin.only(left=4, right=4, bottom=2),
-                bgcolor=ft.Colors.GREY_100,
                 border_radius=4,
                 height=None,
                 alignment=ft.Alignment.TOP_LEFT,
