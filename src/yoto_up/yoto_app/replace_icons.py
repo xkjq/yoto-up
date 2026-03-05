@@ -326,6 +326,58 @@ def start_replace_icons_background(
                 # Ensure API instance reloads the upload icon cache so the UI
                 # can immediately resolve newly uploaded mediaIds.
                 await asyncio.to_thread(lambda: getattr(api, "_load_icon_upload_cache", lambda: None)())
+
+                # Poll for presence of uploaded icon cache entries so the UI can
+                # resolve images immediately. This is a bounded, non-blocking wait
+                # that queries the synchronous `get_icon_cache_path` via `to_thread`.
+                def _collect_media_ids(card_obj):
+                    mids = set()
+                    try:
+                        if card_obj and getattr(card_obj, "content", None) and getattr(card_obj.content, "chapters", None):
+                            for ch in card_obj.content.chapters:
+                                try:
+                                    f = ch.get_icon_field()
+                                except Exception:
+                                    f = None
+                                if f and not str(f).endswith(DEFAULT_MEDIA_ID):
+                                    mids.add(str(f).split("#")[-1] if "#" in str(f) else str(f))
+                                if getattr(ch, "tracks", None):
+                                    for tr in ch.tracks:
+                                        try:
+                                            tf = tr.get_icon_field()
+                                        except Exception:
+                                            tf = None
+                                        if tf and not str(tf).endswith(DEFAULT_MEDIA_ID):
+                                            mids.add(str(tf).split("#")[-1] if "#" in str(tf) else str(tf))
+                    except Exception:
+                        pass
+                    return mids
+
+                def _missing_media_ids_sync(media_ids):
+                    missing = []
+                    try:
+                        for mid in media_ids:
+                            # get_icon_cache_path accepts either 'yoto:#id' or 'id'
+                            p = api.get_icon_cache_path(mid)
+                            if not p or not p.exists():
+                                missing.append(mid)
+                    except Exception:
+                        # If anything goes wrong, assume items are missing so we retry
+                        return list(media_ids)
+                    return missing
+
+                media_ids = _collect_media_ids(new_card)
+                if media_ids:
+                    timeout = 1.0
+                    interval = 0.05
+                    waited = 0.0
+                    while waited < timeout:
+                        missing = await asyncio.to_thread(_missing_media_ids_sync, media_ids)
+                        if not missing:
+                            break
+                        await asyncio.sleep(interval)
+                        waited += interval
+
                 await asyncio.to_thread(page.pop_dialog)
                 await asyncio.to_thread(page.show_card_details, new_card)
 
@@ -334,14 +386,14 @@ def start_replace_icons_background(
                 logger.exception("replace_icons error")
             finally:
                 _set_badge("", 0.0, visible=False)
+                try:
+                    setattr(page, "autoselect_running", False)
+                except Exception:
+                    pass
 
         logger.debug("Scheduling background replace icons work on event loop")
         page.run_task(work)
     except Exception as e:
         page.show_snack(f"Failed to start background replace: {e}", error=True)
         logger.exception("start_replace_icons_background error")
-    finally:
-        try:
-            setattr(page, "autoselect_running", False)
-        except Exception:
-            pass
+    
