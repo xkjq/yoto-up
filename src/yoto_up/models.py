@@ -119,10 +119,9 @@ class Chapter(BaseModel):
                 track.clear_icon_field()
     
     def get_tracks(self) -> List[Track]:
-        try:
-            return self.tracks or []
-        except Exception:
-            return []
+        if not self.tracks:
+            self.tracks = []
+        return self.tracks
 
 class CardStatus(BaseModel):
     name: Literal["new", "inprogress", "complete", "live", "archived"]
