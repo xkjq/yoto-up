@@ -3078,54 +3078,6 @@ class YotoAPI:
         # Lock to protect shared state when running in parallel
         used_lock = threading.Lock()
 
-        # Helper functions for label suitability, query building, and processing a single target
-        def _suitable_label(label: str) -> bool:
-            if not label:
-                return False
-            s = str(label).strip().lower()
-            # Reject very generic names like 'track 1', 'chapter 2', 'untitled', 'unknown'
-            if re.match(r"^(track|chapter|part)\s*\d+$", s):
-                return False
-            if s in ("untitled", "unknown", "no title", ""):
-                return False
-            # Extract keywords after removing stopwords
-            try:
-                tokens = word_tokenize(s)
-            except Exception:
-                tokens = re.findall(r"\w+", s)
-            stop = _get_stopwords("english")
-            filtered = [
-                t
-                for t in (tok.lower() for tok in tokens)
-                if t.isalpha() and t not in stop and len(t) > 2
-            ]
-            return len(filtered) > 0
-
-        def _choose_query(
-            track_title: str | None, chapter_title: str | None, card_title: str | None
-        ) -> str:
-            # Prefer track if suitable, else chapter, else card title
-            for candidate in (track_title, chapter_title, card_title):
-                if candidate and _suitable_label(candidate):
-                    # prefer cleaned keyword sequence for better results
-                    try:
-                        toks = word_tokenize(candidate.lower())
-                    except Exception:
-                        toks = re.findall(r"\w+", str(candidate).lower())
-                    stop = _get_stopwords("english")
-                    filtered = [
-                        t
-                        for t in (tok for tok in toks)
-                        if isinstance(t, str)
-                        and t.isalpha()
-                        and t not in stop
-                        and len(t) > 2
-                    ]
-                    if filtered:
-                        return " ".join(filtered)
-                    return str(candidate)
-            # As a last resort, return card title or empty
-            return str(card_title or "")
 
         def _process_target(
             kind: str, ch_idx: int, tr_idx: int, frac: float, idx: int
@@ -3145,22 +3097,14 @@ class YotoAPI:
                 if override_label:
                     query = override_label
                 else:
-                    query = _choose_query(
-                        None,
-                        getattr(chapter, "title", None),
-                        getattr(card, "title", None),
-                    )
+                    query = card.choose_icon_search_label(kind, ch_idx, tr_idx)
                 target_label = f"chapter '{query}'"
             else:
                 track = chapter.tracks[tr_idx]
                 if override_label:
                     query = override_label
                 else:
-                    query = _choose_query(
-                        getattr(track, "title", None),
-                        getattr(chapter, "title", None),
-                        getattr(card, "title", None),
-                    )
+                    query = card.choose_icon_search_label(kind, ch_idx, tr_idx)
                 target_label = f"track '{query}'"
 
             _cb(f"Finding icon for {target_label}", frac)
