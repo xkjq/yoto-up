@@ -315,14 +315,11 @@ def start_replace_icons_background(
                 except Exception:
                     # If persisting the card blocks or fails, log and continue to update UI
                     logger.exception("Failed to persist updated card in background")
-                try:
-                    page.pop_dialog()
-                except Exception:
-                    pass
-                try:
-                    page.show_card_details(new_card)
-                except Exception:
-                    pass
+                # Ensure API instance reloads the upload icon cache so the UI
+                # can immediately resolve newly uploaded mediaIds.
+                await asyncio.to_thread(lambda: getattr(api, "_load_icon_upload_cache", lambda: None)())
+                await asyncio.to_thread(page.pop_dialog)
+                await asyncio.to_thread(page.show_card_details, new_card)
 
             except Exception as ex:
                 page.show_snack(f"Replace icons failed: {ex}", error=True)

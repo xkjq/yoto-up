@@ -290,6 +290,9 @@ class YotoAPI:
         self.cache_requests = cache_requests
         self.cache_max_age_seconds = cache_max_age_seconds
         self._cache_lock = threading.Lock()
+        # In-memory upload cache to avoid races where writers update the file
+        # but the current API instance doesn't see the change when queried.
+        self._upload_icon_cache = None
         # Lock protecting writes to the upload icon cache JSON file
         self._upload_icon_cache_lock = threading.Lock()
 
@@ -362,13 +365,22 @@ class YotoAPI:
         self.response_history = []
 
     def _load_icon_upload_cache(self):
+        # Return in-memory cache if already loaded
+        if getattr(self, "_upload_icon_cache", None) is not None:
+            return self._upload_icon_cache
         cache_path = Path(self.UPLOAD_ICON_CACHE_FILE)
         if cache_path.exists():
             try:
                 with cache_path.open("r") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Cache in memory for faster subsequent access
+                    self._upload_icon_cache = data
+                    return data
             except Exception:
+                # If the file is malformed or unreadable, fall back to empty
+                self._upload_icon_cache = {}
                 return {}
+        self._upload_icon_cache = {}
         return {}
 
     def _save_icon_upload_cache(self, cache):
@@ -385,6 +397,8 @@ class YotoAPI:
                 # Best-effort fallback
                 with cache_path.open("w") as f:
                     json.dump(cache, f, indent=2)
+            # Update in-memory cache so this API instance sees the change immediately
+            self._upload_icon_cache = cache
 
     def _load_cache(self):
         if not self.cache_requests:
