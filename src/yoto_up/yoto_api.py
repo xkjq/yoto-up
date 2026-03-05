@@ -940,7 +940,7 @@ class YotoAPI:
                 pass
 
         sha256, audio_bytes = self.calculate_sha256(audio_path)
-        logger.info(f"SHA256: {sha256}")
+        logger.trace(f"SHA256: {sha256}")
         _call_cb("Hash calculated")
         upload_resp = self.get_audio_upload_url(sha256, filename)
         upload = upload_resp.get("upload", upload_resp)
@@ -948,7 +948,7 @@ class YotoAPI:
         upload_id = upload.get("uploadId")
         if not audio_upload_url:
             if upload.get("uploadId"):
-                logger.info("File already exists on server, skipping upload.")
+                logger.debug("File already exists on server, skipping upload.")
                 if progress and upload_task_id is not None:
                     progress.update(
                         upload_task_id,
@@ -965,7 +965,7 @@ class YotoAPI:
                 _call_cb("Failed to get upload URL")
                 raise Exception("Failed to get upload URL.")
         else:
-            logger.info(f"Uploading audio to: {audio_upload_url}")
+            logger.debug(f"Uploading audio to: {audio_upload_url}")
             if progress and upload_task_id is not None:
                 progress.update(upload_task_id, description="Uploading audio...")
             _call_cb("Uploading audio...")
@@ -985,7 +985,7 @@ class YotoAPI:
                         )
                     _call_cb("Audio upload failed")
                     raise Exception(f"Audio upload failed: {put_resp.text}")
-                logger.info("Audio uploaded successfully.")
+                logger.debug("Audio uploaded successfully.")
                 if progress and upload_task_id is not None:
                     file_label = filename if filename else audio_path
                     progress.update(
@@ -1063,7 +1063,7 @@ class YotoAPI:
                 if progress and transcode_task_id is not None:
                     progress.update(transcode_task_id, completed=attempts)
         if not transcoded_audio:
-            logger.info(data)
+            logger.debug(data)
             logger.error("Transcoding timed out.")
             if progress and transcode_task_id is not None:
                 progress.update(
@@ -1404,7 +1404,7 @@ class YotoAPI:
         if not put_resp.is_success:
             logger.error(f"Audio upload failed: {put_resp.text}")
             raise Exception(f"Audio upload failed: {put_resp.text}")
-        logger.info("Audio uploaded successfully.")
+        logger.debug("Audio uploaded successfully.")
 
     def poll_for_transcoding(
         self,
@@ -1447,7 +1447,7 @@ class YotoAPI:
                     attempts += 1
                     progress.update(task, completed=attempts)
                 if not transcoded_audio:
-                    logger.info(data)
+                    logger.debug(data)
                     logger.error("Transcoding timed out.")
                     raise Exception("Transcoding timed out.")
         else:
@@ -1464,11 +1464,11 @@ class YotoAPI:
                         break
                 time.sleep(poll_interval)
                 attempts += 1
-                logger.info(
+                logger.debug(
                     f"Transcoding progress: {int(100 * attempts / max_attempts)}%"
                 )
             if not transcoded_audio:
-                logger.info(data)
+                logger.debug(data)
                 logger.error("Transcoding timed out.")
                 raise Exception("Transcoding timed out.")
         # Convert raw transcode dict to TranscodedAudio model before returning
@@ -1606,13 +1606,13 @@ class YotoAPI:
         )
         card_metadata = CardMetadata(media=card_media)
         card = Card(title=card_title, content=card_content, metadata=card_metadata)
-        logger.info(f"Creating card with content: {card.model_dump(exclude_none=True)}")
+        logger.debug(f"Creating card with content: {card.model_dump(exclude_none=True)}")
         try:
             card = self.create_or_update_content(card)
         except Exception as e:
             logger.error(f"Failed to create or update content: {e}")
             raise e
-        logger.info("Card created successfully.")
+        logger.debug("Card created successfully.")
         return card
 
     def upload_audio_to_card(
@@ -1667,19 +1667,19 @@ class YotoAPI:
 
         # Transcode audio
         sha256, audio_bytes = self.calculate_sha256(audio_path)
-        logger.info(f"SHA256: {sha256}")
+        logger.debug(f"SHA256: {sha256}")
         upload_resp = self.get_audio_upload_url(sha256, filename)
         upload = upload_resp.get("upload", upload_resp)
         audio_upload_url = upload.get("uploadUrl")
         upload_id = upload.get("uploadId")
         if not audio_upload_url:
             if upload.get("uploadId"):
-                logger.info("File already exists on server, skipping upload.")
+                logger.debug("File already exists on server, skipping upload.")
             else:
                 logger.error("Failed to get upload URL.")
                 raise Exception("Failed to get upload URL.")
         else:
-            logger.info(f"Uploading audio to: {audio_upload_url}")
+            logger.debug(f"Uploading audio to: {audio_upload_url}")
             self.upload_audio_file(audio_upload_url, audio_bytes)
         transcoded_audio_raw = self.poll_for_transcoding(
             upload_id, loudnorm, poll_interval, max_attempts
@@ -1744,7 +1744,7 @@ class YotoAPI:
         card.content.chapters.append(new_chapter)
 
         logger.debug(card.model_dump_json(exclude_none=True))
-        logger.info(f"Updating card {card_id} with new chapter.")
+        logger.debug(f"Updating card {card_id} with new chapter.")
         return self.create_or_update_content(card)
 
     def delete_card(self, card_id: str):
@@ -1792,19 +1792,19 @@ class YotoAPI:
         Returns transcoded audio info dict.
         """
         sha256, audio_bytes = self.calculate_sha256(audio_path)
-        logger.info(f"SHA256: {sha256}")
+        logger.debug(f"SHA256: {sha256}")
         upload_resp = self.get_audio_upload_url(sha256, filename)
         upload = upload_resp.get("upload", upload_resp)
         audio_upload_url = upload.get("uploadUrl")
         upload_id = upload.get("uploadId")
         if not audio_upload_url:
             if upload.get("uploadId"):
-                logger.info("File already exists on server, skipping upload.")
+                logger.debug("File already exists on server, skipping upload.")
             else:
                 logger.error("Failed to get upload URL.")
                 raise Exception("Failed to get upload URL.")
         else:
-            logger.info(f"Uploading audio to: {audio_upload_url}")
+            logger.debug(f"Uploading audio to: {audio_upload_url}")
             self.upload_audio_file(audio_upload_url, audio_bytes)
         transcoded_audio = self.poll_for_transcoding(
             upload_id, loudnorm, poll_interval, max_attempts, show_progress
@@ -2451,8 +2451,8 @@ class YotoAPI:
         Returns a list of up to top_n icons sorted by score (empty list if no match).
         Now supports making multiple calls to search_yotoicons with extra tags for broader search.
         """
-        logger.info(f"Finding best icons for text: {text}")
-        logger.info(
+        logger.debug(f"Finding best icons for text: {text}")
+        logger.debug(
             f"Include YotoIcons: {include_yotoicons}, Top N: {top_n}, Show in console: {show_in_console}, Extra tags: {extra_tags}, Max searches: {max_searches}"
         )
         # Simple stopword list for English
@@ -2706,7 +2706,7 @@ class YotoAPI:
         sha256 = hashlib.sha256(icon_bytes).hexdigest()
         cache = self._load_icon_upload_cache()
         if sha256 in cache:
-            logger.info(
+            logger.debug(
                 f"Icon already uploaded, returning cached mediaId: {cache[sha256].get('mediaId')}"
             )
             return cache[sha256]
@@ -2752,7 +2752,7 @@ class YotoAPI:
             )
 
         # Save the icon file into yoto_icon_cache for local reference
-        logger.info(f"Icon uploaded and cached with mediaId: {result.get('mediaId')}")
+        logger.debug(f"Icon uploaded and cached with mediaId: {result.get('mediaId')}")
         return result
 
     def upload_cover_image(
@@ -2991,7 +2991,7 @@ class YotoAPI:
         """
         # If mediaId exists this is a yoto icon
         if "mediaId" in icon:
-            logger.info(f"Icon already a Yoto icon with mediaId: {icon['mediaId']}")
+            logger.debug(f"Icon already a Yoto icon with mediaId: {icon['mediaId']}")
             return icon
         # Determine cache path
         cache_path = None
@@ -3131,7 +3131,6 @@ class YotoAPI:
             kind: str, ch_idx: int, tr_idx: int, frac: float, idx: int
         ) -> bool:
             chapter = chapters[ch_idx]
-            track = None
             # If a label_override is provided for this target index, use it for the search only
             override_label = None
             if (
@@ -3142,6 +3141,7 @@ class YotoAPI:
                 override_label = label_overrides[idx] or None
 
             if kind == "chapter":
+                track = None
                 if override_label:
                     query = override_label
                 else:
@@ -3274,12 +3274,12 @@ class YotoAPI:
             if chosen_media:
                 if kind == "chapter":
                     chapter.set_icon_field(f"yoto:#{chosen_media}")
-                    logger.info(
+                    logger.debug(
                         f"Replaced chapter '{chapter.title}' icon with mediaId: {chosen_media}"
                     )
                 else:
                     track.set_icon_field(f"yoto:#{chosen_media}")
-                    logger.info(
+                    logger.debug(
                         f"Replaced track '{track.title}' icon with mediaId: {chosen_media}"
                     )
                 # mark used media id under lock when parallel
