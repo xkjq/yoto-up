@@ -413,8 +413,62 @@ class FileUploadRow:
                 if not results:
                     lines.append(ft.Text(value="No segments were created.", color=ft.Colors.RED))
                 else:
-                    for p in results:
-                        lines.append(ft.Text(value=str(p)))
+                    # Helper to format bytes
+                    def _format_bytes(n: int) -> str:
+                        try:
+                            n_val: float = float(n)
+                            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                                if n_val < 1024.0:
+                                    return f"{n_val:3.1f} {unit}"
+                                n_val /= 1024.0
+                        except Exception:
+                            pass
+                        return f"{n_val:.1f} B"
+
+                    # Summary header
+                    try:
+                        total_size = 0
+                        for p in results:
+                            try:
+                                total_size += os.path.getsize(str(p))
+                            except Exception:
+                                pass
+                        lines.append(ft.Text(value=f"Created {len(results)} segment(s) — total size {_format_bytes(total_size)}", weight=ft.FontWeight.BOLD))
+                    except Exception:
+                        pass
+
+                    # Per-segment details
+                    for idx, p in enumerate(results, start=1):
+                        try:
+                            pth = str(p)
+                            name = os.path.basename(pth)
+                        except Exception:
+                            pth = str(p)
+                            name = pth
+                        # filesize
+                        try:
+                            size = os.path.getsize(pth)
+                            size_text = _format_bytes(size)
+                        except Exception:
+                            size_text = "?"
+                        # duration (try pydub as a fallback)
+                        try:
+                            seg = AudioSegment.from_file(pth)
+                            dur_s = len(seg) / 1000.0
+                            dur_text = _human_duration(dur_s)
+                        except Exception:
+                            dur_text = "?"
+
+                        lines.append(
+                            ft.Row(
+                                controls=[
+                                    ft.Text(value=f"{idx}.", width=30),
+                                    ft.Text(value=name, width=300),
+                                    ft.Text(value=f"Duration: {dur_text}", width=140),
+                                    ft.Text(value=f"Size: {size_text}", width=120),
+                                ]
+                            )
+                        )
 
                 def replace_with_results(ev=None):
                     col = page.file_rows_column
