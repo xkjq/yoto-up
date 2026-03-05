@@ -2828,6 +2828,11 @@ class YotoAPI:
         result = response.json().get("displayIcon", response.json())
         if yotoicons_id:
             result["yotoicons_id"] = yotoicons_id
+        # Normalize common response field names
+        if not result.get("url") and result.get("mediaUrl"):
+            result["url"] = result.get("mediaUrl")
+        if not result.get("mediaId"):
+            result["mediaId"] = result.get("displayIconId") or result.get("id")
         cache[sha256] = result
 
         # Save image bytes into the official cache before updating the

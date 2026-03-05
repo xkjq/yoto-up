@@ -232,6 +232,14 @@ def start_replace_icons_background(
     # `show_replace_icons_dialog` which gathers options and delegates here.
     try:
 
+        # Prevent concurrent background replace runs on the same page.
+        if getattr(page, "autoselect_running", False):
+            page.show_snack("Icon replace already running", error=True)
+            logger.debug("Autoselect already running; aborting start_replace_icons_background")
+            return
+        setattr(page, "autoselect_running", True)
+
+
         logger.debug("Setting cancel event and exposing on page for badge click")
         # Cancellation event for the worker
         cancel_event = threading.Event()
@@ -332,3 +340,8 @@ def start_replace_icons_background(
     except Exception as e:
         page.show_snack(f"Failed to start background replace: {e}", error=True)
         logger.exception("start_replace_icons_background error")
+    finally:
+        try:
+            setattr(page, "autoselect_running", False)
+        except Exception:
+            pass
