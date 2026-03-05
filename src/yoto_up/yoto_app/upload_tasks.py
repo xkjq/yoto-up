@@ -803,6 +803,27 @@ class UploadManager:
             except Exception:
                 logger.error("[populate_file_rows] error")
 
+            # If the user hasn't provided a title, infer one from the selected folder/files
+            # only set if the field is empty
+            if new_card_title and (not getattr(new_card_title, "value", None) or not new_card_title.value.strip()):
+                # infer from the files list we just populated
+                try:
+                    paths = [str(p) for p in files] if 'files' in locals() and files else [folder_path]
+                except Exception:
+                    paths = [folder_path]
+                try:
+                    # prefer common parent folder name
+                    parents = {str(Path(p).parent) for p in paths}
+                    if len(parents) == 1:
+                        inferred = Path(paths[0]).parent.name
+                    else:
+                        inferred = clean_title_from_filename(paths[0], strip_leading)
+                except Exception:
+                    inferred = None
+                if inferred:
+                    new_card_title.value = inferred
+                    page.update()
+
         async def _handle_picked_files(files: list[ft.FilePickerFile] | None):
             if not files:
                 return
@@ -829,6 +850,17 @@ class UploadManager:
                     ):
                         file_row = FileUploadRow(path, page)
                         file_rows_column.controls.append(file_row.row)
+            # Infer a title from the picked files if the new_card_title is empty
+            if new_card_title and (not getattr(new_card_title, "value", None) or not new_card_title.value.strip()):
+                picked_paths = [getattr(f, "path", None) or getattr(f, "name", None) for f in files]
+                picked_paths = [p for p in picked_paths if p]
+                if picked_paths:
+                    parents = {str(Path(p).parent) for p in picked_paths}
+                    if len(parents) == 1:
+                        new_card_title.value = Path(picked_paths[0]).parent.name
+                    else:
+                        new_card_title.value = clean_title_from_filename(picked_paths[0], strip_leading)
+                    page.update()
             update_show_waveforms_btn()
             page.update()
 
@@ -846,6 +878,9 @@ class UploadManager:
                     raise RuntimeError(
                         f"Failed to create FileUploadRow for {temp_path}"
                     )
+                # Infer new card title from uploaded filename if the title field is empty
+                if new_card_title and (not getattr(new_card_title, "value", None) or not new_card_title.value.strip()):
+                    new_card_title.value = Path(temp_path).parent.name or clean_title_from_filename(temp_path, strip_leading)
                 update_show_waveforms_btn()
                 page.update()
 
