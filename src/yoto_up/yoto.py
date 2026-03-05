@@ -2176,7 +2176,7 @@ def search_icons(query: str, fields: str = "title,publicTags"):
     field_list = [f.strip() for f in fields.split(",") if f.strip()]
     results = API.search_cached_icons(query, field_list, show_in_console=True)
     if not results:
-        typer.echo("[bold red]No matching icons found.[/bold red]")
+        console.print("[bold red]No matching icons found.[/bold red]")
         raise typer.Exit(code=1)
 
 
@@ -2189,7 +2189,7 @@ def search_yotoicons(
         tag, show_in_console=show_in_console, refresh_cache=refresh_cache
     )
     if not icons:
-        typer.echo(f"[bold red]No icons found for tag '{tag}'.[/bold red]")
+        console.print(f"[bold red]No icons found for tag '{tag}'.[/bold red]")
         raise typer.Exit(code=1)
 
 
@@ -2204,7 +2204,7 @@ def replace_default_icons(
     API = get_api()
     card = API.get_card(card_id)
     if not card:
-        typer.echo(f"[bold red]Card not found: {card_id}[/bold red]")
+        console.print(f"[bold red]Card not found: {card_id}[/bold red]")
     new_card = API.replace_card_default_icons(
         card,
         replace_existing=replace_existing,
@@ -2212,11 +2212,11 @@ def replace_default_icons(
         max_searches=searches
     )
     if not new_card:
-        typer.echo(f"[bold red]Failed to replace default icons.[/bold red]")
+        console.print(f"[bold red]Failed to replace default icons.[/bold red]")
         raise typer.Exit(code=1)
     # Update the card on the server
     updated_card = API.create_or_update_content(new_card, return_card=True)
-    typer.echo(f"[bold green]Default icons replaced successfully.[/bold green]")
+    console.print(f"[bold green]Default icons replaced successfully.[/bold green]")
     return updated_card
 
 
