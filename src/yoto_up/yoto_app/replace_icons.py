@@ -126,39 +126,27 @@ def show_replace_icons_dialog(
                             # only used as search overrides for icon lookup.
                             label_overrides = list(user_labels)
 
-                            # close dialog and start background work
+                            # close dialog and start background work on the page event loop
                             page.pop_dialog()
                             page.update()
 
-                            try:
-                                start_replace_icons_background(
-                                    page,
-                                    c,
-                                    confirm=False,
-                                    include_yotoicons=include_yotoicons,
-                                    max_searches=max_searches,
-                                    api_ref=api_ref,
-                                    label_overrides=label_overrides,
-                                )
-                            except Exception:
+                            async def _start_bg():
                                 try:
-                                    async def _start_bg():
-                                        try:
-                                            start_replace_icons_background(
-                                                page,
-                                                c,
-                                                confirm=False,
-                                                include_yotoicons=include_yotoicons,
-                                                max_searches=max_searches,
-                                                api_ref=api_ref,
-                                                label_overrides=label_overrides,
-                                            )
-                                        except Exception:
-                                            pass
-
-                                    page.run_task(_start_bg)
+                                    start_replace_icons_background(
+                                        page,
+                                        c,
+                                        include_yotoicons=include_yotoicons,
+                                        max_searches=max_searches,
+                                        api_ref=api_ref,
+                                        label_overrides=label_overrides,
+                                    )
                                 except Exception:
-                                    page.show_snack("Failed to start replace", error=True)
+                                    logger.exception("Failed to start replace in background")
+
+                            try:
+                                page.run_task(_start_bg)
+                            except Exception:
+                                page.show_snack("Failed to start replace", error=True)
                         except Exception as ex:
                             page.show_snack(f"Failed to start replace: {ex}", error=True)
 
