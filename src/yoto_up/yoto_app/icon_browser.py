@@ -47,7 +47,7 @@ def build_icon_browser_panel(
         ]
     )
 
-    search_row = ft.Row([], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    search_row = ft.Row(controls=[], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     search_field = ft.TextField(
         label="Search cached icons",
         width=400,
@@ -108,8 +108,8 @@ def build_icon_browser_panel(
         spacing=18,
     )
 
-    icons_container = ft.GridView(
-        width=600, height=400, max_extent=80, child_aspect_ratio=1
+    icons_container = ft.GridView(expand=True,
+       max_extent=80, child_aspect_ratio=1
     )
 
     # Details panel on the right (fixed column)
@@ -709,7 +709,7 @@ def build_icon_browser_panel(
             logger.debug(f"Icon clicked: {p}")
             show_icon_details(p)
 
-        for path in icons:
+        for idx, path in enumerate(icons):
             try:
                 thumb = get_thumbnail_path(path, size=64)
                 img = ft.Image(
@@ -725,6 +725,9 @@ def build_icon_browser_panel(
                     border=ft.border.all(1, "#ADACAC"),
                 )
                 icons_container.controls.append(btn)
+                if idx % 500 == 0:
+                    logger.debug(f"Rendered {idx} icons, updating page...")
+                    page.update()
             except Exception as ex:
                 logger.exception(f"Failed to load icon {path}: {ex}")
         logger.debug("Finished rendering icons, updating page")
@@ -926,7 +929,7 @@ def build_icon_browser_panel(
                     # If any new files were discovered on disk, force metadata reload before rebuilding index
                     if discovered:
                         _meta_loaded = False
-                except Exception:
+                except Exception as e:
                     logger.error(
                         f"do_online_search: failed to integrate new icons metadata: {e}"
                     )
