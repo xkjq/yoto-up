@@ -62,7 +62,7 @@ def _human_duration(s):
 # --- Robust FileUploadRow class ---
 class FileUploadRow:
     def __init__(self, filepath, page):
-
+        logger.debug(f"[FileUploadRow] Initializing row for file: {filepath}")
         # use ft.* controls
 
         self.filepath = filepath
@@ -93,6 +93,7 @@ class FileUploadRow:
         self.uploaded = False  # Track if this file has been uploaded
 
     def set_status(self, value):
+        logger.debug(f"[FileUploadRow] Setting status for {self.name}: {value}")
         self.status_text.value = value
         sval = (value or "").lower()
         # Show a spinner during the upload stage, hide it when transcode begins
@@ -231,8 +232,12 @@ class FileUploadRow:
             print(f"[Preview] Failed to open {url}: {ex}")
 
     def on_remove(self, ev=None):
+        logger.debug(f"[FileUploadRow] Removing file from upload list: {self.name}")
         col = self.column
-        col.controls.remove(self)
+        # Remove the container row object representing this upload entry.
+        # Keep this simple: remove `self.row` which is the actual control added
+        # to the column in normal UI flows.
+        col.controls.remove(self.row)
         page = self.page
         page.update()
 
@@ -764,6 +769,7 @@ class UploadManager:
 
         def clear_queue(ev=None):
             """Clear the UI upload queue and reset counters."""
+            logger.trace("[clear_queue] Clearing upload queue")
             nonlocal total_files, completed_count
             try:
                 file_rows_column.controls.clear()
@@ -782,6 +788,7 @@ class UploadManager:
             page.update()
 
         def populate_file_rows(folder_path: str):
+            logger.trace(f"[populate_file_rows] Populating file rows from folder: {folder_path}")
             try:
                 # Find audio files in the folder
                 files = utils_mod.find_audio_files(folder_path)
@@ -801,7 +808,7 @@ class UploadManager:
                             )
                         added += 1
                 if added == 0 and files:
-                    print(
+                    logger.trace(
                         "[populate_file_rows] All files from folder already present in upload list."
                     )
                 if not files:
@@ -898,17 +905,6 @@ class UploadManager:
                 browse_files.on_upload = on_upload_file_result
             except Exception:
                 pass
-
-        def _require_file_picker() -> bool:
-            if _file_picker_supported:
-                return True
-            show_snack(
-                "File dialogs are disabled because 'zenity' is not installed. "
-                "On Ubuntu/Debian: sudo apt-get install zenity",
-                error=True,
-                duration=12000,
-            )
-            return False
 
         async def _open_folder_picker(_e=None):
             # Use shared helper which handles availability/platform differences
