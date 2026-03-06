@@ -249,33 +249,87 @@ def make_show_card_details(
                         except Exception:
                             logger.debug(f"Failed to open replace icon dialog, chapter {ch_index} track {tr_index}")
 
-                    def _on_download_click(ev=None, url=tr_url, title=tr_title):
+                    def _on_download_click(ev=None, url=tr_url, title=tr_title, ch_i=None, tr_i=None):
                         import httpx
                         from pathlib import Path
-                        try:
-                            resolved_url = None
-                            if url and url.startswith("http"):
-                                resolved_url = url
-                            if not resolved_url or not resolved_url.startswith("http"):
-                                page.show_snack("No valid URL for this track", error=True)
-                                return
-                            downloads_dir = Path("downloads")
-                            downloads_dir.mkdir(exist_ok=True)
-                            # Use title or fallback to last part of URL
-                            filename = title or resolved_url.split("/")[-1]
-                            # Ensure safe filename
-                            filename = "_".join(filename.split())
-                            if not filename.lower().endswith(f".{tr_format}"):
-                                filename += f".{tr_format}"
-                            dest = downloads_dir / filename
-                            with httpx.stream("GET", resolved_url, timeout=60.0) as r:
-                                r.raise_for_status()
-                                with open(dest, "wb") as f:
-                                    for chunk in r.iter_bytes():
-                                        f.write(chunk)
-                            page.show_snack(f"Downloaded to {dest}")
-                        except Exception as ex:
-                            page.show_snack(f"Download failed: {ex}", error=True)
+
+                        def _do_download(resolved_url, title_local):
+                            try:
+                                if not resolved_url or not resolved_url.startswith("http"):
+                                    page.show_snack("No valid URL for this track", error=True)
+                                    return
+                                downloads_dir = Path("downloads")
+                                downloads_dir.mkdir(exist_ok=True)
+                                # Use title or fallback to last part of URL
+                                filename = title_local or resolved_url.split("/")[-1]
+                                # Ensure safe filename
+                                filename = "_".join(filename.split())
+                                if tr_format and not filename.lower().endswith(f".{tr_format}"):
+                                    filename += f".{tr_format}"
+                                dest = downloads_dir / filename
+                                with httpx.stream("GET", resolved_url, timeout=60.0) as r:
+                                    r.raise_for_status()
+                                    with open(dest, "wb") as f:
+                                        for chunk in r.iter_bytes():
+                                            f.write(chunk)
+                                page.show_snack(f"Downloaded to {dest}")
+                            except Exception as ex:
+                                page.show_snack(f"Download failed: {ex}", error=True)
+
+                        # If the provided URL is already an http(s) URL, download directly
+                        if url and isinstance(url, str) and url.startswith("http"):
+                            threading.Thread(target=lambda: _do_download(url, title), daemon=True).start()
+                            return
+
+                        # Otherwise, attempt to resolve a playable URL by fetching the playable card.
+                        # Run in background thread and do NOT persist or overwrite local caches/versions.
+                        def _resolve_and_download():
+                            try:
+                                card_id = c.cardId
+                                if not card_id:
+                                    page.show_snack("Unable to determine card id", error=True)
+                                    return
+                                # Request playable card but avoid saving a local version
+                                full = api.get_card(card_id, playable=True, save_version_if_missing=False)
+                                # Try to locate the track in the returned playable card
+                                resolved = None
+                                try:
+                                    chapters = full.get_chapters()
+                                    if ch_i is not None and tr_i is not None:
+                                        if 0 <= ch_i < len(chapters):
+                                            ch = chapters[ch_i]
+                                            tracks = getattr(ch, "tracks", []) or []
+                                            if 0 <= tr_i < len(tracks):
+                                                candidate = tracks[tr_i]
+                                                candidate_url = getattr(candidate, "trackUrl", None)
+                                                if candidate_url and isinstance(candidate_url, str) and candidate_url.startswith("http"):
+                                                    resolved = candidate_url
+                                except Exception:
+                                    resolved = None
+
+                                # Fallback: search all tracks for a playable http URL
+                                if not resolved:
+                                    try:
+                                        for ch in full.get_chapters():
+                                            for trc in getattr(ch, "tracks", []) or []:
+                                                candidate_url = getattr(trc, "trackUrl", None)
+                                                if candidate_url and isinstance(candidate_url, str) and candidate_url.startswith("http"):
+                                                    resolved = candidate_url
+                                                    break
+                                            if resolved:
+                                                break
+                                    except Exception:
+                                        resolved = None
+
+                                if not resolved:
+                                    page.show_snack("Could not resolve playable URL for this track", error=True)
+                                    return
+
+                                _do_download(resolved, title)
+                            except Exception as ex:
+                                page.show_snack(f"Failed to resolve playable URL: {ex}", error=True)
+
+                        threading.Thread(target=_resolve_and_download, daemon=True).start()
                     tr_img = None
                     try:
                         if api and tr_icon_field:
@@ -372,10 +426,10 @@ def make_show_card_details(
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.DOWNLOAD,
-                                tooltip="Download this track" if tr_url.startswith("http") else "Unable to download this track (yoto:# ids cannot be downloaded)",
+                                tooltip="Download this track" if isinstance(tr_url, str) and tr_url.startswith("http") else "Download (resolve playable URL)",
                                 icon_size=18,
-                                on_click=lambda ev, url=tr_url, title=tr_title: _on_download_click(ev, url, title),
-                                disabled=not tr_url or not tr_url.startswith("http"),
+                                on_click=lambda ev, url=tr_url, title=tr_title, ci=ch_index, ti=t_idx - 1: _on_download_click(ev, url, title, ci, ti),
+                                disabled=not tr_url and not c.cardId,
                             ),
                         ]
                     )
