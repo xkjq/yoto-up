@@ -26,6 +26,7 @@ from yoto_up.yoto_app.show_waveforms import show_waveforms_popup
 from yoto_up.yoto_app.startup import audio_adjust_utils
 from pydub import AudioSegment
 from yoto_up.yoto_app import utils as utils_mod
+from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_directory, pick_files
 
 # Try to import simpleaudio for audio playback
 # Annotate module variable as optional to satisfy type checkers
@@ -599,8 +600,16 @@ class UploadManager:
                 "Zenity not found; disabling FilePicker dialogs on Linux desktop"
             )
 
-        browse = ft.FilePicker() if _file_picker_supported else None
-        browse_files = ft.FilePicker() if _file_picker_supported else None
+        # Use a single shared FilePicker service when supported
+        if _file_picker_supported:
+            try:
+                picker = get_or_create_picker(page)
+            except Exception:
+                picker = None
+        else:
+            picker = None
+        browse = picker
+        browse_files = picker
         # When a folder is chosen we will populate file_rows_column
         folder = ft.TextField(label="Folder", width=400)
 
@@ -885,7 +894,10 @@ class UploadManager:
                 page.update()
 
         if browse_files is not None:
-            browse_files.on_upload = on_upload_file_result
+            try:
+                browse_files.on_upload = on_upload_file_result
+            except Exception:
+                pass
 
         def _require_file_picker() -> bool:
             if _file_picker_supported:
@@ -899,9 +911,8 @@ class UploadManager:
             return False
 
         async def _open_folder_picker(_e=None):
-            if not _require_file_picker() or browse is None:
-                return
-            selected_dir = await browse.get_directory_path()
+            # Use shared helper which handles availability/platform differences
+            selected_dir = await pick_directory(page)
             if selected_dir:
                 folder.value = selected_dir
                 try:
@@ -912,9 +923,7 @@ class UploadManager:
                 page.update()
 
         async def _open_files_picker(_e=None):
-            if not _require_file_picker() or browse_files is None:
-                return
-            files = await browse_files.pick_files(allow_multiple=True)
+            files = await pick_files(page, allow_multiple=True)
             await _handle_picked_files(files)
 
         # When the folder TextField is changed (user pastes or types a path), update the file list immediately
