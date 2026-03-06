@@ -950,6 +950,7 @@ def main(page: "Page"):
     # It may well be unnecssary with future flet upgrades
     def _load_icon_browser(ev=None) -> None:
         from yoto_up.yoto_app.icon_browser import build_icon_browser_panel as _builder
+        logger.debug("Loading icon browser on demand...")
 
         ui = _builder(page=page, api_ref=api_ref, ensure_api=ensure_api, show_snack=show_snack)
         panel = ui.get("panel") if isinstance(ui, dict) else ui
@@ -958,19 +959,19 @@ def main(page: "Page"):
             return
 
         # Find the index of the Icons tab and replace the placeholder control
+        logger.debug("Replacing icon browser placeholder with actual panel")
         idx = None
         for i, tab in enumerate(getattr(tab_bar, "tabs", [])):
             if getattr(tab, "label", None) == "Icons":
                 idx = i
                 break
+        logger.debug(f"Icons tab index: {idx}")
         tabs_control.content.controls[1].controls[idx] = panel
+        logger.debug("Icon browser panel set in tab content")
 
         # Keep reference and refresh UI
         page.icon_panel = panel
-        try:
-            page.update()
-        except Exception:
-            pass
+        page.update()
         logger.debug("Icon browser panel loaded on demand")
 
     page.load_icon_browser = _load_icon_browser
