@@ -2,6 +2,7 @@ import flet as ft
 from loguru import logger
 import numpy as np
 import matplotlib
+
 # Use non-GUI backend to avoid Tk/Tcl dependency when running headless
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -11,26 +12,38 @@ import contextlib
 import wave
 import os
 import tempfile
+from yoto_up.waveform_utils import batch_audio_stats
 
 WAVEFORM_DIALOG = None
 
-def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files, audio_adjust_utils, waveform_cache):
-    files = [getattr(row, 'filename', None) for row in file_rows_column.controls if getattr(row, 'filename', None)]
+
+def show_waveforms_popup(
+    page,
+    file_rows_column,
+    show_snack,
+    gain_adjusted_files,
+    audio_adjust_utils,
+    waveform_cache,
+):
+    files = [
+        getattr(row, "filename", None)
+        for row in file_rows_column.controls
+        if getattr(row, "filename", None)
+    ]
     if not files:
         show_snack("No files in upload queue.", error=True)
         return
-    if not hasattr(page, '_track_gains'):
+    if not hasattr(page, "_track_gains"):
         page._track_gains = {}
-    progress_text = ft.Text(f"Calculating waveform data... 0/{len(files)}", size=14)
+    progress_text = ft.Text(
+        value=f"Calculating waveform data... 0/{len(files)}", size=14
+    )
     progress_bar = ft.ProgressBar(width=300, value=0)
     progress_dlg = ft.AlertDialog(
-        title=ft.Text("Generating Waveforms"),
-        content=ft.Column([
-            progress_text,
-            progress_bar
-        ], expand=True),
+        title=ft.Text(value="Generating Waveforms"),
+        content=ft.Column(controls=[progress_text, progress_bar], expand=True),
         actions=[],
-        modal=True
+        modal=True,
     )
     page.show_dialog(progress_dlg)
     page.update()
@@ -40,8 +53,9 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         progress_bar.value = completed / total if total else 0
         page.update()
 
-    from waveform_utils import batch_audio_stats
-    stats_results = batch_audio_stats(files, waveform_cache, progress_callback=progress_callback)
+    stats_results = batch_audio_stats(
+        files, waveform_cache, progress_callback=progress_callback
+    )
     page.update()
 
     skipped_files = []
@@ -51,7 +65,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             reason = None
             if ext is None:
                 reason = "Unrecognized or missing file extension."
-            elif ext not in ['.wav', '.mp3']:
+            elif ext not in [".wav", ".mp3"]:
                 reason = f"Unsupported extension: {ext}"
             elif not os.path.exists(filepath):
                 reason = "File does not exist."
@@ -61,6 +75,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
 
     def plot_and_stats(audio, framerate, ext, filepath, gain_db=0.0):
         import pyloudnorm as pyln
+
         audio_adj = audio * (10 ** (gain_db / 20.0))
         max_amp = float(np.max(np.abs(audio_adj)))
         avg_amp = float(np.mean(np.abs(audio_adj)))
@@ -76,8 +91,8 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             audio_plot = audio_adj[idx]
         else:
             audio_plot = audio_adj
-        if ext == '.wav':
-            with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+        if ext == ".wav":
+            with contextlib.closing(wave.open(filepath, "rb")) as wf:
                 framerate = wf.getframerate()
                 n_frames = wf.getnframes()
                 times = np.linspace(0, n_frames / framerate, num=n)
@@ -87,56 +102,88 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         if n > max_points:
             times = times[idx]
         fig, ax = plt.subplots(figsize=(4, 1.2))
-        ax.plot(times, audio_plot, color='blue')
+        ax.plot(times, audio_plot, color="blue")
         ax.set_title(os.path.basename(filepath), fontsize=8)
-        ax.set_xlabel('Time (s)', fontsize=7)
-        ax.set_ylabel('Amplitude', fontsize=7)
-        ax.tick_params(axis='both', which='major', labelsize=6)
+        ax.set_xlabel("Time (s)", fontsize=7)
+        ax.set_ylabel("Amplitude", fontsize=7)
+        ax.tick_params(axis="both", which="major", labelsize=6)
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format="png")
         plt.close(fig)
         buf.seek(0)
-        img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-        fd, tmp_path = tempfile.mkstemp(suffix='.png')
+        img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        fd, tmp_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
-        with open(tmp_path, 'wb') as tmpfile:
+        with open(tmp_path, "wb") as tmpfile:
             tmpfile.write(base64.b64decode(img_b64))
         lufs_str = f"LUFS: {lufs:.2f} dB" if lufs is not None else "LUFS: (unavailable)"
-        label = ft.Text(f"Max amplitude: {max_amp:.2f}   Average amplitude: {avg_amp:.2f}   {lufs_str}", size=10, color=ft.Colors.BLUE)
+        label = ft.Text(
+            value=f"Max amplitude: {max_amp:.2f}   Average amplitude: {avg_amp:.2f}   {lufs_str}",
+            size=10,
+            color=ft.Colors.BLUE,
+        )
         warning = None
         if lufs is not None:
             if lufs > -9:
-                warning = ft.Text("Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)", size=10, color=ft.Colors.RED)
+                warning = ft.Text(
+                    value="Warning: LUFS is high! Track may be too loud for streaming (-9 dB or higher)",
+                    size=10,
+                    color=ft.Colors.RED,
+                )
             elif lufs > -16:
-                warning = ft.Text("Warning: LUFS is moderately high (-16 dB to -9 dB)", size=10, color=ft.Colors.YELLOW_900)
+                warning = ft.Text(
+                    value="Warning: LUFS is moderately high (-16 dB to -9 dB)",
+                    size=10,
+                    color=ft.Colors.YELLOW_900,
+                )
         return label, warning, tmp_path, lufs
 
     per_track = []
     n_images = 0
-    global_gain = {'value': getattr(page, '_global_gain', 0.0)}
+    global_gain = {"value": getattr(page, "_global_gain", 0.0)}
 
     # Actually process stats_results to build per_track and n_images
     for stat in stats_results:
         audio, max_amp, avg_amp, lufs, ext, filepath = stat
         if audio is not None:
-            if ext == '.wav':
-                with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+            if ext == ".wav":
+                with contextlib.closing(wave.open(filepath, "rb")) as wf:
                     framerate = wf.getframerate()
             else:
                 framerate = 44100
             # Use last gain value for this file if available
             last_gain = page._track_gains.get(filepath, 0.0)
-            gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=last_gain, label="Gain: {value} dB", width=320)
-            label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=last_gain)
+            gain_slider = ft.Slider(
+                min=-20,
+                max=20,
+                divisions=40,
+                value=last_gain,
+                label="Gain: {value} dB",
+                width=320,
+            )
+            label, warning, tmp_path, _lufs = plot_and_stats(
+                audio, framerate, ext, filepath, gain_db=last_gain
+            )
             img = ft.Image(src=tmp_path, width=320, height=100)
-            col = ft.Column([])
-            gain_val = {'value': last_gain}
-            def on_gain_change(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, col=col, gain_val=gain_val):
+            col = ft.Column(controls=[])
+            gain_val = {"value": last_gain}
+
+            def on_gain_change(
+                e,
+                audio=audio,
+                framerate=framerate,
+                ext=ext,
+                filepath=filepath,
+                col=col,
+                gain_val=gain_val,
+            ):
                 gain_db = e.control.value
-                gain_val['value'] = gain_db
+                gain_val["value"] = gain_db
                 page._track_gains[filepath] = gain_db
-                label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
+                label, warning, tmp_path, _lufs = plot_and_stats(
+                    audio, framerate, ext, filepath, gain_db=gain_db
+                )
                 col.controls.clear()
                 col.controls.append(label)
                 if warning:
@@ -146,17 +193,35 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 show_progress = abs(gain_db) > 0.01
                 progress_dlg = None
                 if show_progress:
-                    progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
+                    progress_dlg = ft.AlertDialog(
+                        title=ft.Text(value="Saving gain-adjusted audio..."),
+                        content=ft.ProgressBar(width=300),
+                        modal=True,
+                    )
                     page.show_dialog(progress_dlg)
                     page.update()
                 try:
                     if abs(gain_db) > 0.01:
                         if audio_adjust_utils is not None:
                             try:
-                                temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_db / 20.0)), framerate, ext, filepath, gain_db)
-                                gain_adjusted_files[filepath] = {'gain': gain_db, 'temp_path': temp_path}
+                                temp_path = getattr(
+                                    audio_adjust_utils, "save_adjusted_audio"
+                                )(
+                                    audio * (10 ** (gain_db / 20.0)),
+                                    framerate,
+                                    ext,
+                                    filepath,
+                                    gain_db,
+                                )
+                                gain_adjusted_files[filepath] = {
+                                    "gain": gain_db,
+                                    "temp_path": temp_path,
+                                }
                             except Exception as ex:
-                                show_snack(f"Failed to save adjusted audio for upload: {ex}", error=True)
+                                show_snack(
+                                    f"Failed to save adjusted audio for upload: {ex}",
+                                    error=True,
+                                )
                     else:
                         gain_adjusted_files.pop(filepath, None)
                 finally:
@@ -164,65 +229,126 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                         page.pop_dialog()
                         page.update()
                 page.update()
+
             gain_slider.on_change_end = on_gain_change
-            def on_save_adjusted_audio_click(e, audio=audio, framerate=framerate, ext=ext, filepath=filepath, gain_val=gain_val):
+
+            def on_save_adjusted_audio_click(
+                e,
+                audio=audio,
+                framerate=framerate,
+                ext=ext,
+                filepath=filepath,
+                gain_val=gain_val,
+            ):
                 if audio_adjust_utils is None:
                     show_snack("audio_adjust_utils could not be loaded", error=True)
                     return
-                progress_dlg = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.ProgressBar(width=300), modal=True)
+                progress_dlg = ft.AlertDialog(
+                    title=ft.Text(value="Saving gain-adjusted audio..."),
+                    content=ft.ProgressBar(width=300),
+                    modal=True,
+                )
                 page.show_dialog(progress_dlg)
                 page.update()
                 try:
-                    temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
+                    temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(
+                        audio * (10 ** (gain_val["value"] / 20.0)),
+                        framerate,
+                        ext,
+                        filepath,
+                        gain_val["value"],
+                    )
                     show_snack(f"Saved adjusted audio to: {temp_path}")
-                    if abs(gain_val['value']) > 0.01:
-                        logger.debug(f"Storing gain-adjusted file for {filepath} with gain {gain_val['value']} dB at {temp_path}")
-                        gain_adjusted_files[filepath] = {'gain': gain_val['value'], 'temp_path': temp_path}
+                    if abs(gain_val["value"]) > 0.01:
+                        logger.debug(
+                            f"Storing gain-adjusted file for {filepath} with gain {gain_val['value']} dB at {temp_path}"
+                        )
+                        gain_adjusted_files[filepath] = {
+                            "gain": gain_val["value"],
+                            "temp_path": temp_path,
+                        }
                         # Update the upload queue row to use the new temp_path
-                        for row in getattr(file_rows_column, 'controls', []):
-                            logger.debug(f"Checking row with filename: {getattr(row, 'filename', None)} against {filepath}")
-                            fileuploadrow = getattr(row, '_fileuploadrow', None)
+                        for row in getattr(file_rows_column, "controls", []):
+                            logger.debug(
+                                f"Checking row with filename: {getattr(row, 'filename', None)} against {filepath}"
+                            )
+                            fileuploadrow = getattr(row, "_fileuploadrow", None)
                             if fileuploadrow and fileuploadrow.filepath == filepath:
                                 fileuploadrow.update_file(temp_path)
                                 # Also update the row's filename attribute for UI/lookup consistency
-                                setattr(row, 'filename', temp_path)
+                                setattr(row, "filename", temp_path)
                                 break
                             else:
-                                logger.debug("No matching fileuploadrow found in this row.")
+                                logger.debug(
+                                    "No matching fileuploadrow found in this row."
+                                )
                     else:
-                        logger.debug(f"Gain is zero, removing any adjusted file entry for {filepath}")
+                        logger.debug(
+                            f"Gain is zero, removing any adjusted file entry for {filepath}"
+                        )
                         gain_adjusted_files.pop(filepath, None)
                 except Exception as ex:
                     show_snack(f"Failed to save adjusted audio: {ex}", error=True)
                 finally:
                     page.pop_dialog()
                     page.update()
-            save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_click, tooltip="Save gain-adjusted audio to a temp file for upload")
+
+            save_btn = ft.TextButton(
+                content="Save Adjusted Audio",
+                on_click=on_save_adjusted_audio_click,
+                tooltip="Save gain-adjusted audio to a temp file for upload",
+            )
             col.controls.append(label)
             if warning:
                 col.controls.append(warning)
             col.controls.append(img)
             col.controls.append(save_btn)
-            per_track.append((audio, framerate, ext, filepath, gain_slider, col, gain_val))
+            per_track.append(
+                (audio, framerate, ext, filepath, gain_slider, col, gain_val)
+            )
             n_images += 1
         else:
-            per_track.append((None, None, None, None, None, ft.Text("(No waveform for file)", size=10, color=ft.Colors.RED), None))
+            per_track.append(
+                (
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    ft.Text(
+                        value="(No waveform for file)", size=10, color=ft.Colors.RED
+                    ),
+                    None,
+                )
+            )
 
     def on_global_gain_change(e):
-        global_gain['value'] = e.control.value
+        global_gain["value"] = e.control.value
         page._global_gain = e.control.value
-        progress_text2 = ft.Text("Applying global gain to all tracks...", size=14)
+        progress_text2 = ft.Text(value="Applying global gain to all tracks...", size=14)
         progress_bar2 = ft.ProgressBar(width=300, value=0)
-        progress_dlg2 = ft.AlertDialog(title=ft.Text("Applying Global Gain..."), content=ft.Column([progress_text2, progress_bar2]), modal=True)
+        progress_dlg2 = ft.AlertDialog(
+            title=ft.Text(value="Applying Global Gain..."),
+            content=ft.Column(controls=[progress_text2, progress_bar2]),
+            modal=True,
+        )
         page.show_dialog(progress_dlg2)
         page.update()
         total = len(per_track)
         completed = 0
-        for i, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track):
+        for i, (
+            audio,
+            framerate,
+            ext,
+            filepath,
+            gain_slider,
+            col,
+            gain_val,
+        ) in enumerate(per_track):
             if gain_slider is not None and audio is not None:
-                gain_slider.value = global_gain['value']
-                gain_val['value'] = global_gain['value']
-                page._track_gains[filepath] = global_gain['value']
+                gain_slider.value = global_gain["value"]
+                gain_val["value"] = global_gain["value"]
+                page._track_gains[filepath] = global_gain["value"]
             completed += 1
             progress_text2.value = f"Processed {completed} of {total} tracks"
             progress_bar2.value = completed / total
@@ -230,9 +356,23 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
         page.pop_dialog()
         page.update()
         # Reopen the waveform popup after applying global gain, so waveforms are regenerated
-        show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files, audio_adjust_utils, waveform_cache)
+        show_waveforms_popup(
+            page,
+            file_rows_column,
+            show_snack,
+            gain_adjusted_files,
+            audio_adjust_utils,
+            waveform_cache,
+        )
 
-    global_gain_slider = ft.Slider(min=-20, max=20, divisions=40, value=global_gain['value'], label="Global Gain: {value} dB", width=320)
+    global_gain_slider = ft.Slider(
+        min=-20,
+        max=20,
+        divisions=40,
+        value=global_gain["value"],
+        label="Global Gain: {value} dB",
+        width=320,
+    )
     global_gain_slider.on_change_end = on_global_gain_change
 
     # Auto-set controls: target LUFS and buttons to autoset per-file or global
@@ -240,11 +380,13 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
 
     def apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, gain_db):
         try:
-            label, warning, tmp_path, _lufs = plot_and_stats(audio, framerate, ext, filepath, gain_db=gain_db)
+            label, warning, tmp_path, _lufs = plot_and_stats(
+                audio, framerate, ext, filepath, gain_db=gain_db
+            )
         except Exception as ex:
             show_snack(f"Failed to generate preview for {filepath}: {ex}", error=True)
             return
-        gain_val['value'] = gain_db
+        gain_val["value"] = gain_db
         # Update UI in column
         col.controls.clear()
         col.controls.append(label)
@@ -265,19 +407,25 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 continue
             try:
                 import pyloudnorm as pyln
+
                 meter = pyln.Meter(framerate)
                 lufs = float(meter.integrated_loudness(audio))
             except Exception:
                 lufs = None
             if lufs is None:
-                show_snack(f"LUFS unavailable for {os.path.basename(filepath)}; skipping", error=False)
+                show_snack(
+                    f"LUFS unavailable for {os.path.basename(filepath)}; skipping",
+                    error=False,
+                )
                 continue
             rec_gain = target - lufs
             # clamp to slider range
             rec_gain = max(min(rec_gain, gain_slider.max), gain_slider.min)
             gain_slider.value = rec_gain
             # regenerate preview
-            apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, rec_gain)
+            apply_preview_to_track(
+                audio, framerate, ext, filepath, col, gain_val, rec_gain
+            )
             page._track_gains[filepath] = rec_gain
         page.update()
 
@@ -294,6 +442,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 continue
             try:
                 import pyloudnorm as pyln
+
                 meter = pyln.Meter(framerate)
                 lufs = float(meter.integrated_loudness(audio))
             except Exception:
@@ -311,7 +460,9 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
                 continue
             rec_gain = max(min(mean_gain, gain_slider.max), gain_slider.min)
             gain_slider.value = rec_gain
-            apply_preview_to_track(audio, framerate, ext, filepath, col, gain_val, rec_gain)
+            apply_preview_to_track(
+                audio, framerate, ext, filepath, col, gain_val, rec_gain
+            )
             page._track_gains[filepath] = rec_gain
         page.update()
 
@@ -329,42 +480,82 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             "- If you need to normalize loudness precisely, consider using LUFS-based normalisation tools outside this dialog.",
         ]
         help_text = "\n\n".join(help_lines)
-        help_dlg = ft.AlertDialog(title=ft.Text("Gain adjustment help"), content=ft.Text(help_text), actions=[ft.TextButton("Close", on_click=lambda e: page.show_dialog(WAVEFORM_DIALOG))])
+        help_dlg = ft.AlertDialog(
+            title=ft.Text(value="Gain adjustment help"),
+            content=ft.Text(value=help_text),
+            actions=[
+                ft.TextButton(
+                    content=ft.Text(value="Close"),
+                    on_click=lambda e: page.show_dialog(WAVEFORM_DIALOG),
+                )
+            ],
+        )
         page.show_dialog(help_dlg)
 
     # Now that show_gain_help exists, create the auto-row containing autoset controls
-    auto_row = ft.Row([
-        target_lufs_field,
-        ft.ElevatedButton("Auto-set per-file", on_click=on_auto_per_file),
-        ft.ElevatedButton("Auto-set global", on_click=on_auto_global),
-        ft.TextButton("Help", on_click=show_gain_help),
-    ], alignment=ft.MainAxisAlignment.START)
+    auto_row = ft.Row(
+        controls=[
+            target_lufs_field,
+            ft.ElevatedButton(
+                content=ft.Text(value="Auto-set per-file"), on_click=on_auto_per_file
+            ),
+            ft.ElevatedButton(
+                content=ft.Text(value="Auto-set global"), on_click=on_auto_global
+            ),
+            ft.TextButton(content=ft.Text(value="Help"), on_click=show_gain_help),
+        ],
+        alignment=ft.MainAxisAlignment.START,
+    )
 
     save_btn = None
     if n_images > 0:
+
         def on_save_adjusted_audio_all_click(e):
             if audio_adjust_utils is None:
                 show_snack("audio_adjust_utils could not be loaded", error=True)
                 return
-            progress_text3 = ft.Text("Saving gain-adjusted audio for all tracks...", size=14)
+            progress_text3 = ft.Text(
+                value="Saving gain-adjusted audio for all tracks...", size=14
+            )
             progress_bar3 = ft.ProgressBar(width=300, value=0)
-            progress_dlg3 = ft.AlertDialog(title=ft.Text("Saving gain-adjusted audio..."), content=ft.Column([progress_text3, progress_bar3]), modal=True)
+            progress_dlg3 = ft.AlertDialog(
+                title=ft.Text(value="Saving gain-adjusted audio..."),
+                content=ft.Column(controls=[progress_text3, progress_bar3]),
+                modal=True,
+            )
             page.show_dialog(progress_dlg3)
             page.update()
             total = n_images
             completed = 0
             errors = []
-            for audio, framerate, ext, filepath, gain_slider, col, gain_val in per_track:
+            for (
+                audio,
+                framerate,
+                ext,
+                filepath,
+                gain_slider,
+                col,
+                gain_val,
+            ) in per_track:
                 try:
-                    temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(audio * (10 ** (gain_val['value'] / 20.0)), framerate, ext, filepath, gain_val['value'])
-                    if abs(gain_val['value']) > 0.01:
-                        gain_adjusted_files[filepath] = {'gain': gain_val['value'], 'temp_path': temp_path}
+                    temp_path = getattr(audio_adjust_utils, "save_adjusted_audio")(
+                        audio * (10 ** (gain_val["value"] / 20.0)),
+                        framerate,
+                        ext,
+                        filepath,
+                        gain_val["value"],
+                    )
+                    if abs(gain_val["value"]) > 0.01:
+                        gain_adjusted_files[filepath] = {
+                            "gain": gain_val["value"],
+                            "temp_path": temp_path,
+                        }
                         # Update the upload queue row to use the new temp_path
-                        for row in getattr(file_rows_column, 'controls', []):
-                            fileuploadrow = getattr(row, '_fileuploadrow', None)
+                        for row in getattr(file_rows_column, "controls", []):
+                            fileuploadrow = getattr(row, "_fileuploadrow", None)
                             if fileuploadrow and fileuploadrow.filepath == filepath:
                                 fileuploadrow.update_file(temp_path)
-                                setattr(row, 'filename', temp_path)
+                                setattr(row, "filename", temp_path)
                                 break
                     else:
                         gain_adjusted_files.pop(filepath, None)
@@ -380,8 +571,15 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             if errors:
                 show_snack(f"Some files failed: {'; '.join(errors)}", error=True)
             else:
-                show_snack("All gain-adjusted audio files saved and upload queue updated.")
-        save_btn = ft.TextButton("Save Adjusted Audio", on_click=on_save_adjusted_audio_all_click, tooltip="Save gain-adjusted audio for all tracks in the dialog")
+                show_snack(
+                    "All gain-adjusted audio files saved and upload queue updated."
+                )
+
+        save_btn = ft.TextButton(
+            content=ft.Text(value="Save Adjusted Audio"),
+            on_click=on_save_adjusted_audio_all_click,
+            tooltip="Save gain-adjusted audio for all tracks in the dialog",
+        )
 
     images = []
     if n_images == 0:
@@ -390,24 +588,46 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             msg += "\n\nDetails:"
             for s in skipped_files:
                 msg += f"\n- {s}"
-        images = [ft.Text(msg, color=ft.Colors.RED)]
-        dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
+        images = [ft.Text(value=msg, color=ft.Colors.RED)]
+        dlg_actions = [
+            ft.TextButton(content=ft.Text(value="Help"), on_click=show_gain_help),
+            ft.TextButton(
+                content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()
+            ),
+        ]
     else:
         images.append(global_gain_slider)
-        images.append(ft.Text("Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.", size=10, color=ft.Colors.BLUE))
+        images.append(
+            ft.Text(
+                value="Adjust all tracks at once with the global gain slider above. You can still fine-tune individual tracks below.",
+                size=10,
+                color=ft.Colors.BLUE,
+            )
+        )
         # Add autoset controls (target LUFS + auto-set buttons)
         images.append(auto_row)
-        for idx, (audio, framerate, ext, filepath, gain_slider, col, gain_val) in enumerate(per_track, start=1):
+        for idx, (
+            audio,
+            framerate,
+            ext,
+            filepath,
+            gain_slider,
+            col,
+            gain_val,
+        ) in enumerate(per_track, start=1):
             # Header for the track group (track number + filename)
             try:
                 fname = os.path.basename(filepath) if filepath else "(unknown)"
             except Exception:
                 fname = str(filepath)
-            header = ft.Row([
-                ft.Text(f"Track {idx}", weight=ft.FontWeight.BOLD, size=12),
-                ft.Text(" — "),
-                ft.Text(fname, size=11, color=ft.Colors.BLUE),
-            ], alignment=ft.MainAxisAlignment.START)
+            header = ft.Row(
+                controls=[
+                    ft.Text(value=f"Track {idx}", weight=ft.FontWeight.BOLD, size=12),
+                    ft.Text(value=" — "),
+                    ft.Text(value=fname, size=11, color=ft.Colors.BLUE),
+                ],
+                alignment=ft.MainAxisAlignment.START,
+            )
 
             # Group the controls for this track inside a bordered container so each track is visually distinct
             group_children = [header]
@@ -417,7 +637,7 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             group_children.append(col)
 
             track_group = ft.Container(
-                content=ft.Column(group_children, tight=True),
+                content=ft.Column(controls=group_children, tight=True),
                 padding=ft.padding.all(8),
                 margin=ft.margin.only(top=6, bottom=6),
                 border=ft.border.all(1, ft.Colors.GREY_300),
@@ -426,17 +646,34 @@ def show_waveforms_popup(page, file_rows_column, show_snack, gain_adjusted_files
             )
 
             images.append(track_group)
-        images.insert(0, ft.Text(f"Generated {n_images} waveform(s) for {len(files)} file(s).", color=ft.Colors.GREEN))
+        images.insert(
+            0,
+            ft.Text(
+                value=f"Generated {n_images} waveform(s) for {len(files)} file(s).",
+                color=ft.Colors.GREEN,
+            ),
+        )
         if save_btn:
-            dlg_actions = [save_btn, ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
+            dlg_actions = [
+                save_btn,
+                ft.TextButton(content=ft.Text(value="Help"), on_click=show_gain_help),
+                ft.TextButton(
+                    content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()
+                ),
+            ]
         else:
-            dlg_actions = [ft.TextButton("Help", on_click=show_gain_help), ft.TextButton("Close", on_click=lambda e: page.pop_dialog())]
+            dlg_actions = [
+                ft.TextButton(content=ft.Text(value="Help"), on_click=show_gain_help),
+                ft.TextButton(
+                    content=ft.Text(value="Close"), on_click=lambda e: page.pop_dialog()
+                ),
+            ]
 
     dlg = ft.AlertDialog(
-        title=ft.Text("Waveforms for files to be uploaded"),
-        content=ft.Column(images, scroll=ft.ScrollMode.AUTO, expand=True),
+        title=ft.Text(value="Waveforms for files to be uploaded"),
+        content=ft.Column(controls=images, scroll=ft.ScrollMode.AUTO, expand=True),
         actions=dlg_actions,
-        scrollable=True
+        scrollable=True,
     )
     global WAVEFORM_DIALOG
     WAVEFORM_DIALOG = dlg
