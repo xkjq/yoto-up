@@ -570,15 +570,6 @@ def build_playlists_panel(
     delete_selected_btn.visible = False
     export_selected_btn = ft.Button(content=ft.Text(value="Export Selected"), disabled=True)
     export_selected_btn.visible = False
-    # Import card controls
-    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(
-        page, "web", False
-    )
-    try:
-        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
-    except Exception:
-        _zenity_missing = False
-    _file_picker_supported = not _zenity_missing
 
     # Create or reuse a shared FilePicker via helper (handles zenity/platform)
     #import_picker = get_or_create_picker(page) if _file_picker_supported else None
