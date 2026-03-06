@@ -23,6 +23,7 @@ import threading
 import flet as ft
 from loguru import logger
 from yoto_up.yoto_app import cover_templates
+from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
 
 try:
     from PIL import Image, ImageDraw
@@ -2658,41 +2659,24 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_preview()
             show_snack(f"Added {len(e.files)} image(s)")
     
-    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
-    try:
-        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
-    except Exception:
-        _zenity_missing = False
-    _file_picker_supported = not _zenity_missing
-
-    file_picker = ft.FilePicker() if _file_picker_supported else None
-    if file_picker is not None:
-        try:
-            page.services.append(file_picker)
-        except Exception:
-            pass
-    
     async def on_add_images(e):
-        """Open file picker to add images."""
-        if file_picker is None:
-            show_snack(
-                "Adding images requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
-                error=True,
-            )
+        """Open file picker to add images using shared picker helper."""
+        files = await pick_files(page, allow_multiple=True)
+        if not files:
+            # If pickers are unsupported, show helpful message
+            if get_or_create_picker(page) is None:
+                show_snack(
+                    "Adding images requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
+                    error=True,
+                )
             return
-        files = await file_picker.pick_files(
-            allowed_extensions=["png", "jpg", "jpeg", "bmp", "gif"],
-            allow_multiple=True,
-        )
-        # mimic previous on_result flow
-        if files:
-            for f in files:
-                if getattr(f, "path", None):
-                    cover_img = CoverImage(f.path)
-                    cover_images.append(cover_img)
-            update_image_list()
-            update_preview()
-            show_snack(f"Added {len(files)} image(s)")
+        for f in files:
+            if getattr(f, "path", None):
+                cover_img = CoverImage(f.path)
+                cover_images.append(cover_img)
+        update_image_list()
+        update_preview()
+        show_snack(f"Added {len(files)} image(s)")
     
     def on_generate_preview(e):
         """Generate preview button handler."""

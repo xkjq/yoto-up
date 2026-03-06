@@ -29,6 +29,7 @@ from loguru import logger
 import time
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.paths import save_playlists, VERSIONS_DIR
+from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
 
 # Guard against duplicate/overlapping playlist fetches (many UI actions
 # may trigger a refresh on startup). Use a simple lock + cooldown so that
@@ -579,10 +580,8 @@ def build_playlists_panel(
         _zenity_missing = False
     _file_picker_supported = not _zenity_missing
 
-    import_picker = ft.FilePicker() if _file_picker_supported else None
-    # FilePicker is a service in Flet 0.80+; register it with page.services.
-    if import_picker is not None:
-        page.services.append(import_picker)
+    # Create or reuse a shared FilePicker via helper (handles zenity/platform)
+    #import_picker = get_or_create_picker(page) if _file_picker_supported else None
     import_card_btn = ft.Button(content=ft.Text(value="Import Card(s)"))
     restore_versions_btn = ft.Button(content=ft.Text(value="Restore Versions"))
 
@@ -1574,15 +1573,13 @@ def build_playlists_panel(
 
     async def _on_import_card_click(e=None):
         try:
-            if import_picker is None:
+            files = await pick_files(page, allow_multiple=True)
+            if not files:
                 page.show_snack(
-                    "Import requires native file dialogs. Install 'zenity' on Linux (sudo apt-get install zenity).",
+                    "Import cancelled or file picker unavailable.",
                     error=True,
                 )
                 return
-            files = await import_picker.pick_files(
-                dialog_title="Select Card JSON file(s) to import", allow_multiple=True
-            )
             _on_import_pick_result(files)
         except Exception as ex:
             logger.error(f"import_card click failed: {ex}")

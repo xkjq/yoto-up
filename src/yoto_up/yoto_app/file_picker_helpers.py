@@ -1,6 +1,7 @@
 import sys
 import shutil
 from typing import Optional, List
+from loguru import logger
 
 import flet as ft
 
@@ -48,6 +49,7 @@ async def pick_directory(page) -> Optional[str]:
 
 
 async def pick_files(page, allow_multiple: bool = True) -> Optional[List[ft.FilePickerFile]]:
+    logger.debug(f"Attempting to pick files with allow_multiple={allow_multiple}")
     picker = getattr(page, "file_picker_files", None) or getattr(page, "file_picker", None)
     if picker is None:
         picker = get_or_create_picker(page)

@@ -10,6 +10,7 @@ from loguru import logger
 from yoto_up.models import Card
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.api_manager import ensure_api
+from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
 
 
 def add_cover_dialog(page, c: Card):
@@ -26,19 +27,7 @@ def add_cover_dialog(page, c: Card):
             page.update()
 
     url_field = ft.TextField(label="Image URL (leave empty to upload file)")
-    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
-    try:
-        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
-    except Exception:
-        _zenity_missing = False
-    _file_picker_supported = not _zenity_missing
-
-    picker = ft.FilePicker() if _file_picker_supported else None
-    if picker is not None:
-        try:
-            page.services.append(picker)
-        except Exception:
-            pass
+    picker = get_or_create_picker(page)
     file_label = ft.Text(value="No file chosen")
 
     def _warn_missing_file_picker():
@@ -87,10 +76,11 @@ def add_cover_dialog(page, c: Card):
             logger.error("Error in on_pick_result")
 
     async def _pick_cover_file(_e=None):
-        if picker is None:
+        files = await pick_files(page, allow_multiple=False)
+        if not files:
+            # picker unavailable or user cancelled
             _warn_missing_file_picker()
             return
-        files = await picker.pick_files(allow_multiple=False)
         try:
             class _E:
                 files = []
@@ -99,7 +89,7 @@ def add_cover_dialog(page, c: Card):
             ev.files = files
             on_pick_result(ev)
         except Exception:
-            pass
+            logger.exception("Error handling picked cover file")
 
     def do_upload(card: Card):
         img_path = file_label.value if file_label.value and file_label.value != "No file chosen" else None
