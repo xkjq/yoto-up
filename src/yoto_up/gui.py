@@ -42,8 +42,6 @@ build_icon_browser_panel = None
 INTRO_OUTRO_DIALOG = None
 ENABLE_ICON_BROWSER = True
 
-# ft.context.disable_auto_update()
-
 AUTHENTICATE_TEXT = """Not authenticated.
 
 To authenticate with your Yoto account:

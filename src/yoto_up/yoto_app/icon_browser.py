@@ -40,10 +40,19 @@ def build_icon_browser_panel(
     """
     logger.debug("Building Icon Browser panel")
     # top-level panel: header + row with left (scrollable icons) and right (fixed details)
+    # Badge showing number of cached icons next to the refresh button
+    icon_count_number = ft.Text(value="0", size=12)
+    icon_count_badge = ft.Container(
+        content=icon_count_number,
+        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+        border_radius=8,
+    )
+
     panel_header = ft.Row(
         controls=[
             ft.Text(value="Icon Browser", size=20, weight=ft.FontWeight.BOLD),
             ft.Button(content="Refresh Index", on_click=lambda e: build_index()),
+            icon_count_badge,
         ]
     )
 
@@ -284,30 +293,27 @@ def build_icon_browser_panel(
 
     def update_filter_counts():
         """Update the numeric counts next to each source filter checkbox."""
-        try:
-            icons = load_cached_icons()
-            off = 0
-            yotoi = 0
-            loc = 0
-            for p in icons:
-                try:
-                    if path_is_official(p):
-                        off += 1
-                    elif path_is_yotoicons(p):
-                        yotoi += 1
-                    else:
-                        loc += 1
-                except Exception:
-                    loc += 1
-            official_count_text.value = str(off)
-            yotoicons_count_text.value = str(yotoi)
-            local_count_text.value = str(loc)
+        logger.debug("update_filter_counts: counting icons for each source")
+        icons = load_cached_icons()
+        off = 0
+        yotoi = 0
+        loc = 0
+        for p in icons:
             try:
-                page.update()
+                if path_is_official(p):
+                    off += 1
+                elif path_is_yotoicons(p):
+                    yotoi += 1
+                else:
+                    loc += 1
             except Exception:
-                pass
-        except Exception:
-            pass
+                loc += 1
+        icon_count_number.value = str(len(icons))
+        logger.debug(f"update_filter_counts: icon_count={len(icons)}, official={off}, yotoicons={yotoi}, local={loc}")
+        official_count_text.value = str(off)
+        yotoicons_count_text.value = str(yotoi)
+        local_count_text.value = str(loc)
+        page.update()
 
     def build_index():
         """Build in-memory index of metadata and candidate strings for each cached icon.
@@ -391,16 +397,11 @@ def build_icon_browser_panel(
                 _meta_source[p] = None
                 _candidates[p] = [os.path.basename(p).lower()]
         _index_built = True
-        try:
-            status_text.value = ""
-            page.update()
-        except Exception:
-            pass
+        status_text.value = ""
+        page.update()
         # update filter counts whenever the index is rebuilt
-        try:
-            update_filter_counts()
-        except Exception:
-            pass
+        logger.debug("build_index: updating filter counts after index rebuild")
+        update_filter_counts()
 
     def find_metadata_for_path(p: str):
         pth = Path(p)
@@ -703,6 +704,7 @@ def build_icon_browser_panel(
     def render_icons(icons):
         logger.debug(f"render_icons: rendering {len(icons)} icons")
         icons_container.controls.clear()
+        icon_count_number.value = str(len(icons))
 
         def _on_click(p):
             # small debug feedback
