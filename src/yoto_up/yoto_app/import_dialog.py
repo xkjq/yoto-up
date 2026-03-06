@@ -14,6 +14,7 @@ import platform
 import io as _io
 import shutil
 from yoto_up.paths import STAMPS_DIR
+from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
 
 # Use centralized STAMPS_DIR from paths.py (absolute Path-like)
 stamps_dir = str(STAMPS_DIR)
@@ -34,13 +35,6 @@ def open_import_dialog(editor, ev):
     except Exception:
         _zenity_missing = False
     _file_picker_supported = not _zenity_missing
-
-    file_picker = ft.FilePicker() if _file_picker_supported else None
-    if file_picker is not None and page_local and getattr(page_local, 'services', None) is not None:
-        try:
-            page_local.services.append(file_picker)
-        except Exception:
-            pass
 
     def _warn_missing_file_picker():
         if not page_local:
@@ -78,20 +72,21 @@ def open_import_dialog(editor, ev):
             pass
 
     async def _open_sheet_picker(ev2=None):
-        if file_picker is None:
-            _warn_missing_file_picker()
+        files = await pick_files(page_local, allow_multiple=False)
+        if not files:
+            # If pickers are unsupported, show helpful message
+            if get_or_create_picker(page_local) is None:
+                _warn_missing_file_picker()
             return
-        files = await file_picker.pick_files()
-        if files:
-            try:
-                class _E:
-                    pass
-                ev = _E()
-                ev.files = files
-                ev.page = page_local
-                on_file_pick(ev)
-            except Exception:
+        try:
+            class _E:
                 pass
+            ev = _E()
+            ev.files = files
+            ev.page = page_local
+            on_file_pick(ev)
+        except Exception:
+            pass
 
     choose_btn = ft.TextButton("Choose file", on_click=_open_sheet_picker)
     auto_analyze_btn = ft.TextButton("Auto Analyze", on_click=lambda ev3: auto_analyze())
