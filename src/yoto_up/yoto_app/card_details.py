@@ -7,6 +7,8 @@ import json
 import traceback
 from copy import deepcopy
 from pathlib import Path
+import sys
+import shutil
 
 import flet as ft
 import re
@@ -251,18 +253,42 @@ def make_show_card_details(
 
                     def _on_download_click(ev=None, url=tr_url, title=tr_title, ch_i=None, tr_i=None):
                         import httpx
-                        from pathlib import Path
+                        from pathlib import Path as _Path
 
-                        def _do_download(resolved_url, title_local):
+                        async def _pick_folder():
+                            # Ensure a FilePicker is available on the page.services
+                            picker = getattr(page, 'download_folder_picker', None)
+                            if picker is None:
+                                _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+                                try:
+                                    _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+                                except Exception:
+                                    _zenity_missing = False
+                                _file_picker_supported = not _zenity_missing
+                                if _file_picker_supported:
+                                    try:
+                                        picker = ft.FilePicker()
+                                        page.services.append(picker)
+                                        page.download_folder_picker = picker
+                                    except Exception:
+                                        picker = None
+                            if picker is None:
+                                return None
+                            try:
+                                selected = await picker.get_directory_path()
+                                return selected
+                            except Exception:
+                                return None
+
+                        def _do_download(resolved_url, title_local, dest_folder):
                             try:
                                 if not resolved_url or not resolved_url.startswith("http"):
                                     page.show_snack("No valid URL for this track", error=True)
                                     return
-                                downloads_dir = Path("downloads")
-                                downloads_dir.mkdir(exist_ok=True)
+                                downloads_dir = _Path(dest_folder) if dest_folder else _Path("downloads")
+                                downloads_dir.mkdir(parents=True, exist_ok=True)
                                 # Use title or fallback to last part of URL
                                 filename = title_local or resolved_url.split("/")[-1]
-                                # Ensure safe filename
                                 filename = "_".join(filename.split())
                                 if tr_format and not filename.lower().endswith(f".{tr_format}"):
                                     filename += f".{tr_format}"
@@ -276,40 +302,32 @@ def make_show_card_details(
                             except Exception as ex:
                                 page.show_snack(f"Download failed: {ex}", error=True)
 
-                        # If the provided URL is already an http(s) URL, download directly
-                        if url and isinstance(url, str) and url.startswith("http"):
-                            threading.Thread(target=lambda: _do_download(url, title), daemon=True).start()
-                            return
-
-                        # Otherwise, attempt to resolve a playable URL by fetching the playable card.
-                        # Run in background thread and do NOT persist or overwrite local caches/versions.
-                        def _resolve_and_download():
-                            try:
-                                card_id = c.cardId
-                                if not card_id:
-                                    page.show_snack("Unable to determine card id", error=True)
-                                    return
-                                # Request playable card but avoid saving a local version
-                                full = api.get_card(card_id, playable=True, save_version_if_missing=False)
-                                # Try to locate the track in the returned playable card
-                                resolved = None
+                        async def _pick_and_download():
+                            # resolve URL (either provided or via playable card)
+                            resolved = None
+                            if url and isinstance(url, str) and url.startswith("http"):
+                                resolved = url
+                            else:
                                 try:
-                                    chapters = full.get_chapters()
-                                    if ch_i is not None and tr_i is not None:
-                                        if 0 <= ch_i < len(chapters):
+                                    card_id = c.cardId
+                                    if not card_id:
+                                        page.show_snack("Unable to determine card id", error=True)
+                                        return
+                                    full = api.get_card(card_id, playable=True, save_version_if_missing=False)
+                                    # try to find specific track
+                                    try:
+                                        chapters = full.get_chapters()
+                                        if ch_i is not None and tr_i is not None and 0 <= ch_i < len(chapters):
                                             ch = chapters[ch_i]
                                             tracks = getattr(ch, "tracks", []) or []
                                             if 0 <= tr_i < len(tracks):
-                                                candidate = tracks[tr_i]
-                                                candidate_url = getattr(candidate, "trackUrl", None)
-                                                if candidate_url and isinstance(candidate_url, str) and candidate_url.startswith("http"):
-                                                    resolved = candidate_url
-                                except Exception:
-                                    resolved = None
-
-                                # Fallback: search all tracks for a playable http URL
-                                if not resolved:
-                                    try:
+                                                cand = tracks[tr_i]
+                                                cand_url = getattr(cand, "trackUrl", None)
+                                                if cand_url and isinstance(cand_url, str) and cand_url.startswith("http"):
+                                                    resolved = cand_url
+                                    except Exception:
+                                        resolved = None
+                                    if not resolved:
                                         for ch in full.get_chapters():
                                             for trc in getattr(ch, "tracks", []) or []:
                                                 candidate_url = getattr(trc, "trackUrl", None)
@@ -318,18 +336,28 @@ def make_show_card_details(
                                                     break
                                             if resolved:
                                                 break
-                                    except Exception:
-                                        resolved = None
-
-                                if not resolved:
-                                    page.show_snack("Could not resolve playable URL for this track", error=True)
+                                except Exception as ex:
+                                    page.show_snack(f"Failed to resolve playable URL: {ex}", error=True)
                                     return
 
-                                _do_download(resolved, title)
-                            except Exception as ex:
-                                page.show_snack(f"Failed to resolve playable URL: {ex}", error=True)
+                            if not resolved:
+                                page.show_snack("Could not resolve playable URL for this track", error=True)
+                                return
 
-                        threading.Thread(target=_resolve_and_download, daemon=True).start()
+                            # ask user to pick destination folder
+                            dest = await _pick_folder()
+                            if not dest:
+                                page.show_snack("No destination folder selected", error=True)
+                                return
+
+                            # download in background thread
+                            threading.Thread(target=lambda: _do_download(resolved, title, dest), daemon=True).start()
+
+                        try:
+                            page.run_task(_pick_and_download)
+                        except Exception:
+                            # fallback: run in thread that resolves and downloads without folder picker
+                            threading.Thread(target=lambda: _do_download(url, title, "downloads"), daemon=True).start()
                     tr_img = None
                     try:
                         if api and tr_icon_field:
@@ -767,6 +795,85 @@ def make_show_card_details(
             logger.debug("Closing card details dialog")
             page.pop_dialog()
             page.update()
+
+
+        def download_all_tracks(ev=None):
+            async def _pick_and_download_all():
+                # pick destination folder
+                picker = getattr(page, 'download_folder_picker', None)
+                if picker is None:
+                    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
+                    try:
+                        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
+                    except Exception:
+                        _zenity_missing = False
+                    _file_picker_supported = not _zenity_missing
+                    if _file_picker_supported:
+                        try:
+                            picker = ft.FilePicker()
+                            page.services.append(picker)
+                            page.download_folder_picker = picker
+                        except Exception:
+                            picker = None
+
+                if picker is None:
+                    page.show_snack("Folder picker unavailable; downloads will go to 'downloads' folder")
+                    dest = "downloads"
+                else:
+                    try:
+                        dest = await picker.get_directory_path()
+                        if not dest:
+                            page.show_snack("No destination selected", error=True)
+                            return
+                    except Exception:
+                        page.show_snack("Failed to open folder picker", error=True)
+                        return
+
+                def _worker_all():
+                    import httpx
+                    from pathlib import Path as _P
+                    try:
+                        card_id = c.cardId
+                        if not card_id:
+                            page.show_snack("Unable to determine card id", error=True)
+                            return
+                        full = api.get_card(card_id, playable=True, save_version_if_missing=False)
+                        urls = []
+                        for ch in full.get_chapters():
+                            for trc in getattr(ch, "tracks", []) or []:
+                                candidate_url = getattr(trc, "trackUrl", None)
+                                if candidate_url and isinstance(candidate_url, str) and candidate_url.startswith("http"):
+                                    urls.append((candidate_url, getattr(trc, "title", None), getattr(trc, "format", None)))
+                        if not urls:
+                            page.show_snack("No downloadable tracks found", error=True)
+                            return
+                        downloads_dir = _P(dest) if dest else _P("downloads")
+                        downloads_dir.mkdir(parents=True, exist_ok=True)
+                        for url_item, title_item, fmt_item in urls:
+                            try:
+                                filename = title_item or url_item.split("/")[-1]
+                                filename = "_".join(str(filename).split())
+                                if fmt_item and not str(filename).lower().endswith(f".{fmt_item}"):
+                                    filename += f".{fmt_item}"
+                                dest_path = downloads_dir / filename
+                                with httpx.stream("GET", url_item, timeout=60.0) as r:
+                                    r.raise_for_status()
+                                    with open(dest_path, "wb") as f:
+                                        for chunk in r.iter_bytes():
+                                            f.write(chunk)
+                                page.show_snack(f"Downloaded {filename}")
+                            except Exception as ex:
+                                page.show_snack(f"Failed to download {url_item}: {ex}", error=True)
+                        page.show_snack(f"Downloaded {len(urls)} tracks to {downloads_dir}")
+                    except Exception as ex:
+                        page.show_snack(f"Download all failed: {ex}", error=True)
+
+                threading.Thread(target=_worker_all, daemon=True).start()
+
+            try:
+                page.run_task(_pick_and_download_all)
+            except Exception:
+                threading.Thread(target=lambda: page.show_snack("Failed to start download-all picker", True), daemon=True).start()
 
         def show_json(ev):
             logger.debug("Preparing raw JSON view")
@@ -1289,6 +1396,7 @@ Renumbering keys will assign sequential keys to all tracks.
 
                 body.append(ft.Divider())
 
+
                 tracks_dialog = ft.AlertDialog(
                     title=ft.Text(value="Track actions"),
                     content=ft.Column(controls=body, spacing=8),
@@ -1405,11 +1513,15 @@ Renumbering keys will assign sequential keys to all tracks.
             dialog_actions = []
 
         # Title row with buttons on the top-right
+        # Enable download-all when the card has at least one track
+        _tracks_exist = bool(c.get_track_list())
+
         title_row = ft.Row(
             controls=[
                 ft.Text(value="Playlist details"),
                 ft.Row(
                     controls=[
+                        ft.IconButton(icon=ft.Icons.DOWNLOAD, tooltip="Download all tracks", on_click=download_all_tracks, disabled=not _tracks_exist),
                         ft.TextButton(content="JSON", on_click=show_json),
                         ft.TextButton(content="Versions", on_click=lambda ev: show_versions(ev)),
                     ],
