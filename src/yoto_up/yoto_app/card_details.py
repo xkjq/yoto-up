@@ -14,6 +14,7 @@ import flet as ft
 import re
 from loguru import logger
 from datetime import datetime, timezone
+from yoto_up.yoto_app.file_picker_helpers import pick_directory
 
 
 def make_show_card_details(
@@ -255,30 +256,7 @@ def make_show_card_details(
                         import httpx
                         from pathlib import Path as _Path
 
-                        async def _pick_folder():
-                            # Ensure a FilePicker is available on the page.services
-                            picker = getattr(page, 'download_folder_picker', None)
-                            if picker is None:
-                                _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
-                                try:
-                                    _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
-                                except Exception:
-                                    _zenity_missing = False
-                                _file_picker_supported = not _zenity_missing
-                                if _file_picker_supported:
-                                    try:
-                                        picker = ft.FilePicker()
-                                        page.services.append(picker)
-                                        page.download_folder_picker = picker
-                                    except Exception:
-                                        picker = None
-                            if picker is None:
-                                return None
-                            try:
-                                selected = await picker.get_directory_path()
-                                return selected
-                            except Exception:
-                                return None
+                        # Use shared picker helper to prompt for a folder
 
                         def _do_download(resolved_url, title_local, dest_folder):
                             try:
@@ -345,7 +323,7 @@ def make_show_card_details(
                                 return
 
                             # ask user to pick destination folder
-                            dest = await _pick_folder()
+                            dest = await pick_directory(page)
                             if not dest:
                                 page.show_snack("No destination folder selected", error=True)
                                 return
@@ -800,34 +778,11 @@ def make_show_card_details(
         def download_all_tracks(ev=None):
             async def _pick_and_download_all():
                 # pick destination folder
-                picker = getattr(page, 'download_folder_picker', None)
-                if picker is None:
-                    _is_linux_desktop = sys.platform.startswith("linux") and not getattr(page, "web", False)
-                    try:
-                        _zenity_missing = _is_linux_desktop and shutil.which("zenity") is None
-                    except Exception:
-                        _zenity_missing = False
-                    _file_picker_supported = not _zenity_missing
-                    if _file_picker_supported:
-                        try:
-                            picker = ft.FilePicker()
-                            page.services.append(picker)
-                            page.download_folder_picker = picker
-                        except Exception:
-                            picker = None
-
-                if picker is None:
-                    page.show_snack("Folder picker unavailable; downloads will go to 'downloads' folder")
+                dest = await pick_directory(page)
+                if not dest:
+                    # If user cancelled or picker unavailable, fall back to downloads
+                    page.show_snack("Folder picker unavailable or cancelled; downloads will go to 'downloads' folder")
                     dest = "downloads"
-                else:
-                    try:
-                        dest = await picker.get_directory_path()
-                        if not dest:
-                            page.show_snack("No destination selected", error=True)
-                            return
-                    except Exception:
-                        page.show_snack("Failed to open folder picker", error=True)
-                        return
 
                 def _worker_all():
                     import httpx
