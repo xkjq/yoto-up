@@ -1106,7 +1106,6 @@ def main(page: "Page"):
             ]
         )
         auth_complete()
-        disable_tab_by_label("Playlists")
         page.update()
 
 
