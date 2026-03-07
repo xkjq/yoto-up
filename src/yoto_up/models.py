@@ -1,6 +1,6 @@
 from asyncio.log import logger
 from typing import Optional, List, Literal, cast
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from yoto_up.icons import render_icon
 import re
 
@@ -150,8 +150,29 @@ class CardMedia(BaseModel):
     hasStreams: Optional[bool] = None
 
 class CardConfig(BaseModel):
-    autoadvance: Optional[str] = None
-    resumeTimeout: Optional[int] = None
+    autoadvance: Optional[Literal["next", "repeat", "none"]] = Field(
+        default=None,
+        description="Defines how the player should behave when a track ends. One of: next, repeat, none",
+    )
+    onlineOnly: Optional[bool] = Field(
+        default=None,
+        description="If true, content will only be available when the device is online",
+    )
+    resumeTimeout: Optional[int] = Field(
+        default=2592000,
+        description=(
+            "Sets how long the currently-played position is stored (in seconds). "
+            "Default is 2592000 (30 days)."
+        ),
+        ge=0,
+    )
+    shuffle: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Shuffles tracks each time played. Only supported when played on Yoto players, not in the app. "
+            "Provide as an array of track keys or an empty list to disable."
+        ),
+    )
     systemActivity: Optional[bool] = None
     trackNumberOverlayTimeout: Optional[int] = None
 

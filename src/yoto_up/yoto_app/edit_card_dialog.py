@@ -5,7 +5,7 @@ from copy import deepcopy
 from loguru import logger
 from typing import Literal, cast
 
-from yoto_up.models import Card, CardContent, Chapter, Track
+from yoto_up.models import Card, CardContent, Chapter, Track, CardConfig
 
 from .icon_import_helpers import get_base64_from_path
 
@@ -99,6 +99,30 @@ def show_edit_card_dialog(
         value=meta.author or "",
     )
 
+    # Player configuration UI (card content.config)
+    # Prepare existing config values (if any)
+    content_obj = c.content if getattr(c, 'content', None) else CardContent()
+    existing_cfg = content_obj.config if getattr(content_obj, 'config', None) else None
+    autoadvance_value = existing_cfg.autoadvance if existing_cfg and getattr(existing_cfg, 'autoadvance', None) else ""
+    online_only_value = bool(existing_cfg.onlineOnly) if existing_cfg and getattr(existing_cfg, 'onlineOnly', None) is not None else False
+    resume_value = str(existing_cfg.resumeTimeout) if existing_cfg and getattr(existing_cfg, 'resumeTimeout', None) is not None else str(2592000)
+    shuffle_value = ", ".join(existing_cfg.shuffle) if existing_cfg and getattr(existing_cfg, 'shuffle', None) else ""
+
+    autoadvance_dropdown = ft.Dropdown(
+        label="Auto advance",
+        width=200,
+        value=autoadvance_value,
+        options=[
+            ft.dropdown.Option(""),
+            ft.dropdown.Option("next"),
+            ft.dropdown.Option("repeat"),
+            ft.dropdown.Option("none"),
+        ],
+    )
+    online_checkbox = ft.Checkbox(label="Online only", value=online_only_value)
+    resume_field = ft.TextField(label="Resume timeout (seconds)", value=resume_value, width=260)
+    shuffle_field = ft.TextField(label="Shuffle (comma separated)", value=shuffle_value, width=400)
+
     edit_controls = [
         title_field,
         ft.Divider(),
@@ -110,6 +134,10 @@ def show_edit_card_dialog(
         languages_field,
         tags_field,
         author_field,
+        ft.Divider(),
+        ft.Text(value="Player Config", weight=ft.FontWeight.BOLD),
+        ft.Row(controls=[autoadvance_dropdown, online_checkbox, resume_field], alignment=ft.MainAxisAlignment.START),
+        shuffle_field,
         ft.Divider(),
         ft.Text(value="Chapters & Tracks", weight=ft.FontWeight.BOLD),
     ]
@@ -344,6 +372,21 @@ def show_edit_card_dialog(
         meta.tags = split_list(tags_field.value)
         meta.author = author_field.value or None
         card_model.metadata = meta
+
+        # Update card content config from the player config controls
+        content = card_model.content if getattr(card_model, 'content', None) else CardContent()
+        cfg = content.config if getattr(content, 'config', None) else CardConfig()
+        # autoadvance: only accept allowed values
+        adv = autoadvance_dropdown.value if autoadvance_dropdown.value else None
+        cfg.autoadvance = adv if adv in ("next", "repeat", "none") else None
+        cfg.onlineOnly = bool(online_checkbox.value) if online_checkbox is not None else None
+        try:
+            cfg.resumeTimeout = int(resume_field.value) if resume_field.value is not None and str(resume_field.value).strip() != "" else 2592000
+        except Exception:
+            cfg.resumeTimeout = 2592000
+        cfg.shuffle = split_list(shuffle_field.value)
+        content.config = cfg
+        card_model.content = content
 
         # Rebuild chapters from flat_items (preserve non-title fields where possible)
         state = _EDIT_DIALOG_STATE
