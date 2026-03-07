@@ -1,7 +1,8 @@
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
 from yoto_up.yoto_app.add_cover_dialog import add_cover_dialog
-from yoto_up.models import Card
+from yoto_up.models import Card, CardConfig
+from .ui_helpers import get_pydantic_field_description
 import threading
 import json
 import traceback
@@ -492,58 +493,75 @@ def make_show_card_details(
             meta = c.metadata
             if meta:
                 cover_src = c.get_cover_url()
-                controls.append(ft.Divider())
-                controls.append(ft.Text(value="Metadata:", weight=ft.FontWeight.BOLD))
-                controls.append(
-                    ft.Text(value=f"  Author: {meta.author}", selectable=True)
-                )
-                controls.append(
-                    ft.Text(value=f"  Category: {meta.category}", selectable=True)
-                )
-                controls.append(
-                    ft.Text(value=f"  Description: {meta.description}", selectable=True)
-                )
-                controls.append(
-                    ft.Text(value=f"  Note: {meta.note}", selectable=True)
-                )
-                tags = meta.tags
-                if tags:
-                    if isinstance(tags, (list, tuple)):
-                        controls.append(
-                            ft.Text(value=f"  Tags: {', '.join(tags)}", selectable=True)
-                        )
-                    else:
-                        controls.append(ft.Text(value=f"  Tags: {tags}", selectable=True))
-                genres = meta.genre
-                if genres:
-                    if isinstance(genres, (list, tuple)):
-                        controls.append(
-                            ft.Text(value=f"  Genres: {', '.join(genres)}", selectable=True)
-                        )
-                    else:
-                        controls.append(ft.Text(value=f"  Genres: {genres}", selectable=True))
-                media = meta.media
-                if media:
-                    controls.append(
-                        ft.Text(
-                            value=
-                            f"  Duration: {fmt_sec(media.duration)}    FileSize: {media.fileSize}",
-                            selectable=True,
-                        )
-                    )
-                if meta.previewAudio:
-                    controls.append(
-                        ft.Text(
-                            value=
-                            f"  Preview Audio: {meta.previewAudio}",
-                            selectable=True,
-                        )
-                    )
+
+            controls.append(ft.Divider())
 
             content = c.content
             chapters = content.chapters if content and content.chapters else []
             # capture header controls (everything up to the chapters section)
             header_controls = list(controls)
+
+            # Build metadata column (left) and player config column (right).
+            # Use ft.Wrap so the two columns will wrap onto multiple lines on small screens.
+            meta = c.metadata
+            meta_col_items = []
+            if meta:
+                meta_col_items.append(ft.Text(value="Metadata:", weight=ft.FontWeight.BOLD))
+                meta_col_items.append(ft.Text(value=f"  Author: {meta.author}", selectable=True))
+                meta_col_items.append(ft.Text(value=f"  Category: {meta.category}", selectable=True))
+                meta_col_items.append(ft.Text(value=f"  Description: {meta.description}", selectable=True))
+                meta_col_items.append(ft.Text(value=f"  Note: {meta.note}", selectable=True))
+                tags = meta.tags
+                if tags:
+                    if isinstance(tags, (list, tuple)):
+                        meta_col_items.append(ft.Text(value=f"  Tags: {', '.join(tags)}", selectable=True))
+                    else:
+                        meta_col_items.append(ft.Text(value=f"  Tags: {tags}", selectable=True))
+                genres = meta.genre
+                if genres:
+                    if isinstance(genres, (list, tuple)):
+                        meta_col_items.append(ft.Text(value=f"  Genres: {', '.join(genres)}", selectable=True))
+                    else:
+                        meta_col_items.append(ft.Text(value=f"  Genres: {genres}", selectable=True))
+                media = meta.media
+                if media:
+                    meta_col_items.append(ft.Text(value=f"  Duration: {fmt_sec(media.duration)}    FileSize: {media.fileSize}", selectable=True))
+                if meta.previewAudio:
+                    meta_col_items.append(ft.Text(value=f"  Preview Audio: {meta.previewAudio}", selectable=True))
+            meta_col = ft.Column(controls=meta_col_items, spacing=6)
+
+            cfg = getattr(getattr(c, 'content', None), 'config', None)
+            cfg_col_items = []
+            if cfg:
+                cfg_col_items.append(ft.Text(value="Player Config:", weight=ft.FontWeight.BOLD))
+                # Attach model-field descriptions as tooltips
+                adv_desc = get_pydantic_field_description(CardConfig, 'autoadvance')
+                cfg_col_items.append(ft.Text(value=f"  Auto advance: {getattr(cfg, 'autoadvance', '')}", selectable=True, tooltip=adv_desc))
+                online_desc = get_pydantic_field_description(CardConfig, 'onlineOnly')
+                cfg_col_items.append(ft.Text(value=f"  Online only: {getattr(cfg, 'onlineOnly', '')}", selectable=True, tooltip=online_desc))
+                resume_desc = get_pydantic_field_description(CardConfig, 'resumeTimeout')
+                cfg_col_items.append(ft.Text(value=f"  Resume timeout (s): {getattr(cfg, 'resumeTimeout', '')}", selectable=True, tooltip=resume_desc))
+                shuffle_desc = get_pydantic_field_description(CardConfig, 'shuffle')
+                shuffle_val = getattr(cfg, 'shuffle', None)
+                if isinstance(shuffle_val, (list, tuple)):
+                    shuffle_text = f"  Shuffle: {', '.join([str(s) for s in shuffle_val])}"
+                else:
+                    shuffle_text = f"  Shuffle: {shuffle_val}"
+                cfg_col_items.append(ft.Text(value=shuffle_text, selectable=True, tooltip=shuffle_desc))
+                sys_desc = get_pydantic_field_description(CardConfig, 'systemActivity')
+                cfg_col_items.append(ft.Text(value=f"  System activity: {getattr(cfg, 'systemActivity', '')}", selectable=True, tooltip=sys_desc))
+                to_desc = get_pydantic_field_description(CardConfig, 'trackNumberOverlayTimeout')
+                cfg_col_items.append(ft.Text(value=f"  Track overlay timeout: {getattr(cfg, 'trackNumberOverlayTimeout', '')}", selectable=True, tooltip=to_desc))
+            else:
+                cfg_col_items.append(ft.Text(value="No player config", selectable=True))
+            cfg_col = ft.Column(controls=cfg_col_items, spacing=6)
+
+            header_controls.append(
+                ft.Row(controls=[
+                    ft.Container(content=meta_col, expand=True),
+                    ft.Container(content=cfg_col),
+                ], spacing=12)
+            )
             chapters_view = None
             if chapters:
                 controls.append(ft.Divider())
@@ -1428,6 +1446,7 @@ Renumbering keys will assign sequential keys to all tracks.
             dialog_content = ft.ListView(controls=parts, spacing=8, padding=6, height=dlg_h, width=dlg_w)
         else:
             dialog_content = ft.ListView(controls=controls, spacing=6, padding=10, height=dlg_h, width=dlg_w)
+
         def export_card(_ev=None):
             try:
                 def worker():
