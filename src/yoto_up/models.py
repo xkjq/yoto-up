@@ -262,6 +262,13 @@ class Card(BaseModel):
             self.set_cover_url(fallback_url)
         return self
 
+    def get_config(self) -> CardConfig:
+        if self.content is None:
+            self.content = CardContent()
+        if self.content.config is None:
+            self.content.config = CardConfig()
+        return self.content.config
+
     def get_author(self) -> Optional[str]:
         try:
             meta = self.get_metadata()

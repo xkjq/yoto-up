@@ -102,8 +102,7 @@ def show_edit_card_dialog(
 
     # Player configuration UI (card content.config)
     # Prepare existing config values (if any)
-    content_obj = c.content if getattr(c, 'content', None) else CardContent()
-    existing_cfg = content_obj.config if getattr(content_obj, 'config', None) else None
+    existing_cfg = c.get_config()
     autoadvance_value = existing_cfg.autoadvance if existing_cfg and getattr(existing_cfg, 'autoadvance', None) else ""
     online_only_value = bool(existing_cfg.onlineOnly) if existing_cfg and getattr(existing_cfg, 'onlineOnly', None) is not None else False
     resume_value = str(existing_cfg.resumeTimeout) if existing_cfg and getattr(existing_cfg, 'resumeTimeout', None) is not None else str(2592000)
