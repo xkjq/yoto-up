@@ -6,6 +6,9 @@ import time
 
 from yoto_up.paths import (
     TOKENS_FILE,
+    load_playlists,
+    save_playlists
+
 )
 
 from yoto_up.yoto_app.ui_state import (
@@ -97,7 +100,7 @@ def main(page: "Page"):
     page.title = "Yoto Up"
     page._icon_browser_loaded = False
 
-    page.cards: list[Card] = []
+    page.cards: list[Card] = load_playlists()
 
     def update_local_card_cache(card: Card, refresh_ui: bool = True):
         # Update the local cache of cards on the page object. This is used by various helpers to avoid refetching cards from the API.
@@ -105,6 +108,8 @@ def main(page: "Page"):
         if existing:
             page.cards.remove(existing)
         page.cards.append(card)
+        save_playlists(page.cards)
+
         if refresh_ui:
             # We have to delay the UI update slightly to avoid issues with controls being updated while they're being built in some cases. This is a bit hacky but seems to work reliably.
             async def _update_ui():
@@ -159,6 +164,7 @@ def main(page: "Page"):
                 # Refresh playlists UI to reflect removed card
                 if refresh_ui:
                     build_playlists_ui(page)
+                    save_playlists(page.cards)
             else:
                 logger.warning(f"Card deleted but not found in local cache: {card.cardId}")
             return True
@@ -1107,6 +1113,9 @@ def main(page: "Page"):
         )
         auth_complete()
         page.update()
+    
+    if page.cards:
+        build_playlists_ui(page)
 
 
 def start_gui():

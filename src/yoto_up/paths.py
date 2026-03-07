@@ -142,10 +142,10 @@ def load_playlists() -> list[Card]:
         return default
 
 
-def save_playlists(cands: list[Card]) -> None:
+def save_playlists(cards: list[Card]) -> None:
     """Persist playlists (list/dict) to PLAYLISTS_FILE atomically."""
     try:
-        playlists = [c.model_dump(exclude_none=True) for c in cands]
+        playlists = [c.model_dump(exclude_none=True) for c in cards]
         data = json.dumps(playlists, ensure_ascii=False, indent=2)
         atomic_write(PLAYLISTS_FILE, data, text_mode=True)
     except Exception:

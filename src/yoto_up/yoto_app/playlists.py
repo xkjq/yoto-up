@@ -493,7 +493,7 @@ def fetch_playlists_sync(page):
         page.show_snack(f"Fetched {len(cards)} playlists")
         page.update()
         # Persist playlists after sync fetch
-        save_playlists(cards)
+        #save_playlists(cards)
     except httpx.HTTPError as http_ex:
         logger.error(f"HTTP error during fetch_playlists_sync: {http_ex}")
         logger.error(f"fetch_playlists_sync error: {http_ex}")
@@ -1414,6 +1414,7 @@ def build_playlists_panel(
                 pass
 
         page.upload_manager.refresh_existing_card_options()
+
         build_playlists_ui(page, cards)
         # Persist playlists for faster startup and offline view
         save_playlists(cards)
