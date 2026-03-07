@@ -13,35 +13,54 @@ class TrackDisplay(BaseModel):
     icon16x16: Optional[str] = None
 
 class Track(BaseModel):
-    """
-    Represents a Yoto track, which can be a local audio file or a streaming track.
-    For streaming tracks:
-        - type: "stream"
-        - trackUrl: URL to the audio stream
-        - format: format of the stream (e.g. "mp3", "aac")
-    Example:
-        Track(
-            key="01",
-            type="stream",
-            format="mp3",
-            title="Test Streaming Playlist",
-            trackUrl="https://yoto.dev/music/autumn-3.mp3",
-            display=TrackDisplay(icon16x16="yoto:#ZuVmuvnoFiI4el6pBPvq0ofcgQ18HjrCmdPEE7GCnP8")
-        )
-    """
-    title: str
-    trackUrl: str
-    key: str
-    format: str
-    uid: Optional[str] = None
-    type: Literal["audio", "stream"]
-    display: Optional[TrackDisplay] = None
-    overlayLabelOverride: Optional[str] = None
-    overlayLabel: Optional[str] = None
-    duration: Optional[float] = None
-    fileSize: Optional[float] = None
-    channels: Optional[Literal["stereo", "mono", 1, 2]] = None
-    ambient: Optional[Ambient] = None
+    """Represents a Yoto track, which can be a local audio file or a streaming track."""
+    title: str = Field(..., description="The track title.")
+    trackUrl: str = Field(
+        ...,
+        description=(
+            "The track URL, can be either a yoto:sha256 url or a regular web URL."
+        ),
+    )
+    key: str = Field(..., description="A short key used to reference this track within the chapter.")
+    format: Literal[
+        "mp3",
+        "aac",
+        "alac",
+        "flac",
+        "pcm_s16le",
+        "opus",
+        "ogg",
+        "x-m4a",
+        "wav",
+        "aiff",
+        "mpeg",
+        "",
+    ] = Field(
+        ...,
+        description=(
+            "The file format of the track's audio file. One of: mp3, aac, alac, flac, pcm_s16le, opus, ogg, x-m4a, wav, aiff, mpeg, or empty string."
+        ),
+    )
+    uid: Optional[str] = Field(None, description="A unique identifier for the track.")
+    type: Literal["audio", "stream"] = Field(..., description="The track type. One of: audio, stream.")
+    display: Optional[TrackDisplay] = Field(None, description="An object containing display fields such as icons.")
+    displayOverlay: Optional[str] = Field(
+        None, description="Unused legacy property."
+    )
+    overlayLabelOverride: Optional[str] = Field(
+        None, description="Override text for the overlay label."
+    )
+    overlayLabel: Optional[str] = Field(
+        None, description="Used in the app for track numbering."
+    )
+    ambient: Optional[Ambient] = Field(None, description="An object containing ambient fields.")
+    duration: Optional[float] = Field(None, description="The duration of the track in seconds.", ge=0)
+    fileSize: Optional[float] = Field(None, description="The size of the track in bytes.", ge=0)
+    channels: Optional[Literal["stereo", "mono"]] = Field(
+        None, description="The audio channel configuration of the track. One of: stereo, mono."
+    )
+    events: Optional[dict] = Field(None, description="An object containing events fields.")
+    isNew: Optional[bool] = Field(None, description="Indicates whether this track is newly added.")
     hasStreams: Optional[bool] = None
 
     def get_title(self) -> str:
