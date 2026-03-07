@@ -94,3 +94,27 @@ def enable_authenticated_tabs(page):
             logger.error("enable_authenticated_tabs: unexpected error")
         except Exception:
             pass
+
+
+def get_pydantic_field_description(model: object, field_name: str) -> str:
+    """Return the Pydantic `Field` description for `field_name` on `model`.
+
+    `model` may be a Pydantic model class or instance. Returns empty string
+    when no description is available.
+    """
+    try:
+        cls = model if isinstance(model, type) else getattr(model, "__class__", None)
+        if cls is None:
+            return ""
+        fields = getattr(cls, "__fields__", {}) or {}
+        fld = fields.get(field_name)
+        if fld is None:
+            return ""
+        desc = getattr(getattr(fld, "field_info", None), "description", None)
+        return desc or ""
+    except Exception:
+        try:
+            logger.debug(f"get_pydantic_field_description: failed for {model}/{field_name}")
+        except Exception:
+            pass
+        return ""

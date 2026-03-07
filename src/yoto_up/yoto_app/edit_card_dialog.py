@@ -6,6 +6,7 @@ from loguru import logger
 from typing import Literal, cast
 
 from yoto_up.models import Card, CardContent, Chapter, Track, CardConfig
+from .ui_helpers import get_pydantic_field_description
 
 from .icon_import_helpers import get_base64_from_path
 
@@ -107,6 +108,7 @@ def show_edit_card_dialog(
     online_only_value = bool(existing_cfg.onlineOnly) if existing_cfg and getattr(existing_cfg, 'onlineOnly', None) is not None else False
     resume_value = str(existing_cfg.resumeTimeout) if existing_cfg and getattr(existing_cfg, 'resumeTimeout', None) is not None else str(2592000)
     shuffle_value = ", ".join(existing_cfg.shuffle) if existing_cfg and getattr(existing_cfg, 'shuffle', None) else ""
+    _cfg_field_desc = lambda n: get_pydantic_field_description(CardConfig, n)
 
     autoadvance_dropdown = ft.Dropdown(
         label="Auto advance",
@@ -118,10 +120,11 @@ def show_edit_card_dialog(
             ft.dropdown.Option("repeat"),
             ft.dropdown.Option("none"),
         ],
+        tooltip=_cfg_field_desc("autoadvance"),
     )
-    online_checkbox = ft.Checkbox(label="Online only", value=online_only_value)
-    resume_field = ft.TextField(label="Resume timeout (seconds)", value=resume_value, width=260)
-    shuffle_field = ft.TextField(label="Shuffle (comma separated)", value=shuffle_value, width=400)
+    online_checkbox = ft.Checkbox(label="Online only", value=online_only_value, tooltip=_cfg_field_desc("onlineOnly"))
+    resume_field = ft.TextField(label="Resume timeout (seconds)", value=resume_value, width=260, tooltip=_cfg_field_desc("resumeTimeout"))
+    shuffle_field = ft.TextField(label="Shuffle (comma separated)", value=shuffle_value, width=400, tooltip=_cfg_field_desc("shuffle"))
 
     edit_controls = [
         title_field,
