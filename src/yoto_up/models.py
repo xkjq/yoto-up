@@ -1,5 +1,5 @@
 from asyncio.log import logger
-from typing import Optional, List, Literal, cast
+from typing import Optional, List, Literal, cast, Dict, Any
 from pydantic import BaseModel, Field
 from yoto_up.icons import render_icon
 import re
@@ -59,7 +59,7 @@ class Track(BaseModel):
     channels: Optional[Literal["stereo", "mono"]] = Field(
         None, description="The audio channel configuration of the track. One of: stereo, mono."
     )
-    events: Optional[dict] = Field(None, description="An object containing events fields.")
+    events: Optional["Events"] = Field(None, description="An object containing events fields.")
     isNew: Optional[bool] = Field(None, description="Indicates whether this track is newly added.")
     hasStreams: Optional[bool] = None
 
@@ -86,6 +86,33 @@ class Track(BaseModel):
 
 class ChapterDisplay(BaseModel):
     icon16x16: Optional[str] = None
+
+
+class Shuffle(BaseModel):
+    start: float = Field(..., description="Shuffle window start (seconds).")
+    end: float = Field(..., description="Shuffle window end (seconds).")
+    limit: float = Field(..., description="Maximum number of shuffled items or limit value.")
+
+
+class OnEnd(BaseModel):
+    cmd: Literal["stop", "repeat", "goto"] = Field(..., description="Command to execute when the event fires. One of: stop, repeat, goto.")
+    params: Optional[Dict[str, Any]] = Field(None, description="Optional parameters for the command.")
+
+
+class OnLhb(BaseModel):
+    cmd: Literal["stop", "repeat", "goto"] = Field(..., description="Command to execute for left-hand button events. One of: stop, repeat, goto.")
+    params: Optional[Dict[str, Any]] = Field(None, description="Optional parameters for the command.")
+
+
+class OnRhb(BaseModel):
+    cmd: Literal["stop", "repeat", "goto"] = Field(..., description="Command to execute for right-hand button events. One of: stop, repeat, goto.")
+    params: Optional[Dict[str, Any]] = Field(None, description="Optional parameters for the command.")
+
+
+class Events(BaseModel):
+    onEnd: Optional[OnEnd] = Field(None, description="An object containing onEnd fields.")
+    onLhb: Optional[OnLhb] = Field(None, description="An object containing onLhb fields.")
+    onRhb: Optional[OnRhb] = Field(None, description="An object containing onRhb fields.")
 
 
 class Chapter(BaseModel):
@@ -185,7 +212,7 @@ class CardConfig(BaseModel):
         ),
         ge=0,
     )
-    shuffle: Optional[List[str]] = Field(
+    shuffle: Optional[List[Shuffle]] = Field(
         default=None,
         description=(
             "Shuffles tracks each time played. Only supported when played on Yoto players, not in the app. "
