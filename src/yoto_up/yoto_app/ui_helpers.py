@@ -106,15 +106,20 @@ def get_pydantic_field_description(model: object, field_name: str) -> str:
         cls = model if isinstance(model, type) else getattr(model, "__class__", None)
         if cls is None:
             return ""
-        fields = getattr(cls, "__fields__", {}) or {}
-        fld = fields.get(field_name)
-        if fld is None:
+
+        # Only support Pydantic v2: use model_fields
+        mf = getattr(cls, "model_fields", None)
+        if mf is None:
             return ""
-        desc = getattr(getattr(fld, "field_info", None), "description", None)
-        return desc or ""
+        f = mf.get(field_name)
+        if f is None:
+            return ""
+        # FieldInfo in v2 exposes .description directly or in .extra
+        desc = getattr(f, "description", None)
+        if desc:
+            return desc
+        extra = getattr(f, "extra", None) or {}
+        return extra.get("description", "") or ""
     except Exception:
-        try:
-            logger.debug(f"get_pydantic_field_description: failed for {model}/{field_name}")
-        except Exception:
-            pass
+        logger.debug(f"get_pydantic_field_description: failed for {model}/{field_name}")
         return ""
