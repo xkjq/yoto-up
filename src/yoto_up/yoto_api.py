@@ -22,7 +22,7 @@ from yoto_up.models import (
     CardMetadata,
     CardMedia,
     Card,
-        FamilyLibraryCard,
+    FamilyLibraryCard,
     Device,
     DeviceStatus,
     DeviceConfig,
