@@ -1326,7 +1326,7 @@ class YotoAPI:
             filename_list = None
 
         semaphore = asyncio.Semaphore(max_concurrent_uploads)
-        results = [None] * total
+        results: list[TranscodedAudio | None] = [None] * total
         errors = [None] * total
 
         async def worker(idx, path, fname):
