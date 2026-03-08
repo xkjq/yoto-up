@@ -2260,7 +2260,7 @@ def replace_default_icons(
         except Exception:
             pass
 
-    result_holder = {"card": None, "exc": None}
+    result_holder: dict[str, None | Card | Exception] = {"card": None, "exc": None}
 
     def _worker():
         try:
