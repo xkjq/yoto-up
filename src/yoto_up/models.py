@@ -863,7 +863,20 @@ class TranscodedInfo(BaseModel):
     duration: Optional[float] = None
     fileSize: Optional[float] = None
     channels: Optional[Literal["stereo", "mono", 1, 2]] = None
-    format: Optional[str] = None
+    format: Optional[Literal[
+        "mp3",
+        "aac",
+        "alac",
+        "flac",
+        "pcm_s16le",
+        "opus",
+        "ogg",
+        "x-m4a",
+        "wav",
+        "aiff",
+        "mpeg",
+        "",
+    ]] = None
 
 
 class TranscodedAudio(BaseModel):

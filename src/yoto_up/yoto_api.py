@@ -9,7 +9,7 @@ import hashlib
 import io
 import re
 import threading
-from typing import Optional, Callable
+from typing import Optional, Callable, Literal
 
 from loguru import logger
 from yoto_up.models import (
@@ -172,7 +172,7 @@ except (ImportError, ModuleNotFoundError):
     def word_tokenize(text: str):
         return re.findall(r"\w+", text)
 
-def get_channels_from_mediainfo(media_info) -> str | None:
+def get_channels_from_mediainfo(media_info) -> Literal["mono" , "stereo" ] | None:
         channels = None
         if media_info and media_info.channels:
             if media_info.channels == 1:
@@ -1793,7 +1793,7 @@ class YotoAPI:
             trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
             duration=media_info.duration if media_info else None,
             fileSize=media_info.fileSize if media_info else None,
-            channels=media_info.channels if media_info else None,
+            channels=get_channels_from_mediainfo(media_info),
             format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel=str(next_chapter_number),
