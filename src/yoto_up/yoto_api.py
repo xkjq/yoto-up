@@ -172,6 +172,17 @@ except (ImportError, ModuleNotFoundError):
     def word_tokenize(text: str):
         return re.findall(r"\w+", text)
 
+def get_channels_from_mediainfo(media_info) -> str | None:
+        channels = None
+        if media_info and media_info.channels:
+            if media_info.channels == 1:
+                channels = "mono"
+            elif media_info.channels == 2:
+                channels = "stereo"
+            elif isinstance(media_info.channels, str):
+                channels = media_info.channels
+        return channels
+
 
 def _get_stopwords(lang: str = "english") -> set[str]:
     if _HAVE_NLTK:
@@ -1546,6 +1557,8 @@ class YotoAPI:
         self, transcoded_audio: TranscodedAudio, track_details: Optional[dict] = None
     ) -> Optional[Track]:
         media_info = transcoded_audio.transcodedInfo
+        # Convert numeric channels to string literals
+        channels = get_channels_from_mediainfo(media_info)
         track = Track(
             key="01",
             title=(
@@ -1556,7 +1569,7 @@ class YotoAPI:
             trackUrl=f"yoto:#{transcoded_audio.transcodedSha256}",
             duration=media_info.duration if media_info else None,
             fileSize=media_info.fileSize if media_info else None,
-            channels=media_info.channels if media_info else None,
+            channels=channels,
             format=media_info.format if media_info and media_info.format else "mp3",
             type="audio",
             overlayLabel="1",
@@ -1585,6 +1598,9 @@ class YotoAPI:
             else (metadata_title or "Unknown Chapter")
         )
 
+        # Convert numeric channels to string literals
+        channels = get_channels_from_mediainfo(media_info)
+
         track = Track(
             key="01",
             title=chapter_title,
@@ -1593,7 +1609,7 @@ class YotoAPI:
             type="audio",
             duration=media_info.duration if media_info else None,
             fileSize=media_info.fileSize if media_info else None,
-            channels=media_info.channels if media_info else None,
+            channels=channels,
             overlayLabel="1",
             display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
@@ -1632,6 +1648,10 @@ class YotoAPI:
             if media_info and media_info.metadata and media_info.metadata.title
             else None
         ) or card_title
+    
+
+        # Convert numeric channels to string literals
+        channels = get_channels_from_mediainfo(media_info)
 
         track = Track(
             key="01",
@@ -1641,7 +1661,7 @@ class YotoAPI:
             type="audio",
             duration=media_info.duration if media_info else None,
             fileSize=media_info.fileSize if media_info else None,
-            channels=media_info.channels if media_info else None,
+            channels=channels,
             overlayLabel="1",
             display=TrackDisplay(icon16x16=DEFAULT_MEDIA_ID),
         )
