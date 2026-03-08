@@ -28,6 +28,7 @@ import flet as ft
 from yoto_up.yoto_app import ui_helpers as ui_helpers
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.playlists import build_playlists_panel, build_playlists_ui
+from yoto_up.yoto_app.library import build_library_panel, build_library_ui
 from loguru import logger
 from yoto_up.yoto_app.upload_tasks import (
     UploadManager,
@@ -69,6 +70,17 @@ if TYPE_CHECKING:
         fetch_playlists_sync: Optional[Callable[..., Any]]
         fetch_playlists: Optional[Callable[..., Any]]
         selected_playlist_ids: Set[str]
+        selected_library_ids: Set[str]
+        library_cards: list
+        library_list: _ft.ListView
+        library_multi_select_mode: bool
+        library_last_selected_index: Optional[int]
+        current_library_sort: Optional[str]
+        get_library_filters: Callable[[], dict]
+        update_library_multiselect_buttons: Callable[[], None]
+        fetch_library_sync: Optional[Callable[..., Any]]
+        fetch_library: Optional[Callable[..., Any]]
+        set_all_library_checkboxes: Callable[[bool], None]
         status: _ft.Text
         show_snack: Callable[..., None]
         auth_instructions: _ft.Column
@@ -87,6 +99,8 @@ if TYPE_CHECKING:
         get_cached_cover: Callable[[str], Optional[str]]
         switch_to_auth_tab: Callable[[], None]
         invalidate_authentication: Callable[[], None]
+        shift_key_down: bool
+        _shift_listener_started: bool
         show_card_details: Callable[..., Any]
         pixel_editor: PixelArtEditor
         _icon_browser_loaded: bool
@@ -186,6 +200,12 @@ def main(page: "Page"):
     page.selected_playlist_ids = (
         set()
     )  # exposed on page for easy access from playlist row callbacks
+
+    page.selected_library_ids = (
+        set()
+    )  # exposed on page for easy access from library row callbacks
+
+    page.library_cards = []  # cache library cards on page
 
     # Basic UI controls that many helper functions expect. These are
     # intentionally minimal so we can restore behavior incrementally.
@@ -354,6 +374,14 @@ def main(page: "Page"):
     # extract controls and helpers
     playlists_column = playlists_ui["playlists_column"]
     logger.debug("Playlists panel built")
+
+    logger.debug("Building library panel")
+    library_ui = build_library_panel(
+        page,
+    )
+    # extract controls and helpers
+    library_column = library_ui["library_column"]
+    logger.debug("Library panel built")
 
     logger.debug("Building upload manager")
     page.upload_manager = UploadManager(page, api_ref, show_snack)
@@ -857,6 +885,7 @@ def main(page: "Page"):
     # Create tab labels for TabBar
     auth_tab = ft.Tab(label="Auth")
     playlists_tab = ft.Tab(label="Playlists", disabled=True)
+    library_tab = ft.Tab(label="Library", disabled=True)
     upload_tab = ft.Tab(label="Upload", disabled=True)
     if ENABLE_ICON_BROWSER:
         icons_tab = ft.Tab(label="Icons", disabled=True)
@@ -866,6 +895,7 @@ def main(page: "Page"):
     all_tab_labels = [
         auth_tab,
         playlists_tab,
+        library_tab,
         upload_tab,
         # covers_tab,
         editor_tab,
@@ -873,6 +903,7 @@ def main(page: "Page"):
     all_tab_content = [
         auth_column,
         playlists_column,
+        library_column,
         page.upload_manager.column,
         # covers_panel,
         editor_content,
