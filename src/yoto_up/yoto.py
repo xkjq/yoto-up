@@ -439,6 +439,60 @@ def delete_card(id: str):
         return
     response = API.delete_content(id)
     typer.echo(response)
+    
+@app.command()
+def family_library(
+    table: bool = typer.Option(False, help="Display cards in a table format"),
+    truncate: int = typer.Option(50, help="Truncate fields to this many characters"),
+):
+    """Retrieve and show the family library cards from the API."""
+    API = get_api()
+    try:
+        cards = API.get_family_library()
+    except Exception as e:
+        rprint(f"[bold red]Failed to fetch family library: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    if not cards:
+        rprint("[bold red]No family library cards found.[/bold red]")
+        return
+
+    if table:
+        rich_table = Table(title="Family Library Cards")
+        rich_table.add_column("Card ID", style="cyan", no_wrap=True)
+        rich_table.add_column("Title", style="magenta")
+        rich_table.add_column("Description", style="green")
+        for entry in cards:
+            # entry may be a FamilyLibraryCard (with .card) or a Card
+            inner = getattr(entry, "card", None) or entry
+            try:
+                desc = (
+                    (inner.metadata.description[: truncate - 3] + "...")
+                    if inner.metadata and inner.metadata.description and len(inner.metadata.description) > truncate
+                    else (inner.metadata.description or "" if inner.metadata else "")
+                )
+            except Exception:
+                desc = ""
+            cid = getattr(inner, "cardId", getattr(entry, "cardId", ""))
+            title = getattr(inner, "title", "")
+            rich_table.add_row(cid, title or "", desc)
+        console.print(rich_table)
+        return
+    else:
+        for entry in cards:
+            inner = getattr(entry, "card", None) or entry
+            cid = getattr(inner, "cardId", getattr(entry, "cardId", ""))
+            try:
+                panel = inner.display_card(truncate_fields_limit=truncate, include_chapters=True)
+            except Exception:
+                panel = str(inner)
+            rprint(
+                Panel.fit(
+                    panel,
+                    title="[bold green]Family Card[/bold green]",
+                    subtitle=f"[bold cyan]{cid}[/bold cyan]",
+                )
+            )
 
 
 @app.command()

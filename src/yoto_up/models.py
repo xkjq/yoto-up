@@ -869,3 +869,25 @@ class TranscodedInfo(BaseModel):
 class TranscodedAudio(BaseModel):
     transcodedSha256: str
     transcodedInfo: Optional[TranscodedInfo] = None
+
+
+class FamilyLibraryCard(BaseModel):
+    familyId: Optional[str] = None
+    provenanceId: Optional[str] = None
+    addedAt: Optional[str] = None
+    cardId: Optional[str] = None
+    createdAt: Optional[str] = None
+    reason: Optional[str] = None
+    updatedAt: Optional[str] = None
+    inFamilyLibrary: Optional[bool] = None
+    card: Optional[Card] = None
+    shareType: Optional[str] = None
+    lastPlayedAt: Optional[str] = None
+    sortkey: Optional[str] = None
+    clubAvailability: Optional[List[dict]] = None
+    scanToAdd: Optional[bool] = None
+
+
+class FamilyLibraryResponse(BaseModel):
+    cards: Optional[List[FamilyLibraryCard]] = None
+    subscriptions: Optional[List[dict]] = None

@@ -22,6 +22,7 @@ from yoto_up.models import (
     CardMetadata,
     CardMedia,
     Card,
+        FamilyLibraryCard,
     Device,
     DeviceStatus,
     DeviceConfig,
@@ -816,6 +817,41 @@ class YotoAPI:
             cards = data if isinstance(data, list) else [data]
         logger.debug(f"Parsed {len(cards)} cards from response")
         return [Card.model_validate(card) for card in cards]
+
+    def get_family_library(self):
+        """Retrieve the family library details from the API.
+
+        Endpoint: /card/family/library
+        Returns a list of `FamilyLibraryCard` model instances.
+        """
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        url = f"{self.SERVER_URL}/card/family/library"
+        logger.debug(f"GET {url}")
+        response = self._cached_request("GET", url, headers=headers)
+        logger.trace(f"Family library response: {response.status_code} {response.text}")
+        response.raise_for_status()
+        data = response.json()
+        # Support responses wrapped in a top-level dict with a "cards" key
+        if isinstance(data, dict):
+            items = data.get("cards") or data.get("items") or []
+            if not items and isinstance(data, dict) and all(k in data for k in ("provenanceId", "card")):
+                items = [data]
+        else:
+            items = data if isinstance(data, list) else [data]
+
+        entries = []
+        for it in items:
+            try:
+                entries.append(FamilyLibraryCard.model_validate(it))
+            except Exception:
+                try:
+                    # Best-effort: if 'card' key exists and looks like a Card, wrap accordingly
+                    if isinstance(it, dict) and "card" in it:
+                        entries.append(FamilyLibraryCard.model_validate(it))
+                        continue
+                except Exception:
+                    pass
+        return entries
 
     def get_card(
         self, card_id, playable=False, save_version_if_missing: bool = True
