@@ -67,11 +67,12 @@ def show_waveforms_popup(
                 reason = "Unrecognized or missing file extension."
             elif ext not in [".wav", ".mp3"]:
                 reason = f"Unsupported extension: {ext}"
-            elif not os.path.exists(filepath):
+            elif not filepath or not os.path.exists(filepath):
                 reason = "File does not exist."
             else:
                 reason = "Could not decode audio or file is empty/corrupt."
-            skipped_files.append(f"{os.path.basename(filepath) or filepath}: {reason}")
+            display_name = os.path.basename(filepath) if filepath else "(unknown)"
+            skipped_files.append(f"{display_name}: {reason}")
 
     def plot_and_stats(audio, framerate, ext, filepath, gain_db=0.0):
         import pyloudnorm as pyln
@@ -103,7 +104,7 @@ def show_waveforms_popup(
             times = times[idx]
         fig, ax = plt.subplots(figsize=(4, 1.2))
         ax.plot(times, audio_plot, color="blue")
-        ax.set_title(os.path.basename(filepath), fontsize=8)
+        ax.set_title(os.path.basename(filepath) if filepath else "(unknown)", fontsize=8)
         ax.set_xlabel("Time (s)", fontsize=7)
         ax.set_ylabel("Amplitude", fontsize=7)
         ax.tick_params(axis="both", which="major", labelsize=6)
@@ -413,8 +414,9 @@ def show_waveforms_popup(
             except Exception:
                 lufs = None
             if lufs is None:
+                display_name = os.path.basename(filepath) if filepath else "(unknown)"
                 show_snack(
-                    f"LUFS unavailable for {os.path.basename(filepath)}; skipping",
+                    f"LUFS unavailable for {display_name}; skipping",
                     error=False,
                 )
                 continue
