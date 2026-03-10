@@ -1,7 +1,7 @@
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.yoto_app.edit_card_dialog import show_edit_card_dialog
 from yoto_up.yoto_app.add_cover_dialog import add_cover_dialog
-from yoto_up.models import Card, CardConfig
+from yoto_up.models import Card, CardConfig, Chapter
 from .ui_helpers import get_pydantic_field_description
 import threading
 import json
@@ -175,6 +175,123 @@ def make_show_card_details(
                     dialog.open()
                 except Exception as ex:
                     page.show_snack(f"Failed to open replace icon dialog: {ex}", error=True)
+
+            def open_copy_dialog(source_kind: str, chapter: Chapter | None = None, ch_index: int | None = None, tr_index: int | None = None):
+                """Open a dialog allowing the user to pick a playlist to copy the given chapter or track into."""
+
+                # Build playlist options from page.cards
+                playlists = getattr(page, "cards", []) or []
+                options = []
+                for pl in playlists:
+                    try:
+                        pid = getattr(pl, "cardId", None)
+                        title = getattr(pl, "title", None) or "<untitled>"
+                        if pid:
+                            options.append(ft.dropdown.Option(str(pid), title))
+                    except Exception:
+                        continue
+
+                if not options:
+                    page.show_snack("No playlists available to copy into", error=True)
+                    return
+
+                dd = ft.Dropdown(label="Target playlist", width=400, options=options)
+                status = ft.Text(value="")
+
+                def do_copy(ev=None):
+                    target_id = dd.value
+                    if not target_id:
+                        status.value = "Select a target playlist"
+                        page.update()
+                        return
+
+                    def worker():
+                        try:
+                            api_inst = api or (page.get_api() if hasattr(page, "get_api") else None)
+                            if not api_inst:
+                                page.show_snack("API not available", error=True)
+                                return
+
+                            # Fetch full target card
+                            try:
+                                target_card = api_inst.get_card(target_id)
+                            except Exception as e:
+                                page.show_snack(f"Failed to fetch target playlist: {e}", error=True)
+                                return
+
+                            # Ensure content structure
+                            if not getattr(target_card, "content", None):
+                                target_card.content = type("o", (), {})()
+                            if not getattr(target_card.content, "chapters", None):
+                                target_card.content.chapters = []
+
+                            if source_kind == "chapter":
+                                if chapter is None:
+                                    page.show_snack("No chapter provided to copy", error=True)
+                                    return
+                                new_ch = deepcopy(chapter)
+                                target_card.content.chapters.append(new_ch)
+                            elif source_kind == "track":
+                                # locate track in source card
+                                try:
+                                    src_ch = None
+                                    if ch_index is not None:
+                                        chapters_src = c.get_chapters() if c else []
+                                        if 0 <= ch_index < len(chapters_src):
+                                            src_ch = chapters_src[ch_index]
+                                    if src_ch is None:
+                                        # try fetching full card
+                                        if c and getattr(c, "cardId", None):
+                                            full = api_inst.get_card(c.cardId)
+                                            chapters_src = full.get_chapters()
+                                            if ch_index is not None and 0 <= ch_index < len(chapters_src):
+                                                src_ch = chapters_src[ch_index]
+                                    if src_ch is None:
+                                        page.show_snack("Source track not found", error=True)
+                                        return
+                                    tracks = getattr(src_ch, "tracks", []) or []
+                                    if tr_index is None or not (0 <= tr_index < len(tracks)):
+                                        page.show_snack("Source track not found", error=True)
+                                        return
+                                    src_tr = deepcopy(tracks[tr_index])
+                                    # create a new chapter to hold this track
+                                    title = getattr(src_tr, "title", None) or "Imported track"
+                                    new_ch = Chapter(title=title, tracks=[src_tr])
+                                    target_card.content.chapters.append(new_ch)
+                                except Exception as e:
+                                    page.show_snack(f"Failed to copy track: {e}", error=True)
+                                    return
+
+                            # Push updated card to API
+                            try:
+                                updated = api_inst.create_or_update_content(target_card, return_card=True)
+                                page.show_snack(f"Copied to playlist: {getattr(updated, 'title', target_id)}")
+                                # Refresh playlists view if available
+                                try:
+                                    if hasattr(page, "fetch_playlists_sync") and callable(page.fetch_playlists_sync):
+                                        threading.Thread(target=lambda: page.fetch_playlists_sync(page), daemon=True).start()
+                                    elif hasattr(page, "fetch_playlists") and callable(page.fetch_playlists):
+                                        try:
+                                            page.run_task(page.fetch_playlists)
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                            except Exception as e:
+                                page.show_snack(f"Failed to update playlist: {e}", error=True)
+                                return
+                        finally:
+                            try:
+                                dlg.open = False
+                                page.update()
+                            except Exception:
+                                pass
+
+                    threading.Thread(target=worker, daemon=True).start()
+
+                dlg = ft.AlertDialog(title=ft.Text(value="Copy to playlist"), content=ft.Column(controls=[dd, status]), actions=[ft.TextButton(content="Copy", on_click=do_copy), ft.TextButton(content="Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
+                page.show_dialog(dlg)
+                page.update()
 
             def clear_chapter_icon(ev, ch_i=None):
                 try:
@@ -414,6 +531,12 @@ def make_show_card_details(
                             ft.Container(width=20),
                             tr_col,
                             ft.IconButton(
+                                icon=ft.Icons.COPY_ALL,
+                                tooltip="Copy track to another playlist",
+                                icon_size=16,
+                                on_click=lambda ev, ch_i=ch_index, tr_i=t_idx - 1: open_copy_dialog(source_kind="track", ch_index=ch_i, tr_index=tr_i),
+                            ),
+                            ft.IconButton(
                                 icon=ft.Icons.IMAGE,
                                 tooltip="Use chapter icon for this track",
                                 opacity=0.1,
@@ -582,6 +705,10 @@ def make_show_card_details(
                     def _on_tap_ch(ev, ch_index=ch_idx):
                         replace_individual_icon(ev, "chapter", ch_index)
 
+                    # Copy chapter to another playlist
+                    def _on_copy_ch(ev, ch_obj=ch):
+                        open_copy_dialog(source_kind="chapter", chapter=deepcopy(ch_obj))
+
                     try:
                         if api and icon_field:
                             icon_base64 = api.get_icon_b64_data(icon_field)
@@ -655,6 +782,11 @@ def make_show_card_details(
                                     hover_color=ft.Colors.RED_ACCENT_100,
                                     tooltip="Clear chapter icon",
                                     on_click=lambda ev, ci=ch_idx: clear_chapter_icon(ev, ci),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.COPY_ALL,
+                                    tooltip="Copy chapter to another playlist",
+                                    on_click=lambda ev, ch_obj=ch: _on_copy_ch(ev, ch_obj),
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.START,
