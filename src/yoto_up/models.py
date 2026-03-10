@@ -710,8 +710,13 @@ class Card(BaseModel):
                 return False
             if s in ('untitled', 'unknown', 'no title', ''):
                 return False
+            # Accept labels that contain at least one token with an alphabetic
+            # character and length > 1. This is intentionally more permissive
+            # than the previous rule which rejected tokens containing digits or
+            # punctuation and required length > 2; many valid titles are short
+            # or include hyphens/apostrophes (e.g. "Mr. T", "7-10 Split").
             tokens = re.findall(r"\w+", s)
-            filtered = [t for t in tokens if t.isalpha() and len(t) > 2]
+            filtered = [t for t in tokens if re.search(r"[A-Za-z]", t) and len(t) > 1]
             return len(filtered) > 0
         except Exception:
             return False

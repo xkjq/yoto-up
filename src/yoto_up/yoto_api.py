@@ -3275,6 +3275,28 @@ class YotoAPI:
         # Lock to protect shared state when running in parallel
         used_lock = threading.Lock()
 
+        def _normalize_label(s: str | None) -> str:
+            """Normalize labels for icon search.
+
+            Converts common separators (underscores, hyphens, pipes) and runs
+            of punctuation into single spaces, collapses whitespace, and
+            trims. This helps titles like "Ankylosaurus_-_The_Clumsy_Club"
+            become "Ankylosaurus The Clumsy Club" for better text search.
+            """
+            try:
+                if not s:
+                    return ""
+                s2 = str(s)
+                # Replace underscores and hyphens with spaces
+                s2 = re.sub(r"[_\-|]+", " ", s2)
+                # Replace any remaining non-alphanumeric (except spaces) with spaces
+                s2 = re.sub(r"[^A-Za-z0-9 ]+", " ", s2)
+                # Collapse whitespace
+                s2 = re.sub(r"\s+", " ", s2).strip()
+                return s2
+            except Exception:
+                return str(s or "")
+
 
         def _process_target(
             kind: str, ch_idx: int, tr_idx: int, frac: float, idx: int
@@ -3295,6 +3317,8 @@ class YotoAPI:
                     query = override_label
                 else:
                     query = card.choose_icon_search_label(kind, ch_idx, tr_idx)
+                # Normalize query to handle separators like underscores/hyphens
+                query = _normalize_label(query)
                 target_label = f"chapter '{query}'"
             else:
                 track = chapter.tracks[tr_idx] if chapter.tracks and tr_idx < len(chapter.tracks) else None
@@ -3302,6 +3326,8 @@ class YotoAPI:
                     query = override_label
                 else:
                     query = card.choose_icon_search_label(kind, ch_idx, tr_idx)
+                # Normalize query to handle separators like underscores/hyphens
+                query = _normalize_label(query)
                 target_label = f"track '{query}'"
 
             _cb(f"Finding icon for {target_label}", frac)
