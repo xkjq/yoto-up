@@ -438,10 +438,10 @@ def build_playlists_ui(page: "Page", cards=None):
                             dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
                         ts = int(dt.timestamp())
                     except Exception as e:
-                        print(
+                        logger.debug(
                             f"[sort_func] Failed to parse {key_name} '{value}' for card {card.get_title()}: {e}"
                         )
-                print(
+                logger.debug(
                     f"[sort_func] card: {card.get_title()}, {key_name}: {value}, ts: {ts}"
                 )
                 return ts
