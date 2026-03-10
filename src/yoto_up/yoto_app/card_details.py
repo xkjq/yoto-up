@@ -281,15 +281,12 @@ def make_show_card_details(
                                 page.show_snack(f"Failed to update playlist: {e}", error=True)
                                 return
                         finally:
-                            try:
-                                dlg.open = False
-                                page.update()
-                            except Exception:
-                                pass
+                            page.pop_dialog()
+                            page.update()
 
                     threading.Thread(target=worker, daemon=True).start()
 
-                dlg = ft.AlertDialog(title=ft.Text(value="Copy to playlist"), content=ft.Column(controls=[dd, status]), actions=[ft.TextButton(content="Copy", on_click=do_copy), ft.TextButton(content="Cancel", on_click=lambda e: setattr(dlg, 'open', False))])
+                dlg = ft.AlertDialog(title=ft.Text(value="Copy to playlist"), content=ft.Column(controls=[dd, status]), actions=[ft.TextButton(content="Copy", on_click=do_copy), ft.TextButton(content="Cancel", on_click=lambda e: page.pop_dialog())])
                 page.show_dialog(dlg)
                 page.update()
 

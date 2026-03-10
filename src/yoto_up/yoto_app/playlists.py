@@ -896,14 +896,7 @@ def build_playlists_panel(
                 ft.TextButton(content="Cancel", on_click=close_edit),
             ],
         )
-        try:
-            page.show_dialog(dlg)
-        except Exception:
-            try:
-                page.dialog = dlg
-                page.update()
-            except Exception:
-                pass
+        page.show_dialog(dlg)
 
     edit_category_btn.on_click = _on_edit_category_selected
 
