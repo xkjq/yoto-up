@@ -3650,8 +3650,19 @@ class YotoAPI:
                 self.TOKEN_FILE.unlink()
             except Exception:
                 pass
+        # Also remove persisted playlists to avoid presenting another user's
+        # saved playlists after signing out (prevents 403s when switching users).
+        from yoto_up import paths as _paths
+
+        pf = getattr(_paths, "PLAYLISTS_FILE", None)
+        if pf and pf.exists():
+            try:
+                pf.unlink()
+            except Exception:
+                pass
+
         # Optionally clear other caches if needed
-        # For now, we just clear tokens
+        # For now, we clear tokens and persisted playlists
         logger.info("Authentication state has been reset.")
 
     def rewrite_track_fields(

@@ -430,6 +430,14 @@ def main(page: "Page"):
                 pass
             api = page.get_api()  # ensure api_ref has an API instance
             api.reset_auth()
+            # Clear GUI-side cached playlists and related UI so a different
+            # user doesn't see stale data after sign-out.
+            page.cards = []
+            if hasattr(page, "playlists_list") and getattr(page, "playlists_list") is not None:
+                page.playlists_list.controls.clear()
+            if hasattr(page, "upload_manager") and getattr(page, "upload_manager") is not None:
+                # refresh existing card options to reflect cleared state
+                page.upload_manager.refresh_existing_card_options()
             invalidate_authentication()
             if reauth:
                 # Start re-authentication in a background thread
