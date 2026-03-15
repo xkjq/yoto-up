@@ -299,7 +299,7 @@ def main(page: "Page"):
                                 content=ft.Text(value="Copy Link"),
                                 on_click=lambda e, url=verification_uri_complete: (
                                     logger.debug(f"Copying URL to clipboard: {url}"),
-                                    ft.Clipboard().set(url),
+                                    page.run_task(ft.Clipboard().set(url)),
                                 ),
                             ),
                         ]

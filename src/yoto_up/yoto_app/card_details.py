@@ -1036,10 +1036,10 @@ def make_show_card_details(
 
             json_content = ft.ListView(controls=json_lines, padding=10, height=500, width=800)
 
-            def do_copy(_e=None):
+            async def do_copy(_e=None):
                 try:
                     # copy raw JSON to clipboard
-                    ft.Clipboard().set(raw)
+                    await ft.Clipboard().set(raw)
                     page.show_snack("JSON copied to clipboard")
                 except Exception as ex:
                     page.show_snack(f"Clipboard error: {ex}", error=True)
@@ -1048,7 +1048,7 @@ def make_show_card_details(
                 title=ft.Text(value="Raw card JSON"),
                 content=json_content,
                 actions=[
-                    ft.TextButton(content="Copy JSON", on_click=do_copy),
+                    ft.TextButton(content="Copy JSON", on_click=lambda _: page.run_task(do_copy())),
                     ft.TextButton(content="Close", on_click=close_json),
                 ],
             )

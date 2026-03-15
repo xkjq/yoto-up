@@ -5,6 +5,8 @@ import tempfile
 
 import flet as ft
 import httpx
+import subprocess
+import base64
 from loguru import logger
 
 from yoto_up.models import Card
@@ -232,11 +234,30 @@ def add_cover_dialog(page, c: Card):
                     page.pop_dialog()
                     page.update()
 
+                def copy_full_image(_e=None):
+                    logger.debug(f"Attempting to copy image to clipboard: {img_url}")
+                    try:
+                        # Fetch the full-size image
+                        r = httpx.get(img_url, timeout=15)
+                        r.raise_for_status()
+                        img_bytes = r.content
+
+                        async def set_clipboard_image(img_bytes):
+                            await ft.Clipboard().set_image(img_bytes)
+                            page.show_snack("Image copied to clipboard")
+
+
+                        page.run_task(set_clipboard_image,img_bytes)
+                    except Exception as ex:
+                        logger.exception(f"Failed to copy image to clipboard: {ex}")
+                        page.show_snack(f"Failed to copy image: {ex}", error=True)
+
                 confirm_dialog = ft.AlertDialog(
                     title=ft.Text(value="Use this cover image?"),
                     content=ft.Image(src=img_url, width=300, height=300, fit=ft.BoxFit.CONTAIN),
                     actions=[
                         ft.TextButton(content="Use this image", on_click=lambda e: do_confirm_upload()),
+                        ft.TextButton(content="Copy image", on_click=copy_full_image),
                         ft.TextButton(content="Cancel", on_click=lambda e: do_cancel()),
                     ],
                 )
