@@ -8,6 +8,11 @@ import httpx
 import subprocess
 import base64
 from loguru import logger
+try:
+    from flet.controls.exceptions import FletUnsupportedPlatformException
+except Exception:
+    class FletUnsupportedPlatformException(Exception):
+        pass
 
 from yoto_up.models import Card
 from yoto_up.yoto_api import YotoAPI
@@ -237,17 +242,60 @@ def add_cover_dialog(page, c: Card):
                 def copy_full_image(_e=None):
                     logger.debug(f"Attempting to copy image to clipboard: {img_url}")
                     try:
-                        # Fetch the full-size image
                         r = httpx.get(img_url, timeout=15)
                         r.raise_for_status()
                         img_bytes = r.content
 
-                        async def set_clipboard_image(img_bytes):
-                            await ft.Clipboard().set_image(img_bytes)
+                        async def _set_image(b: bytes):
+                            await ft.Clipboard().set_image(b)
+
+                        # Try the Flet clipboard first (may raise or be unsupported on some platforms)
+                        try:
+                            page.run_task(_set_image, img_bytes)
                             page.show_snack("Image copied to clipboard")
+                            return
+                        except FletUnsupportedPlatformException:
+                            # fall through to copykitten fallback
+                            logger.warning("Flet clipboard not supported on this platform, trying fallbacks")
+                        except Exception:
+                            logger.error("Error using Flet clipboard, trying fallbacks", exc_info=True)
+                            # If scheduling failed or other error, try fallbacks
 
+                        # Minimal fallback: try copykitten module, then CLI, then data-URI
+                        try:
+                            import copykitten
+                            fn = getattr(copykitten, "copy_image", None) or getattr(copykitten, "copy", None)
+                            if callable(fn):
+                                res = fn(img_bytes)
+                                try:
+                                    import inspect
+                                    if inspect.isawaitable(res):
+                                        page.run_task(res)
+                                except Exception:
+                                    pass
+                                page.show_snack("Image copied to clipboard")
+                                return
+                        except Exception:
+                            pass
 
-                        page.run_task(set_clipboard_image,img_bytes)
+                        try:
+                            p = subprocess.run(["copykitten", "--format", "png"], input=img_bytes, capture_output=True)
+                            if p.returncode == 0:
+                                page.show_snack("Image copied to clipboard")
+                                return
+                        except Exception:
+                            pass
+
+                        try:
+                            b64 = base64.b64encode(img_bytes).decode("ascii")
+                            data_uri = f"data:image/png;base64,{b64}"
+                            page.run_task(ft.Clipboard().set, data_uri)
+                            page.show_snack("Image copied to clipboard")
+                            return
+                        except Exception:
+                            pass
+
+                        page.show_snack("Unable to copy image to clipboard on this platform", error=True)
                     except Exception as ex:
                         logger.exception(f"Failed to copy image to clipboard: {ex}")
                         page.show_snack(f"Failed to copy image: {ex}", error=True)
