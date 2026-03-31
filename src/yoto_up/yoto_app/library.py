@@ -790,16 +790,20 @@ def build_library_panel(
         if _library_fetch_lock.locked():
             # another fetch in progress; skip this invocation
             logger.debug("fetch_library: fetch already in progress; skipping")
+            page.show_snack("Library fetch already in progress")
             return
         if now - _library_last_fetch < _library_fetch_cooldown:
             logger.debug("fetch_library: recent fetch within cooldown; skipping")
+            page.show_snack("Library was fetched just now. Please wait a moment.")
             return
         acquired = _library_fetch_lock.acquire(blocking=False)
         if not acquired:
             logger.debug("fetch_library: failed to acquire lock; skipping")
+            page.show_snack("Library fetch already in progress")
             return
         _library_last_fetch = now
         # Clean any stale/invalid controls before touching the page
+        page.show_snack("Fetching library...")
         _clean_controls()
         page.update()
 
@@ -844,6 +848,7 @@ def build_library_panel(
                 pass
 
         build_library_ui(page, library_cards)
+        page.show_snack(f"Fetched {len(library_cards)} library items")
         page.update()
 
     page.fetch_library = fetch_library  # Expose async fetch for external callers

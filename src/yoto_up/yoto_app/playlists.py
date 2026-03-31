@@ -1352,17 +1352,21 @@ def build_playlists_panel(
         if _playlists_fetch_lock.locked():
             # another fetch in progress; skip this invocation
             logger.debug("fetch_playlists: fetch already in progress; skipping")
+            page.show_snack("Playlist fetch already in progress")
             return
         if now - _playlists_last_fetch < _playlists_fetch_cooldown:
             logger.debug("fetch_playlists: recent fetch within cooldown; skipping")
+            page.show_snack("Playlists were fetched just now. Please wait a moment.")
             return
         acquired = _playlists_fetch_lock.acquire(blocking=False)
         if not acquired:
             logger.debug("fetch_playlists: failed to acquire lock; skipping")
+            page.show_snack("Playlist fetch already in progress")
             return
         _playlists_last_fetch = now
         # print("Fetching playlists...")  # Commented out for performance
         # Clean any stale/invalid controls before touching the page
+        page.show_snack("Fetching playlists...")
         _clean_controls()
         page.update()
 
@@ -1409,6 +1413,7 @@ def build_playlists_panel(
         page.upload_manager.refresh_existing_card_options()
 
         build_playlists_ui(page, cards)
+        page.show_snack(f"Fetched {len(cards)} playlists")
         # Persist playlists for faster startup and offline view
         save_playlists(cards)
         page.update()
