@@ -717,17 +717,16 @@ def build_icon_browser_panel(
                 img = ft.Image(
                     src=thumb, width=64, height=64, tooltip=path.name, border_radius=5
                 )
-                # attach on_click in the constructor so Flet will register the handler
-                #btn = ft.Container(
-                #    content=img,
-                #    border_radius=6,
-                #    padding=1,
-                #    ink=True,
-                #    on_click=lambda e, path=path: _on_click(path),
-                #    border=ft.border.all(1, "#ADACAC"),
-                #)
-                #icons_container.controls.append(btn)
-                icons_container.controls.append(img)
+                # Wrap in a clickable tile so selecting an icon updates the side details panel.
+                tile = ft.Container(
+                    content=img,
+                    border_radius=6,
+                    padding=1,
+                    ink=True,
+                    on_click=lambda e, path=path: _on_click(path),
+                    border=ft.border.all(1, "#ADACAC"),
+                )
+                icons_container.controls.append(tile)
                 if idx % 500 == 0:
                     logger.debug(f"Rendered {idx} icons, updating page...")
                     page.update()
