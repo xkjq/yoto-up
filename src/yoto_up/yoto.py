@@ -1550,7 +1550,7 @@ def create_card_from_folder(
                 f
                 for f in folder_path.iterdir()
                 if f.is_file()
-                and f.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".ogg"}
+                and f.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".ogg", ".m4b"}
             ]
         )
         if not media_files:

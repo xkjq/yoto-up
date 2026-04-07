@@ -27,7 +27,7 @@ class AudioNormalizer:
         ext = ext.lower()
         if ext in [".mp3"]:
             return "libmp3lame"
-        elif ext in [".m4a", ".aac", ".mp4"]:
+        elif ext in [".m4a", ".m4b", ".aac", ".mp4"]:
             return "aac"
         elif ext in [".ogg"]:
             return "libvorbis"
