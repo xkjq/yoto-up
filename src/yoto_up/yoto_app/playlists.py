@@ -56,6 +56,39 @@ def _get_playlist_checkbox_control(ctrl: object) -> ft.Checkbox | None:
 
 
 def card_matches_filters(card_obj: Card, filters: Dict[str, Any]):
+    qs = (filters.get("quicksearch") or "").strip().lower()
+    if qs:
+        title = (card_obj.title or "").lower()
+        card_id = (card_obj.cardId or "").lower()
+        author = ""
+        try:
+            author = (card_obj.get_author() or "").lower()
+        except Exception:
+            pass
+        category = ""
+        try:
+            category = (card_obj.get_category() or "").lower()
+        except Exception:
+            pass
+        tags = []
+        try:
+            tags = [t.lower() for t in (card_obj.get_tags() or []) if t]
+        except Exception:
+            pass
+        genres = []
+        try:
+            genres = [g.lower() for g in (card_obj.get_genres() or []) if g]
+        except Exception:
+            pass
+        in_title = qs in title
+        in_card_id = qs in card_id
+        in_author = qs in author
+        in_category = qs in category
+        in_tags = any(qs in t for t in tags)
+        in_genres = any(qs in g for g in genres)
+        if not (in_title or in_card_id or in_author or in_category or in_tags or in_genres):
+            return False
+
     tf = (filters.get("title") or "").strip().lower()
     if tf:
         title = card_obj.title
@@ -530,6 +563,12 @@ def build_playlists_panel(
     """
 
     # Controls and state
+    quicksearch_field = ft.TextField(
+        label="Quick Search",
+        hint_text="Search title, author, tags...",
+        width=300,
+        on_change=lambda e: page.run_task(apply_filters),
+    )
     title_filter = ft.TextField(label="Title contains", width=200)
     genre_filter = ft.TextField(label="Genres (comma separated)", width=200)
     category_filter = ft.Dropdown(
@@ -559,6 +598,7 @@ def build_playlists_panel(
             "genre": genre_filter.value or "",
             "category": category_filter.value or "",
             "tags": tags_filter.value or "",
+            "quicksearch": quicksearch_field.value or "",
         }
 
     page.get_playlist_filters = _get_playlist_filters
@@ -1333,6 +1373,7 @@ def build_playlists_panel(
             genre_filter.value = ""
             category_filter.value = ""
             tags_filter.value = ""
+            quicksearch_field.value = ""
             page.update()
             apply_filters(None)
         except Exception:
@@ -1427,6 +1468,7 @@ def build_playlists_panel(
         setattr(title_filter, "value", ""),
         setattr(genre_filter, "value", ""),
         setattr(category_filter, "value", ""),
+        setattr(quicksearch_field, "value", ""),
         page.run_task(apply_filters),
     )
 
@@ -1434,6 +1476,7 @@ def build_playlists_panel(
     title_filter.on_submit = lambda: page.run_task(apply_filters)
     genre_filter.on_submit = lambda: page.run_task(apply_filters)
     tags_filter.on_submit = lambda: page.run_task(apply_filters)
+    quicksearch_field.on_submit = lambda: page.run_task(apply_filters)
 
     # Make filters row expandable using Accordion
     filters_panel = ft.ExpansionTile(
@@ -1442,6 +1485,7 @@ def build_playlists_panel(
             padding=0,
             margin=0,
         ),
+        expand=True,
         controls=[
             ft.Container(
                 content=ft.Row(
@@ -1489,7 +1533,14 @@ def build_playlists_panel(
                 spacing=8,
                 alignment=ft.MainAxisAlignment.START,
             ),
-            filters_panel,
+            ft.Row(
+                controls=[
+                    quicksearch_field,
+                    filters_panel,
+                ],
+                alignment=ft.MainAxisAlignment.START,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             ft.Divider(),
             playlists_list,
         ],
