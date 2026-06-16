@@ -222,7 +222,7 @@ def main(page: "Page"):
         page.snack_bar = ft.SnackBar(
             content=ft.Text(value=message), bgcolor=bg, duration=duration
         )
-        page.show_dialog(page.snack_bar)
+        page.snack_bar.open = True
         try:
             page.update()
         except AssertionError:

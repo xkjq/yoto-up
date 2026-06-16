@@ -2954,16 +2954,46 @@ class YotoAPI:
             p = Path(image_path)
             if not p.exists():
                 raise FileNotFoundError(f"Image file not found: {image_path}")
-            with p.open("rb") as f:
-                data = f.read()
+
             # Guess mime type
             import mimetypes
-
             mime, _ = mimetypes.guess_type(str(p))
             if not mime:
                 # default to png
                 mime = "image/png"
             headers["Content-Type"] = mime
+
+            # Try to resize/compress if too large (either dimensions > 1024 or file size > 1MB)
+            try:
+                with Image.open(p) as img:
+                    max_size = 1024
+                    if img.width > max_size or img.height > max_size or p.stat().st_size > 1024 * 1024:
+                        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                        import io
+                        out_io = io.BytesIO()
+                        # Handle transparency
+                        if img.mode in ("RGBA", "LA", "P"):
+                            background = Image.new("RGB", img.size, (255, 255, 255))
+                            mask = img.split()[-1] if img.mode == "RGBA" else None
+                            background.paste(img, mask=mask)
+                            img_to_save = background
+                        else:
+                            img_to_save = img.convert("RGB")
+                        
+                        img_to_save.save(out_io, format="JPEG", quality=85)
+                        data = out_io.getvalue()
+                        headers["Content-Type"] = "image/jpeg"
+                        logger.info(
+                            f"Resized and compressed cover image from {p.stat().st_size} bytes ({img.width}x{img.height}) "
+                            f"to {len(data)} bytes ({img_to_save.width}x{img_to_save.height})"
+                        )
+                    else:
+                        with p.open("rb") as f:
+                            data = f.read()
+            except Exception as e:
+                logger.warning(f"Could not check/resize image with PIL: {e}. Uploading original.")
+                with p.open("rb") as f:
+                    data = f.read()
 
         # Require either file body or imageUrl
         if data is None and not imageUrl:

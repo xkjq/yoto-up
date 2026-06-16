@@ -48,7 +48,7 @@ def open_import_dialog(editor, ev):
                 bgcolor=ft.Colors.RED,
                 duration=12000,
             )
-            page_local.show_dialog(page_local.snack_bar)
+            page_local.snack_bar.open = True
             page_local.update()
         except Exception:
             pass

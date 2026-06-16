@@ -26,7 +26,8 @@ def show_snack(page, message: str, error: bool = False):
     try:
         sb = ft.SnackBar(ft.Text(message), bgcolor=ft.Colors.RED if error else ft.Colors.GREEN)
         page.snack_bar = sb
-        page.show_dialog(sb)
+        page.snack_bar.open = True
+        page.update()
     except Exception:
         try:
             logger.error("show_snack: failed to show snackbar")

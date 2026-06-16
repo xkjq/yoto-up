@@ -47,7 +47,7 @@ def add_cover_dialog(page, c: Card):
                 bgcolor=ft.Colors.RED,
                 duration=12000,
             )
-            page.show_dialog(page.snack_bar)
+            page.snack_bar.open = True
             page.update()
         except Exception:
             pass
@@ -129,18 +129,21 @@ def add_cover_dialog(page, c: Card):
                 page.update_card(card_model)
             except Exception as ex:
                 logger.error(f"Upload succeeded but attach failed, {ex}")
+                page.show_snack(f"Upload succeeded but attaching cover failed: {ex}", error=True)
+                return
             finally:
                 page.update()
+
+            page.pop_dialog()
+            page.pop_dialog()
+            page.pop_dialog()
+            page.pop_dialog()
+            page.show_card_details(card_model)
+            page.update()
         except Exception as e:
             logger.error(f"Top-level upload error: {e}")
+            page.show_snack(f"Failed to upload cover: {e}", error=True)
             page.update()
-
-        page.pop_dialog()
-        page.pop_dialog()
-        page.pop_dialog()
-        page.pop_dialog()
-        page.show_card_details(card_model)
-        page.update()
 
     def close_add(_e):
         page.pop_dialog()
@@ -190,6 +193,7 @@ def add_cover_dialog(page, c: Card):
 
             def select_image(img_url, card: Card):
                 def do_confirm_upload():
+                    tmp_path = None
                     try:
                         page.update()
                         resp = httpx.get(img_url, timeout=15)
@@ -199,7 +203,10 @@ def add_cover_dialog(page, c: Card):
                             tmp_path = tmpf.name
 
                         def progress_cb(_msg, _frac):
-                            page.update()
+                            try:
+                                page.update()
+                            except Exception:
+                                pass
 
                         res = api.upload_cover_image(
                             image_path=tmp_path,
@@ -216,15 +223,13 @@ def add_cover_dialog(page, c: Card):
                                 fallback_url=img_url,
                             )
                             page.update_card(card_model)
-                        except Exception:
-                            logger.error("Upload succeeded but attach failed (confirm upload)")
+                        except Exception as ex:
+                            logger.error(f"Upload succeeded but attach failed (confirm upload): {ex}")
+                            page.show_snack(f"Upload succeeded but attaching cover failed: {ex}", error=True)
+                            return
                         finally:
                             page.update()
 
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            logger.error(f"Failed to remove temp file {tmp_path}")
                         page.pop_dialog()
                         page.pop_dialog()
                         page.pop_dialog()
@@ -233,7 +238,15 @@ def add_cover_dialog(page, c: Card):
                         page.update()
                     except Exception as e:
                         logger.error(f"Top-level upload error (confirm upload): {e}")
+                        page.show_snack(f"Failed to upload cover: {e}", error=True)
                         page.update()
+                    finally:
+                        if tmp_path:
+                            try:
+                                if os.path.exists(tmp_path):
+                                    os.remove(tmp_path)
+                            except Exception:
+                                logger.error(f"Failed to remove temp file {tmp_path}")
 
                 def do_cancel():
                     page.pop_dialog()

@@ -767,6 +767,15 @@ class UploadManager:
         self.status = getattr(page, "status", None)
 
 
+        def remove_no_files_warnings():
+            try:
+                file_rows_column.controls = [
+                    c for c in file_rows_column.controls
+                    if not (isinstance(c, ft.Text) and c.value and c.value.startswith("No audio files found in"))
+                ]
+            except Exception:
+                pass
+
         def clear_queue(ev=None):
             """Clear the UI upload queue and reset counters."""
             logger.trace("[clear_queue] Clearing upload queue")
@@ -790,6 +799,7 @@ class UploadManager:
         def populate_file_rows(folder_path: str):
             logger.trace(f"[populate_file_rows] Populating file rows from folder: {folder_path}")
             try:
+                remove_no_files_warnings()
                 # Find audio files in the folder
                 files = utils_mod.find_audio_files(folder_path)
                 # Add only files not already present
@@ -845,6 +855,7 @@ class UploadManager:
                 return
 
             logger.debug(f"[_handle_picked_files] picked {len(files)} files")
+            remove_no_files_warnings()
             if getattr(page, "web", False):
                 logger.debug("[_handle_picked_files] running in web mode")
                 to_upload: list[ft.FilePickerUploadFile] = []
@@ -888,6 +899,7 @@ class UploadManager:
                 temp_path = f"assets/uploads/queue/{e.file_name}"
 
                 try:
+                    remove_no_files_warnings()
                     file_row = FileUploadRow(temp_path, page)
                     file_rows_column.controls.append(file_row.row)
                 except Exception as _:
@@ -2267,15 +2279,34 @@ async def start_uploads(
             page.update()
 
             progress_cb = make_progress_cb(idx) if show_progress else None
-            tr = await api.upload_and_transcode_audio_async(
-                audio_path=audio_path,
-                filename=filename_for_api,
-                loudnorm=loudnorm,
-                show_progress=bool(show_progress),
-                poll_interval=2,
-                max_attempts=200,
-                progress_callback=progress_cb,
-            )
+            
+            # Retry loop for upload & transcode (up to 3 times)
+            max_upload_attempts = 3
+            tr = None
+            for attempt in range(1, max_upload_attempts + 1):
+                try:
+                    if attempt > 1:
+                        logger.info(f"Retrying upload/transcode for idx={idx}, path={audio_path} (Attempt {attempt}/{max_upload_attempts})")
+                        fileuploadrow.set_status(f"Retrying ({attempt}/{max_upload_attempts})...")
+                        page.update()
+                        
+                    tr = await api.upload_and_transcode_audio_async(
+                        audio_path=audio_path,
+                        filename=filename_for_api,
+                        loudnorm=loudnorm,
+                        show_progress=bool(show_progress),
+                        poll_interval=2,
+                        max_attempts=200,
+                        progress_callback=progress_cb,
+                    )
+                    break  # Success
+                except Exception as attempt_err:
+                    logger.warning(
+                        f"Upload/transcode attempt {attempt} failed for idx={idx}, path={audio_path}: {attempt_err}"
+                    )
+                    if attempt == max_upload_attempts:
+                        raise attempt_err
+                    await asyncio.sleep(2)
 
             if tr is not None:
                 if fileuploadrow is not None:
