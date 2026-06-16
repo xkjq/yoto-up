@@ -575,12 +575,11 @@ class IconReplaceDialog:
                     def make_edit(pth):
                         def _edit(ev):
                             try:
-                                # Ensure a page-bound PixelArtEditor exists and load the saved icon
                                 editor = getattr(self.page, "pixel_editor", None)
                                 if editor is None:
-                                    editor = PixelArtEditor(page=self.page)
-                                    self.page.pixel_editor = editor
-                                # Try to attach/select editor tab if page contains Tabs
+                                    self.show_snack("Editor is not available", True)
+                                    return
+
                                 try:
                                     tabs_control = None
                                     for c in getattr(self.page, "controls", []) or []:
@@ -591,14 +590,18 @@ class IconReplaceDialog:
                                         editor.attach_to_tabview(
                                             tabs_control, select=True, page=self.page
                                         )
+                                    else:
+                                        self.show_snack("Editor tab is not available", True)
+                                        return
                                 except Exception:
-                                    pass
-                                # load the icon into the editor
+                                    self.show_snack("Failed to open editor tab", True)
+                                    return
+
                                 try:
                                     editor.load_icon(str(pth))
                                     self.page.update()
                                 except Exception:
-                                    pass
+                                    self.show_snack("Failed to load icon into editor", True)
                             except Exception as ex:
                                 self.show_snack(f"Failed to open editor: {ex}", True)
 

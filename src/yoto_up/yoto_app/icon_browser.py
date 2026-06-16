@@ -1,18 +1,15 @@
-import os
-import threading
-import sys
-import json
 import hashlib
+import json
+import os
 from pathlib import Path
+import sys
+import threading
 from difflib import SequenceMatcher
 from typing import Callable
 
 import flet as ft
 from loguru import logger
 from PIL import Image as PILImage
-from .pixel_art_editor import PixelArtEditor
-
-import base64
 
 from .icon_import_helpers import (
     load_cached_icons,
@@ -616,7 +613,7 @@ def build_icon_browser_panel(
             )
             details_panel.controls.append(btn_row)
         except Exception:
-            logger.error("show_icon_details: failed to load details")
+            logger.exception("show_icon_details: failed to load details")
             details_panel.controls.append(ft.Text(value="Failed to load details"))
         page.update()
 
@@ -642,13 +639,11 @@ def build_icon_browser_panel(
         logger.debug(f"open_icon_editor: resolved meta_source={meta_source}")
 
         try:
-            # Reuse an editor bound to the page if present; else create and attach one
             editor = getattr(page, "pixel_editor", None)
             if editor is None:
-                editor = PixelArtEditor(page=page)
-                setattr(page, "pixel_editor", editor)
+                show_snack("Editor is not available", error=True)
+                return
 
-            # Try to find a Tabs control on the page to host the editor tab
             tabs_control = None
             try:
                 for c in getattr(page, "controls", []) or []:
@@ -659,34 +654,16 @@ def build_icon_browser_panel(
                 tabs_control = None
 
             if tabs_control:
-                # Attach/select editor tab in Tabs
                 try:
                     editor.attach_to_tabview(tabs_control, select=True, page=page)
                     page.update()
-                    logger.debug("Editor tab attached/selected in Tabs control")
+                    logger.debug("Existing editor tab selected")
                 except Exception:
-                    logger.exception(
-                        "Failed to attach/select editor tab; attempting fallback attach without selection"
-                    )
-                    try:
-                        editor.attach_to_tabview(tabs_control, select=False, page=page)
-                    except Exception:
-                        logger.exception("Failed to attach editor tab")
+                    logger.exception("Failed to select existing editor tab")
             else:
-                # No Tabs control found — fallback to opening editor in a dialog
-                try:
-                    dlg = ft.AlertDialog(
-                        title=ft.Text(value="Icon Editor"),
-                        content=editor.container,
-                        open=True,
-                    )
-                    page.dialog = dlg
-                    page.show_dialog(dlg)
-                    page.update()
-                except Exception:
-                    logger.exception("Failed to open editor dialog fallback")
+                show_snack("Editor tab is not available", error=True)
+                return
 
-            # Load the selected icon into the editor (tab or dialog)
             try:
                 load_fn = getattr(editor, "load_icon", None)
                 if callable(load_fn):

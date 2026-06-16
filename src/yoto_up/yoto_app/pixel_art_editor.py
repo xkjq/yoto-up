@@ -3432,13 +3432,29 @@ class PixelArtEditor:
     def attach_to_tabview(
         self, tabview: ft.Tabs, select: bool = True, page: ft.Page | None = None
     ):
-        """Attach the editor as a new tab to an existing ft.Tabs (tabview).
-        If select=True the new tab will be selected. Pass page to trigger update.
-        Returns the appended ft.Tab or None on failure.
+        """Select the existing editor tab in an ft.Tabs control.
+
+        This app provides a built-in Editor tab at startup. This helper must
+        never create or append a new editor tab; it only focuses the existing
+        one when present.
         """
         try:
             if tabview is None:
                 return None
+
+            tab_bar = None
+            content_root = getattr(tabview, "content", None)
+            for control in getattr(content_root, "controls", []) or []:
+                if isinstance(control, ft.TabBar):
+                    tab_bar = control
+
+            tabs = getattr(tab_bar, "tabs", None)
+            if tabs is None:
+                tabs = getattr(tabview, "tabs", None)
+            if tabs is None:
+                logger.error("attach_to_tabview: no tab list found on Tabs control")
+                return None
+
             # ensure UI is built before creating/attaching the tab
             if not getattr(self, "_built", False):
                 try:
@@ -3451,49 +3467,23 @@ class PixelArtEditor:
                     self.ensure_grid()
                 except Exception:
                     pass
-            tab = getattr(self, "_tab", None) or self.as_tab()
-            if tab is None:
+
+            editor_index = None
+            for idx, t in enumerate(tabs):
+                label = getattr(t, "label", None)
+                if label in {"Editor", "Icon Editor"}:
+                    editor_index = idx
+                    break
+
+            if editor_index is None:
+                logger.error("attach_to_tabview: existing Editor tab not found")
                 return None
-            # Avoid duplicates: if the same tab already present, just select it
-            for idx, t in enumerate(tabview.tabs):
-                if t is tab:
-                    if select:
-                        tabview.selected_index = idx
-                    if page:
-                        page.update()
-                    return tab
-            tabview.tabs.append(tab)
+
             if select:
-                tabview.selected_index = len(tabview.tabs) - 1
-            # Ensure the tab's content is appended to the Tabs.content list (Flet 0.80 requires content mapping)
-            try:
-                content = getattr(tab, "_editor_content", None)
-                if content is None:
-                    content = getattr(self, "container", None)
-                    if content is not None and not isinstance(content, ft.Control):
-                        content = ft.Column([content], scroll=ft.ScrollMode.AUTO, expand=True)
-                if content is not None:
-                    if hasattr(content, 'visible'):
-                        try:
-                            content.visible = True
-                        except Exception:
-                            pass
-                    if not hasattr(tabview, 'content') or tabview.content is None:
-                        try:
-                            tabview.content = []
-                        except Exception:
-                            pass
-                    try:
-                        tabview.content.append(content)
-                        # Keep length in sync
-                        try:
-                            tabview.length = len(tabview.content)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                tabview.selected_index = editor_index
+                if tab_bar is not None:
+                    tab_bar.selected_index = editor_index
+
             # remember the page if provided for later dialog helpers
             if page:
                 self.page = page
@@ -3501,7 +3491,7 @@ class PixelArtEditor:
                     page.update()
                 except Exception:
                     pass
-            return tab
+            return tabs[editor_index]
         except Exception:
             logger.exception("Failed to attach editor to tabview")
             return None
