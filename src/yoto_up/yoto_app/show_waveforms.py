@@ -640,9 +640,9 @@ def show_waveforms_popup(
 
             track_group = ft.Container(
                 content=ft.Column(controls=group_children, tight=True),
-                padding=ft.padding.all(8),
-                margin=ft.margin.only(top=6, bottom=6),
-                border=ft.border.all(1, ft.Colors.GREY_300),
+                padding=ft.Padding.all(8),
+                margin=ft.Margin.only(top=6, bottom=6),
+                border=ft.Border.all(1, ft.Colors.GREY_300),
                 border_radius=6,
                 expand=False,
             )

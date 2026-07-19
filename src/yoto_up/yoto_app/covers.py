@@ -13,9 +13,8 @@ Features:
 
 import tempfile
 from pathlib import Path
-import shutil
-import sys
 import base64
+import io
 from typing import Any, Dict, List, Optional
 from enum import Enum
 import threading
@@ -985,7 +984,7 @@ def generate_print_layout(cover_images: List[CoverImage], paper_size: str = "A4"
                         if getattr(cover_img, "template_footer", None) is not None or getattr(cover_img, "template_accent_color", None) is not None:
                             ip = (cover_img.path, getattr(cover_img, "template_footer", None), getattr(cover_img, "template_accent_color", None) or "#f1c40f")
                         try:
-                            processed = render_template_with_pillow(
+                            processed = cover_templates.render_template_with_pillow(
                                 (getattr(cover_img, "template_title", None) or cover_img.name),
                                 ip,
                                 getattr(cover_img, "template_name", "classic"),
@@ -1843,7 +1842,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Text("Text Overlays", weight=ft.FontWeight.BOLD),
             ft.Container(
                 content=text_overlay_list,
-                border=ft.border.all(1, ft.Colors.GREY_300),
+                border=ft.Border.all(1, ft.Colors.GREY_300),
                 border_radius=5,
             ),
             ft.Divider(),
@@ -2575,7 +2574,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
         """Open the preview HTML in the default browser."""
         if HAS_WATCHDOG:
             import webbrowser
-            webbrowser.open(f"http://localhost:8765/preview")
+            webbrowser.open("http://localhost:8765/preview")
             
             # Start auto-reload if watchdog is available
             if HAS_WATCHDOG:
@@ -2824,7 +2823,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             # Template inputs were removed (global quick templates section)
         ], spacing=10),
         padding=10,
-        border=ft.border.all(1, ft.Colors.GREY_400),
+        border=ft.Border.all(1, ft.Colors.GREY_400),
         border_radius=5,
     )
     # Note: global "Quick Templates" controls removed per request.
@@ -2847,7 +2846,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             ft.Container(
                 content=image_list,
                 height=300,
-                border=ft.border.all(1, ft.Colors.GREY_300),
+                border=ft.Border.all(1, ft.Colors.GREY_300),
                 border_radius=5,
             ),
         ], spacing=10),
@@ -2894,7 +2893,7 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                            size=12, color=ft.Colors.GREY_600, text_align=ft.TextAlign.CENTER),
                 ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
                 expand=True,
-                border=ft.border.all(1, ft.Colors.GREY_300),
+                border=ft.Border.all(1, ft.Colors.GREY_300),
                 border_radius=5,
             ),
         ], spacing=10, expand=True),

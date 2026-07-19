@@ -4,7 +4,6 @@ from pathlib import Path
 import sys
 import importlib.util
 from typing import cast, Any
-import shutil
 from loguru import logger
 
 from yoto_up.paths import FLET_APP_STORAGE_DATA

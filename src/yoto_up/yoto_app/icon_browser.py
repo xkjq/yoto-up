@@ -20,7 +20,6 @@ from .icon_import_helpers import (
     path_is_official,
     path_is_yotoicons,
     source_label_for_path,
-    get_base64_from_path,
     get_thumbnail_path,
 )
 
@@ -41,7 +40,7 @@ def build_icon_browser_panel(
     icon_count_number = ft.Text(value="0", size=12)
     icon_count_badge = ft.Container(
         content=icon_count_number,
-        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
         border_radius=8,
     )
 
@@ -79,7 +78,7 @@ def build_icon_browser_panel(
     fuzzy_group = ft.Container(
         content=ft.Row(controls=[cb_fuzzy, threshold_field, search_btn], spacing=8),
         padding=8,
-        border=ft.border.all(1, "#E0E0E0"),
+        border=ft.Border.all(1, "#E0E0E0"),
         border_radius=6,
     )
     search_row.controls.extend([search_field, fuzzy_group, online_search_btn])
@@ -701,7 +700,7 @@ def build_icon_browser_panel(
                     padding=1,
                     ink=True,
                     on_click=lambda e, path=path: _on_click(path),
-                    border=ft.border.all(1, "#ADACAC"),
+                    border=ft.Border.all(1, "#ADACAC"),
                 )
                 icons_container.controls.append(tile)
                 if idx % 500 == 0:

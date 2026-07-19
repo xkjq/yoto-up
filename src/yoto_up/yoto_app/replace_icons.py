@@ -1,16 +1,11 @@
-from nltk.lm.vocabulary import _
-from yoto_up.yoto_app.playlists import build_playlists_ui
-from fontTools.mtiLib import build
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.config import CLIENT_ID
 from yoto_up.models import DEFAULT_MEDIA_ID
 import threading
 import asyncio
 import time
-import json
 import flet as ft
 from loguru import logger
-import copy
 
 
 def show_replace_icons_dialog(

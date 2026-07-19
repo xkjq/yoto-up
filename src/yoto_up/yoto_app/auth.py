@@ -1,7 +1,5 @@
 import threading
 import httpx
-import json
-import os
 import time
 from yoto_up.yoto_app.api_manager import ensure_api
 from loguru import logger

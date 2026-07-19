@@ -306,7 +306,7 @@ def show_edit_card_dialog(
                             entry["ch_field"],
                             ft.IconButton(icon=ft.Icons.DELETE, tooltip="Delete chapter", on_click=delete_chapter_at()),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        padding=ft.padding.only(left=8),
+                        padding=ft.Padding.only(left=8),
                     )
                 ])
             )
@@ -333,7 +333,7 @@ def show_edit_card_dialog(
                             entry["tr_field"],
                             ft.IconButton(icon=ft.Icons.DELETE, tooltip="Delete track", on_click=delete_track_at()),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        padding=ft.padding.only(left=32),
+                        padding=ft.Padding.only(left=32),
                     )
                 ])
             )

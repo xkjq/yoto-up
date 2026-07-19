@@ -1,4 +1,3 @@
-from nltk.lm.vocabulary import _
 import os
 import httpx
 import time
@@ -3455,7 +3454,7 @@ class YotoAPI:
                     if not media_id:
                         with used_lock:
                             candidate_claims.pop(key, None)
-                        _cb(f"Candidate had no mediaId, skipping", frac)
+                        _cb("Candidate had no mediaId, skipping", frac)
                         continue
 
                     media_id = str(media_id)

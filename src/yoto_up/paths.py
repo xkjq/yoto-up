@@ -1,7 +1,6 @@
 from pathlib import Path
 import os
 import json
-from typing import Any
 
 from yoto_up.models import Card
 try:

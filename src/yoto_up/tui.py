@@ -4,7 +4,6 @@ from textual.scroll_view import ScrollView
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets.option_list import Option
-from textual.logging import TextualHandler
 from rich.text import Text
 import asyncio
 import json

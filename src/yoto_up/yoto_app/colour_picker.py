@@ -4,7 +4,6 @@ import math
 import colorsys
 from PIL import Image
 from loguru import logger
-import uuid
 import threading
 from pathlib import Path
 
@@ -80,7 +79,7 @@ class ColourPicker:
             img.save(path, format='PNG')
             self._temp_wheel_files.add(path)
             return path
-        except Exception as ex:
+        except Exception:
             return None
 
     def hsv_to_hex(self, h, s, v):
@@ -102,7 +101,7 @@ class ColourPicker:
         g_slider = ft.Slider(min=0, max=255, value=g, label="Green", divisions=255, on_change=None)
         b_slider = ft.Slider(min=0, max=255, value=b, label="Blue", divisions=255, on_change=None)
         hex_field = ft.TextField(label="Hex", value=self.current_color, width=100)
-        preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.border.all(1, "#888888"))
+        preview = ft.Container(width=48, height=48, bgcolor=self.current_color, border_radius=6, border=ft.Border.all(1, "#888888"))
         value_slider = ft.Slider(min=0.0, max=1.0, value=1, divisions=100, label="Value (Brightness)", on_change=None)
         # Generate initial wheel image and set src
         initial_wheel_path = self._make_color_wheel_image(value_slider.value)
@@ -114,7 +113,7 @@ class ColourPicker:
             if self._debounce_timer:
                 self._debounce_timer.cancel()
             def run():
-                on_value_change(ev)
+                on_hsv_change(ev)
             self._debounce_timer = threading.Timer(delay, run)
             self._debounce_timer.start()
         def debounce_wheel_gesture(ev, delay=0.2):
@@ -214,7 +213,7 @@ class ColourPicker:
 
         # Remove on_value_change, use on_hsv_change for all HSV slider updates
 
-        def on_value_change(ev=None):
+        def on_hsv_change(ev=None):
             h = float(hue_slider.value)
             s = float(sat_slider.value)
             v = float(value_slider.value)

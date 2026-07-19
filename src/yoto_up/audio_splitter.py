@@ -19,7 +19,6 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.align import Align
-from rich.text import Text
 from datetime import timedelta
 
 

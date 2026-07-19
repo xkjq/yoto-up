@@ -843,7 +843,7 @@ class UploadManager:
                     if len(parents) == 1:
                         inferred = Path(paths[0]).parent.name
                     else:
-                        inferred = clean_title_from_filename(paths[0], strip_leading)
+                        inferred = clean_title_from_filename(paths[0], bool(strip_leading_checkbox.value))
                 except Exception:
                     inferred = None
                 if inferred:
@@ -886,7 +886,7 @@ class UploadManager:
                     if len(parents) == 1:
                         new_card_title.value = Path(picked_paths[0]).parent.name
                     else:
-                        new_card_title.value = clean_title_from_filename(picked_paths[0], strip_leading)
+                        new_card_title.value = clean_title_from_filename(picked_paths[0], bool(strip_leading_checkbox.value))
                     page.update()
             update_show_waveforms_btn()
             page.update()
@@ -908,7 +908,7 @@ class UploadManager:
                     )
                 # Infer new card title from uploaded filename if the title field is empty
                 if new_card_title and (not getattr(new_card_title, "value", None) or not new_card_title.value.strip()):
-                    new_card_title.value = Path(temp_path).parent.name or clean_title_from_filename(temp_path, strip_leading)
+                    new_card_title.value = Path(temp_path).parent.name or clean_title_from_filename(temp_path, bool(strip_leading_checkbox.value))
                 update_show_waveforms_btn()
                 page.update()
 

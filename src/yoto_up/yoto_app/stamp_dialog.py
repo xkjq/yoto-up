@@ -13,7 +13,6 @@ from .icon_import_helpers import get_base64_from_path
 from yoto_up.paths import STAMPS_DIR
 import importlib.resources as pkg_resources
 import shutil
-from pathlib import Path
 
 def seed_stamps_if_empty(d):
     # If directory is empty (no .png/.json), seed some basic stamps for users
