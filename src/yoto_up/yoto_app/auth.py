@@ -205,7 +205,7 @@ def start_device_auth(
     try:
         data = {
             "client_id": client,
-            "scope": "profile offline_access",
+            "scope": "offline_access",
             "audience": "https://api.yotoplay.com",
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}

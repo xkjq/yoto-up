@@ -630,7 +630,7 @@ class YotoAPI:
     def get_device_code(self):
         data = {
             "client_id": self.client_id,
-            "scope": "profile offline_access",
+            "scope": "offline_access",
             "audience": "https://api.yotoplay.com",
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
