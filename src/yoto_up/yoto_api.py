@@ -1293,7 +1293,13 @@ class YotoAPI:
                 )
                 upload_task_ids.append(upload_task_id)
                 transcode_task_ids.append(transcode_task_id)
-                tasks.append(wrapped_task())
+                tasks.append(
+                    wrapped_task(
+                        idx=idx,
+                        upload_task_id=upload_task_id,
+                        transcode_task_id=transcode_task_id,
+                    )
+                )
             results = await asyncio.gather(*tasks)
         return results
 
