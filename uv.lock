@@ -602,6 +602,18 @@ wheels = [
 ]
 
 [[package]]
+name = "flet-color-pickers"
+version = "0.86.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flet" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d9/90/92bcbe9cc80876fb81110180d54f88c18af67b883edc7cbd9ed75f7d0c5e/flet_color_pickers-0.86.1.tar.gz", hash = "sha256:ca347fad1c8e48b5e9666efda24b62ea63b9b637cb01414a04e74082ebdaa172", size = 12490, upload-time = "2026-07-17T16:00:16.031Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/35/9ca4db3af9c8a86f2db10da97c075d28ecca1bc6c1d61c575fd1699fc91b/flet_color_pickers-0.86.1-py3-none-any.whl", hash = "sha256:cfe8d650de3c0844eb438e875f1df1cfc91c8e744bcd51a3c902c11d067c6f19", size = 19330, upload-time = "2026-07-17T16:00:15.237Z" },
+]
+
+[[package]]
 name = "flet-desktop"
 version = "0.86.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2527,6 +2539,7 @@ dependencies = [
     { name = "ffmpeg-binaries" },
     { name = "ffmpeg-normalize" },
     { name = "flet", extra = ["all"] },
+    { name = "flet-color-pickers" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "matplotlib" },
@@ -2583,6 +2596,7 @@ requires-dist = [
     { name = "flet", extras = ["all"], specifier = ">=0.86.0" },
     { name = "flet", extras = ["desktop"], marker = "extra == 'gui'", specifier = ">=0.83.0" },
     { name = "flet", extras = ["web"], marker = "extra == 'web'", specifier = ">=0.80.0" },
+    { name = "flet-color-pickers", specifier = ">=0.86.1" },
     { name = "httpx", specifier = ">=0.24.0" },
     { name = "librosa", marker = "extra == 'gui'", specifier = ">=0.10" },
     { name = "loguru", specifier = ">=0.7.0" },

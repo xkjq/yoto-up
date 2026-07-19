@@ -37,6 +37,7 @@ dependencies = [
   "platformdirs>=3.0",
   "flet[all]>=0.86.0",
   "pydub>=0.25.1",
+  "flet-color-pickers>=0.86.1",
 ]
 
 license = "MIT"

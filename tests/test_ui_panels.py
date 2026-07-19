@@ -101,3 +101,22 @@ def test_show_waveforms_popup_dry_run():
         
         # Verify dialog is populated
         assert page.dialog is not None
+
+
+def test_colour_picker_dry_run():
+    from yoto_up.yoto_app.colour_picker import ColourPicker
+    page = MockPage()
+    selected_color = None
+
+    def on_color_selected(color):
+        nonlocal selected_color
+        selected_color = color
+
+    picker = ColourPicker(
+        current_color="#ff0000",
+        on_color_selected=on_color_selected
+    )
+    dialog = picker.build_dialog(page=page)
+    assert dialog is not None
+    assert dialog.content is not None
+    assert picker.current_color == "#ff0000"

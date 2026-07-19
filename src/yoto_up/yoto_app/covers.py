@@ -23,6 +23,7 @@ import flet as ft
 from loguru import logger
 from yoto_up.yoto_app import cover_templates
 from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
+from yoto_up.yoto_app.colour_picker import ColourPicker
 
 try:
     from PIL import Image, ImageDraw
@@ -1646,62 +1647,13 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             # Auto-update preview if editing existing overlay
             if selected_text_overlay_index is not None:
                 update_text_overlay()
-        
-        # Create a simple color picker with common colors
-        color_options = [
-            ("#000000", "Black"),
-            ("#FFFFFF", "White"),
-            ("#FF0000", "Red"),
-            ("#00FF00", "Green"),
-            ("#0000FF", "Blue"),
-            ("#FFFF00", "Yellow"),
-            ("#FF00FF", "Magenta"),
-            ("#00FFFF", "Cyan"),
-            ("#FFA500", "Orange"),
-            ("#800080", "Purple"),
-            ("#FFC0CB", "Pink"),
-            ("#A52A2A", "Brown"),
-            ("#808080", "Gray"),
-        ]
-        
-        color_buttons = []
-        for color_hex, color_name in color_options:
-            btn = ft.Button(
-                color_name,
-                bgcolor=color_hex,
-                color="#FFFFFF" if color_hex in ["#000000", "#0000FF", "#800080", "#A52A2A"] else "#000000",
-                on_click=lambda e, c=color_hex: (on_color_change(c), page.pop_dialog()),
-            )
-            color_buttons.append(btn)
-        
-        # Add custom color input
-        custom_color_input = ft.TextField(
-            label="Custom Hex Color",
-            value=text_color_field.value,
-            width=200,
+
+        picker = ColourPicker(
+            current_color=text_color_field.value,
+            on_color_selected=on_color_change,
         )
-        
-        def on_custom_color(e):
-            on_color_change(custom_color_input.value)
-            page.pop_dialog()
-        
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Text Color"),
-            content=ft.Column([
-                ft.Text("Common Colors:"),
-                ft.Container(
-                    content=ft.Column(color_buttons, spacing=5, scroll=ft.ScrollMode.AUTO),
-                    height=300,
-                ),
-                ft.Divider(),
-                custom_color_input,
-                ft.Button("Use Custom Color", on_click=on_custom_color),
-            ], tight=True, scroll=ft.ScrollMode.AUTO),
-            actions=[
-                ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
-            ],
-        )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
     
     text_color_picker_btn.on_click = on_color_picker_click
@@ -2256,7 +2208,6 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
             update_preview()
 
     def on_img_template_accent_picker_click(e):
-        # reuse simple color chooser from text color picker but update accent field
         def on_color_change(color_value):
             img_template_accent_field.value = color_value
             page.update()
@@ -2264,17 +2215,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 cover_images[selected_image_index].template_accent_color = color_value
                 update_preview()
 
-        color_options = ["#f1c40f", "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF"]
-        color_buttons = []
-        for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
-
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Accent Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
+        picker = ColourPicker(
+            current_color=img_template_accent_field.value,
+            on_color_selected=on_color_change,
         )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
 
     def on_img_template_title_style_change(e):
@@ -2297,27 +2243,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 cover_images[selected_image_index].template_title_color = color_value
                 update_preview()
 
-        color_options = ["#111111", "#FFFFFF", "#000000", "#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
-        color_buttons = []
-        for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
-
-        custom_color_input = ft.TextField(
-            label="Custom Hex Color",
-            value=img_template_title_color_field.value,
-            width=200,
+        picker = ColourPicker(
+            current_color=img_template_title_color_field.value,
+            on_color_selected=on_color_change,
         )
-
-        def on_custom_color(e):
-            on_color_change(custom_color_input.value)
-            page.pop_dialog()
-
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Title Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
-        )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
     
     def on_img_template_footer_style_change(e):
@@ -2372,27 +2303,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 cover_images[selected_image_index].template_title_shadow_color = color_value
                 update_preview()
 
-        color_options = ["#008000", "#000000", "#FFFFFF", "#FF0000", "#0000FF", "#FFA500"]
-        color_buttons = []
-        for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
-
-        custom_color_input = ft.TextField(
-            label="Custom Hex Color",
-            value=img_template_title_shadow_color_field.value,
-            width=200,
+        picker = ColourPicker(
+            current_color=img_template_title_shadow_color_field.value,
+            on_color_selected=on_color_change,
         )
-
-        def on_custom_color(e):
-            on_color_change(custom_color_input.value)
-            page.pop_dialog()
-
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Shadow Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
-        )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
 
     def on_img_top_blend_color_change(e):
@@ -2410,27 +2326,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 cover_images[selected_image_index].template_top_blend_color = color_value
                 update_preview()
 
-        color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
-        color_buttons = []
-        for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
-
-        custom_color_input = ft.TextField(
-            label="Custom Hex Color",
-            value=img_template_top_blend_field.value,
-            width=200,
+        picker = ColourPicker(
+            current_color=img_template_top_blend_field.value,
+            on_color_selected=on_color_change,
         )
-
-        def on_custom_color(e):
-            on_color_change(custom_color_input.value)
-            page.pop_dialog()
-
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Top Blend Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
-        )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
 
     def on_img_bottom_blend_color_change(e):
@@ -2448,27 +2349,12 @@ def build_covers_panel(page: ft.Page, show_snack) -> Dict[str, Any]:
                 cover_images[selected_image_index].template_bottom_blend_color = color_value
                 update_preview()
 
-        color_options = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500"]
-        color_buttons = []
-        for c in color_options:
-            color_buttons.append(ft.Button(c, bgcolor=c, on_click=lambda e, col=c: (on_color_change(col), page.pop_dialog())))
-
-        custom_color_input = ft.TextField(
-            label="Custom Hex Color",
-            value=img_template_bottom_blend_field.value,
-            width=200,
+        picker = ColourPicker(
+            current_color=img_template_bottom_blend_field.value,
+            on_color_selected=on_color_change,
         )
-
-        def on_custom_color(e):
-            on_color_change(custom_color_input.value)
-            page.pop_dialog()
-
-        color_dialog = ft.AlertDialog(
-            title=ft.Text("Choose Bottom Blend Color"),
-            content=ft.Column([ft.Column(color_buttons, spacing=5), custom_color_input, ft.Button("Use Custom Color", on_click=on_custom_color)], tight=True),
-            actions=[ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog())],
-        )
-        page.show_dialog(color_dialog)
+        dialog = picker.build_dialog(page=page)
+        page.show_dialog(dialog)
         page.update()
 
     def on_img_top_blend_pct_change(e):
