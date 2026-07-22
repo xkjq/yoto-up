@@ -1637,7 +1637,8 @@ def create_card_from_folder(
                 chapters.append(
                     API.get_chapter_from_transcoded_audio(
                         transcoded_audio,
-                        chapter_details={"title": chapter_title, "key": f"{idx:02d}"},
+                        chapter_details={"title": chapter_title, "key": f"{idx:02d}", "overlayLabel": f"{idx:d}"},
+                        track_details={"overlayLabel": f"{idx:d}"}
                     )
                 )
         if not chapters:
@@ -2446,10 +2447,14 @@ def fix_card(
         for idx, chapter in enumerate(card.content.chapters, 1):
             if not chapter.title:
                 chapter.title = f"Chapter {idx}"
+            if ensure_sequential_overlay_labels:
+                card = API.rewrite_chapter_fields(
+                    card, "overlayLabel", sequential=True
+                )
 
     if ensure_sequential_overlay_labels:
         card = API.rewrite_track_fields(
-            card, "overlayLabel", sequential=True, reset_every_chapter=True
+            card, "overlayLabel", sequential=True
         )
 
     if ensure_sequential_track_keys:
