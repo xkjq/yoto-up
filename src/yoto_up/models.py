@@ -196,7 +196,7 @@ class CardMedia(BaseModel):
     hasStreams: Optional[bool] = None
 
 class CardConfig(BaseModel):
-    autoadvance: Optional[Literal["next", "repeat", "none"]] = Field(
+    autoadvance: Optional[Literal["next", "repeat", "none",""]] = Field(
         default=None,
         description="Defines how the player should behave when a track ends. One of: next, repeat, none",
     )
