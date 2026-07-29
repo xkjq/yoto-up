@@ -1128,8 +1128,10 @@ class YotoAPI:
                             )
                         break
                 elif poll_resp.status_code >= 202:
-                    if "progress" in poll_resp.json()["transcode"]:
-                        percent = poll_resp.json()["transcode"]["progress"]["percent"]
+                    poll_transcode = poll_resp.json().get("transcode") or {}
+                    poll_progress = poll_transcode.get("progress") or {}
+                    percent = poll_progress.get("percent")
+                    if percent is not None:
                         _call_cb("Transcoding...", percent / 100)
                 await asyncio.sleep(poll_interval)
                 attempts += 1
