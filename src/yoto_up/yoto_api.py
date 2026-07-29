@@ -1,4 +1,3 @@
-from nltk.lm.vocabulary import _
 import os
 import httpx
 import time
@@ -630,7 +629,7 @@ class YotoAPI:
     def get_device_code(self):
         data = {
             "client_id": self.client_id,
-            "scope": "profile offline_access",
+            "scope": "offline_access",
             "audience": "https://api.yotoplay.com",
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -3449,7 +3448,7 @@ class YotoAPI:
                     if not media_id:
                         with used_lock:
                             candidate_claims.pop(key, None)
-                        _cb(f"Candidate had no mediaId, skipping", frac)
+                        _cb("Candidate had no mediaId, skipping", frac)
                         continue
 
                     media_id = str(media_id)

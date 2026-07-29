@@ -1,9 +1,6 @@
 import os
-import io
-import base64
 import numpy as np
 import contextlib
-import tempfile
 import wave
 from concurrent.futures import ThreadPoolExecutor
 

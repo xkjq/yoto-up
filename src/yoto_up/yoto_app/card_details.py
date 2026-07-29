@@ -8,8 +8,6 @@ import json
 import traceback
 from copy import deepcopy
 from pathlib import Path
-import sys
-import shutil
 
 import flet as ft
 import re

@@ -1,8 +1,6 @@
 import os
 import json
-import tempfile
 import base64
-import io
 from collections import Counter
 
 import flet as ft

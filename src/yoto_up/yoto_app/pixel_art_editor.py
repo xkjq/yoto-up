@@ -8,7 +8,7 @@ import json
 import re
 import hashlib
 import copy
-from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, FLET_APP_STORAGE_DATA, USER_ICONS_DIR
+from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR, USER_ICONS_DIR
 
 try:
     from yoto_up.yoto_app.icon_import_helpers import (
@@ -122,7 +122,7 @@ class PixelArtEditor:
             height=32,
             bgcolor=self.current_color,
             border_radius=4,
-            border=ft.border.all(1, "#888888"),
+            border=ft.Border.all(1, "#888888"),
         )
         # Advanced color picker dialog
         self.advanced_picker_btn = ft.Button(
@@ -164,7 +164,7 @@ class PixelArtEditor:
                     height=24,
                     bgcolor=c,
                     border_radius=4,
-                    border=ft.border.all(1, "#888888"),
+                    border=ft.Border.all(1, "#888888"),
                     on_click=self.make_palette_click_handler(c),
                     tooltip=c,
                 )
@@ -180,7 +180,7 @@ class PixelArtEditor:
                     height=24,
                     content=ft.Text(value="T", size=10),
                     border_radius=4,
-                    border=ft.border.all(1, "#888888"),
+                    border=ft.Border.all(1, "#888888"),
                     on_click=self.make_palette_click_handler(None),
                     tooltip="Transparent",
                 )
@@ -229,7 +229,7 @@ class PixelArtEditor:
         self.grid_container = ft.Container(
             content=ft.Container(content=ft.Text(value="(grid loading)")),
             border_radius=4,
-            border=ft.border.all(2, "#888888"),
+            border=ft.Border.all(2, "#888888"),
             padding=2,
             width=grid_width,
             height=grid_height,
@@ -744,10 +744,10 @@ class PixelArtEditor:
             width=160,
         )
         self.target_preview = ft.Container(
-            width=24, height=24, border=ft.border.all(1, "#888888")
+            width=24, height=24, border=ft.Border.all(1, "#888888")
         )
         self.repl_preview = ft.Container(
-            width=24, height=24, border=ft.border.all(1, "#888888")
+            width=24, height=24, border=ft.Border.all(1, "#888888")
         )
         self._fill_similar_status = ft.Text("")
 
@@ -1999,10 +1999,10 @@ class PixelArtEditor:
         )
         # small previews
         target_preview = ft.Container(
-            width=24, height=24, border=ft.border.all(1, "#888888")
+            width=24, height=24, border=ft.Border.all(1, "#888888")
         )
         repl_preview = ft.Container(
-            width=24, height=24, border=ft.border.all(1, "#888888")
+            width=24, height=24, border=ft.Border.all(1, "#888888")
         )
         status = ft.Text(value="")
 

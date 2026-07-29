@@ -9,7 +9,6 @@ import base64
 
 from yoto_up.paths import USER_ICONS_DIR
 from yoto_up.yoto_app.icon_import_helpers import get_base64_from_path
-from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.models import Card
 from PIL import (
     Image as PILImage,

@@ -21,22 +21,23 @@ dependencies = [
   "rich>=12.0.0",
   "requests>=2.28.0",
   "pydantic>=1.10",
-  "pillow>=9.0.0",
+  "pillow>=10.0.0",
   "beautifulsoup4>=4.9.0",
   "mutagen>=1.45.1",
   "textual>=0.2.0",
   "pynput",
-  "numpy>=1.25",
-  "matplotlib>=3.7",
+  "numpy>=1.26",
+  "matplotlib>=3.8",
   "typer>=0.19.0",
-  "rapidfuzz>=2.0.0",
+  "rapidfuzz>=3.0.0",
   "ffmpeg-normalize>=1.36.0",
   "ffmpeg-binaries",
   # Optional NLP tools useful for desktop keyword extraction
   "nltk>=3.8.0",
   "platformdirs>=3.0",
-  "flet[all]>=0.82.0",
+  "flet[all]>=0.86.0",
   "pydub>=0.25.1",
+  "flet-color-pickers>=0.86.1",
 ]
 
 license = "MIT"
@@ -88,8 +89,11 @@ app.module = "yoto_up.gui"
 
 [tool.uv]
 dev-dependencies = [
+    "coverage>=7.15.2",
     "flet[all]>=0.80.5",
     "pytest",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.22",
 ]
 
 [tool.setuptools]

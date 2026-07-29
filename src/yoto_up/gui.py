@@ -1,5 +1,4 @@
 import asyncio
-from nltk.lm.vocabulary import _
 from yoto_up.models import Card
 from pathlib import Path
 import time
@@ -28,7 +27,7 @@ import flet as ft
 from yoto_up.yoto_app import ui_helpers as ui_helpers
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.playlists import build_playlists_panel, build_playlists_ui
-from yoto_up.yoto_app.library import build_library_panel, build_library_ui
+from yoto_up.yoto_app.library import build_library_panel
 from loguru import logger
 from yoto_up.yoto_app.upload_tasks import (
     UploadManager,
@@ -38,7 +37,6 @@ import hashlib
 import httpx
 
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
-from yoto_up.yoto_app.covers import build_covers_panel
 from yoto_up.yoto_app.about_dialog import show_about_dialog
 import shutil
 
@@ -1046,7 +1044,7 @@ def main(page: "Page"):
                     try:
                         if hasattr(page, "set_icon_refreshing"):
                             page.set_icon_refreshing(False)
-                    except Exception as e:
+                    except Exception:
                         logger.error(
                             "Failed to hide icon refreshing badge: %s",
                             traceback.format_exc(),
@@ -1057,7 +1055,7 @@ def main(page: "Page"):
                     for cb in list(cbs):
                         try:
                             cb()
-                        except Exception as e:
+                        except Exception:
                             logger.error(
                                 "Icon cache refreshed callback failed: %s",
                                 traceback.format_exc(),

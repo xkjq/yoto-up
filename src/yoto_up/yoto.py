@@ -2330,11 +2330,11 @@ def replace_default_icons(
             else:
                 raise RuntimeError(str(exc))
     if not new_card:
-        console.print(f"[bold red]Failed to replace default icons.[/bold red]")
+        console.print("[bold red]Failed to replace default icons.[/bold red]")
         raise typer.Exit(code=1)
     # Update the card on the server
     updated_card = API.create_or_update_content(new_card, return_card=True)
-    console.print(f"[bold green]Default icons replaced successfully.[/bold green]")
+    console.print("[bold green]Default icons replaced successfully.[/bold green]")
     return updated_card
 
 

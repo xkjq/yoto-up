@@ -1,4 +1,3 @@
-from nltk import TYPE
 from yoto_up.yoto_app.api_manager import ensure_api
 from yoto_up.yoto_app.ui_state import set_state, get_state
 import sys
@@ -8,7 +7,6 @@ import json
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Literal, cast, TYPE_CHECKING
-import shutil
 from dataclasses import dataclass
 
 
@@ -24,12 +22,11 @@ except Exception:  # Broad because pyodide etc may raise weird errors
 import httpx
 from yoto_up.models import Card, CardMetadata
 from yoto_up.yoto_app.auth import delete_tokens_file, start_device_auth
-from yoto_up.yoto_app.config import CLIENT_ID
 from loguru import logger
 import time
 from yoto_up.yoto_api import YotoAPI
 from yoto_up.paths import save_playlists, VERSIONS_DIR
-from yoto_up.yoto_app.file_picker_helpers import get_or_create_picker, pick_files
+from yoto_up.yoto_app.file_picker_helpers import pick_files
 
 # Guard against duplicate/overlapping playlist fetches (many UI actions
 # may trigger a refresh on startup). Use a simple lock + cooldown so that
@@ -1501,8 +1498,8 @@ def build_playlists_panel(
                     spacing=4,
                     alignment=ft.MainAxisAlignment.START,
                 ),
-                padding=ft.padding.symmetric(horizontal=4, vertical=2),
-                margin=ft.margin.only(left=4, right=4, bottom=2),
+                padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+                margin=ft.Margin.only(left=4, right=4, bottom=2),
                 border_radius=4,
                 height=None,
                 alignment=ft.Alignment.TOP_LEFT,
