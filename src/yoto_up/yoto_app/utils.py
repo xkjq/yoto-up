@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg", ".wma", ".alac", ".aiff", ".opus"}
+AUDIO_EXTS = {".mp3", ".m4a", ".m4b", ".wav", ".flac", ".aac", ".ogg", ".wma", ".alac", ".aiff", ".opus"}
 
 
 def find_audio_files(folder: str):
