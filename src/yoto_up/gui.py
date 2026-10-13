@@ -35,6 +35,7 @@ from yoto_up.yoto_app.upload_tasks import (
 from yoto_up.paths import OFFICIAL_ICON_CACHE_DIR
 import hashlib
 import httpx
+from yoto_up import oauth_pkce
 
 from yoto_up.yoto_app.pixel_art_editor import PixelArtEditor
 from yoto_up.yoto_app.about_dialog import show_about_dialog
@@ -49,8 +50,8 @@ AUTHENTICATE_TEXT = """Not authenticated.
 To authenticate with your Yoto account:
 
 1. Click the "Authenticate" button.
-2. A code and URL will be displayed. Open the URL in your web browser.
-3. Enter the code and complete the authentication process.
+2. Your web browser will open. Sign in to Yoto and approve access.
+3. Return here once the browser confirms the login is complete.
 """
 
 
@@ -249,85 +250,70 @@ def main(page: "Page"):
     page.show_snack = show_snack  # expose on page for easy access from helpers
 
     async def start_device_auth(instr=None):
-        logger.debug("[start_device_auth] Starting device auth flow")
-        # Prefer using the YotoAPI device auth flow directly (so we reuse
-        # YotoAPI.get_device_code() and poll_for_token()). Fall back to the
-        # existing auth module on any error.
+        logger.debug("[start_device_auth] Starting browser authorization flow")
+        # Use YotoAPI's browser-based PKCE flow (device code flow is deprecated).
         api = get_api()
         if api is None:
             logger.error("start_device_auth: API instance not available")
             show_snack("API unavailable; cannot start authentication", error=True)
             return
-        device_info = api.get_device_code()
 
-        verification_uri = device_info.get("verification_uri") or ""
-        verification_uri_complete = (
-            device_info.get("verification_uri_complete") or verification_uri
-        )
-        user_code = device_info.get("user_code") or ""
+        container = instr or auth_instructions
 
-        # Populate instructions in the provided container (or page.auth_instructions)
-        try:
-            container = instr or auth_instructions
-            if container is not None:
-                container.controls.clear()
-                container.controls.append(
-                    ft.Text(
-                        value=f"Visit: {verification_uri} and enter the code displayed below.",
-                        selectable=True,
-                    )
-                )
-                container.controls.append(
-                    ft.Text(value=f"Code: {user_code}", selectable=True)
-                )
-                container.controls.append(
-                    ft.Row(
-                        controls=[
-                            ft.Text(
-                                value="Alternatively open (click) this direct link: "
-                            ),
-                            ft.TextButton(
-                                content=ft.Text(value=verification_uri_complete),
-                                on_click=lambda e, url=verification_uri_complete: (
-                                    logger.debug(f"Opening browser for URL: {url}"),
-                                    __import__("webbrowser").open(url),
-                                ),
-                            ),
-                            ft.TextButton(
-                                content=ft.Text(value="Copy Link"),
-                                on_click=lambda e, url=verification_uri_complete: (
-                                    logger.debug(f"Copying URL to clipboard: {url}"),
-                                    page.run_task(ft.Clipboard().set(url)),
-                                ),
-                            ),
-                        ]
-                    )
-                )
-                container.controls.append(
-                    ft.Row(
-                        controls=[
-                            ft.Text(
-                                value="Doing this links you Yoto account with this app."
-                            ),
-                            ft.Text(value=""),
-                        ]
-                    )
-                )
-                container.controls.append(getattr(page, "auth_status", ft.Text(value="")))
-                page.update()
-        except Exception:
-            logger.error(
-                f"Failed to populate auth instructions: {traceback.format_exc()}"
-            )
-
-        # Start background poll using YotoAPI.poll_for_token
-        def _poll_thread():
+        def _show_url(url):
+            # Render the login URL so the user can open/copy it if the browser
+            # does not launch automatically.
             try:
-                access, refresh = api.poll_for_token(
-                    device_info.get("device_code"),
-                    device_info.get("interval", 5),
-                    device_info.get("expires_in", 300),
+                if container is not None and hasattr(container, "controls"):
+                    container.controls.clear()
+                    container.controls.append(
+                        ft.Text(
+                            value="A browser window will open so you can sign in to Yoto.",
+                            selectable=True,
+                        )
+                    )
+                    container.controls.append(
+                        ft.Text(
+                            value=(
+                                "If it does not open automatically, visit this URL "
+                                "to authorize this app:"
+                            ),
+                            selectable=True,
+                        )
+                    )
+                    container.controls.append(ft.Text(value=url, selectable=True))
+                    container.controls.append(
+                        ft.Row(
+                            controls=[
+                                ft.TextButton(
+                                    content=ft.Text(value="Open Link"),
+                                    on_click=lambda e, u=url: (
+                                        logger.debug(f"Opening browser for URL: {u}"),
+                                        __import__("webbrowser").open(u),
+                                    ),
+                                ),
+                                ft.TextButton(
+                                    content=ft.Text(value="Copy Link"),
+                                    on_click=lambda e, u=url: (
+                                        logger.debug(f"Copying URL to clipboard: {u}"),
+                                        page.run_task(ft.Clipboard().set(u)),
+                                    ),
+                                ),
+                            ]
+                        )
+                    )
+                    container.controls.append(getattr(page, "auth_status", ft.Text(value="")))
+                    page.update()
+            except Exception:
+                logger.error(
+                    f"Failed to populate auth instructions: {traceback.format_exc()}"
                 )
+
+        def _worker():
+            try:
+                tokens = api.authenticate_with_browser(on_authorization_url=_show_url)
+                access = tokens.get("access_token")
+                refresh = tokens.get("refresh_token")
                 api.save_tokens(access, refresh)
                 api.access_token = access
                 api.refresh_token = refresh
@@ -336,9 +322,9 @@ def main(page: "Page"):
                 page.auth_complete()
                 try:
                     # update instruction UI
-                    if instr is not None and hasattr(instr, "controls"):
-                        instr.controls.clear()
-                        instr.controls.append(
+                    if container is not None and hasattr(container, "controls"):
+                        container.controls.clear()
+                        container.controls.append(
                             ft.Text(
                                 value="Authentication complete",
                                 size=18,
@@ -350,15 +336,18 @@ def main(page: "Page"):
                     logger.error(
                         f"Failed to update auth instructions after successful auth: {traceback.format_exc()}"
                     )
-            except Exception as e:
+            except (oauth_pkce.AuthFlowError, TimeoutError) as e:
                 logger.error(f"start_device_auth: auth failed: {e}")
+                show_snack(f"Auth failed: {e}", error=True)
+            except Exception as e:
+                logger.error(
+                    f"start_device_auth: unexpected auth failure: {e}\n{traceback.format_exc()}"
+                )
                 show_snack(f"Auth failed: {e}", error=True)
             finally:
                 page.update()
 
-        page.run_thread(
-            _poll_thread
-        )  # also run as a task to ensure exceptions are logged
+        page.run_thread(_worker)
 
     page.show_card_details = make_show_card_details(
         page=page,

@@ -60,6 +60,7 @@ from datetime import datetime, timezone
 
 # Centralized per-user paths
 import yoto_up.paths as paths
+from yoto_up import oauth_pkce
 
 # Helper: recursively detect unexpected (extra) fields in input data against a Pydantic model
 from typing import Any, List, Type, get_origin, get_args
@@ -271,7 +272,6 @@ def has_extra_fields(model: Type[BaseModel], data: Any) -> bool:
 
 class YotoAPI:
     SERVER_URL = "https://api.yotoplay.com"
-    DEVICE_AUTH_URL = "https://login.yotoplay.com/oauth/device/code"
     TOKEN_URL = "https://login.yotoplay.com/oauth/token"
     MYO_URL = SERVER_URL + "/content/mine"
     CONTENT_URL = SERVER_URL + "/content"
@@ -626,98 +626,34 @@ class YotoAPI:
         self._save_cache()
         return resp
 
-    def get_device_code(self):
-        data = {
-            "client_id": self.client_id,
-            "scope": "offline_access",
-            "audience": "https://api.yotoplay.com",
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        logger.debug(f"Requesting device code: {data}")
-        response = httpx.post(self.DEVICE_AUTH_URL, data=data, headers=headers)
-        logger.debug(f"Device code response: {response.status_code} {response.text}")
-        if not response.is_success:
-            logger.error(f"Device authorization failed: {response.text}")
-            raise Exception(f"Device authorization failed: {response.text}")
-        return response.json()
+    def authenticate_with_browser(self, open_browser=True, on_authorization_url=None):
+        """Authenticate via the OAuth 2.1 authorization code + PKCE flow.
 
-    def poll_for_token(self, device_code, interval, expires_in):
+        Starts a temporary loopback server, opens the user's browser to sign in,
+        and exchanges the returned authorization code for tokens. Returns the
+        token response dict (access_token, refresh_token, ...).
+
+        ``on_authorization_url`` (optional) is called with the URL before the
+        browser opens so callers can render it.
+
+        The device-code flow is deprecated by Yoto:
+        https://yoto.dev/authentication/device-code-migration/
+        """
         console = Console()
-        start_time = time.time()
-        interval_sec = interval
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            TimeElapsedColumn(),
-            transient=True,
-            console=console,
-        ) as progress:
-            task = progress.add_task("Waiting for authorization...", start=False)
-            while True:
-                elapsed = time.time() - start_time
-                if elapsed > expires_in:
-                    console.print(
-                        "[bold red]Device code has expired. Please restart the device login process.[/bold red]"
-                    )
-                    # logger.debug("Device code has expired. Please restart the device login process.")
-                    raise Exception(
-                        "Device code has expired. Please restart the device login process."
-                    )
-                data = {
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    "device_code": device_code,
-                    "client_id": self.client_id,
-                    "audience": "https://api.yotoplay.com",
-                }
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                # logger.debug(f"Polling for token: {data}")
-                response = httpx.post(self.TOKEN_URL, data=data, headers=headers)
-                # logger.debug(f"Token poll response: {response.status_code} {response.text}")
-                resp_json = response.json()
-                if response.is_success:
-                    console.print("[bold green]Authorization successful![/bold green]")
-                    logger.debug("Authorization successful, received tokens")
-                    return resp_json["access_token"], resp_json.get("refresh_token")
-                elif response.status_code == 403:
-                    error = resp_json.get("error")
-                    if error == "authorization_pending":
-                        progress.update(
-                            task, description="Authorization pending, waiting..."
-                        )
-                        time.sleep(interval_sec)
-                        continue
-                    elif error == "slow_down":
-                        interval_sec += 5
-                        progress.update(
-                            task,
-                            description=f"Received slow_down, increasing interval to {interval_sec}s",
-                        )
-                        time.sleep(interval_sec)
-                        continue
-                    elif error == "expired_token":
-                        console.print(
-                            "[bold red]Device code has expired. Please restart the device login process.[/bold red]"
-                        )
-                        logger.debug(
-                            "Device code has expired. Please restart the device login process."
-                        )
-                        raise Exception(
-                            "Device code has expired. Please restart the device login process."
-                        )
-                    else:
-                        console.print(
-                            f"[bold red]Token poll error: {resp_json.get('error_description', error)}[/bold red]"
-                        )
-                        logger.debug(
-                            f"Token poll error: {resp_json.get('error_description', error)}"
-                        )
-                        raise Exception(resp_json.get("error_description", error))
-                else:
-                    console.print(
-                        f"[bold red]Token request failed: {response.text}[/bold red]"
-                    )
-                    logger.debug(f"Token request failed: {response.text}")
-                    raise Exception(f"Token request failed: {response.text}")
+
+        def _show_url(url):
+            console.print(
+                "[bold yellow]To authorize this app, open this URL in your browser:[/bold yellow]"
+            )
+            console.print(f"[bold cyan]{url}[/bold cyan]")
+            if on_authorization_url is not None:
+                on_authorization_url(url)
+
+        return oauth_pkce.run_browser_auth(
+            self.client_id,
+            on_authorization_url=_show_url,
+            open_browser=open_browser,
+        )
 
     def decode_jwt(self, token):
         try:
@@ -769,21 +705,14 @@ class YotoAPI:
 
     def authenticate(self):
         console = Console()
-        device_info = self.get_device_code()
-        console.print("[bold yellow]To authorize this app, please visit:[/bold yellow]")
-        console.print(f"[bold cyan]{device_info['verification_uri']}[/bold cyan]")
-        console.print("[bold yellow]And enter this code:[/bold yellow]")
-        console.print(f"[bold green]{device_info['user_code']}[/bold green]")
-        console.print("[bold yellow]Or visit this URL directly:[/bold yellow]")
         console.print(
-            f"[bold cyan]{device_info['verification_uri_complete']}[/bold cyan]"
+            "[bold yellow]A browser window will open so you can sign in to Yoto.[/bold yellow]"
         )
-        self.access_token, self.refresh_token = self.poll_for_token(
-            device_info["device_code"],
-            device_info.get("interval", 5),
-            device_info.get("expires_in", 300),
-        )
+        tokens = self.authenticate_with_browser()
+        self.access_token = tokens["access_token"]
+        self.refresh_token = tokens.get("refresh_token")
         self.save_tokens(self.access_token, self.refresh_token)
+        console.print("[bold green]Authorization successful![/bold green]")
 
     def is_authenticated(self):
         return self.access_token is not None and not self.is_token_expired(

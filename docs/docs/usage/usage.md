@@ -18,7 +18,7 @@ Start the graphical interface (desktop/browser) with:
 python gui.py
 ```
 
-- Use the Auth tab to authenticate with Yoto (device flow). The app stores short-lived tokens locally in `tokens.json` (see Security notes).
+- Use the Auth tab to authenticate with Yoto (browser-based OAuth). The app stores short-lived tokens locally in `tokens.json` (see Security notes).
 - Use the Playlists tab to fetch and manage your cards.
 - Use the Upload tab to select a folder and create a new card or append to an existing card.
 
